@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/claudiom248/quorum/compare/v0.2.0...v0.3.0) (2026-10-15)
+
+
+### Features
+
+* authentication, assistant settings and streaming chat (spec 001) ([#10](https://github.com/claudiom248/quorum/issues/10)) ([f99643c](https://github.com/claudiom248/quorum/commit/f99643c4698e7bb3dc196dd1887818314101d349))
+
 ## [0.2.0](https://github.com/claudiom248/quorum/compare/v0.1.0...v0.2.0) (2026-10-15)
 
 
