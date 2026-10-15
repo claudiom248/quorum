@@ -27,6 +27,7 @@ An agentic orchestration platform that is **self-hosted and extensible through c
 | Licensing | Offline signed key, online optional; Community (non-commercial, 5 users, 1 tenant), Trial (30 days, then read-only), Commercial editions |
 | UI | Blazor WebAssembly on top of the public API; graph editor as a future JS island |
 | Module architecture | Vertical Slice inside each module (MVP) |
+| Terminology | Assistant = published entry point; Agent = building block in a topology (see glossary in `product.md`) |
 | Third-party API | Future spec: OpenAI-compatible endpoint + per-application API keys |
 | Versioning and releases | Trunk-based, Conventional Commits, MinVer, release-please on GitHub (`docs/release-process.md`) |
 | Source | Source-available (candidate: PolyForm Noncommercial + commercial license) |
