@@ -27,10 +27,22 @@ public interface IAssistantChat
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same measure from the sizes of the attachments, for callers that must not load their text only to count it.
+    /// </summary>
+    Task<Result<ContextUsage>> MeasureContextBySizesAsync(
+        Guid assistantId,
+        IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachmentSize> attachments,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>A document attached to a conversation: its display name and the text extracted from it.</summary>
 public sealed record ChatAttachment(string FileName, string Text);
+
+/// <summary>The size of an attachment: the length of its file name and of its extracted text, in characters.</summary>
+public sealed record ChatAttachmentSize(int FileNameLength, int TextLength);
 
 /// <summary>
 /// The context budget of a conversation, in characters (what the budget rules work with) and estimated tokens.

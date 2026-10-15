@@ -23,10 +23,56 @@ namespace Quorum.Modules.Conversations.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CharacterCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "ContentHash")
+                        .IsUnique();
+
+                    b.ToTable("attachments", "conversations");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Conversation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("AssistantId")
@@ -58,7 +104,6 @@ namespace Quorum.Modules.Conversations.Persistence.Migrations
             modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Message", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Content")
@@ -89,6 +134,15 @@ namespace Quorum.Modules.Conversations.Persistence.Migrations
                     b.HasIndex("ConversationId", "CreatedAt");
 
                     b.ToTable("messages", "conversations");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Attachment", b =>
+                {
+                    b.HasOne("Quorum.Modules.Conversations.Domain.Conversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Message", b =>

@@ -7,6 +7,8 @@ public enum ErrorType
     NotFound,
     Conflict,
     Unprocessable,
+    PayloadTooLarge,
+    UnsupportedMediaType,
     Locked,
 }
 
@@ -26,4 +28,8 @@ public sealed record Error(string Code, string Description, ErrorType Type)
     public static Error Unprocessable(string code, string description) => new(code, description, ErrorType.Unprocessable);
 
     public static Error Locked(string code, string description) => new(code, description, ErrorType.Locked);
+
+    public static Error PayloadTooLarge(string code, string description) => new(code, description, ErrorType.PayloadTooLarge);
+
+    public static Error UnsupportedMediaType(string code, string description) => new(code, description, ErrorType.UnsupportedMediaType);
 }
