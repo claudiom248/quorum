@@ -34,6 +34,9 @@ tests/
 
 Ogni modulo espone una sola estensione di registrazione pubblica (`Add<Module>Module`); handler, consumer e DbContext restano `internal`.
 
+- **Architettura interna dei moduli**: Vertical Slice (un file per operazione in `Features/`). Evolvere a Clean/DDD solo nel modulo il cui dominio lo richiede.
+- **UI**: Blazor WebAssembly servita dall'Host; consuma solo l'API pubblica, come qualsiasi client esterno.
+
 ## Principi di prodotto
 - Installazione in un comando (Docker / compose).
 - Config-first: agenti, tool, skill, prompt e topologie sono definiti in file dichiarativi; l'editor visuale a grafo legge e scrive lo stesso schema.
@@ -61,6 +64,12 @@ dotnet run --project src/Quorum.Host
 dotnet test
 dotnet format --verify-no-changes
 ```
+
+## Git e versioni
+Dettagli in `docs/release-process.md`.
+- Trunk-based: branch brevi da `main`, PR in squash merge.
+- Commit e titoli di PR in **Conventional Commits** (`feat:`, `fix:`, `perf:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:`; `!` per i breaking change); citare la spec quando presente, es. `feat: ... (spec 001)`.
+- Versione SemVer calcolata da MinVer sui tag `vX.Y.Z`; tag e `CHANGELOG.md` li crea release-please. Non creare tag ne modificare `CHANGELOG.md` a mano.
 
 ## Workflow
 - **Plan first** per task non banali (3+ passi o decisioni architetturali); usa `/spec` e `/plan` del kit.

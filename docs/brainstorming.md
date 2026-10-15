@@ -24,8 +24,21 @@ Piattaforma di orchestrazione agentica **self-hosted ed estensibile via configur
 | Forma | Backend/API + piu client |
 | Tenancy | Una installazione, piu tenant |
 | Standard | MCP per i tool, formati aperti |
-| Licensing | Chiave firmata offline, online opzionale |
+| Licensing | Chiave firmata offline, online opzionale; edizioni Community (non commerciale, 5 utenti, 1 tenant), Trial (30 giorni, poi sola lettura), Commerciale |
+| UI | Blazor WebAssembly sopra l'API pubblica; editor a grafo come isola JS futura |
+| Architettura moduli | Vertical Slice dentro ogni modulo (MVP) |
+| API per terzi | Spec futura: endpoint compatibile OpenAI + API key per applicazione |
+| Versioni e rilasci | Trunk-based, Conventional Commits, MinVer, release-please su GitHub (`docs/release-process.md`) |
+| Sorgente | Source-available (candidata PolyForm Noncommercial + licenza commerciale) |
 | Stack | .NET + dotnet-claude-kit |
+| Database piattaforma | Solo PostgreSQL, bundled nel compose, senza vettori |
+| Vector store RAG | Astratto: Qdrant (default) o pgvector su server/db dedicato |
+| Conversation store | Astratto, default su Postgres |
+| Autenticazione | Account locali + OIDC generico; SAML/LDAP via broker |
+| Installazione | `docker compose up` + wizard con setup token |
+| Sviluppo | Keycloak e Postgres in `deploy/docker-compose.dev.yml` |
+
+Dettagli in `docs/product.md`.
 
 ## Rischi
 - Ambito molto ampio: tenere l'MVP verticale.
