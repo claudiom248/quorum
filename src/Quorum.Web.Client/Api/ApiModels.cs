@@ -21,7 +21,7 @@ public sealed record UpdateAssistantSettingsRequest(string BaseUrl, string Model
 
 public sealed record ConversationSummary(Guid Id, string? Title, DateTimeOffset UpdatedAt);
 
-public sealed record ConversationDetail(Guid Id, string? Title, IReadOnlyList<MessageDto> Messages);
+public sealed record ConversationDetail(Guid Id, string? Title, IReadOnlyList<MessageDto> Messages, IReadOnlyList<AttachmentInfo>? Attachments = null);
 
 public sealed record MessageDto(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt);
 
@@ -50,3 +50,15 @@ public sealed record AnswerDone(Guid MessageId, string Status, string? Error) : 
 
 /// <summary>The server refused to start the answer (validation, conflict, expired session...).</summary>
 public sealed record AnswerRejected(ApiProblem Problem) : AnswerEvent;
+
+/// <summary>A document attached to a conversation (its text is part of the model's context).</summary>
+public sealed record AttachmentInfo(Guid Id, string FileName, string MediaType, long SizeBytes, int CharacterCount, DateTimeOffset CreatedAt);
+
+/// <summary>How much of the model's context a conversation uses, in estimated tokens.</summary>
+public sealed record ConversationContext(
+    int ContextTokenBudget,
+    int UsableTokens,
+    int SystemPromptTokens,
+    int AttachmentsTokens,
+    int MessagesTokens,
+    int RemainingTokens);

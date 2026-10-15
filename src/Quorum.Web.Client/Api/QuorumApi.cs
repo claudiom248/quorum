@@ -61,6 +61,52 @@ public sealed class QuorumApi(HttpClient http)
     public Task<ApiResult> DeleteConversationAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, $"api/conversations/{id}", body: null, setupToken: null, cancellationToken);
 
+    public async Task<ApiResult<AttachmentInfo>> UploadAttachmentAsync(
+        Guid conversationId,
+        Stream content,
+        string fileName,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StreamContent(content), "file", fileName);
+            using var response = await http.PostAsync(new Uri($"api/conversations/{conversationId}/attachments", UriKind.Relative), form, cancellationToken);
+            return await ReadAsync<AttachmentInfo>(response, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return ApiResult.Fail<AttachmentInfo>(ApiProblem.Unreachable);
+        }
+    }
+
+    public Task<ApiResult<List<AttachmentInfo>>> ListAttachmentsAsync(Guid conversationId, CancellationToken cancellationToken = default) =>
+        GetAsync<List<AttachmentInfo>>($"api/conversations/{conversationId}/attachments", cancellationToken);
+
+    /// <summary>The text extracted from an attachment, as the model receives it.</summary>
+    public async Task<ApiResult<string>> GetAttachmentTextAsync(Guid conversationId, Guid attachmentId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await http.GetAsync(
+                new Uri($"api/conversations/{conversationId}/attachments/{attachmentId}/text", UriKind.Relative),
+                cancellationToken);
+            return response.IsSuccessStatusCode
+                ? ApiResult.Ok(await response.Content.ReadAsStringAsync(cancellationToken))
+                : ApiResult.Fail<string>(await ApiProblem.ReadAsync(response, cancellationToken));
+        }
+        catch (HttpRequestException)
+        {
+            return ApiResult.Fail<string>(ApiProblem.Unreachable);
+        }
+    }
+
+    public Task<ApiResult> RemoveAttachmentAsync(Guid conversationId, Guid attachmentId, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Delete, $"api/conversations/{conversationId}/attachments/{attachmentId}", body: null, setupToken: null, cancellationToken);
+
+    public Task<ApiResult<ConversationContext>> GetContextAsync(Guid conversationId, CancellationToken cancellationToken = default) =>
+        GetAsync<ConversationContext>($"api/conversations/{conversationId}/context", cancellationToken);
+
     /// <summary>Streams the answer to a new message. Cancelling the token stops the answer: the server keeps it as interrupted.</summary>
     public IAsyncEnumerable<AnswerEvent> SendMessageAsync(Guid id, string content, CancellationToken cancellationToken = default) =>
         StreamAnswerAsync($"api/conversations/{id}/messages", new { content }, cancellationToken);

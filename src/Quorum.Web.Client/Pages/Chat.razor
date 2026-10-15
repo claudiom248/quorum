@@ -106,6 +106,10 @@
 
         <div class="composer">
             <div class="composer-inner">
+                <AttachmentsPanel @ref="_attachments" ConversationId="Id" Disabled="_streaming"
+                                  EnsureConversation="EnsureConversationAsync" OnSessionExpired="Expired" />
+            </div>
+            <div class="composer-inner">
                 <textarea @ref="_composerElement" @bind="_draft" @bind:event="oninput" rows="1"
                           placeholder="Write a message (Shift+Enter for a new line)" disabled="@_streaming"></textarea>
                 @if (_streaming)
@@ -137,6 +141,7 @@
     private DotNetObjectReference<Chat>? _self;
     private ElementReference _messagesElement;
     private ElementReference _composerElement;
+    private AttachmentsPanel? _attachments;
     private ApiProblem? _problem;
     private string? _title;
     private string _newTitle = string.Empty;
@@ -231,6 +236,31 @@
     }
 
     private void NewConversation() => Navigation.NavigateTo(string.Empty);
+
+    /// <summary>The conversation, created now when the user attaches a file before writing the first message.</summary>
+    private async Task<Guid?> EnsureConversationAsync()
+    {
+        if (Id is { } existing)
+        {
+            return existing;
+        }
+
+        var created = await Api.CreateConversationAsync();
+        if (!created.IsSuccess)
+        {
+            _problem = created.Problem;
+            return null;
+        }
+
+        _loaded = new ConversationDetail(created.Value, null, []);
+        Id = created.Value;
+        Navigation.NavigateTo($"c/{created.Value}", replace: true);
+        await RefreshListAsync();
+
+        // Called from the panel's event handler: this page is not re-rendered by it.
+        StateHasChanged();
+        return created.Value;
+    }
 
     private async Task SendAsync()
     {
@@ -349,6 +379,12 @@
             await LoadConversationAsync();
             _problem = keep;
             await RefreshListAsync();
+
+            // The answer took its share of the context: the budget indicator must show it.
+            if (_attachments is not null)
+            {
+                await _attachments.ReloadAsync();
+            }
         }
 
         if (Navigation.ToBaseRelativePath(Navigation.Uri) != $"c/{id}")

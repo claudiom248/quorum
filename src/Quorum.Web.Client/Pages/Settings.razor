@@ -54,7 +54,8 @@
                 }
 
                 <MudNumericField T="int" @bind-Value="_form.ContextTokenBudget" Label="Context budget (tokens)"
-                                 Variant="Variant.Outlined" Min="256" Max="1000000" />
+                                 Variant="Variant.Outlined" Min="256" Max="1000000"
+                                 HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
 
                 <MudText Typo="Typo.subtitle1" Class="mt-2">Behaviour</MudText>
                 <MudTextField @bind-Value="_form.SystemPrompt" Label="System prompt" Variant="Variant.Outlined" Lines="8" />
