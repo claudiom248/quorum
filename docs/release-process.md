@@ -1,42 +1,48 @@
-# Versionamento e rilasci
+# Versioning and Releases
 
 ## Branching: trunk-based
-- `main` e sempre rilasciabile. Si lavora su branch brevi (`feat/...`, `fix/...`) e si integra con PR in **squash merge**.
-- Il titolo della PR diventa il commit su `main` e deve seguire Conventional Commits (controllato dal workflow `pr-title`).
-- **Branch di manutenzione** solo quando serve una patch su una versione vecchia gia rilasciata: `release/X.Y` creato dal tag `vX.Y.0`, correzione, rilascio `vX.Y.Z+1`, poi cherry-pick su `main` se pertinente.
+- `main` is always releasable. Work happens on short-lived branches (`feat/...`, `fix/...`) merged through PRs with **squash merge**.
+- The PR title becomes the commit on `main` and must follow Conventional Commits (checked by the `pr-title` workflow).
+- **Maintenance branches** only when a patch is needed on an older released version: `release/X.Y` created from tag `vX.Y.0`, fix, release `vX.Y.Z+1`, then cherry-pick to `main` if relevant.
+
+## Feature flow with a spec
+1. **Spec and plan** on a `docs/spec-NNN` branch: `/spec`, approval, `/plan`; PR `docs: spec and plan NNN ...` merged as soon as it is approved (minutes, not days). A `docs:` commit does not produce a release.
+2. **Implementation** from an up-to-date `main`, with one short-lived branch per PR in the plan (e.g. `feat/NNN-foundations`, `feat/NNN-setup`). Never keep developing on the spec branch.
+3. If implementation reveals a wrong assumption: the spec goes back to In Review and the fix goes through a `docs:` PR before the code.
 
 ## Conventional Commits
-| Tipo | Effetto sulla versione | Nel changelog |
+| Type | Version effect | In the changelog |
 |---|---|---|
-| `feat:` | minor | Nuove funzionalita |
-| `fix:` | patch | Correzioni |
-| `perf:` | patch | Prestazioni |
-| `feat!:` / `BREAKING CHANGE:` | major (minor prima della 1.0) | Evidenziato |
-| `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:` | nessuno | Nascosti |
+| `feat:` | minor | Features |
+| `fix:` | patch | Bug Fixes |
+| `perf:` | patch | Performance |
+| `feat!:` / `BREAKING CHANGE:` | major (minor before 1.0) | Highlighted |
+| `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:` | none | Hidden |
 
-- Le correzioni di sicurezza usano `fix(security): ...`.
-- Le feature nate da una spec la citano: `feat: primo avvio e prima risposta (spec 001)`.
+- Security fixes use `fix(security): ...`.
+- Features coming from a spec reference it: `feat: first run and first response (spec 001)`.
+- Commits, PRs, specs, plans, docs and code comments are written in English.
 
-## Versione: SemVer calcolata da git
-- **MinVer** legge l'ultimo tag `vX.Y.Z`: la versione finisce in assembly, immagine Docker e `/api/version`.
-- Tra un tag e l'altro la versione e una pre-release (es. `0.2.0-alpha.0.5`).
-- Prima della 1.0 i breaking change incrementano la minor.
+## Version: SemVer computed from git
+- **MinVer** reads the latest `vX.Y.Z` tag: the version ends up in the assemblies, the Docker image and `/api/version`.
+- Between tags the version is a pre-release (e.g. `0.2.0-alpha.0.5`).
+- Before 1.0, breaking changes bump the minor version.
 
-## Rilascio con release-please
-1. Ogni push su `main` aggiorna una **PR di rilascio** con versione calcolata e `CHANGELOG.md`.
-2. Fare merge di quella PR crea il tag `vX.Y.Z` e la GitHub Release con le note.
-3. Il tag fa partire la build delle immagini (pipeline da definire).
+## Releasing with release-please
+1. Every push to `main` updates a **release PR** with the computed version and `CHANGELOG.md`.
+2. Merging that PR creates the `vX.Y.Z` tag and the GitHub Release with the notes.
+3. The tag triggers the image build (pipeline to be defined).
 
-## Cosa e "breaking" per Quorum
-Richiede una major (minor prima della 1.0) un cambiamento incompatibile di:
-- API pubblica;
-- formato dichiarativo di agenti, tool, topologie;
-- variabili d'ambiente o `docker-compose.yml`;
-- formato delle chiavi di licenza;
-- migrazioni del database senza percorso di aggiornamento automatico.
+## What "breaking" means for Quorum
+A major version (minor before 1.0) is required for an incompatible change to:
+- the public API;
+- the declarative format of agents, tools, topologies;
+- environment variables or `docker-compose.yml`;
+- the license key format;
+- database migrations without an automatic upgrade path.
 
-## Regole per i clienti self-hosted
-- Migrazioni solo in avanti: nessun downgrade; documentare il backup prima di ogni aggiornamento.
-- Tag immagini Docker: `X.Y.Z`, `X.Y`, `X`, `latest`.
-- Versione visibile in UI e su `/api/version`.
-- "What's new": le note della versione sono incluse nell'immagine e mostrate all'amministratore al primo accesso dopo un aggiornamento (spec futura).
+## Rules for self-hosted customers
+- Forward-only migrations: no downgrade; document backups before every upgrade.
+- Docker image tags: `X.Y.Z`, `X.Y`, `X`, `latest`.
+- Version visible in the UI and at `/api/version`.
+- "What's new": the release notes are bundled in the image and shown to the administrator on the first login after an upgrade (future spec).

@@ -9,7 +9,7 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
-  <!-- Versione calcolata dai tag git vX.Y.Z (creati da release-please). -->
+  <!-- Version computed from vX.Y.Z git tags (created by release-please). -->
   <PropertyGroup>
     <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
