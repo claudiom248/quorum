@@ -43,7 +43,7 @@ Stato: bozza in evoluzione. Ultimo aggiornamento: 2026-10-15.
   - Astrazione candidata: `Microsoft.Extensions.VectorData`, che ha connettori per entrambi.
 - **Modello di embedding**: configurabile (di default locale, es. via Ollama). La dimensione dei vettori dipende dal modello: cambiarlo richiede la reindicizzazione dei documenti, quindi il modello usato va salvato insieme a ogni collezione.
 - **Isolamento dei tenant nel vector store**: una collezione per tenant, oppure filtro obbligatorio sul `tenant_id` nel payload (da decidere).
-- **Postgres esterno**: profilo compose senza il servizio bundled e variabile `QUORUM_DB_CONNECTION`.
+- **Postgres esterno**: nel `.env` si svuota `COMPOSE_PROFILES` (niente servizio `bundled-db`) e si imposta `QUORUM_DB_CONNECTION`. Il compose la passa all'app come `ConnectionStrings__Platform`, con fallback sul Postgres incluso (`${QUORUM_DB_CONNECTION:-...}`) e `depends_on` con `required: false`. Il `.env` non va mai committato; Docker secrets in futuro.
 - **Bootstrap config** (connection string, chiave master, `QUORUM_BASE_URL`): da env/compose. **Configurazione applicativa** (modello, ricerca, utenti, agenti): nel database, impostata dal wizard.
 
 ## Autenticazione
