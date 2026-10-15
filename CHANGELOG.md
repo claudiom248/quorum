@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/claudiom248/quorum/compare/v0.3.0...v0.4.0) (2026-10-15)
+
+
+### Features
+
+* web UI, reasoning stream and container image (spec 001) ([#12](https://github.com/claudiom248/quorum/issues/12)) ([9bbbb7d](https://github.com/claudiom248/quorum/commit/9bbbb7dacea4535250e48aa2421382c1339fa307))
+
 ## [0.3.0](https://github.com/claudiom248/quorum/compare/v0.2.0...v0.3.0) (2026-10-15)
 
 
