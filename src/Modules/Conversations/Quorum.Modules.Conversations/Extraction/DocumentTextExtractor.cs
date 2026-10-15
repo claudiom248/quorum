@@ -17,6 +17,10 @@ internal static class DocumentTextExtractor
     public const string UnreadableCode = "attachment.unreadable";
     public const string TimeoutCode = "attachment.extraction_timeout";
 
+    private const string DocxMediaType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+    private static ReadOnlySpan<byte> ZipSignature => [0x50, 0x4B, 0x03, 0x04];
+
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private static readonly Error Unsupported = Error.UnsupportedMediaType(
@@ -60,12 +64,26 @@ internal static class DocumentTextExtractor
 
     internal static Result<ExtractedDocument> Extract(string fileName, byte[] content, CancellationToken cancellationToken)
     {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+        // PDF and DOCX are identified by their signature: a name that promises one and a content that is another is refused.
+        if (extension == ".pdf")
+        {
+            return content.AsSpan().StartsWith("%PDF-"u8)
+                ? Document(PdfText.Extract(content, cancellationToken), "application/pdf")
+                : Unsupported;
+        }
+
+        if (extension == ".docx")
+        {
+            return ExtractDocx(content, cancellationToken);
+        }
+
         if (LooksBinary(content))
         {
             return Unsupported;
         }
 
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
         string mediaType;
         switch (extension)
         {
@@ -102,6 +120,22 @@ internal static class DocumentTextExtractor
 
         return string.IsNullOrWhiteSpace(text) ? NoText : new ExtractedDocument(text, mediaType);
     }
+
+    private static Result<ExtractedDocument> ExtractDocx(byte[] content, CancellationToken cancellationToken)
+    {
+        if (content.AsSpan().StartsWith(ZipSignature))
+        {
+            return Document(DocxText.Extract(content, cancellationToken), DocxMediaType);
+        }
+
+        // Password-protected Office files are OLE compound files, not zip packages (legacy .doc files are too).
+        return content.AsSpan().StartsWith(new byte[] { 0xD0, 0xCF, 0x11, 0xE0 })
+            ? Error.Unprocessable(UnreadableCode, "The document is password-protected or in an old format: save it as a plain DOCX.")
+            : Unsupported;
+    }
+
+    private static Result<ExtractedDocument> Document(Result<string> text, string mediaType) =>
+        text.IsSuccess ? new ExtractedDocument(text.Value, mediaType) : text.Error;
 
     /// <summary>Known binary signatures (PDF, zip-based formats, executables) and NUL bytes, which text never holds.</summary>
     private static bool LooksBinary(byte[] content) =>
