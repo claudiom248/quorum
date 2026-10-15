@@ -20,6 +20,8 @@ public static class ErrorExtensions
             ErrorType.Conflict => StatusCodes.Status409Conflict,
             ErrorType.Unprocessable => StatusCodes.Status422UnprocessableEntity,
             ErrorType.Locked => StatusCodes.Status423Locked,
+            ErrorType.PayloadTooLarge => StatusCodes.Status413PayloadTooLarge,
+            ErrorType.UnsupportedMediaType => StatusCodes.Status415UnsupportedMediaType,
             _ => throw new ArgumentOutOfRangeException(nameof(error), error.Type, "Unknown error type."),
         };
 

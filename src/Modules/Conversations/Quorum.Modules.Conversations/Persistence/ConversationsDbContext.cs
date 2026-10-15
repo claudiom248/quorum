@@ -17,6 +17,8 @@ internal sealed class ConversationsDbContext(
 
     public DbSet<Message> Messages => Set<Message>();
 
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+
     private Guid? CurrentTenantId => tenantContext.TenantId;
 
     private Guid? CurrentUserId => currentUser.UserId;
@@ -48,6 +50,20 @@ internal sealed class ConversationsDbContext(
             message.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             message.HasIndex(m => new { m.ConversationId, m.CreatedAt });
             message.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Attachment>(attachment =>
+        {
+            attachment.ToTable("attachments");
+            attachment.Property(a => a.Id).ValueGeneratedNever();
+            attachment.Property(a => a.FileName).HasMaxLength(Attachment.MaxFileNameLength);
+            attachment.Property(a => a.MediaType).HasMaxLength(100);
+            attachment.Property(a => a.ContentHash).HasMaxLength(64);
+            attachment.HasOne<Conversation>().WithMany().HasForeignKey(a => a.ConversationId).OnDelete(DeleteBehavior.Cascade);
+
+            // The same content cannot be attached twice to a conversation, even by two concurrent uploads.
+            attachment.HasIndex(a => new { a.ConversationId, a.ContentHash }).IsUnique();
+            attachment.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });
     }
 }

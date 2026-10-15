@@ -73,6 +73,11 @@ internal sealed class ConversationEndpoints : IEndpointGroup
                 c.Messages
                     .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
                     .Select(m => new MessageResponse(m.Id, m.Role.ToString(), m.Content, m.Status.ToString(), m.CreatedAt))
+                    .ToList(),
+                db.Attachments
+                    .Where(a => a.ConversationId == c.Id)
+                    .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+                    .Select(a => new AttachmentResponse(a.Id, a.FileName, a.MediaType, a.SizeBytes, a.CharacterCount, a.CreatedAt))
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -152,7 +157,8 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         try
         {
             var history = Turns(conversation).Append(new ChatTurn(ChatTurnRole.User, content)).ToList();
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, [], lease.Token);
+            var attachments = await AttachmentEndpoints.LoadForChatAsync(db, conversation.Id, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, attachments, lease.Token);
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();
@@ -201,7 +207,8 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         {
             var replaced = conversation.LastAnswer;
             var history = Turns(conversation, except: replaced).ToList();
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, [], lease.Token);
+            var attachments = await AttachmentEndpoints.LoadForChatAsync(db, conversation.Id, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, attachments, lease.Token);
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();
@@ -224,13 +231,13 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         }
     }
 
-    private static Task<Conversation?> LoadAsync(ConversationsDbContext db, Guid id, CancellationToken cancellationToken) =>
+    internal static Task<Conversation?> LoadAsync(ConversationsDbContext db, Guid id, CancellationToken cancellationToken) =>
         db.Conversations
             .Include(c => c.Messages.OrderBy(m => m.CreatedAt).ThenBy(m => m.Id))
             .SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
 
     // Failed answers are left out of the model's context: they are broken fragments, not part of the dialogue.
-    private static IEnumerable<ChatTurn> Turns(Conversation conversation, Message? except = null) =>
+    internal static IEnumerable<ChatTurn> Turns(Conversation conversation, Message? except = null) =>
         conversation.Messages
             .Where(m => m.Status != MessageStatus.Failed && !ReferenceEquals(m, except))
             .Select(m => new ChatTurn(m.Role == MessageRole.User ? ChatTurnRole.User : ChatTurnRole.Assistant, m.Content));
@@ -253,7 +260,7 @@ internal sealed record ConversationSummary(Guid Id, string? Title, DateTimeOffse
 
 internal sealed record ConversationCreated(Guid Id);
 
-internal sealed record ConversationResponse(Guid Id, string? Title, List<MessageResponse> Messages);
+internal sealed record ConversationResponse(Guid Id, string? Title, List<MessageResponse> Messages, List<AttachmentResponse> Attachments);
 
 internal sealed record MessageResponse(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt);
 
