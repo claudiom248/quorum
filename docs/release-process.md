@@ -5,6 +5,11 @@
 - Il titolo della PR diventa il commit su `main` e deve seguire Conventional Commits (controllato dal workflow `pr-title`).
 - **Branch di manutenzione** solo quando serve una patch su una versione vecchia gia rilasciata: `release/X.Y` creato dal tag `vX.Y.0`, correzione, rilascio `vX.Y.Z+1`, poi cherry-pick su `main` se pertinente.
 
+## Flusso di una feature con spec
+1. **Spec e piano** su un branch `docs/spec-NNN`: `/spec`, approvazione, `/plan`; PR `docs: spec e piano NNN ...` con merge appena approvata (minuti, non giorni). Un commit `docs:` non genera una versione.
+2. **Implementazione** da `main` aggiornato, con un branch breve per ogni PR del piano (es. `feat/NNN-fondamenta`, `feat/NNN-setup`). Mai continuare a sviluppare sul branch della spec.
+3. Se l'implementazione rivela un'assunzione sbagliata: la spec torna In Review e la correzione passa da una PR `docs:` prima del codice.
+
 ## Conventional Commits
 | Tipo | Effetto sulla versione | Nel changelog |
 |---|---|---|

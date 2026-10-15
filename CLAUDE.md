@@ -12,7 +12,7 @@ Stato: **scaffold iniziale della solution creato, nessuna feature implementata**
 
 - **.NET 10** / C# 14, ASP.NET Core Minimal APIs (`IEndpointGroup` per feature)
 - **EF Core** — un DbContext per modulo, uno schema per modulo, **PostgreSQL**
-- **Wolverine** — messaging tra moduli con transactional outbox (da introdurre con la prima feature)
+- **Wolverine** — messaging tra moduli con transactional outbox (da introdurre con il primo flusso asincrono)
 - **FluentValidation**, **Serilog**
 - **xUnit v3** + **Testcontainers**
 - Plugin `dotnet-claude-kit` abilitato in `.claude/settings.json`; il server Roslyn MCP arriva dal plugin.
@@ -34,6 +34,8 @@ tests/
 
 Ogni modulo espone una sola estensione di registrazione pubblica (`Add<Module>Module`); handler, consumer e DbContext restano `internal`.
 
+- **Chiamate sincrone tra moduli**: solo tramite i progetti `Quorum.Modules.<X>.Contracts` (interfacce e DTO pubblici); un modulo non referenzia mai il progetto di un altro modulo. Integration events con Wolverine/outbox solo quando serve un flusso asincrono.
+- **Tenant**: ogni entita applicativa ha `TenantId`, con filtro globale EF Core.
 - **Architettura interna dei moduli**: Vertical Slice (un file per operazione in `Features/`). Evolvere a Clean/DDD solo nel modulo il cui dominio lo richiede.
 - **UI**: Blazor WebAssembly servita dall'Host; consuma solo l'API pubblica, come qualsiasi client esterno.
 
@@ -68,6 +70,7 @@ dotnet format --verify-no-changes
 ## Git e versioni
 Dettagli in `docs/release-process.md`.
 - Trunk-based: branch brevi da `main`, PR in squash merge.
+- Spec e piano su un branch `docs/spec-NNN` con PR dedicata, mergiata subito dopo l'approvazione; l'implementazione parte da `main` con un branch per ogni PR del piano.
 - Commit e titoli di PR in **Conventional Commits** (`feat:`, `fix:`, `perf:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:`; `!` per i breaking change); citare la spec quando presente, es. `feat: ... (spec 001)`.
 - Versione SemVer calcolata da MinVer sui tag `vX.Y.Z`; tag e `CHANGELOG.md` li crea release-please. Non creare tag ne modificare `CHANGELOG.md` a mano.
 
