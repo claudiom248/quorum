@@ -30,6 +30,14 @@ public sealed class SetupModeTests(PostgresFixture postgres)
         }
     }
 
+    [Fact]
+    public async Task FirstStartOnAnEmptyDatabaseLogsNoErrors()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+
+        Assert.Empty(app.Logs.ErrorsAndAbove);
+    }
+
     [Fact] // AC-2
     public async Task SetupApiRejectsMissingOrWrongToken()
     {
