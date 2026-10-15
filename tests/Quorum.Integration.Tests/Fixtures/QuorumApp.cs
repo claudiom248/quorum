@@ -106,16 +106,20 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
-            services.AddSerilog(logger =>
-            {
-                logger.MinimumLevel.Information().WriteTo.Sink(Logs);
-
-                // Set QUORUM_TEST_CONSOLE_LOGS=1 to see the server's logs while debugging a test.
-                if (Environment.GetEnvironmentVariable("QUORUM_TEST_CONSOLE_LOGS") == "1")
+            // Many apps run in this process at once: each must log only to its own capture, so none of them
+            // may take over the process-wide static logger (it would receive the others' events).
+            services.AddSerilog(
+                logger =>
                 {
-                    logger.WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
-                }
-            });
+                    logger.MinimumLevel.Information().WriteTo.Sink(Logs);
+
+                    // Set QUORUM_TEST_CONSOLE_LOGS=1 to see the server's logs while debugging a test.
+                    if (Environment.GetEnvironmentVariable("QUORUM_TEST_CONSOLE_LOGS") == "1")
+                    {
+                        logger.WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
+                    }
+                },
+                preserveStaticLogger: true);
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatStream.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
         });
