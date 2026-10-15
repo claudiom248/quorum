@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/claudiom248/quorum/compare/v0.4.0...v0.5.0) (2026-10-15)
+
+
+### Features
+
+* attachments in the model context budget (spec 002) ([#15](https://github.com/claudiom248/quorum/issues/15)) ([c249f2c](https://github.com/claudiom248/quorum/commit/c249f2c0b6708fe91ef19aaba0727a85e8dfeb23))
+
 ## [0.4.0](https://github.com/claudiom248/quorum/compare/v0.3.0...v0.4.0) (2026-10-15)
 
 
