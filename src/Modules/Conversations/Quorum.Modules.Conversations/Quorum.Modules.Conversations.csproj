@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Quorum.Shared\Quorum.Shared.csproj" />
+    <ProjectReference Include="..\Quorum.Modules.Conversations.Contracts\Quorum.Modules.Conversations.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

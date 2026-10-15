@@ -1,0 +1,5 @@
+root = true
+
+[*.cs]
+# Quorum is C#-only: Visual Basic keyword clashes (e.g. "Shared", "Error") do not matter.
+dotnet_diagnostic.CA1716.severity = none
