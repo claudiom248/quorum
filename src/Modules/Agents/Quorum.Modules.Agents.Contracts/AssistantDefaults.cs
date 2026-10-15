@@ -4,7 +4,7 @@ public static class AssistantDefaults
 {
     public const string AssistantName = "Assistant";
 
-    public const int ContextTokenBudget = 4096;
+    public const int ContextTokenBudget = 16384;
 
     public const int MinContextTokenBudget = 256;
 

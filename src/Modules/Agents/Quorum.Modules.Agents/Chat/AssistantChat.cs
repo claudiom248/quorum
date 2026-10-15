@@ -16,37 +16,63 @@ internal sealed class AssistantChat(AgentsDbContext db, ApiKeyProtector apiKeyPr
     public async Task<Result<IAsyncEnumerable<AnswerChunk>>> StartAnswerAsync(
         Guid assistantId,
         IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachment> attachments,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(attachments);
 
-        var configuration = await (
-            from assistant in db.Assistants
-            join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
-            where assistant.Id == assistantId
-            select new { assistant.SystemPrompt, endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget })
-            .AsNoTracking()
-            .SingleOrDefaultAsync(cancellationToken);
-
+        var configuration = await LoadConfigurationAsync(assistantId, cancellationToken);
         if (configuration is null)
         {
             return AssistantNotFound;
         }
 
-        var turns = ContextWindow.Select(configuration.SystemPrompt, history, configuration.ContextTokenBudget);
+        var turns = ContextWindow.Select(configuration.SystemPrompt, history, attachments, configuration.ContextTokenBudget);
         if (!turns.IsSuccess)
         {
             return turns.Error;
         }
+
+        var block = AttachmentBlock.Render(attachments, AttachmentBlock.NewDelimiter());
+        var systemPrompt = block.Length == 0 ? configuration.SystemPrompt : $"{configuration.SystemPrompt}\n\n{block}";
 
         var answer = chatStream.StreamAsync(
             new Uri(configuration.BaseUrl),
             configuration.ModelName,
             apiKeyProtector.Unprotect(configuration.ProtectedApiKey),
             turns.Value,
-            configuration.SystemPrompt,
+            systemPrompt,
             cancellationToken);
 
         return Result<IAsyncEnumerable<AnswerChunk>>.Success(answer);
     }
+
+    public async Task<Result<ContextUsage>> MeasureContextAsync(
+        Guid assistantId,
+        IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachment> attachments,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(attachments);
+
+        var configuration = await LoadConfigurationAsync(assistantId, cancellationToken);
+        if (configuration is null)
+        {
+            return AssistantNotFound;
+        }
+
+        return ContextWindow.Measure(configuration.SystemPrompt, history, attachments, configuration.ContextTokenBudget);
+    }
+
+    private Task<AssistantConfiguration?> LoadConfigurationAsync(Guid assistantId, CancellationToken cancellationToken) =>
+        (from assistant in db.Assistants
+         join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
+         where assistant.Id == assistantId
+         select new AssistantConfiguration(assistant.SystemPrompt, endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget))
+        .AsNoTracking()
+        .SingleOrDefaultAsync(cancellationToken);
+
+    private sealed record AssistantConfiguration(string SystemPrompt, string BaseUrl, string ModelName, string? ProtectedApiKey, int ContextTokenBudget);
 }
