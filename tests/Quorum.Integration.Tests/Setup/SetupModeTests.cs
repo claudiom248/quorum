@@ -42,6 +42,8 @@ public sealed class SetupModeTests(PostgresFixture postgres)
 
         Assert.False(string.IsNullOrWhiteSpace(during!.DefaultSystemPrompt));
         Assert.Null(after!.DefaultSystemPrompt);
+        Assert.Equal(16384, during.DefaultContextTokenBudget);
+        Assert.Null(after.DefaultContextTokenBudget);
     }
 
     [Fact]
@@ -96,5 +98,5 @@ public sealed class SetupModeTests(PostgresFixture postgres)
         Assert.Contains(restarted.Logs.Messages, message => message.Contains(restarted.SetupToken, StringComparison.Ordinal));
     }
 
-    private sealed record StatusWithPrompt(bool IsSetupMode, string? DefaultSystemPrompt);
+    private sealed record StatusWithPrompt(bool IsSetupMode, string? DefaultSystemPrompt, int? DefaultContextTokenBudget);
 }

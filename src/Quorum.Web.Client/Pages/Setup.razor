@@ -103,7 +103,7 @@ else
     private string _baseUrl = "http://localhost:11434/v1";
     private string? _apiKey;
     private string _modelName = string.Empty;
-    private int _contextTokenBudget = 4096;
+    private int _contextTokenBudget;
     private string _displayName = string.Empty;
     private string _email = string.Empty;
     private string _password = string.Empty;
@@ -127,6 +127,7 @@ else
 
         _status = result.Value;
         _systemPrompt = result.Value.DefaultSystemPrompt ?? string.Empty;
+        _contextTokenBudget = result.Value.DefaultContextTokenBudget ?? _contextTokenBudget;
     }
 
     private async Task VerifyTokenAsync()

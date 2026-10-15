@@ -37,7 +37,7 @@ Every application entity carries `TenantId`.
 | **User** | Tenancy | Id, TenantId, Email, DisplayName, PasswordHash, Role (`Admin`), CreatedAt | Admin created by the setup |
 | **SetupState** | Tenancy | IsCompleted, CompletedAt | Installation singleton; becomes completed exactly once, atomically |
 | **Assistant** | Agents | Id, TenantId, Name, SystemPrompt, ModelEndpointId | Default assistant created by the setup; system prompt editable from wizard and settings |
-| **ModelEndpoint** | Agents | Id, TenantId, BaseUrl, ModelName, ApiKey (encrypted), ContextTokenBudget (default 4096), UpdatedAt | Created by the wizard; editable in settings |
+| **ModelEndpoint** | Agents | Id, TenantId, BaseUrl, ModelName, ApiKey (encrypted), ContextTokenBudget (default 16384, see Amendments), UpdatedAt | Created by the wizard; editable in settings |
 | **Conversation** | Conversations | Id, TenantId, UserId, AssistantId, Title, CreatedAt, UpdatedAt | Created on the first message; renamable; **hard delete** together with its messages |
 | **Message** | Conversations | Id, ConversationId, Role (`User`/`Assistant`), Content, Status (`Completed`/`Interrupted`/`Failed`), CreatedAt | User messages are always `Completed`; a partial response is stored as `Interrupted` or `Failed`; the last response can be replaced by regeneration |
 
@@ -157,3 +157,4 @@ _None._
 |---|---|
 | 2026-10-15 | `GET /setup/status` also returns `defaultSystemPrompt` (only in setup mode, `null` afterwards) so the wizard can show the default system prompt; added AC-1b. |
 | 2026-10-15 | The chat stream gains `reasoning` events: the model's thinking, shown live by the UI and never stored in the message. A stream that ends without any answer text (e.g. the model spent its whole budget thinking) ends as `Failed`. Reasoning is read from `delta.reasoning` (Ollama) and `delta.reasoning_content` (LiteLLM and others). |
+| 2026-10-15 | The default context token budget proposed by the wizard is 16384 instead of 4096 (spec 002, D-8): documents attached to a conversation need room. Existing installations keep their configured value. |

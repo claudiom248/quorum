@@ -152,7 +152,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         try
         {
             var history = Turns(conversation).Append(new ChatTurn(ChatTurnRole.User, content)).ToList();
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, [], lease.Token);
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();
@@ -201,7 +201,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         {
             var replaced = conversation.LastAnswer;
             var history = Turns(conversation, except: replaced).ToList();
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, [], lease.Token);
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();

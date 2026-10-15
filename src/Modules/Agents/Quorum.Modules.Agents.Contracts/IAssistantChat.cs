@@ -11,7 +11,52 @@ public interface IAssistantChat
     /// The returned stream throws <see cref="ModelStreamException"/> when the model fails mid-answer.
     /// </summary>
     /// <param name="history">The conversation, oldest first; the last turn is the user's message to answer.</param>
-    Task<Result<IAsyncEnumerable<AnswerChunk>>> StartAnswerAsync(Guid assistantId, IReadOnlyList<ChatTurn> history, CancellationToken cancellationToken);
+    /// <param name="attachments">
+    /// The documents attached to the conversation, oldest first. They take priority over the history in the budget:
+    /// when they do not fit, the call fails instead of dropping any.
+    /// </param>
+    Task<Result<IAsyncEnumerable<AnswerChunk>>> StartAnswerAsync(
+        Guid assistantId,
+        IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachment> attachments,
+        CancellationToken cancellationToken);
+
+    /// <summary>How much of the assistant's context the conversation uses, without calling the model.</summary>
+    Task<Result<ContextUsage>> MeasureContextAsync(
+        Guid assistantId,
+        IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachment> attachments,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>A document attached to a conversation: its display name and the text extracted from it.</summary>
+public sealed record ChatAttachment(string FileName, string Text);
+
+/// <summary>
+/// The context budget of a conversation, in characters (what the budget rules work with) and estimated tokens.
+/// <see cref="RemainingCharacters"/> is negative when the system prompt and the attachments alone do not fit.
+/// </summary>
+public sealed record ContextUsage(
+    int ContextTokenBudget,
+    int UsableCharacters,
+    int SystemPromptCharacters,
+    int AttachmentsCharacters,
+    int MessagesCharacters)
+{
+    public const int CharactersPerToken = 4;
+
+    public int UsableTokens => UsableCharacters / CharactersPerToken;
+
+    public int SystemPromptTokens => SystemPromptCharacters / CharactersPerToken;
+
+    public int AttachmentsTokens => AttachmentsCharacters / CharactersPerToken;
+
+    public int MessagesTokens => MessagesCharacters / CharactersPerToken;
+
+    public int RemainingCharacters => UsableCharacters - SystemPromptCharacters - AttachmentsCharacters - MessagesCharacters;
+
+    // Rounded down, so a few characters over the budget are a negative margin rather than "0 tokens left".
+    public int RemainingTokens => (int)Math.Floor(RemainingCharacters / (double)CharactersPerToken);
 }
 
 /// <summary>Finds the assistants of the current tenant.</summary>

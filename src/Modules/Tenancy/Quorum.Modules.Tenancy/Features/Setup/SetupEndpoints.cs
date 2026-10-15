@@ -26,9 +26,12 @@ internal sealed class SetupEndpoints : IEndpointGroup
             .AddEndpointFilter(new SetupTokenFilter(conflictWhenCompleted: true));
     }
 
-    // The wizard shows the default system prompt so the administrator can start from it (spec 001, AC-1b).
+    // The wizard shows the default system prompt and context budget so the administrator can start from them (spec 001, AC-1b).
     private static Ok<SetupStatusResponse> GetStatus(SetupMode setupMode) =>
-        TypedResults.Ok(new SetupStatusResponse(setupMode.IsActive, setupMode.IsActive ? AssistantDefaults.SystemPrompt : null));
+        TypedResults.Ok(new SetupStatusResponse(
+            setupMode.IsActive,
+            setupMode.IsActive ? AssistantDefaults.SystemPrompt : null,
+            setupMode.IsActive ? AssistantDefaults.ContextTokenBudget : null));
 
     private static Results<NoContent, ProblemHttpResult> VerifyToken(VerifyTokenRequest request, SetupMode setupMode)
     {
@@ -41,7 +44,7 @@ internal sealed class SetupEndpoints : IEndpointGroup
     }
 }
 
-internal sealed record SetupStatusResponse(bool IsSetupMode, string? DefaultSystemPrompt);
+internal sealed record SetupStatusResponse(bool IsSetupMode, string? DefaultSystemPrompt, int? DefaultContextTokenBudget);
 
 internal sealed record VerifyTokenRequest(string? Token);
 
