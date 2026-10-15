@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Agents\Quorum.Modules.Agents\Quorum.Modules.Agents.csproj" />
+    <ProjectReference Include="..\Modules\Conversations\Quorum.Modules.Conversations\Quorum.Modules.Conversations.csproj" />
+    <ProjectReference Include="..\Modules\Licensing\Quorum.Modules.Licensing\Quorum.Modules.Licensing.csproj" />
+    <ProjectReference Include="..\Modules\Tenancy\Quorum.Modules.Tenancy\Quorum.Modules.Tenancy.csproj" />
+    <ProjectReference Include="..\Quorum.Shared\Quorum.Shared.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

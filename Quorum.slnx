@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quorum.Host/Quorum.Host.csproj" />
+    <Project Path="src/Quorum.Shared/Quorum.Shared.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Agents/">
+    <Project Path="src/Modules/Agents/Quorum.Modules.Agents/Quorum.Modules.Agents.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Conversations/">
+    <Project Path="src/Modules/Conversations/Quorum.Modules.Conversations/Quorum.Modules.Conversations.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Licensing/">
+    <Project Path="src/Modules/Licensing/Quorum.Modules.Licensing/Quorum.Modules.Licensing.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Tenancy/">
+    <Project Path="src/Modules/Tenancy/Quorum.Modules.Tenancy/Quorum.Modules.Tenancy.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Quorum.Integration.Tests/Quorum.Integration.Tests.csproj" />
+  </Folder>
+</Solution>
