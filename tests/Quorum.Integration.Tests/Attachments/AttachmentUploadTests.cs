@@ -385,7 +385,9 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync(contextTokenBudget: 1_000_000);
         var conversation = await ChatApi.CreateConversationAsync(client);
-        var rows = string.Join('\n', Enumerable.Range(0, 120_000).Select(i => $"{i},name {i},city {i}"));
+        // Large enough to take a moment to read, small enough that its Markdown table stays within the usable budget
+        // (1,000,000 tokens are 3.2 million characters): a refusal for the budget would not be what this test is about.
+        var rows = string.Join('\n', Enumerable.Range(0, 50_000).Select(i => $"{i},name {i},city {i}"));
 
         var upload = AttachmentApi.UploadAsync(client, conversation, "big.csv", rows);
         var delete = client.DeleteAsync(ChatApi.Conversation(conversation), Ct);
