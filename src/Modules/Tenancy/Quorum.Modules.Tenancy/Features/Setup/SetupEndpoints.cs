@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Tenancy.Setup;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
@@ -25,8 +26,9 @@ internal sealed class SetupEndpoints : IEndpointGroup
             .AddEndpointFilter(new SetupTokenFilter(conflictWhenCompleted: true));
     }
 
+    // The wizard shows the default system prompt so the administrator can start from it (spec 001, AC-1b).
     private static Ok<SetupStatusResponse> GetStatus(SetupMode setupMode) =>
-        TypedResults.Ok(new SetupStatusResponse(setupMode.IsActive));
+        TypedResults.Ok(new SetupStatusResponse(setupMode.IsActive, setupMode.IsActive ? AssistantDefaults.SystemPrompt : null));
 
     private static Results<NoContent, ProblemHttpResult> VerifyToken(VerifyTokenRequest request, SetupMode setupMode)
     {
@@ -39,7 +41,7 @@ internal sealed class SetupEndpoints : IEndpointGroup
     }
 }
 
-internal sealed record SetupStatusResponse(bool IsSetupMode);
+internal sealed record SetupStatusResponse(bool IsSetupMode, string? DefaultSystemPrompt);
 
 internal sealed record VerifyTokenRequest(string? Token);
 

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net.Mail;
 using Quorum.Modules.Agents.Contracts;
 
@@ -6,12 +5,6 @@ namespace Quorum.Modules.Tenancy.Features.Setup;
 
 internal static class SetupValidation
 {
-    public const string InvalidBaseUrl = "Enter the endpoint's http(s) base URL, e.g. http://ollama:11434/v1.";
-
-    public static bool TryParseBaseUrl(string? value, [NotNullWhen(true)] out Uri? baseUrl) =>
-        Uri.TryCreate(value?.Trim(), UriKind.Absolute, out baseUrl)
-        && (baseUrl.Scheme == Uri.UriSchemeHttp || baseUrl.Scheme == Uri.UriSchemeHttps);
-
     public static Dictionary<string, string[]> Validate(CompleteSetupRequest request)
     {
         var errors = new Dictionary<string, string[]>();
@@ -44,27 +37,25 @@ internal static class SetupValidation
         }
         else
         {
-            if (!TryParseBaseUrl(model.BaseUrl, out _))
+            if (!ModelEndpointRules.TryParseBaseUrl(model.BaseUrl, out _))
             {
-                errors["model.baseUrl"] = [InvalidBaseUrl];
+                errors["model.baseUrl"] = [ModelEndpointRules.InvalidBaseUrl];
             }
 
-            if (string.IsNullOrWhiteSpace(model.ModelName) || model.ModelName.Trim().Length > 200)
+            if (!ModelEndpointRules.IsValidModelName(model.ModelName))
             {
-                errors["model.modelName"] = ["Enter the model name, as listed by the endpoint."];
+                errors["model.modelName"] = [ModelEndpointRules.InvalidModelName];
             }
 
-            if (model.ContextTokenBudget is { } budget
-                && (budget < AssistantDefaults.MinContextTokenBudget || budget > AssistantDefaults.MaxContextTokenBudget))
+            if (model.ContextTokenBudget is { } budget && !ModelEndpointRules.IsValidContextTokenBudget(budget))
             {
-                errors["model.contextTokenBudget"] =
-                    [$"The context budget must be between {AssistantDefaults.MinContextTokenBudget} and {AssistantDefaults.MaxContextTokenBudget} tokens."];
+                errors["model.contextTokenBudget"] = [ModelEndpointRules.InvalidContextTokenBudget];
             }
         }
 
-        if (request.SystemPrompt?.Length > AssistantDefaults.MaxSystemPromptLength)
+        if (!ModelEndpointRules.IsValidSystemPrompt(request.SystemPrompt))
         {
-            errors["systemPrompt"] = [$"The system prompt can be at most {AssistantDefaults.MaxSystemPromptLength} characters."];
+            errors["systemPrompt"] = [ModelEndpointRules.InvalidSystemPrompt];
         }
 
         return errors;

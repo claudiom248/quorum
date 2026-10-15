@@ -12,9 +12,9 @@ internal static class TestModelConnection
         IModelEndpointProbe probe,
         CancellationToken cancellationToken)
     {
-        if (!SetupValidation.TryParseBaseUrl(request.BaseUrl, out var baseUrl))
+        if (!ModelEndpointRules.TryParseBaseUrl(request.BaseUrl, out var baseUrl))
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["baseUrl"] = [SetupValidation.InvalidBaseUrl] });
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["baseUrl"] = [ModelEndpointRules.InvalidBaseUrl] });
         }
 
         var result = await probe.ProbeAsync(baseUrl, request.ApiKey, cancellationToken);
