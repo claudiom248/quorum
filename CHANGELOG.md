@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0](https://github.com/claudiom248/quorum/compare/v0.5.0...v0.6.0) (2026-10-15)
+
+
+### Features
+
+* attachments panel and context budget in the chat (spec 002) ([#20](https://github.com/claudiom248/quorum/issues/20)) ([e3e4571](https://github.com/claudiom248/quorum/commit/e3e45712b81d0935f1038fbb1a6c983397bd63f3))
+* conversation attachments with text formats (spec 002) ([#17](https://github.com/claudiom248/quorum/issues/17)) ([2163c36](https://github.com/claudiom248/quorum/commit/2163c362cf42d5c7febc2f14eeb9ea241a70602e))
+* read PDF and DOCX attachments (spec 002) ([#19](https://github.com/claudiom248/quorum/issues/19)) ([5417673](https://github.com/claudiom248/quorum/commit/5417673656be850a82172c2efe41881e01650eb4))
+
 ## [0.5.0](https://github.com/claudiom248/quorum/compare/v0.4.0...v0.5.0) (2026-10-15)
 
 
