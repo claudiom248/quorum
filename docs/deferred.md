@@ -11,6 +11,7 @@ Backlog of things decided *not* to do yet, so they are not forgotten. An item en
 | Text encodings other than UTF-8 (e.g. Windows-1252 CSV from Excel) | Spec 002 | Rejected with a clear error asking to save as UTF-8; detection can guess wrong on accented text | Real user need |
 | Room for the model's answer in the context budget | Specs 001/002 | Nothing is reserved and no maximum output is set; keeps the budget rule simple | Truncated or failed answers with large attachments |
 | Documents longer than the context budget | Spec 002 | Rejected with a clear error; no silent truncation or automatic summarization | Knowledge bases (spec 003) |
+| Antivirus/malware scan of uploaded files (e.g. ClamAV) | Spec 002 | Not considered for now: other mitigations come first (extraction never executes or resolves file content, bounded reads, hardened XML); a scanner is an extra service to operate | Other mitigations prove insufficient, compliance requirements, or any feature that stores or re-serves the original file |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
