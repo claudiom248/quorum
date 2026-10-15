@@ -29,7 +29,7 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(StaticAssetCaching.CreateOptions());
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ClientDisconnectMiddleware>();
@@ -47,7 +47,7 @@ app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.
 
 // The web UI is a single-page app: every non-API path that is not a file falls back to its entry page.
 app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", StaticAssetCaching.CreateOptions());
 
 await app.RunAsync();
 

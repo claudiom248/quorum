@@ -57,7 +57,8 @@ else if (_status is not null)
                     <MudTextField @bind-Value="_modelName" Label="Model" Variant="Variant.Outlined" Required="true" />
                 }
                 <MudNumericField T="int" @bind-Value="_contextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined"
-                                 Min="256" Max="1000000" />
+                                 Min="256" Max="1000000"
+                                 HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
                 <ProblemMessage Problem="_problem" />
                 <MudStack Row="true" Justify="Justify.FlexEnd">
                     <MudButton OnClick="@(() => _step = 1)">Back</MudButton>

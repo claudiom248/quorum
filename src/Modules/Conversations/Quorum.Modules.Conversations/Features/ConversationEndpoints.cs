@@ -64,8 +64,10 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         ConversationsDbContext db,
         CancellationToken cancellationToken)
     {
+        // Messages and attachments are two collections: one joined query would multiply their rows.
         var conversation = await db.Conversations
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(c => c.Id == id)
             .Select(c => new ConversationResponse(
                 c.Id,
