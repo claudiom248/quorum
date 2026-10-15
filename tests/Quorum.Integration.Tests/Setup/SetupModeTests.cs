@@ -30,6 +30,20 @@ public sealed class SetupModeTests(PostgresFixture postgres)
         }
     }
 
+    [Fact] // AC-1b (spec 001 amendment)
+    public async Task StatusExposesTheDefaultSystemPromptOnlyDuringSetup()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var anonymous = app.CreateClient();
+
+        var during = await anonymous.GetFromJsonAsync<StatusWithPrompt>(SetupApi.Status, Ct);
+        using var _ = await app.SetUpAsync();
+        var after = await anonymous.GetFromJsonAsync<StatusWithPrompt>(SetupApi.Status, Ct);
+
+        Assert.False(string.IsNullOrWhiteSpace(during!.DefaultSystemPrompt));
+        Assert.Null(after!.DefaultSystemPrompt);
+    }
+
     [Fact]
     public async Task FirstStartOnAnEmptyDatabaseLogsNoErrors()
     {
@@ -81,4 +95,6 @@ public sealed class SetupModeTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.Unauthorized, withOldToken.StatusCode);
         Assert.Contains(restarted.Logs.Messages, message => message.Contains(restarted.SetupToken, StringComparison.Ordinal));
     }
+
+    private sealed record StatusWithPrompt(bool IsSetupMode, string? DefaultSystemPrompt);
 }

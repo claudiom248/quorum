@@ -31,4 +31,18 @@ internal sealed class ModelEndpoint
         ContextTokenBudget = contextTokenBudget,
         UpdatedAt = now,
     };
+
+    public void Configure(Uri baseUrl, string modelName, int contextTokenBudget, DateTimeOffset now)
+    {
+        BaseUrl = baseUrl.ToString();
+        ModelName = modelName;
+        ContextTokenBudget = contextTokenBudget;
+        UpdatedAt = now;
+    }
+
+    public void ReplaceApiKey(string? protectedApiKey, DateTimeOffset now)
+    {
+        ProtectedApiKey = protectedApiKey;
+        UpdatedAt = now;
+    }
 }

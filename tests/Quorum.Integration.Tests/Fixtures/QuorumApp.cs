@@ -1,7 +1,11 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Tenancy.Setup;
 using Serilog;
@@ -13,6 +17,10 @@ namespace Quorum.Integration.Tests.Fixtures;
 /// </summary>
 public sealed class QuorumApp : WebApplicationFactory<Program>
 {
+    public const string ModelBaseUrl = "http://ollama.test:11434/v1";
+    public const string AdminEmail = "admin@acme.test";
+    public const string AdminPassword = "correct horse battery";
+
     private readonly string _connectionString;
     private readonly string _dataProtectionKeysPath;
 
@@ -47,10 +55,44 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     /// <summary>A new app instance on the same database and key ring, as after a container restart.</summary>
     public QuorumApp Restart() => Start(_connectionString, _dataProtectionKeysPath);
 
+    /// <summary>A browser-like client in setup mode, sending the setup token.</summary>
     public HttpClient CreateSetupClient()
     {
-        var client = CreateClient();
+        var client = CreateUiClient();
         client.DefaultRequestHeaders.Add("X-Setup-Token", SetupToken);
+        return client;
+    }
+
+    /// <summary>A browser-like client: keeps the auth cookie and sends the anti-forgery header the web UI sends.</summary>
+    public HttpClient CreateUiClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Quorum-Request", "1");
+        return client;
+    }
+
+    /// <summary>Completes the setup against the fake model and returns the signed-in administrator's client.</summary>
+    public async Task<HttpClient> SetUpAsync(string? systemPrompt = "You are Acme's assistant.", int contextTokenBudget = 4096)
+    {
+        ModelServer.Serve(ModelBaseUrl, "llama3.2");
+
+        var client = CreateUiClient();
+        client.DefaultRequestHeaders.Add("X-Setup-Token", SetupToken);
+        using var response = await client.PostAsJsonAsync(
+            new Uri("/api/setup/complete", UriKind.Relative),
+            new
+            {
+                admin = new { email = AdminEmail, displayName = "Acme Admin", password = AdminPassword },
+                model = new { baseUrl = ModelBaseUrl, modelName = "llama3.2", apiKey = (string?)null, contextTokenBudget },
+                systemPrompt,
+            });
+
+        if (response.StatusCode != HttpStatusCode.NoContent)
+        {
+            throw new InvalidOperationException($"Setup failed: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+        }
+
+        client.DefaultRequestHeaders.Remove("X-Setup-Token");
         return client;
     }
 
@@ -62,8 +104,18 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
-            services.AddSerilog(logger => logger.MinimumLevel.Information().WriteTo.Sink(Logs));
+            services.AddSerilog(logger =>
+            {
+                logger.MinimumLevel.Information().WriteTo.Sink(Logs);
+
+                // Set QUORUM_TEST_CONSOLE_LOGS=1 to see the server's logs while debugging a test.
+                if (Environment.GetEnvironmentVariable("QUORUM_TEST_CONSOLE_LOGS") == "1")
+                {
+                    logger.WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
+                }
+            });
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddHttpClient(ChatClientFactory.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
         });
     }
 }

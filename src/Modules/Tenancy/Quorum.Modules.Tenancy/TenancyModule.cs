@@ -6,6 +6,7 @@ using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Identity;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
+using Quorum.Shared.Endpoints;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Tenancy;
 
@@ -14,6 +15,9 @@ namespace Quorum.Modules.Tenancy;
 public static class TenancyModule
 {
     public const string AuthCookieName = "quorum.auth";
+
+    /// <summary>Authorization policy for administrator-only endpoints (same name as <c>QuorumPolicies.Admin</c>).</summary>
+    public const string AdminPolicy = QuorumPolicies.Admin;
 
     public static Assembly Assembly => typeof(TenancyModule).Assembly;
 
@@ -26,6 +30,7 @@ public static class TenancyModule
 
         services.AddHttpContextAccessor();
         services.AddScoped<ITenantContext, HttpTenantContext>();
+        services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
         services.AddIdentityCore<QuorumUser>(options =>
             {
@@ -69,7 +74,8 @@ public static class TenancyModule
                 return Task.CompletedTask;
             };
         });
-        services.AddAuthorization();
+        services.AddAuthorizationBuilder()
+            .AddPolicy(AdminPolicy, policy => policy.RequireRole(Roles.Admin));
 
         return services;
     }

@@ -1,6 +1,7 @@
 using Quorum.Host.Infrastructure;
 using Quorum.Host.Infrastructure.Database;
 using Quorum.Modules.Agents;
+using Quorum.Modules.Conversations;
 using Quorum.Modules.Tenancy;
 using Quorum.Shared.Endpoints;
 using Scalar.AspNetCore;
@@ -22,13 +23,16 @@ builder.Services.AddPlatformDatabase(builder.Configuration);
 // Module order is startup order: each module's database initializers run in registration order.
 builder.Services.AddTenancyModule();
 builder.Services.AddAgentsModule();
+builder.Services.AddConversationsModule();
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
+app.UseMiddleware<ClientDisconnectMiddleware>();
 app.UseAuthentication();
+app.UseMiddleware<AntiforgeryHeaderMiddleware>();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
@@ -37,7 +41,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.Assembly);
+app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.Assembly, ConversationsModule.Assembly);
 
 await app.RunAsync();
 

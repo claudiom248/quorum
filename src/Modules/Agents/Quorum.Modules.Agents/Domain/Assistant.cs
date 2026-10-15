@@ -24,4 +24,6 @@ internal sealed class Assistant
         SystemPrompt = systemPrompt,
         ModelEndpointId = modelEndpointId,
     };
+
+    public void ChangeSystemPrompt(string systemPrompt) => SystemPrompt = systemPrompt;
 }
