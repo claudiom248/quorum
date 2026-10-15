@@ -1,4 +1,5 @@
 
+using System.Buffers;
 using Quorum.Shared.Results;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -35,7 +36,7 @@ internal static class PdfText
             {
                 // The parser itself cannot be interrupted: the limit is checked between pages.
                 cancellationToken.ThrowIfCancellationRequested();
-                var text = ReadingOrderText(page).Trim();
+                var text = NormalizeLigatures(ReadingOrderText(page)).Trim();
                 if (text.Length > 0)
                 {
                     pages.Add(text);
@@ -49,6 +50,25 @@ internal static class PdfText
             return Unreadable;
         }
     }
+
+    /// <summary>
+    /// Replaces the ligature glyphs that PDF generators store as single characters (U+FB00 to U+FB06) with their letters, so
+    /// that "ﬁsh" is read, searched and quoted as "fish".
+    /// </summary>
+    internal static string NormalizeLigatures(string text) =>
+        text.AsSpan().IndexOfAny(LigatureCharacters) < 0
+            ? text
+            : text
+                .Replace("ﬀ", "ff", StringComparison.Ordinal)
+                .Replace("ﬁ", "fi", StringComparison.Ordinal)
+                .Replace("ﬂ", "fl", StringComparison.Ordinal)
+                .Replace("ﬃ", "ffi", StringComparison.Ordinal)
+                .Replace("ﬄ", "ffl", StringComparison.Ordinal)
+                .Replace("ﬅ", "st", StringComparison.Ordinal)
+                .Replace("ﬆ", "st", StringComparison.Ordinal);
+
+    private static readonly SearchValues<char> LigatureCharacters =
+        SearchValues.Create(['ﬀ', 'ﬁ', 'ﬂ', 'ﬃ', 'ﬄ', 'ﬅ', 'ﬆ']);
 
     /// <summary>
     /// The page's text in reading order: words are grouped into blocks (columns, paragraphs) and the blocks are ordered, so a
