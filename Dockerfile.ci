@@ -1,0 +1,26 @@
+# Quorum Host image: builds the web UI and the API into one self-contained, non-root container.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# The version normally comes from git tags (MinVer); the build context has no git history.
+ARG VERSION=0.0.0-local
+
+COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
+COPY src ./src
+# The NuGet cache lives outside the image layers, so packages survive failed or repeated builds.
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    dotnet publish src/Quorum.Host/Quorum.Host.csproj -c Release -o /app -p:MinVerVersionOverride=${VERSION}
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+# Data Protection key ring: the master key of stored secrets, kept on a volume (never in the image or database).
+RUN mkdir -p /var/lib/quorum/keys && chown -R app:app /var/lib/quorum
+VOLUME /var/lib/quorum/keys
+
+COPY --from=build /app .
+
+ENV ASPNETCORE_HTTP_PORTS=8080
+EXPOSE 8080
+USER app
+ENTRYPOINT ["dotnet", "Quorum.Host.dll"]
