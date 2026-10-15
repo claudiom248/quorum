@@ -69,7 +69,7 @@ internal static class DocumentTextExtractor
         // PDF and DOCX are identified by their signature: a name that promises one and a content that is another is refused.
         if (extension == ".pdf")
         {
-            return content.AsSpan().StartsWith("%PDF-"u8)
+            return HasPdfHeader(content)
                 ? Document(PdfText.Extract(content, cancellationToken), "application/pdf")
                 : Unsupported;
         }
@@ -120,6 +120,10 @@ internal static class DocumentTextExtractor
 
         return string.IsNullOrWhiteSpace(text) ? NoText : new ExtractedDocument(text, mediaType);
     }
+
+    /// <summary>The PDF format allows junk before the header, within the first 1024 bytes.</summary>
+    private static bool HasPdfHeader(byte[] content) =>
+        content.AsSpan(0, Math.Min(1024, content.Length)).IndexOf("%PDF-"u8) >= 0;
 
     private static Result<ExtractedDocument> ExtractDocx(byte[] content, CancellationToken cancellationToken)
     {

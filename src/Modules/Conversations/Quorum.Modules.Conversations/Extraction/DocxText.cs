@@ -7,7 +7,7 @@ namespace Quorum.Modules.Conversations.Extraction;
 
 /// <summary>
 /// Reads the text of a DOCX as Markdown (headings, lists, tables). The file is untrusted, so nothing is extracted to disk or
-/// executed and only <c>word/document.xml</c> is read:
+/// executed and only the main document part (and the package's own <c>_rels/.rels</c> that names it) is read:
 /// entries are read through a stream that counts the bytes actually produced (declared sizes are not trusted), the package is
 /// capped in parts and in decompressed size, XML is read with DTDs prohibited and no resolver, relationships (links, remote
 /// templates) are never opened, and packages carrying macros or embedded objects are refused.
@@ -15,10 +15,15 @@ namespace Quorum.Modules.Conversations.Extraction;
 internal static class DocxText
 {
     private const string WordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    private const string MainDocument = "word/document.xml";
+    private const string RelationshipsNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+    private const string MarkupCompatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    private const string DefaultMainDocument = "word/document.xml";
+    private const string PackageRelationships = "_rels/.rels";
+    private const string OfficeDocumentRelationship = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
 
     private const int MaxParts = 1000;
     private const long MaxDocumentBytes = 25L * 1024 * 1024;
+    private const long MaxRelationshipsBytes = 1024 * 1024;
     private const long MaxDeclaredPackageBytes = 100L * 1024 * 1024;
 
     // Real XML compresses 10 to 20 times; bombs go beyond a thousand.
@@ -37,12 +42,12 @@ internal static class DocxText
         {
             using var package = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
 
-            if (!IsAcceptable(package) || package.GetEntry(MainDocument) is not { } main)
+            if (!IsAcceptable(package) || MainDocument(package) is not { } main)
             {
                 return Unreadable;
             }
 
-            var xml = ReadBounded(main);
+            using var xml = ReadBounded(main, MaxDocumentBytes);
             if (xml is null)
             {
                 return Unreadable;
@@ -88,28 +93,75 @@ internal static class DocxText
         return true;
     }
 
-    /// <summary>The entry's bytes, or <see langword="null"/> when it produces more than the limit, whatever it declared.</summary>
-    private static byte[]? ReadBounded(ZipArchiveEntry entry)
+    /// <summary>
+    /// The main document part: the target of the package's <c>officeDocument</c> relationship, or the conventional path when
+    /// the package does not say. Part names are case-insensitive; a name that two parts share is ambiguous and refused.
+    /// </summary>
+    private static ZipArchiveEntry? MainDocument(ZipArchive package)
+    {
+        var path = RelationshipTarget(package) ?? DefaultMainDocument;
+        var matches = package.Entries.Where(e => string.Equals(e.FullName, path, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
+    private static string? RelationshipTarget(ZipArchive package)
+    {
+        var relationships = package.Entries
+            .Where(e => string.Equals(e.FullName, PackageRelationships, StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToList();
+        if (relationships.Count != 1 || ReadBounded(relationships[0], MaxRelationshipsBytes) is not { } stream)
+        {
+            return null;
+        }
+
+        using (stream)
+        using (var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
+        {
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.Element
+                    && reader.NamespaceURI == RelationshipsNamespace
+                    && reader.LocalName == "Relationship"
+                    && reader.GetAttribute("Type") == OfficeDocumentRelationship
+                    && !string.Equals(reader.GetAttribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase)
+                    && reader.GetAttribute("Target") is { Length: > 0 } target)
+                {
+                    return target.TrimStart('/');
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The entry's bytes in a stream positioned at the start, or <see langword="null"/> when it produces more than the
+    /// limit, whatever it declared.
+    /// </summary>
+    private static MemoryStream? ReadBounded(ZipArchiveEntry entry, long limit)
     {
         using var stream = entry.Open();
-        using var buffer = new MemoryStream();
+        var buffer = new MemoryStream();
         var chunk = new byte[81920];
         int read;
 
         while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
         {
-            if (buffer.Length + read > MaxDocumentBytes)
+            if (buffer.Length + read > limit)
             {
+                buffer.Dispose();
                 return null;
             }
 
             buffer.Write(chunk, 0, read);
         }
 
-        return buffer.ToArray();
+        buffer.Position = 0;
+        return buffer;
     }
 
-    private static string ToMarkdown(byte[] xml, CancellationToken cancellationToken)
+    private static string ToMarkdown(Stream xml, CancellationToken cancellationToken)
     {
         var settings = new XmlReaderSettings
         {
@@ -118,11 +170,11 @@ internal static class DocxText
             MaxCharactersInDocument = MaxDocumentBytes,
         };
 
-        using var reader = XmlReader.Create(new MemoryStream(xml, writable: false), settings);
+        using var reader = XmlReader.Create(xml, settings);
         var output = new DocumentWriter();
-        var paragraph = new StringBuilder();
-        string? style = null;
-        var listLevel = -1;
+
+        // A paragraph can hold others (text boxes, shapes): each open paragraph keeps its own text.
+        var open = new Stack<OpenParagraph>();
         var inNumbering = false;
         var inText = false;
 
@@ -131,10 +183,31 @@ internal static class DocxText
         List<string> row = [];
         var cell = new StringBuilder();
 
-        while (reader.Read())
+        void Emit(string text, string? style, int listLevel)
         {
+            if (tableDepth > 0)
+            {
+                cell.Append(cell.Length == 0 ? string.Empty : " ").Append(text);
+            }
+            else
+            {
+                output.Paragraph(text, style, listLevel);
+            }
+        }
+
+        var more = reader.Read();
+        while (more)
+        {
+            var skipped = false;
+
             switch (reader.NodeType)
             {
+                // The Fallback of an AlternateContent repeats what its Choice already says.
+                case XmlNodeType.Element when reader.NamespaceURI == MarkupCompatibilityNamespace && reader.LocalName == "Fallback":
+                    reader.Skip();
+                    skipped = true;
+                    break;
+
                 case XmlNodeType.Element when reader.NamespaceURI == WordNamespace:
                     switch (reader.LocalName)
                     {
@@ -152,34 +225,30 @@ internal static class DocxText
                             cell.Clear();
                             break;
                         case "p":
-                            paragraph.Clear();
-                            style = null;
-                            listLevel = -1;
+                            open.Push(new OpenParagraph());
                             break;
-                        case "pStyle":
-                            style = reader.GetAttribute("val", WordNamespace);
+                        case "pStyle" when open.Count > 0:
+                            open.Peek().Style = reader.GetAttribute("val", WordNamespace);
                             break;
-                        case "numPr":
+                        case "numPr" when open.Count > 0:
                             inNumbering = true;
-                            listLevel = 0;
+                            open.Peek().ListLevel = 0;
                             break;
-                        case "ilvl" when inNumbering && int.TryParse(reader.GetAttribute("val", WordNamespace), out var level):
-                            listLevel = Math.Clamp(level, 0, 8);
+                        case "ilvl" when inNumbering && open.Count > 0 && int.TryParse(reader.GetAttribute("val", WordNamespace), out var level):
+                            open.Peek().ListLevel = Math.Clamp(level, 0, 8);
                             break;
                         case "t":
                             inText = !reader.IsEmptyElement;
                             break;
-                        case "tab":
-                        case "br":
-                        case "cr":
-                            paragraph.Append(' ');
+                        case "tab" or "br" or "cr" when open.Count > 0:
+                            open.Peek().Text.Append(' ');
                             break;
                     }
 
                     break;
 
-                case XmlNodeType.Text or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace when inText:
-                    paragraph.Append(reader.Value);
+                case XmlNodeType.Text or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace when inText && open.Count > 0:
+                    open.Peek().Text.Append(reader.Value);
                     break;
 
                 case XmlNodeType.EndElement when reader.NamespaceURI == WordNamespace:
@@ -191,20 +260,31 @@ internal static class DocxText
                         case "numPr":
                             inNumbering = false;
                             break;
-                        case "p":
-                            var text = Collapse(paragraph);
-                            if (text.Length == 0)
+                        case "p" when open.Count > 0:
+                            var finished = open.Pop();
+                            var text = Collapse(finished.Text);
+
+                            if (open.Count > 0)
                             {
+                                // Inside another paragraph: it follows the outer paragraph's own text as separate blocks.
+                                var outer = open.Peek();
+                                if (text.Length > 0)
+                                {
+                                    outer.Nested.Add(new NestedText(text, finished.Style, finished.ListLevel));
+                                }
+
+                                outer.Nested.AddRange(finished.Nested);
                                 break;
                             }
 
-                            if (tableDepth > 0)
+                            if (text.Length > 0)
                             {
-                                cell.Append(cell.Length == 0 ? string.Empty : " ").Append(text);
+                                Emit(text, finished.Style, finished.ListLevel);
                             }
-                            else
+
+                            foreach (var nested in finished.Nested)
                             {
-                                output.Paragraph(text, style, listLevel);
+                                Emit(nested.Text, nested.Style, nested.ListLevel);
                             }
 
                             cancellationToken.ThrowIfCancellationRequested();
@@ -226,6 +306,8 @@ internal static class DocxText
 
                     break;
             }
+
+            more = skipped ? !reader.EOF : reader.Read();
         }
 
         return output.ToString();
@@ -249,6 +331,19 @@ internal static class DocxText
 
         return collapsed.ToString().TrimEnd();
     }
+
+    private sealed class OpenParagraph
+    {
+        public StringBuilder Text { get; } = new();
+
+        public string? Style { get; set; }
+
+        public int ListLevel { get; set; } = -1;
+
+        public List<NestedText> Nested { get; } = [];
+    }
+
+    private sealed record NestedText(string Text, string? Style, int ListLevel);
 
     /// <summary>Joins blocks with blank lines, keeping the items of a list on consecutive lines.</summary>
     private sealed class DocumentWriter

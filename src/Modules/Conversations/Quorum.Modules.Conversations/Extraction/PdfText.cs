@@ -1,7 +1,11 @@
-using System.IO.Compression;
+
 using Quorum.Shared.Results;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.PageSegmenter;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.ReadingOrderDetector;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 using UglyToad.PdfPig.Exceptions;
 
 namespace Quorum.Modules.Conversations.Extraction;
@@ -31,7 +35,7 @@ internal static class PdfText
             {
                 // The parser itself cannot be interrupted: the limit is checked between pages.
                 cancellationToken.ThrowIfCancellationRequested();
-                var text = page.Text.Trim();
+                var text = ReadingOrderText(page).Trim();
                 if (text.Length > 0)
                 {
                     pages.Add(text);
@@ -44,6 +48,17 @@ internal static class PdfText
         {
             return Unreadable;
         }
+    }
+
+    /// <summary>
+    /// The page's text in reading order: words are grouped into blocks (columns, paragraphs) and the blocks are ordered, so a
+    /// two-column page reads one column after the other instead of line by line across both.
+    /// </summary>
+    private static string ReadingOrderText(Page page)
+    {
+        var words = page.GetWords(NearestNeighbourWordExtractor.Instance);
+        var blocks = DocstrumBoundingBoxes.Instance.GetBlocks(words);
+        return string.Join("\n\n", UnsupervisedReadingOrderDetector.Instance.Get(blocks).Select(block => block.Text));
     }
 
     /// <summary>

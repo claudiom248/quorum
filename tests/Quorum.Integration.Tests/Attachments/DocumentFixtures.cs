@@ -28,6 +28,21 @@ internal static class DocumentFixtures
         return builder.Build();
     }
 
+    /// <summary>A two-column page whose content stream alternates between the columns, line by line (as a table does).</summary>
+    public static byte[] PdfTwoColumns(string[] left, string[] right)
+    {
+        var builder = new PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        var page = builder.AddPage(595, 842);
+        for (var i = 0; i < left.Length; i++)
+        {
+            page.AddText(left[i], 12, new PdfPoint(40, 780 - (i * 20)), font);
+            page.AddText(right[i], 12, new PdfPoint(330, 780 - (i * 20)), font);
+        }
+
+        return builder.Build();
+    }
+
     /// <summary>A PDF that declares the standard security handler: it cannot be read without the owner's password.</summary>
     public static byte[] EncryptedPdf()
     {
@@ -49,7 +64,11 @@ internal static class DocumentFixtures
             extraParts);
 
     /// <summary>A DOCX package around an arbitrary <c>word/document.xml</c>.</summary>
-    public static byte[] Package(string documentXml, IReadOnlyDictionary<string, byte[]>? extraParts = null)
+    public static byte[] Package(
+        string documentXml,
+        IReadOnlyDictionary<string, byte[]>? extraParts = null,
+        string entryName = "word/document.xml",
+        string? relationshipTarget = null)
     {
         using var output = new MemoryStream();
         using (var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -60,8 +79,8 @@ internal static class DocumentFixtures
                 "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>"));
             Add(zip, "_rels/.rels", Encoding.UTF8.GetBytes(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
-            Add(zip, "word/document.xml", Encoding.UTF8.GetBytes(documentXml));
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"" + (relationshipTarget ?? entryName) + "\"/></Relationships>"));
+            Add(zip, entryName, Encoding.UTF8.GetBytes(documentXml));
 
             foreach (var (name, content) in extraParts ?? new Dictionary<string, byte[]>())
             {

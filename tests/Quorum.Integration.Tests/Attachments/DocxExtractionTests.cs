@@ -9,6 +9,9 @@ public sealed class DocxExtractionTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    private static string WrapBody(string body) =>
+        "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>" + body + "</w:body></w:document>";
+
     private static Quorum.Shared.Results.Result<ExtractedDocument> Extract(string name, byte[] content) =>
         DocumentTextExtractor.Extract(name, content, Ct);
 
@@ -46,6 +49,65 @@ public sealed class DocxExtractionTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("One two three", result.Value.Text);
+    }
+
+    [Fact] // AC-10
+    public void ATextBoxInsideAParagraphKeepsTheSurroundingText()
+    {
+        var body =
+            "<w:p><w:r><w:t xml:space=\"preserve\">Before box </w:t></w:r>" +
+            "<w:r><w:txbxContent><w:p><w:r><w:t>Inside box</w:t></w:r></w:p></w:txbxContent></w:r>" +
+            "<w:r><w:t>after box</w:t></w:r></w:p>";
+
+        var result = Extract("a.docx", Docx(body));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Before box after box\n\nInside box", result.Value.Text);
+    }
+
+    [Fact] // AC-10
+    public void AnAlternateContentFallbackDoesNotRepeatTheChoice()
+    {
+        var body =
+            "<w:p><w:r><mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\">" +
+            "<mc:Choice Requires=\"wps\"><w:txbxContent><w:p><w:r><w:t>Shape text</w:t></w:r></w:p></w:txbxContent></mc:Choice>" +
+            "<mc:Fallback><w:txbxContent><w:p><w:r><w:t>Shape text</w:t></w:r></w:p></w:txbxContent></mc:Fallback>" +
+            "</mc:AlternateContent></w:r></w:p>" + Paragraph("After the shape");
+
+        var result = Extract("a.docx", Docx(body));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Shape text\n\nAfter the shape", result.Value.Text);
+    }
+
+    [Fact] // AC-10
+    public void TheMainDocumentIsFoundThroughThePackageRelationshipsAndCaseInsensitively()
+    {
+        var package = Package(WrapBody(Paragraph("Found it")), entryName: "Word/Main.XML", relationshipTarget: "/word/main.xml");
+
+        var result = Extract("a.docx", package);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Found it", result.Value.Text);
+    }
+
+    [Fact] // AC-5
+    public void TwoPartsWithTheSameNameAreAmbiguousAndRefused()
+    {
+        using var output = new MemoryStream();
+        using (var zip = new global::System.IO.Compression.ZipArchive(output, global::System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var text in new[] { "first", "second" })
+            {
+                using var writer = new StreamWriter(zip.CreateEntry("word/document.xml").Open());
+                writer.Write("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>" + Paragraph(text) + "</w:body></w:document>");
+            }
+        }
+
+        var result = Extract("twins.docx", output.ToArray());
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("attachment.unreadable", result.Error.Code);
     }
 
     [Fact] // AC-6
@@ -207,6 +269,33 @@ public sealed class DocxExtractionTests
         Assert.True(
             result.Value.Text.IndexOf("First page", StringComparison.Ordinal) < result.Value.Text.IndexOf("Second page", StringComparison.Ordinal));
         Assert.Equal("application/pdf", result.Value.MediaType);
+    }
+
+    [Fact]
+    public void APdfWithBytesBeforeTheHeaderIsStillAPdf()
+    {
+        var padded = new byte[] { 0x0A, 0x0A, 0x20 }.Concat(Pdf("Printed output")).ToArray();
+
+        var result = Extract("printed.pdf", padded);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("Printed output", result.Value.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APdfReadsOneColumnAfterTheOtherNotLineByLine()
+    {
+        var pdf = PdfTwoColumns(
+            ["Left one", "Left two", "Left three"],
+            ["Right one", "Right two", "Right three"]);
+
+        var result = Extract("columns.pdf", pdf);
+
+        Assert.True(result.IsSuccess);
+        var text = result.Value.Text;
+        Assert.True(
+            text.IndexOf("Left three", StringComparison.Ordinal) < text.IndexOf("Right one", StringComparison.Ordinal),
+            $"Expected the left column before the right one, got: {text.Replace("\n", " / ")}");
     }
 
     [Fact] // AC-6
