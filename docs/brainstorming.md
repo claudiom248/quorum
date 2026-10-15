@@ -1,54 +1,52 @@
 # Quorum - Brainstorming
 
-Data: 2026-10-15. Nome scelto: **Quorum** (alternative scartate: Chorus, Conclave, Hearth, Weft, Tessera, Plexus per conflitti con prodotti esistenti). Marchio e dominio da verificare prima del lancio.
+Date: 2026-10-15. Chosen name: **Quorum** (rejected alternatives: Chorus, Conclave, Hearth, Weft, Tessera, Plexus, because of conflicts with existing products). Trademark and domain to be checked before launch.
 
-## Visione
-Piattaforma di orchestrazione agentica **self-hosted ed estensibile via configurazione**. L'utente semplice ha una chat pronta con tool base e un proprio modello self-hosted; l'azienda la estende con RAG, tool di business e agenti specializzati.
+## Vision
+An agentic orchestration platform that is **self-hosted and extensible through configuration**. A simple user gets a ready-made chat with basic tools and their own self-hosted model; a company extends it with RAG, business tools and specialized agents.
 
-## Differenziatori
-- Facilita di installazione.
-- Topologie multi-agente definibili da config **e** da editor visuale (stessa rappresentazione): ogni agente risponde se pertinente, un nodo di sintesi produce la risposta unica.
-- Agenti, tool, skill e prompt configurabili; provider di ricerca web sostituibile con preset suggeriti.
-- Tool RAG su documentazione aziendale/personale/team.
-- Conversation store plug and play (default, Postgres, AWS, ...).
-- Guardrail di classificazione, embedding e semantic cache (opt-in).
+## Differentiators
+- Ease of installation.
+- Multi-agent topologies defined in config **and** in a visual editor (same representation): each agent answers when relevant, a synthesis node produces the single answer.
+- Configurable agents, tools, skills and prompts; replaceable web search provider with suggested presets.
+- RAG tool over company/personal/team documentation.
+- Plug-and-play conversation store (default, Postgres, AWS, ...).
+- Classification guardrails, embeddings and semantic cache (opt-in).
 
-## Modello commerciale
-- Licenza per utente, e per team/azienda. Hosting a carico del cliente (BYOK per le chiavi LLM).
-- Verifica licenza offline con chiave firmata (Ed25519); online opzionale.
+## Business model
+- Per-user license, and per team/company. Hosting paid by the customer (BYOK for LLM keys).
+- Offline license verification with a signed key (Ed25519); online optional.
 
-## Decisioni
-| Tema | Decisione |
+## Decisions
+| Topic | Decision |
 |---|---|
-| MVP | Chat con preset |
-| Forma | Backend/API + piu client |
-| Tenancy | Una installazione, piu tenant |
-| Standard | MCP per i tool, formati aperti |
-| Licensing | Chiave firmata offline, online opzionale; edizioni Community (non commerciale, 5 utenti, 1 tenant), Trial (30 giorni, poi sola lettura), Commerciale |
-| UI | Blazor WebAssembly sopra l'API pubblica; editor a grafo come isola JS futura |
-| Architettura moduli | Vertical Slice dentro ogni modulo (MVP) |
-| API per terzi | Spec futura: endpoint compatibile OpenAI + API key per applicazione |
-| Versioni e rilasci | Trunk-based, Conventional Commits, MinVer, release-please su GitHub (`docs/release-process.md`) |
-| Sorgente | Source-available (candidata PolyForm Noncommercial + licenza commerciale) |
+| MVP | Chat with presets |
+| Shape | Backend/API + multiple clients |
+| Tenancy | One installation, multiple tenants |
+| Standards | MCP for tools, open formats |
+| Licensing | Offline signed key, online optional; Community (non-commercial, 5 users, 1 tenant), Trial (30 days, then read-only), Commercial editions |
+| UI | Blazor WebAssembly on top of the public API; graph editor as a future JS island |
+| Module architecture | Vertical Slice inside each module (MVP) |
+| Third-party API | Future spec: OpenAI-compatible endpoint + per-application API keys |
+| Versioning and releases | Trunk-based, Conventional Commits, MinVer, release-please on GitHub (`docs/release-process.md`) |
+| Source | Source-available (candidate: PolyForm Noncommercial + commercial license) |
 | Stack | .NET + dotnet-claude-kit |
-| Database piattaforma | Solo PostgreSQL, bundled nel compose, senza vettori |
-| Vector store RAG | Astratto: Qdrant (default) o pgvector su server/db dedicato |
-| Conversation store | Astratto, default su Postgres |
-| Autenticazione | Account locali + OIDC generico; SAML/LDAP via broker |
-| Installazione | `docker compose up` + wizard con setup token |
-| Sviluppo | Keycloak e Postgres in `deploy/docker-compose.dev.yml` |
+| Platform database | PostgreSQL only, bundled in the compose file, no vectors |
+| RAG vector store | Abstract: Qdrant (default) or pgvector on a dedicated server/database |
+| Conversation store | Abstract, Postgres by default |
+| Authentication | Local accounts + generic OIDC; SAML/LDAP through a broker |
+| Installation | `docker compose up` + wizard with a setup token |
+| Development | Keycloak, Postgres and Qdrant in `deploy/docker-compose.dev.yml` |
 
-Dettagli in `docs/product.md`.
+Details in `docs/product.md`.
 
-## Rischi
-- Ambito molto ampio: tenere l'MVP verticale.
-- Un solo modello di grafo per config e UI, altrimenti divergono.
-- Plugin .NET (assembly esterni): per l'MVP preferire provider integrati + MCP/HTTP.
-- Sicurezza dei tool eseguiti sull'infrastruttura del cliente.
+## Risks
+- Very broad scope: keep the MVP vertical.
+- A single graph model for config and UI, otherwise they diverge.
+- .NET plugins (external assemblies): for the MVP prefer built-in providers + MCP/HTTP.
+- Security of tools running on the customer's infrastructure.
 
-## Domande aperte
-- Preset base esatti (assistente ricerca web, interprete documenti, conoscenza del modello).
-- Modello dati multi-tenant e isolamento.
-- Prima UI (web) e tecnologia client.
-- Scelta provider LLM/astrazione (Microsoft.Extensions.AI, LiteLLM opzionale).
-- Posizionamento rispetto a Open WebUI, LibreChat, Dify.
+## Open questions
+- Exact base presets (web search assistant, document interpreter, model knowledge).
+- Model provider/abstraction choice (Microsoft.Extensions.AI, optional LiteLLM).
+- Positioning against Open WebUI, LibreChat, Dify.
