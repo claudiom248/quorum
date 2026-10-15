@@ -43,6 +43,14 @@ public sealed class FakeModelServer : HttpMessageHandler
             {
                 var json = await request.Content!.ReadAsStringAsync(cancellationToken);
                 _chatRequests.Enqueue(JsonDocument.Parse(json).RootElement.Clone());
+                if (Chat.HttpErrorStatus is { } status)
+                {
+                    return new HttpResponseMessage((HttpStatusCode)status)
+                    {
+                        Content = new StringContent("{\"error\":{\"message\":\"model overloaded\"}}", Encoding.UTF8, "application/json"),
+                    };
+                }
+
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StreamContent(new ScriptedSseStream(Chat)) { Headers = { { "Content-Type", "text/event-stream" } } },
@@ -56,6 +64,15 @@ public sealed class FakeModelServer : HttpMessageHandler
     /// <summary>What the fake model streams back: chunks, an optional delay before each, an optional failure.</summary>
     public sealed record ChatScript(IReadOnlyList<string> Chunks, TimeSpan DelayPerChunk, int? FailAfterChunks)
     {
+        /// <summary>Reasoning streamed before the answer, in the field named by <see cref="ReasoningField"/>.</summary>
+        public IReadOnlyList<string> Reasoning { get; init; } = [];
+
+        /// <summary>When set, the chat endpoint answers with this HTTP error status instead of streaming.</summary>
+        public int? HttpErrorStatus { get; init; }
+
+        /// <summary><c>reasoning</c> as Ollama sends it, or <c>reasoning_content</c> as LiteLLM does.</summary>
+        public string ReasoningField { get; init; } = "reasoning";
+
         public static ChatScript Reply(params string[] chunks) => new(chunks, TimeSpan.Zero, null);
 
         public static ChatScript Slow(int chunkCount, TimeSpan delayPerChunk) =>
@@ -69,6 +86,7 @@ public sealed class FakeModelServer : HttpMessageHandler
     {
         private readonly Queue<byte[]> _pending = new();
         private int _nextChunk;
+        private int _nextReasoning;
         private bool _finished;
         private byte[]? _current;
         private int _offset;
@@ -126,7 +144,12 @@ public sealed class FakeModelServer : HttpMessageHandler
                     throw new IOException("The model connection was reset.");
                 }
 
-                if (_nextChunk < script.Chunks.Count)
+                if (_nextReasoning < script.Reasoning.Count)
+                {
+                    var delta = new Dictionary<string, string> { ["content"] = string.Empty, [script.ReasoningField] = script.Reasoning[_nextReasoning++] };
+                    _pending.Enqueue(Event(delta, finishReason: null));
+                }
+                else if (_nextChunk < script.Chunks.Count)
                 {
                     if (script.DelayPerChunk > TimeSpan.Zero)
                     {

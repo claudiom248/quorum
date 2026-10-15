@@ -7,7 +7,7 @@ using Quorum.Modules.Conversations.Persistence;
 namespace Quorum.Modules.Conversations.Streaming;
 
 /// <summary>
-/// Relays the assistant's answer as server-sent events (<c>delta</c> events, then one <c>done</c> event) and stores it
+/// Relays the assistant's answer as server-sent events (<c>reasoning</c> and <c>delta</c> events, then one <c>done</c> event) and stores it
 /// when it ends: <see cref="MessageStatus.Completed"/>, <see cref="MessageStatus.Failed"/> with the partial text when the
 /// model breaks, or <see cref="MessageStatus.Interrupted"/> when the client goes away or the answer is stopped.
 /// </summary>
@@ -16,7 +16,7 @@ internal static class AnswerStream
     public static async IAsyncEnumerable<SseItem<object>> RelayAsync(
         ConversationsDbContext db,
         Conversation conversation,
-        IAsyncEnumerable<string> answer,
+        IAsyncEnumerable<AnswerChunk> answer,
         ConversationLocks.Lease lease,
         TimeProvider clock)
     {
@@ -32,7 +32,7 @@ internal static class AnswerStream
             {
                 while (true)
                 {
-                    string chunk;
+                    AnswerChunk chunk;
                     try
                     {
                         if (!await chunks.MoveNextAsync())
@@ -54,8 +54,15 @@ internal static class AnswerStream
                         break;
                     }
 
-                    content.Append(chunk);
-                    yield return new SseItem<object>(new AnswerDelta(chunk), "delta");
+                    if (chunk.Kind == AnswerChunkKind.Reasoning)
+                    {
+                        // Shown live to the user, never stored: the message keeps only the answer.
+                        yield return new SseItem<object>(new AnswerReasoning(chunk.Text), "reasoning");
+                        continue;
+                    }
+
+                    content.Append(chunk.Text);
+                    yield return new SseItem<object>(new AnswerDelta(chunk.Text), "delta");
                 }
             }
 
@@ -85,5 +92,7 @@ internal static class AnswerStream
 }
 
 internal sealed record AnswerDelta(string Text);
+
+internal sealed record AnswerReasoning(string Text);
 
 internal sealed record AnswerDone(Guid MessageId, string Status, string? Error);

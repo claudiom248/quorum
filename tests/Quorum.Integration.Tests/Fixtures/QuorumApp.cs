@@ -99,6 +99,8 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // The web UI is a referenced project's static asset: outside Development the host must be told to serve it.
+        builder.UseStaticWebAssets();
         builder.UseSetting("ConnectionStrings:Platform", _connectionString);
         builder.UseSetting("DataProtection:KeysPath", _dataProtectionKeysPath);
 
@@ -115,7 +117,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
                 }
             });
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
-            services.AddHttpClient(ChatClientFactory.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddHttpClient(OpenAiChatStream.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
         });
     }
 }

@@ -2,7 +2,7 @@ using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Agents.Contracts;
 
-/// <summary>Generates an assistant's answer to a conversation, streamed as text chunks.</summary>
+/// <summary>Generates an assistant's answer to a conversation, streamed as text and reasoning chunks.</summary>
 public interface IAssistantChat
 {
     /// <summary>
@@ -11,7 +11,7 @@ public interface IAssistantChat
     /// The returned stream throws <see cref="ModelStreamException"/> when the model fails mid-answer.
     /// </summary>
     /// <param name="history">The conversation, oldest first; the last turn is the user's message to answer.</param>
-    Task<Result<IAsyncEnumerable<string>>> StartAnswerAsync(Guid assistantId, IReadOnlyList<ChatTurn> history, CancellationToken cancellationToken);
+    Task<Result<IAsyncEnumerable<AnswerChunk>>> StartAnswerAsync(Guid assistantId, IReadOnlyList<ChatTurn> history, CancellationToken cancellationToken);
 }
 
 /// <summary>Finds the assistants of the current tenant.</summary>
@@ -19,6 +19,15 @@ public interface IAssistantCatalog
 {
     Task<Guid?> GetDefaultAssistantIdAsync(CancellationToken cancellationToken);
 }
+
+public enum AnswerChunkKind
+{
+    Text,
+    Reasoning,
+}
+
+/// <summary>A piece of the answer: its text, or the reasoning the model shows while it thinks (never part of the answer).</summary>
+public sealed record AnswerChunk(AnswerChunkKind Kind, string Text);
 
 public enum ChatTurnRole
 {

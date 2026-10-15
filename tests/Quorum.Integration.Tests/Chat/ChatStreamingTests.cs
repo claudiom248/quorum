@@ -29,6 +29,30 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
             conversation.Messages.Select(m => (m.Role, m.Content, m.Status)));
     }
 
+    [Theory]
+    [InlineData("reasoning")] // Ollama
+    [InlineData("reasoning_content")] // LiteLLM and others
+    public async Task TheModelsReasoningIsStreamedButNotStored(string field)
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        app.ModelServer.Chat = FakeModelServer.ChatScript.Reply("The answer", " is 42.") with
+        {
+            Reasoning = ["Let me ", "think."],
+            ReasoningField = field,
+        };
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        var events = await ChatApi.SendAsync(client, id, "What is the answer?");
+
+        Assert.Equal(["reasoning", "reasoning", "delta", "delta", "done"], events.Select(e => e.Type));
+        Assert.Equal("Let me think.", string.Concat(events.Where(e => e.Type == "reasoning").Select(e => e.Data.GetProperty("text").GetString())));
+        Assert.Equal("The answer is 42.", SseReader.Text(events));
+
+        var conversation = await ChatApi.GetAsync(client, id);
+        Assert.Equal("The answer is 42.", conversation.Messages[^1].Content);
+    }
+
     [Fact]
     public async Task TheModelReceivesTheSystemPromptAndTheConversation()
     {
@@ -135,6 +159,40 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
         Assert.False(string.IsNullOrWhiteSpace(done.Data.GetProperty("error").GetString()));
         var answer = (await ChatApi.GetAsync(client, id)).Messages[^1];
         Assert.Equal(("Partial answer", "Failed"), (answer.Content, answer.Status));
+    }
+
+    [Fact]
+    public async Task AModelThatEndsWithoutAnAnswerIsAFailureNotAnEmptySuccess()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        // E.g. a reasoning model that used its whole budget thinking.
+        app.ModelServer.Chat = FakeModelServer.ChatScript.Reply() with { Reasoning = ["Thinking, thinking…"] };
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        var events = await ChatApi.SendAsync(client, id, "Hi");
+
+        var done = events[^1];
+        Assert.Equal("Failed", done.Data.GetProperty("status").GetString());
+        Assert.Contains("without an answer", done.Data.GetProperty("error").GetString(), StringComparison.Ordinal);
+        Assert.Equal("Failed", (await ChatApi.GetAsync(client, id)).Messages[^1].Status);
+    }
+
+    [Fact]
+    public async Task AnErrorStatusFromTheModelIsReportedWithItsDetails()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        app.ModelServer.Chat = FakeModelServer.ChatScript.Reply() with { HttpErrorStatus = 503 };
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        var events = await ChatApi.SendAsync(client, id, "Hi");
+
+        var done = events[^1];
+        Assert.Equal("Failed", done.Data.GetProperty("status").GetString());
+        var error = done.Data.GetProperty("error").GetString();
+        Assert.Contains("HTTP 503", error, StringComparison.Ordinal);
+        Assert.Contains("model overloaded", error, StringComparison.Ordinal);
     }
 
     [Fact]
