@@ -1,3 +1,4 @@
+using System.Globalization;
 using Quorum.Web.Client.Api;
 
 namespace Quorum.Web.Client;
@@ -10,13 +11,24 @@ public enum SegmentKind
     Free,
 }
 
+public enum MeterLevel
+{
+    Normal,
+    Warning,
+    Critical,
+    Over,
+}
+
 /// <summary>One part of the context bar: what takes it, how many tokens, and its share of the bar.</summary>
 public sealed record BreakdownSegment(SegmentKind Kind, string Label, int Tokens, double Percent);
 
 /// <summary>An attachment's estimated share of the context.</summary>
 public sealed record AttachmentShare(string FileName, string Kind, int Tokens);
 
-/// <summary>The detail behind the budget indicator: where the context goes, and what each attachment costs.</summary>
+/// <summary>
+/// The budget indicator of a conversation and the detail behind it: the overall use of the model's context (system prompt,
+/// attachments and messages), where it goes, and what each attachment costs.
+/// </summary>
 public sealed record ContextBreakdown(
     IReadOnlyList<BreakdownSegment> Segments,
     IReadOnlyList<AttachmentShare> Files,
@@ -24,9 +36,13 @@ public sealed record ContextBreakdown(
     string Margin,
     bool IsOver,
     int UsableTokens,
-    int BudgetTokens)
+    int BudgetTokens,
+    double Percent,
+    MeterLevel Level)
 {
     private const int CharactersPerToken = 4;
+    private const double WarningFrom = 75;
+    private const double CriticalFrom = 90;
 
     public static ContextBreakdown From(ConversationContext context, IReadOnlyList<AttachmentInfo> attachments)
     {
@@ -41,10 +57,15 @@ public sealed record ContextBreakdown(
         BreakdownSegment Segment(SegmentKind kind, string label, int tokens) => new(kind, label, tokens, tokens * 100.0 / bar);
 
         var isOver = context.RemainingTokens < 0;
+        var percent = context.UsableTokens <= 0 ? 100 : Math.Clamp(used * 100.0 / context.UsableTokens, 0, 100);
+        var level = isOver
+            ? MeterLevel.Over
+            : percent >= CriticalFrom ? MeterLevel.Critical : percent >= WarningFrom ? MeterLevel.Warning : MeterLevel.Normal;
+
         var margin = isOver
-            ? $"over by {ContextMeter.FormatTokens(-context.RemainingTokens)}"
-            : $"{ContextMeter.FormatTokens(context.RemainingTokens)} left";
-        var summary = $"{ContextMeter.FormatTokens(used)} of {ContextMeter.FormatTokens(context.UsableTokens)} tokens";
+            ? $"over by {FormatTokens(-context.RemainingTokens)}"
+            : $"{FormatTokens(context.RemainingTokens)} left";
+        var summary = $"{FormatTokens(used)} of {FormatTokens(context.UsableTokens)} tokens";
 
         return new ContextBreakdown(
             [
@@ -58,6 +79,12 @@ public sealed record ContextBreakdown(
             margin,
             isOver,
             context.UsableTokens,
-            context.ContextTokenBudget);
+            context.ContextTokenBudget,
+            percent,
+            level);
     }
+
+    /// <summary>Token counts as the UI shows them: "850", "2.1k".</summary>
+    public static string FormatTokens(int value) =>
+        value < 1000 ? value.ToString(CultureInfo.InvariantCulture) : $"{(value / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}k";
 }

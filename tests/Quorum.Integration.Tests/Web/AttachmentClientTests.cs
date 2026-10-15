@@ -98,7 +98,7 @@ public sealed class AttachmentClientTests(PostgresFixture postgres)
             MessagesTokens: 0,
             RemainingTokens: usable - used);
 
-        var meter = ContextMeter.From(context);
+        var meter = ContextBreakdown.From(context, []);
 
         Assert.Equal(percent, meter.Percent, precision: 1);
         Assert.Equal(level, meter.Level);
@@ -109,12 +109,11 @@ public sealed class AttachmentClientTests(PostgresFixture postgres)
     {
         var context = new ConversationContext(16384, 13107, SystemPromptTokens: 50, AttachmentsTokens: 3000, MessagesTokens: 200, RemainingTokens: 9857);
 
-        var meter = ContextMeter.From(context);
+        var meter = ContextBreakdown.From(context, []);
 
-        Assert.Equal("3.3k of 13.1k tokens used", meter.Label);
-        Assert.Contains("attachments 3.0k", meter.Details, StringComparison.Ordinal);
-        Assert.Contains("messages 200", meter.Details, StringComparison.Ordinal);
-        Assert.Contains("9.9k left", meter.Details, StringComparison.Ordinal);
+        Assert.Equal("3.3k of 13.1k tokens", meter.Summary);
+        Assert.Equal("9.9k left", meter.Margin);
+        Assert.Equal(["50", "3.0k", "200", "9.9k"], meter.Segments.Select(s => ContextBreakdown.FormatTokens(s.Tokens)));
     }
 
     [Fact]
@@ -122,10 +121,10 @@ public sealed class AttachmentClientTests(PostgresFixture postgres)
     {
         var context = new ConversationContext(256, 204, SystemPromptTokens: 10, AttachmentsTokens: 300, MessagesTokens: 0, RemainingTokens: -106);
 
-        var meter = ContextMeter.From(context);
+        var meter = ContextBreakdown.From(context, []);
 
         Assert.Equal(MeterLevel.Over, meter.Level);
-        Assert.Contains("over by", meter.Details, StringComparison.Ordinal);
+        Assert.Contains("over by", meter.Margin, StringComparison.Ordinal);
     }
 
     [Theory]

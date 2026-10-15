@@ -64,8 +64,9 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .composer-input textarea { width: 100%; resize: none; min-height: 2.6rem; max-height: 10rem; padding: .35rem .25rem; font: inherit; color: inherit; background: transparent; border: 0; outline: none; box-sizing: border-box; }
 .composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
 .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: .5rem; }
-.tool-button { display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .6rem; border-radius: 999px; cursor: pointer; font-size: .875rem; color: var(--mud-palette-text-secondary); user-select: none; }
+.tool-button { position: relative; display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .6rem; border-radius: 999px; cursor: pointer; font-size: .875rem; color: var(--mud-palette-text-secondary); user-select: none; }
 .tool-button:hover { background: var(--mud-palette-action-default-hover); color: var(--mud-palette-text-primary); }
+.tool-button:focus-within { outline: 2px solid var(--mud-palette-primary); outline-offset: 1px; }
 .tool-button.disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
 .busy-note { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--mud-palette-text-secondary); }
 

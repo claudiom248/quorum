@@ -10,7 +10,11 @@ namespace Quorum.Host.Infrastructure;
 /// </summary>
 internal static partial class StaticAssetCaching
 {
-    public static StaticFileOptions Options { get; } = new() { OnPrepareResponse = Apply };
+    /// <summary>
+    /// A new instance for each middleware: the static file middleware fills in the options it is given (file provider,
+    /// content types), so two of them must not share one.
+    /// </summary>
+    public static StaticFileOptions CreateOptions() => new() { OnPrepareResponse = Apply };
 
     private static void Apply(StaticFileResponseContext context)
     {

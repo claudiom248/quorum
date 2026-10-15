@@ -106,7 +106,7 @@
 
         <div class="composer">
             <div class="composer-inner">
-                <ComposerCard @ref="_attachments" ConversationId="Id" Disabled="_streaming"
+                <ComposerCard @ref="_attachments" ConversationId="Id" Disabled="_streaming" InitialAttachments="_loaded?.Attachments"
                               EnsureConversation="EnsureConversationAsync" OnSessionExpired="Expired">
                     <Input>
                         <textarea @ref="_composerElement" @bind="_draft" @bind:event="oninput" rows="1"
@@ -153,6 +153,7 @@
     private string _partial = string.Empty;
     private string _reasoning = string.Empty;
     private bool _streaming;
+    private bool _sending;
     private bool _renaming;
 
     [Parameter]
@@ -256,7 +257,7 @@
             return null;
         }
 
-        _loaded = new ConversationDetail(created.Value, null, []);
+        _loaded = new ConversationDetail(created.Value, null, [], []);
         Id = created.Value;
         Navigation.NavigateTo($"c/{created.Value}", replace: true);
         await RefreshListAsync();
@@ -269,29 +270,38 @@
     private async Task SendAsync()
     {
         var content = _draft.Trim();
-        if (content.Length == 0 || _streaming)
+        if (content.Length == 0 || _streaming || _sending)
         {
             return;
         }
 
-        _problem = null;
-
-        if (Id is null)
+        // Set before the first await: a second Enter during the creation of a new conversation must not start another send.
+        _sending = true;
+        try
         {
-            var created = await Api.CreateConversationAsync();
-            if (!created.IsSuccess)
+            _problem = null;
+
+            if (Id is null)
             {
-                _problem = created.Problem;
-                return;
+                var created = await Api.CreateConversationAsync();
+                if (!created.IsSuccess)
+                {
+                    _problem = created.Problem;
+                    return;
+                }
+
+                _loaded = new ConversationDetail(created.Value, null, [], []);
+                Id = created.Value;
             }
 
-            _loaded = new ConversationDetail(created.Value, null, []);
-            Id = created.Value;
+            _draft = string.Empty;
+            _messages.Add(new MessageDto(Guid.NewGuid(), MessageRoles.User, content, MessageStatuses.Completed, Clock.GetUtcNow()));
+            await StreamAsync(token => Api.SendMessageAsync(Id!.Value, content, token));
         }
-
-        _draft = string.Empty;
-        _messages.Add(new MessageDto(Guid.NewGuid(), MessageRoles.User, content, MessageStatuses.Completed, Clock.GetUtcNow()));
-        await StreamAsync(token => Api.SendMessageAsync(Id!.Value, content, token));
+        finally
+        {
+            _sending = false;
+        }
     }
 
     private async Task RegenerateAsync()
@@ -393,7 +403,7 @@
             // The answer took its share of the context: the budget indicator must show it.
             if (_attachments is not null)
             {
-                await _attachments.ReloadAsync();
+                await _attachments.ReloadContextAsync();
             }
         }
 

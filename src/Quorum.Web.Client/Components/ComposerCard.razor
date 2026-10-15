@@ -53,13 +53,14 @@
 
     <div class="composer-toolbar">
         <div class="toolbar-left">
-            <label for="attach-input" class="tool-button @(Disabled || _busy ? "disabled" : null)"
+            <label class="tool-button @(Disabled || _busy ? "disabled" : null)"
                    title="Attach PDF, DOCX, TXT, Markdown or CSV files (up to 5 MB each)">
                 <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
                 <span>Attach</span>
+                @* Hidden visually, not with display:none, so that the keyboard can reach it; the key resets the picker. *@
+                <InputFile @key="_pickerKey" OnChange="OnFilesSelectedAsync" accept="@AttachmentRules.Accept" multiple
+                           disabled="@(Disabled || _busy)" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden" />
             </label>
-            <InputFile id="attach-input" OnChange="OnFilesSelectedAsync" accept="@AttachmentRules.Accept" multiple
-                       disabled="@(Disabled || _busy)" style="display:none" />
 
             @if (_busy)
             {
@@ -71,10 +72,10 @@
             @if (_breakdown is not null)
             {
                 <div class="context-wrap">
-                    <button type="button" class="context-pill level-@_meter!.Level.ToString().ToLowerInvariant()"
+                    <button type="button" class="context-pill level-@_breakdown!.Level.ToString().ToLowerInvariant()"
                             aria-expanded="@_showBreakdown" title="How much of the model's context this conversation uses"
                             @onclick="() => _showBreakdown = !_showBreakdown">
-                        <span class="context-ring" style="--used:@_meter.Percent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                        <span class="context-ring" style="--used:@_breakdown.Percent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></span>
                         <span>@_breakdown.Summary</span>
                     </button>
 
@@ -101,7 +102,7 @@
                                     <li>
                                         <span class="dot seg-@segment.Kind.ToString().ToLowerInvariant()"></span>
                                         <span class="legend-label">@segment.Label</span>
-                                        <span class="legend-value">@ContextMeter.FormatTokens(segment.Tokens)</span>
+                                        <span class="legend-value">@ContextBreakdown.FormatTokens(segment.Tokens)</span>
                                     </li>
                                     @if (segment.Kind == SegmentKind.Attachments)
                                     {
@@ -110,7 +111,7 @@
                                             <li class="legend-file">
                                                 <span class="file-kind small kind-@file.Kind.ToLowerInvariant()">@file.Kind</span>
                                                 <span class="legend-label">@file.FileName</span>
-                                                <span class="legend-value">≈ @ContextMeter.FormatTokens(file.Tokens)</span>
+                                                <span class="legend-value">≈ @ContextBreakdown.FormatTokens(file.Tokens)</span>
                                             </li>
                                         }
                                     }
@@ -119,8 +120,8 @@
 
                             <div class="popover-note">
                                 Token counts are estimates (about 4 characters each). The model's budget is
-                                @ContextMeter.FormatTokens(_breakdown.BudgetTokens) tokens; 20% is kept as a safety margin, so
-                                @ContextMeter.FormatTokens(_breakdown.UsableTokens) are usable.
+                                @ContextBreakdown.FormatTokens(_breakdown.BudgetTokens) tokens; 20% is kept as a safety margin, so
+                                @ContextBreakdown.FormatTokens(_breakdown.UsableTokens) are usable.
                                 @if (_breakdown.IsOver)
                                 {
                                     <span class="over"> Remove an attachment or raise the budget in Settings.</span>
@@ -139,9 +140,11 @@
 </div>
 
 @code {
+    private const int MaxFilesAtOnce = 10;
+
     private List<AttachmentInfo> _attachments = [];
-    private ContextMeter? _meter;
     private ContextBreakdown? _breakdown;
+    private int _pickerKey;
     private ApiProblem? _problem;
     private Guid? _loadedFor;
     private Guid? _previewId;
@@ -164,6 +167,13 @@
     [Parameter]
     public EventCallback OnSessionExpired { get; set; }
 
+    /// <summary>
+    /// The attachments the page already loaded with the conversation; when given, the list is not requested again and only
+    /// the context is.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<AttachmentInfo>? InitialAttachments { get; set; }
+
     /// <summary>The message box.</summary>
     [Parameter]
     public RenderFragment? Input { get; set; }
@@ -185,16 +195,23 @@
         ClosePreview();
         _showBreakdown = false;
         _problem = null;
+
+        if (InitialAttachments is not null)
+        {
+            _attachments = [.. InitialAttachments];
+            await ReloadContextAsync();
+            return;
+        }
+
         await ReloadAsync();
     }
 
-    /// <summary>Reads the attachments and the budget again (after an answer, the messages take a share of it).</summary>
+    /// <summary>Reads the attachments and the budget again.</summary>
     public async Task ReloadAsync()
     {
         if (ConversationId is not { } id)
         {
             _attachments = [];
-            _meter = null;
             _breakdown = null;
             StateHasChanged();
             return;
@@ -210,8 +227,22 @@
             return;
         }
 
+        await ReloadContextAsync();
+    }
+
+    /// <summary>
+    /// Reads the budget again: after an answer the messages take a share of it, while the attachments did not change.
+    /// </summary>
+    public async Task ReloadContextAsync()
+    {
+        if (ConversationId is not { } id)
+        {
+            _breakdown = null;
+            StateHasChanged();
+            return;
+        }
+
         var context = await Api.GetContextAsync(id);
-        _meter = context.IsSuccess ? ContextMeter.From(context.Value) : null;
         _breakdown = context.IsSuccess ? ContextBreakdown.From(context.Value, _attachments) : null;
         StateHasChanged();
     }
@@ -219,10 +250,18 @@
     private async Task OnFilesSelectedAsync(InputFileChangeEventArgs e)
     {
         _problem = null;
+
+        if (e.FileCount > MaxFilesAtOnce)
+        {
+            _problem = Local($"You can attach at most {MaxFilesAtOnce} files at a time.");
+            _pickerKey++;
+            return;
+        }
+
         _busy = true;
         try
         {
-            foreach (var file in e.GetMultipleFiles(maximumFileCount: 10))
+            foreach (var file in e.GetMultipleFiles(e.FileCount))
             {
                 if (AttachmentRules.Check(file.Name, file.Size) is { } refusal)
                 {
@@ -257,6 +296,9 @@
         finally
         {
             _busy = false;
+
+            // A new input: the browser keeps the chosen file name in the old one and would not report the same file again.
+            _pickerKey++;
         }
 
         await ReloadAsync();
