@@ -24,6 +24,17 @@ public static class AttachmentRules
         return sizeBytes > MaxFileBytes ? $"\"{fileName}\" is larger than {MaxFileBytes / (1024 * 1024)} MB." : null;
     }
 
+    /// <summary>A short label for the file's type, from its extension.</summary>
+    public static string Kind(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    {
+        ".pdf" => "PDF",
+        ".docx" => "DOCX",
+        ".txt" => "TXT",
+        ".md" or ".markdown" => "MD",
+        ".csv" => "CSV",
+        _ => "FILE",
+    };
+
     public static string FormatSize(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",

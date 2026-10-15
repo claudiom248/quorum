@@ -106,27 +106,31 @@
 
         <div class="composer">
             <div class="composer-inner">
-                <AttachmentsPanel @ref="_attachments" ConversationId="Id" Disabled="_streaming"
-                                  EnsureConversation="EnsureConversationAsync" OnSessionExpired="Expired" />
-            </div>
-            <div class="composer-inner">
-                <textarea @ref="_composerElement" @bind="_draft" @bind:event="oninput" rows="1"
-                          placeholder="Write a message (Shift+Enter for a new line)" disabled="@_streaming"></textarea>
-                @if (_streaming)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Stop"
-                               StartIcon="@Icons.Material.Filled.Stop">Stop</MudButton>
-                }
-                else
-                {
-                    @if (CanRegenerate)
-                    {
-                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" title="Regenerate the last answer" OnClick="RegenerateAsync" />
-                    }
+                <ComposerCard @ref="_attachments" ConversationId="Id" Disabled="_streaming"
+                              EnsureConversation="EnsureConversationAsync" OnSessionExpired="Expired">
+                    <Input>
+                        <textarea @ref="_composerElement" @bind="_draft" @bind:event="oninput" rows="1"
+                                  placeholder="Write a message (Shift+Enter for a new line)" disabled="@_streaming"></textarea>
+                    </Input>
+                    <Actions>
+                        @if (_streaming)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Stop" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Stop">Stop</MudButton>
+                        }
+                        else
+                        {
+                            @if (CanRegenerate)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" title="Regenerate the last answer"
+                                               OnClick="RegenerateAsync" />
+                            }
 
-                    <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Variant="Variant.Filled"
-                                   title="Send" OnClick="SendAsync" Disabled="@string.IsNullOrWhiteSpace(_draft)" />
-                }
+                            <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small"
+                                           title="Send" OnClick="SendAsync" Disabled="@string.IsNullOrWhiteSpace(_draft)" />
+                        }
+                    </Actions>
+                </ComposerCard>
             </div>
             <div class="composer-inner"><ProblemMessage Problem="_problem" /></div>
         </div>
@@ -141,7 +145,7 @@
     private DotNetObjectReference<Chat>? _self;
     private ElementReference _messagesElement;
     private ElementReference _composerElement;
-    private AttachmentsPanel? _attachments;
+    private ComposerCard? _attachments;
     private ApiProblem? _problem;
     private string? _title;
     private string _newTitle = string.Empty;
@@ -360,6 +364,12 @@
         {
             stopped = true;
         }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or System.Text.Json.JsonException)
+        {
+            // The connection broke or the stream was unreadable: the server still stores what it had, shown below.
+            _problem = new ApiProblem(0, "client.stream_broken", "The connection to Quorum broke while the answer was arriving.", new Dictionary<string, string[]>());
+            finished = true;
+        }
         finally
         {
             _streaming = false;
@@ -386,6 +396,9 @@
                 await _attachments.ReloadAsync();
             }
         }
+
+        // Also reached from the Enter key handler: unlike a button's handler it does not re-render the page when it finishes.
+        StateHasChanged();
 
         if (Navigation.ToBaseRelativePath(Navigation.Uri) != $"c/{id}")
         {

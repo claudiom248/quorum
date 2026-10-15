@@ -28,15 +28,15 @@ public sealed record ContextMeter(double Percent, MeterLevel Level, string Label
             : percent >= CriticalFrom ? MeterLevel.Critical : percent >= WarningFrom ? MeterLevel.Warning : MeterLevel.Normal;
 
         var margin = context.RemainingTokens < 0
-            ? $"over by {Tokens(-context.RemainingTokens)}"
-            : $"{Tokens(context.RemainingTokens)} left";
+            ? $"over by {FormatTokens(-context.RemainingTokens)}"
+            : $"{FormatTokens(context.RemainingTokens)} left";
         var details =
-            $"System prompt {Tokens(context.SystemPromptTokens)} · attachments {Tokens(context.AttachmentsTokens)} · " +
-            $"messages {Tokens(context.MessagesTokens)} · {margin}";
+            $"System prompt {FormatTokens(context.SystemPromptTokens)} · attachments {FormatTokens(context.AttachmentsTokens)} · " +
+            $"messages {FormatTokens(context.MessagesTokens)} · {margin}";
 
-        return new ContextMeter(percent, level, $"{Tokens(Math.Max(0, used))} of {Tokens(context.UsableTokens)} tokens used", details);
+        return new ContextMeter(percent, level, $"{FormatTokens(Math.Max(0, used))} of {FormatTokens(context.UsableTokens)} tokens used", details);
     }
 
-    private static string Tokens(int value) =>
+    public static string FormatTokens(int value) =>
         value < 1000 ? value.ToString(CultureInfo.InvariantCulture) : $"{(value / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)}k";
 }

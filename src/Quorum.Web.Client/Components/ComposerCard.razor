@@ -1,0 +1,343 @@
+@inject QuorumApi Api
+
+<div class="composer-card @(Disabled ? "busy" : null)">
+    @if (_attachments.Count > 0)
+    {
+        <div class="file-row">
+            @foreach (var attachment in _attachments)
+            {
+                var kind = AttachmentRules.Kind(attachment.FileName);
+                <div class="file-card @(attachment.Id == _previewId ? "open" : null)">
+                    <button type="button" class="file-main" title="Show the text the model receives"
+                            @onclick="() => TogglePreviewAsync(attachment)">
+                        <span class="file-kind kind-@kind.ToLowerInvariant()">@kind</span>
+                        <span class="file-text">
+                            <span class="file-name">@attachment.FileName</span>
+                            <span class="file-meta">
+                                @AttachmentRules.FormatSize(attachment.SizeBytes) · @attachment.CharacterCount.ToString("N0") characters
+                            </span>
+                        </span>
+                    </button>
+                    <button type="button" class="file-remove" title="Remove from this conversation" aria-label="Remove @attachment.FileName"
+                            disabled="@(Disabled || _busy)" @onclick="() => RemoveAsync(attachment)">
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_previewId is not null)
+    {
+        <div class="file-preview">
+            <div class="file-preview-head">
+                <span>Text the model receives from <strong>@PreviewName</strong></span>
+                <button type="button" class="file-remove" title="Close preview" aria-label="Close preview" @onclick="ClosePreview">
+                    <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                </button>
+            </div>
+            @if (_previewText is null)
+            {
+                <MudProgressLinear Indeterminate="true" Size="Size.Small" />
+            }
+            else
+            {
+                <pre>@_previewText</pre>
+            }
+        </div>
+    }
+
+    <div class="composer-input">
+        @Input
+    </div>
+
+    <div class="composer-toolbar">
+        <div class="toolbar-left">
+            <label for="attach-input" class="tool-button @(Disabled || _busy ? "disabled" : null)"
+                   title="Attach PDF, DOCX, TXT, Markdown or CSV files (up to 5 MB each)">
+                <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                <span>Attach</span>
+            </label>
+            <InputFile id="attach-input" OnChange="OnFilesSelectedAsync" accept="@AttachmentRules.Accept" multiple
+                       disabled="@(Disabled || _busy)" style="display:none" />
+
+            @if (_busy)
+            {
+                <span class="busy-note"><MudProgressCircular Indeterminate="true" Size="Size.Small" /> Reading…</span>
+            }
+        </div>
+
+        <div class="toolbar-right">
+            @if (_breakdown is not null)
+            {
+                <div class="context-wrap">
+                    <button type="button" class="context-pill level-@_meter!.Level.ToString().ToLowerInvariant()"
+                            aria-expanded="@_showBreakdown" title="How much of the model's context this conversation uses"
+                            @onclick="() => _showBreakdown = !_showBreakdown">
+                        <span class="context-ring" style="--used:@_meter.Percent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                        <span>@_breakdown.Summary</span>
+                    </button>
+
+                    @if (_showBreakdown)
+                    {
+                        <div class="popover-backdrop" @onclick="() => _showBreakdown = false"></div>
+                        <div class="context-popover" role="dialog" aria-label="Context window">
+                            <div class="popover-title">Context window</div>
+                            <div class="popover-sub">
+                                @_breakdown.Summary · <span class="@(_breakdown.IsOver ? "over" : null)">@_breakdown.Margin</span>
+                            </div>
+
+                            <div class="context-bar">
+                                @foreach (var segment in _breakdown.Segments.Where(s => s.Percent > 0))
+                                {
+                                    <span class="seg seg-@segment.Kind.ToString().ToLowerInvariant()"
+                                          style="width:@segment.Percent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                }
+                            </div>
+
+                            <ul class="context-legend">
+                                @foreach (var segment in _breakdown.Segments)
+                                {
+                                    <li>
+                                        <span class="dot seg-@segment.Kind.ToString().ToLowerInvariant()"></span>
+                                        <span class="legend-label">@segment.Label</span>
+                                        <span class="legend-value">@ContextMeter.FormatTokens(segment.Tokens)</span>
+                                    </li>
+                                    @if (segment.Kind == SegmentKind.Attachments)
+                                    {
+                                        @foreach (var file in _breakdown.Files)
+                                        {
+                                            <li class="legend-file">
+                                                <span class="file-kind small kind-@file.Kind.ToLowerInvariant()">@file.Kind</span>
+                                                <span class="legend-label">@file.FileName</span>
+                                                <span class="legend-value">≈ @ContextMeter.FormatTokens(file.Tokens)</span>
+                                            </li>
+                                        }
+                                    }
+                                }
+                            </ul>
+
+                            <div class="popover-note">
+                                Token counts are estimates (about 4 characters each). The model's budget is
+                                @ContextMeter.FormatTokens(_breakdown.BudgetTokens) tokens; 20% is kept as a safety margin, so
+                                @ContextMeter.FormatTokens(_breakdown.UsableTokens) are usable.
+                                @if (_breakdown.IsOver)
+                                {
+                                    <span class="over"> Remove an attachment or raise the budget in Settings.</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @Actions
+        </div>
+    </div>
+
+    <ProblemMessage Problem="_problem" />
+</div>
+
+@code {
+    private List<AttachmentInfo> _attachments = [];
+    private ContextMeter? _meter;
+    private ContextBreakdown? _breakdown;
+    private ApiProblem? _problem;
+    private Guid? _loadedFor;
+    private Guid? _previewId;
+    private string? _previewText;
+    private bool _busy;
+    private bool _showBreakdown;
+
+    /// <summary>The conversation the attachments belong to; <see langword="null"/> until the first message or attachment.</summary>
+    [Parameter]
+    public Guid? ConversationId { get; set; }
+
+    /// <summary>Creates the conversation when the user attaches a file before writing anything.</summary>
+    [Parameter]
+    public Func<Task<Guid?>>? EnsureConversation { get; set; }
+
+    /// <summary>True while an answer is being generated: the server refuses changes to the context then.</summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public EventCallback OnSessionExpired { get; set; }
+
+    /// <summary>The message box.</summary>
+    [Parameter]
+    public RenderFragment? Input { get; set; }
+
+    /// <summary>The send / stop / regenerate buttons.</summary>
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+
+    private string? PreviewName => _attachments.FirstOrDefault(a => a.Id == _previewId)?.FileName;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ConversationId == _loadedFor)
+        {
+            return;
+        }
+
+        _loadedFor = ConversationId;
+        ClosePreview();
+        _showBreakdown = false;
+        _problem = null;
+        await ReloadAsync();
+    }
+
+    /// <summary>Reads the attachments and the budget again (after an answer, the messages take a share of it).</summary>
+    public async Task ReloadAsync()
+    {
+        if (ConversationId is not { } id)
+        {
+            _attachments = [];
+            _meter = null;
+            _breakdown = null;
+            StateHasChanged();
+            return;
+        }
+
+        var list = await Api.ListAttachmentsAsync(id);
+        if (list.IsSuccess)
+        {
+            _attachments = list.Value;
+        }
+        else if (await HandleAsync(list.Problem!))
+        {
+            return;
+        }
+
+        var context = await Api.GetContextAsync(id);
+        _meter = context.IsSuccess ? ContextMeter.From(context.Value) : null;
+        _breakdown = context.IsSuccess ? ContextBreakdown.From(context.Value, _attachments) : null;
+        StateHasChanged();
+    }
+
+    private async Task OnFilesSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _problem = null;
+        _busy = true;
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(maximumFileCount: 10))
+            {
+                if (AttachmentRules.Check(file.Name, file.Size) is { } refusal)
+                {
+                    _problem = Local(refusal);
+                    break;
+                }
+
+                var id = ConversationId ?? await (EnsureConversation?.Invoke() ?? Task.FromResult<Guid?>(null));
+                if (id is null)
+                {
+                    _problem = Local("The conversation could not be started.");
+                    break;
+                }
+
+                // The conversation is known now: the parameter reaches us after the parent renders.
+                ConversationId = id;
+                _loadedFor = id;
+
+                await using var stream = file.OpenReadStream(AttachmentRules.MaxFileBytes);
+                var result = await Api.UploadAttachmentAsync(id.Value, stream, file.Name);
+                if (!result.IsSuccess)
+                {
+                    if (await HandleAsync(result.Problem!))
+                    {
+                        return;
+                    }
+
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task RemoveAsync(AttachmentInfo attachment)
+    {
+        if (ConversationId is not { } id)
+        {
+            return;
+        }
+
+        _problem = null;
+        _busy = true;
+        var result = await Api.RemoveAttachmentAsync(id, attachment.Id);
+        _busy = false;
+
+        if (!result.IsSuccess && await HandleAsync(result.Problem!))
+        {
+            return;
+        }
+
+        if (_previewId == attachment.Id)
+        {
+            ClosePreview();
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task TogglePreviewAsync(AttachmentInfo attachment)
+    {
+        if (_previewId == attachment.Id)
+        {
+            ClosePreview();
+            return;
+        }
+
+        _previewId = attachment.Id;
+        _previewText = null;
+        if (ConversationId is not { } id)
+        {
+            return;
+        }
+
+        var text = await Api.GetAttachmentTextAsync(id, attachment.Id);
+        if (_previewId != attachment.Id)
+        {
+            return;
+        }
+
+        if (text.IsSuccess)
+        {
+            _previewText = text.Value;
+        }
+        else
+        {
+            ClosePreview();
+            _problem = text.Problem;
+        }
+    }
+
+    private void ClosePreview()
+    {
+        _previewId = null;
+        _previewText = null;
+    }
+
+    /// <summary>Shows the problem; returns true when the session expired and the page is going away.</summary>
+    private async Task<bool> HandleAsync(ApiProblem problem)
+    {
+        if (problem.IsUnauthorized)
+        {
+            await OnSessionExpired.InvokeAsync();
+            return true;
+        }
+
+        _problem = problem;
+        return false;
+    }
+
+    private static ApiProblem Local(string message) =>
+        new(0, "client.attachment", message, new Dictionary<string, string[]>());
+}
