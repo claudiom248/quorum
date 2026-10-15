@@ -64,11 +64,21 @@ Chat with presets on top of a backend/API: 1 LLM provider, a few basic tools, to
 ## Commands
 
 ```bash
+dotnet tool restore                 # dotnet-ef (local tool)
+docker compose -f deploy/docker-compose.dev.yml up -d postgres
 dotnet build
-dotnet run --project src/Quorum.Host
-dotnet test
+dotnet run --project src/Quorum.Host --launch-profile http   # http://localhost:5250, Scalar at /scalar
+dotnet test                         # needs Docker (Testcontainers)
 dotnet format --verify-no-changes
+
+# Add a migration to a module (each module has its own DbContext, schema and design-time factory)
+dotnet ef migrations add <Name> \
+  --project src/Modules/<Module>/Quorum.Modules.<Module> \
+  --startup-project src/Modules/<Module>/Quorum.Modules.<Module> \
+  --output-dir Persistence/Migrations
 ```
+
+Platform transactions spanning modules go through `IPlatformUnitOfWork` (shared kernel): every module DbContext in the request scope uses the same connection and joins the open transaction when it saves.
 
 ## Git and versioning
 Details in `docs/release-process.md`.

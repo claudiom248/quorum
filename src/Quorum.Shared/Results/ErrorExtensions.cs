@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Quorum.Shared.Results;
 
@@ -7,7 +8,7 @@ public static class ErrorExtensions
     /// <summary>
     /// Maps an expected failure to a ProblemDetails response; the error code travels in the <c>code</c> extension.
     /// </summary>
-    public static IResult ToProblem(this Error error)
+    public static ProblemHttpResult ToProblem(this Error error)
     {
         ArgumentNullException.ThrowIfNull(error);
 
