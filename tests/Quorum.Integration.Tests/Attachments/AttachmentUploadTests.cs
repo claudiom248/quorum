@@ -396,7 +396,10 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
 
         Assert.Contains(uploaded.StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.NotFound, HttpStatusCode.Conflict });
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
-        Assert.Empty(app.Logs.ErrorsAndAbove);
+
+        // When the delete wins at the last moment the database refuses the insert (foreign key) and EF logs that command
+        // failure, which is expected and handled as a 404. What must never appear is an exception that escaped the endpoint.
+        Assert.DoesNotContain(app.Logs.ErrorsAndAbove, message => message.Contains("unhandled exception", StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed record DetailBody(Guid Id, IReadOnlyList<AttachmentApi.AttachmentBody> Attachments);
