@@ -1,11 +1,9 @@
 # Quorum: the app and (optionally) a bundled PostgreSQL.
 #
 #   cp .env.example .env        # then set POSTGRES_PASSWORD
-#   dotnet publish src/Quorum.Host -c Release -o artifacts/publish
 #   docker compose --profile bundled-db up --build
 #
-# To build from the sources inside Docker instead (slow on the first run, used by releases),
-# add `dockerfile: Dockerfile.ci` under `build:` below and skip the dotnet publish step.
+# The image is built from the sources inside Docker (no step to run beforehand).
 #
 # Open http://localhost:8080 and paste the setup token printed in the logs
 # (docker compose logs quorum). To use your own PostgreSQL, set QUORUM_DATABASE in .env

@@ -1,17 +1,25 @@
-# Quorum image from an already published Host (fast, no downloads inside the build):
+# Quorum Host image: builds the web UI and the API from the sources into one self-contained, non-root container.
 #
-#   dotnet publish src/Quorum.Host -c Release -o artifacts/publish
+#   cp .env.example .env        # then set POSTGRES_PASSWORD
 #   docker compose --profile bundled-db up --build
-#
-# Dockerfile.ci builds everything from the sources instead (used for releases).
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# The version normally comes from git tags (MinVer); the build context has no git history.
+ARG VERSION=0.0.0-local
+
+COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
+COPY src ./src
+RUN dotnet publish src/Quorum.Host/Quorum.Host.csproj -c Release -o /app -p:MinVerVersionOverride=${VERSION}
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Data Protection key ring: the master key of stored secrets, kept on a volume (never in the image or database).
 RUN mkdir -p /var/lib/quorum/keys && chown -R app:app /var/lib/quorum
 VOLUME /var/lib/quorum/keys
 
-COPY artifacts/publish/ .
+COPY --from=build /app .
 
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
