@@ -162,7 +162,7 @@ public sealed class AttachmentContextWindowTests
         var rendered = AttachmentBlock.Render(attachments, AttachmentBlock.NewDelimiter());
 
         Assert.Equal(rendered.Length, AttachmentBlock.Length(attachments));
-        Assert.Equal(0, AttachmentBlock.Length([]));
+        Assert.Equal(0, AttachmentBlock.Length(Array.Empty<ChatAttachment>()));
     }
 
     [Fact]

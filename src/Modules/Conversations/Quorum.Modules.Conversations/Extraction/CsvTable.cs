@@ -76,19 +76,21 @@ internal static class CsvTable
         var row = new List<string>();
         var cell = new StringBuilder();
         var inQuotes = false;
+        var rowHadQuotes = false;
 
         void EndRow()
         {
             row.Add(cell.ToString());
             cell.Clear();
 
-            // Blank lines are not rows.
-            if (row.Count > 1 || row[0].Length > 0)
+            // Blank lines are not rows; a row holding only an empty quoted cell ("") is data.
+            if (row.Count > 1 || row[0].Length > 0 || rowHadQuotes)
             {
                 rows.Add(row);
             }
 
             row = [];
+            rowHadQuotes = false;
             cancellationToken.ThrowIfCancellationRequested();
         }
 
@@ -115,6 +117,7 @@ internal static class CsvTable
             else if (character == '"' && cell.Length == 0)
             {
                 inQuotes = true;
+                rowHadQuotes = true;
             }
             else if (character == delimiter)
             {
@@ -131,7 +134,7 @@ internal static class CsvTable
             }
         }
 
-        if (cell.Length > 0 || row.Count > 0)
+        if (cell.Length > 0 || row.Count > 0 || rowHadQuotes)
         {
             EndRow();
         }
@@ -141,5 +144,5 @@ internal static class CsvTable
 
     /// <summary>One line of plain text that cannot break the table.</summary>
     private static string Cell(string value) =>
-        value.Trim().Replace("\n", " ", StringComparison.Ordinal).Replace("|", "\\|", StringComparison.Ordinal);
+        value.Replace("\n", " ", StringComparison.Ordinal).Replace("|", "\\|", StringComparison.Ordinal);
 }

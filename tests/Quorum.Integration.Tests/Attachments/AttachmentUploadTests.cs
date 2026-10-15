@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
@@ -341,6 +344,57 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
 
         Assert.DoesNotContain(app.Logs.Messages, message => message.Contains("confidential-salaries", StringComparison.Ordinal));
         Assert.DoesNotContain(app.Logs.Messages, message => message.Contains("12345", StringComparison.Ordinal));
+    }
+
+    [Fact] // AC-3
+    public async Task AFarTooLargeBodyIsRejectedAndTheEndpointCarriesTheRequestLimit()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync(contextTokenBudget: 1_000_000);
+        var conversation = await ChatApi.CreateConversationAsync(client);
+
+        using var response = await AttachmentApi.UploadAsync(client, conversation, "huge.txt", Enumerable.Repeat((byte)'a', 7 * 1024 * 1024).ToArray());
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Empty(await AttachmentApi.ListAsync(client, conversation));
+
+        // Kestrel enforces this metadata; asserting it is attached proves a body is cut at the limit before it is buffered.
+        var upload = app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .Single(endpoint => endpoint.Metadata.GetMetadata<EndpointNameMetadata>()?.EndpointName == "UploadAttachment");
+        var limit = upload.Metadata.GetMetadata<IRequestSizeLimitMetadata>();
+        Assert.NotNull(limit);
+        Assert.Equal(6L * 1024 * 1024, limit.MaxRequestBodySize);
+    }
+
+    [Fact]
+    public async Task ThePreviewIsNeverSniffedAsAnotherType()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        var conversation = await ChatApi.CreateConversationAsync(client);
+        var id = await AttachmentApi.AttachAsync(client, conversation, "page.md", "<script>alert(1)</script>");
+
+        using var response = await client.GetAsync(AttachmentApi.Text(conversation, id), Ct);
+
+        Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
+    }
+
+    [Fact] // AC-22
+    public async Task DeletingTheConversationWhileAFileIsBeingUploadedNeverFailsWithAServerError()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync(contextTokenBudget: 1_000_000);
+        var conversation = await ChatApi.CreateConversationAsync(client);
+        var rows = string.Join('\n', Enumerable.Range(0, 120_000).Select(i => $"{i},name {i},city {i}"));
+
+        var upload = AttachmentApi.UploadAsync(client, conversation, "big.csv", rows);
+        var delete = client.DeleteAsync(ChatApi.Conversation(conversation), Ct);
+        using var uploaded = await upload;
+        using var deleted = await delete;
+
+        Assert.Contains(uploaded.StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.NotFound, HttpStatusCode.Conflict });
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Empty(app.Logs.ErrorsAndAbove);
     }
 
     private sealed record DetailBody(Guid Id, IReadOnlyList<AttachmentApi.AttachmentBody> Attachments);

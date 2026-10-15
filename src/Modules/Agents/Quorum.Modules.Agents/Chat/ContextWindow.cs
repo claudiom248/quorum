@@ -78,9 +78,19 @@ internal static class ContextWindow
         string systemPrompt,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        int contextTokenBudget)
+        int contextTokenBudget) =>
+        Measure(systemPrompt, history, AttachmentBlock.Length(attachments), contextTokenBudget);
+
+    /// <summary>Same as <see cref="Measure(string, IReadOnlyList{ChatTurn}, IReadOnlyList{ChatAttachment}, int)"/>, from the attachments' sizes.</summary>
+    public static ContextUsage Measure(
+        string systemPrompt,
+        IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachmentSize> attachments,
+        int contextTokenBudget) =>
+        Measure(systemPrompt, history, AttachmentBlock.Length(attachments), contextTokenBudget);
+
+    private static ContextUsage Measure(string systemPrompt, IReadOnlyList<ChatTurn> history, int attachmentCharacters, int contextTokenBudget)
     {
-        var attachmentCharacters = AttachmentBlock.Length(attachments);
         var available = CharacterBudget(contextTokenBudget) - systemPrompt.Length - attachmentCharacters;
 
         var messageCharacters = 0;

@@ -61,6 +61,15 @@ internal static class AttachmentBlock
         return attachments.Count == 0 ? 0 : Preamble.Length + attachments.Sum(Length);
     }
 
+    /// <summary>The length of the block for attachments known only by size.</summary>
+    public static int Length(IReadOnlyList<ChatAttachmentSize> attachments)
+    {
+        ArgumentNullException.ThrowIfNull(attachments);
+        return attachments.Count == 0
+            ? 0
+            : Preamble.Length + attachments.Sum(a => FixedCostPerAttachment + a.FileNameLength + a.TextLength);
+    }
+
     /// <summary>What one attachment adds to the block, apart from the preamble that is shared.</summary>
     public static int Length(ChatAttachment attachment)
     {

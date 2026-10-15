@@ -28,19 +28,29 @@ internal static class DocumentTextExtractor
     /// <summary>
     /// Extracts the text, giving up with <c>attachment.extraction_timeout</c> when it takes longer than <paramref name="timeout"/>.
     /// </summary>
-    public static async Task<Result<ExtractedDocument>> ExtractAsync(
+    public static Task<Result<ExtractedDocument>> ExtractAsync(
         string fileName,
-        ReadOnlyMemory<byte> content,
+        byte[] content,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        RunWithLimitAsync(token => Extract(fileName, content, token), timeout, cancellationToken);
+
+    /// <summary>
+    /// Runs the work off the request thread and stops waiting for it at the limit. The wait is cut with
+    /// <c>WaitAsync</c>: passing the token to <c>Task.Run</c> alone would not stop work that never checks it, and the
+    /// request (and the conversation lock it holds) would hang with it. An abandoned run finishes on its own.
+    /// </summary>
+    internal static async Task<Result<ExtractedDocument>> RunWithLimitAsync(
+        Func<CancellationToken, Result<ExtractedDocument>> work,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         limit.CancelAfter(timeout);
-        var bytes = content.ToArray();
 
         try
         {
-            return await Task.Run(() => Extract(fileName, bytes, limit.Token), limit.Token);
+            return await Task.Run(() => work(limit.Token), CancellationToken.None).WaitAsync(limit.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

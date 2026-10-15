@@ -66,6 +66,24 @@ internal sealed class AssistantChat(AgentsDbContext db, ApiKeyProtector apiKeyPr
         return ContextWindow.Measure(configuration.SystemPrompt, history, attachments, configuration.ContextTokenBudget);
     }
 
+    public async Task<Result<ContextUsage>> MeasureContextBySizesAsync(
+        Guid assistantId,
+        IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<ChatAttachmentSize> attachments,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(attachments);
+
+        var configuration = await LoadConfigurationAsync(assistantId, cancellationToken);
+        if (configuration is null)
+        {
+            return AssistantNotFound;
+        }
+
+        return ContextWindow.Measure(configuration.SystemPrompt, history, attachments, configuration.ContextTokenBudget);
+    }
+
     private Task<AssistantConfiguration?> LoadConfigurationAsync(Guid assistantId, CancellationToken cancellationToken) =>
         (from assistant in db.Assistants
          join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id

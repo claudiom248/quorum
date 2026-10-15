@@ -84,20 +84,44 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
             return ConversationErrors.AnswerInProgress.ToProblem();
         }
 
+        try
+        {
+            return await StoreAsync(conversation, file, db, chat, clock, lease.Token);
+        }
+        catch (OperationCanceledException) when (!httpContext.RequestAborted.IsCancellationRequested)
+        {
+            // Not the client leaving: the conversation was deleted meanwhile, which cancels the lease of whoever holds it.
+            return ConversationErrors.NotFound.ToProblem();
+        }
+    }
+
+    private static async Task<Results<Created<AttachmentResponse>, ProblemHttpResult>> StoreAsync(
+        Conversation conversation,
+        IFormFile file,
+        ConversationsDbContext db,
+        IAssistantChat chat,
+        TimeProvider clock,
+        CancellationToken token)
+    {
+        var id = conversation.Id;
+
         byte[] content;
         await using (var stream = file.OpenReadStream())
         {
             using var buffer = new MemoryStream((int)file.Length);
-            await stream.CopyToAsync(buffer, lease.Token);
-            content = buffer.ToArray();
+            await stream.CopyToAsync(buffer, token);
+
+            // The buffer was sized to the file: reuse its array instead of copying it.
+            content = buffer.Length == buffer.GetBuffer().Length ? buffer.GetBuffer() : buffer.ToArray();
         }
 
+        // Only what the budget check needs: the content hash and the lengths, not every document's text.
         var existing = await db.Attachments
             .AsNoTracking()
             .Where(a => a.ConversationId == id)
             .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
-            .Select(a => new { a.FileName, a.Text, a.ContentHash })
-            .ToListAsync(lease.Token);
+            .Select(a => new { a.ContentHash, FileNameLength = a.FileName.Length, TextLength = a.Text.Length })
+            .ToListAsync(token);
 
         if (existing.Count >= MaxAttachments)
         {
@@ -111,16 +135,16 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
         }
 
         var fileName = DisplayName(file.FileName);
-        var extracted = await DocumentTextExtractor.ExtractAsync(file.FileName, content, ExtractionTimeout, lease.Token);
+        var extracted = await DocumentTextExtractor.ExtractAsync(file.FileName, content, ExtractionTimeout, token);
         if (!extracted.IsSuccess)
         {
             return extracted.Error.ToProblem();
         }
 
-        var all = existing.Select(a => new ChatAttachment(a.FileName, a.Text))
-            .Append(new ChatAttachment(fileName, extracted.Value.Text))
+        var sizes = existing.Select(a => new ChatAttachmentSize(a.FileNameLength, a.TextLength))
+            .Append(new ChatAttachmentSize(fileName.Length, extracted.Value.Text.Length))
             .ToList();
-        var usage = await chat.MeasureContextAsync(conversation.AssistantId, [], all, lease.Token);
+        var usage = await chat.MeasureContextBySizesAsync(conversation.AssistantId, [], sizes, token);
         if (!usage.IsSuccess)
         {
             return usage.Error.ToProblem();
@@ -135,11 +159,22 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
         db.Attachments.Add(attachment);
         try
         {
-            await db.SaveChangesAsync(lease.Token);
+            await db.SaveChangesAsync(token);
         }
-        catch (DbUpdateException exception) when (exception.IsUniqueViolation())
+        catch (DbUpdateException exception)
         {
-            return AttachmentErrors.Duplicate.ToProblem();
+            if (exception.IsUniqueViolation())
+            {
+                return AttachmentErrors.Duplicate.ToProblem();
+            }
+
+            // The conversation was deleted between the checks and the insert: the foreign key refused the attachment.
+            if (!await db.Conversations.AnyAsync(c => c.Id == id, CancellationToken.None))
+            {
+                return ConversationErrors.NotFound.ToProblem();
+            }
+
+            throw;
         }
 
         return TypedResults.Created(
@@ -168,6 +203,7 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
     private static async Task<Results<ContentHttpResult, ProblemHttpResult>> TextAsync(
         Guid id,
         Guid attachmentId,
+        HttpContext httpContext,
         ConversationsDbContext db,
         CancellationToken cancellationToken)
     {
@@ -182,9 +218,14 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
             .Select(a => a.Text)
             .SingleOrDefaultAsync(cancellationToken);
 
-        return text is null
-            ? AttachmentErrors.NotFound.ToProblem()
-            : TypedResults.Text(text, "text/markdown; charset=utf-8");
+        if (text is null)
+        {
+            return AttachmentErrors.NotFound.ToProblem();
+        }
+
+        // The text is a user's document: it must never be taken for anything but text.
+        httpContext.Response.Headers.XContentTypeOptions = "nosniff";
+        return TypedResults.Text(text, "text/markdown; charset=utf-8");
     }
 
     private static async Task<Results<NoContent, ProblemHttpResult>> RemoveAsync(
@@ -224,11 +265,16 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
             return ConversationErrors.NotFound.ToProblem();
         }
 
-        var attachments = await LoadForChatAsync(db, id, cancellationToken);
-        var usage = await chat.MeasureContextAsync(
+        var sizes = await db.Attachments
+            .AsNoTracking()
+            .Where(a => a.ConversationId == id)
+            .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+            .Select(a => new ChatAttachmentSize(a.FileName.Length, a.Text.Length))
+            .ToListAsync(cancellationToken);
+        var usage = await chat.MeasureContextBySizesAsync(
             conversation.AssistantId,
             ConversationEndpoints.Turns(conversation).ToList(),
-            attachments,
+            sizes,
             cancellationToken);
 
         return usage.IsSuccess
