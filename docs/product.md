@@ -10,6 +10,18 @@ Status: evolving draft. Last updated: 2026-10-15.
 ## Promise (draft)
 > Quorum is the AI assistant a small company installs on its own server in an hour, uses with its own local model and adapts to its own processes, without its data ever leaving.
 
+## Glossary
+Names that reach the public API are hard to change later, so these terms are fixed now and used consistently in docs, code and API.
+
+- **Assistant**: what a user or an integration talks to; the published entry point. It has a name, a description, who may use it, and a topology behind it. Integrations (chat UI, customer-support tools, the future OpenAI-compatible API) always address an assistant, so its topology can change without affecting callers.
+- **Agent**: a building block inside a topology, with its own system prompt, model, tools, skills and permissions (e.g. "Contracts expert", "Web researcher", "Synthesis node"). The same agent can be reused by several assistants.
+- **Topology**: the graph of agents behind an assistant (fan-out to the relevant agents, a synthesis node producing the single answer). Defined in declarative config and editable in the visual graph editor, which uses the same schema.
+- **Tenant**: an isolated organization within one installation; every application entity carries its `TenantId`.
+- **Model endpoint**: an OpenAI-compatible endpoint: base URL including the version segment (e.g. `http://ollama:11434/v1`), model name, optional API key (encrypted at rest) and context token budget.
+- **Setup mode / setup token**: the state the app stays in until the first-run wizard completes; the wizard is protected by a setup token printed to the logs and kept in memory only.
+
+**MVP note**: in spec 001 an assistant has a trivial topology with one implicit agent, so the system prompt and model endpoint live on the `Assistant` entity. When topologies arrive they move to agents, and the assistant references a topology.
+
 ## MVP use cases
 - Answer questions on documents uploaded by the company (RAG). Formats supported in the MVP: **PDF, DOCX, TXT, Markdown**.
 - Summarize documents.
@@ -22,7 +34,7 @@ Status: evolving draft. Last updated: 2026-10-15.
 - No outbound telemetry; web search is the only outbound traffic and it is explicit.
 
 ## Clients and API
-- The web UI is only one of the clients: customers must be able to use Quorum "behind the scenes" from their own chats, customer-support tools and integrations.
+- The web UI is only one of the clients: customers must be able to use Quorum "behind the scenes" from their own chats, customer-support tools and integrations, always by addressing an assistant.
 - **Future spec**: OpenAI-compatible endpoint (`/v1/chat/completions`) and per-application API keys.
 - Web UI in **Blazor WebAssembly**, served by the Host, using only the public API. Graph editor (after the MVP) as an isolated component: evaluate Z.Blazor.Diagrams first, then possibly React Flow / Rete.js via JS interop.
 
@@ -44,7 +56,7 @@ Status: evolving draft. Last updated: 2026-10-15.
 - **Embedding model**: configurable (local by default, e.g. via Ollama). The vector dimension depends on the model: changing it requires reindexing the documents, so the model used is stored with each collection.
 - **Tenant isolation in the vector store**: one collection per tenant, or a mandatory filter on `tenant_id` in the payload (to be decided).
 - **External Postgres**: in `.env`, empty `COMPOSE_PROFILES` (no `bundled-db` service) and set `QUORUM_DB_CONNECTION`. The compose file passes it to the app as `ConnectionStrings__Platform`, falling back to the bundled Postgres (`${QUORUM_DB_CONNECTION:-...}`) with `depends_on` using `required: false`. `.env` is never committed; Docker secrets later.
-- **Bootstrap config** (connection string, master key, `QUORUM_BASE_URL`): from env/compose. **Application config** (model, search, users, agents): in the database, set by the wizard.
+- **Bootstrap config** (connection string, master key, `QUORUM_BASE_URL`): from env/compose. **Application config** (model endpoints, search, users, assistants, agents): in the database, set by the wizard.
 
 ## Authentication
 - Local accounts (ASP.NET Core Identity): default and the administrator's emergency (break-glass) access.
@@ -81,6 +93,6 @@ Status: evolving draft. Last updated: 2026-10-15.
 - MVP success metric and indicative per-user price.
 - Tenant isolation in the vector store (collection per tenant or filter on `tenant_id`).
 - Document chunking strategy.
-- Declarative format for agents and topologies.
+- Declarative format for assistants, agents and topologies.
 
 Decided: tenant isolation in the platform database uses a `TenantId` column with an EF Core global filter (plan 001).

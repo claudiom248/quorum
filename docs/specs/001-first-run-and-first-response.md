@@ -51,7 +51,7 @@ Errors use ProblemDetails. All routes are under `/api`.
 
 | Verb | Route | Request | Response | Errors |
 |---|---|---|---|---|
-| GET | `/setup/status` | - | `{ isSetupMode }` | - |
+| GET | `/setup/status` | - | `{ isSetupMode, defaultSystemPrompt }` (`defaultSystemPrompt` only in setup mode, `null` afterwards) | - |
 | POST | `/setup/verify-token` | `{ token }` | 204 | 401 wrong token; 404 setup completed |
 | POST | `/setup/model/test` | token + `{ baseUrl, apiKey? }` | `{ reachable, models[] }` | 401; 404 setup completed; 422 endpoint unreachable |
 | POST | `/setup/complete` | token + `{ admin: { email, displayName, password }, model: { baseUrl, modelName, apiKey?, contextTokenBudget }, systemPrompt }` | 204 + session cookie | 400 validation; 401; 409 setup already completed |
@@ -106,6 +106,7 @@ Errors use ProblemDetails. All routes are under `/api`.
 ## Acceptance Criteria
 **Setup**
 - **AC-1** Given a new installation, When the app starts, Then it applies the migrations, enters setup mode and prints a setup token to the logs.
+- **AC-1b** Given setup mode, When the status is requested, Then it includes the default system prompt; after setup it is null.
 - **AC-2** Given setup mode, When a setup API is called without a token or with a wrong token, Then it returns 401.
 - **AC-3** Given a valid token and a reachable Ollama endpoint, When the connection is tested, Then it returns `reachable: true` with the list of models.
 - **AC-4** Given an unreachable endpoint, When the connection is tested, Then it returns 422 with an understandable message.
@@ -150,3 +151,8 @@ Errors use ProblemDetails. All routes are under `/api`.
 
 ## Open Questions
 _None._
+
+## Amendments
+| Date | Change |
+|---|---|
+| 2026-10-15 | `GET /setup/status` also returns `defaultSystemPrompt` (only in setup mode, `null` afterwards) so the wizard can show the default system prompt; added AC-1b. |
