@@ -1,7 +1,7 @@
 name: pr-title
 
-# Con lo squash merge il titolo della PR diventa il commit su main:
-# deve rispettare Conventional Commits perche release-please lo legge.
+# With squash merge the PR title becomes the commit on main:
+# it must follow Conventional Commits because release-please reads it.
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]

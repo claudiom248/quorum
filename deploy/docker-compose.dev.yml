@@ -1,5 +1,5 @@
-# Ambiente di sviluppo locale. Credenziali SOLO per sviluppo, mai in produzione.
-# Avvio: docker compose -f deploy/docker-compose.dev.yml up -d
+# Local development environment. Credentials are for development ONLY, never production.
+# Start: docker compose -f deploy/docker-compose.dev.yml up -d
 name: quorum-dev
 
 services:
@@ -19,8 +19,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # Vector store di default per il RAG. Dashboard: http://localhost:6333/dashboard
-  # (l'immagine pgvector sopra permette di provare anche l'opzione pgvector su un database separato)
+  # Default RAG vector store. Dashboard: http://localhost:6333/dashboard
+  # (the pgvector image above also lets you try the pgvector option on a separate database)
   qdrant:
     image: qdrant/qdrant:v1.12.0
     ports:
@@ -29,9 +29,9 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
-  # Identity provider OIDC locale per provare il login aziendale.
-  # Console admin: http://localhost:8081  (admin / admin-dev)
-  # Issuer realm di esempio: http://localhost:8081/realms/<realm>
+  # Local OIDC identity provider to try company sign-in.
+  # Admin console: http://localhost:8081  (admin / admin-dev)
+  # Example realm issuer: http://localhost:8081/realms/<realm>
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev
