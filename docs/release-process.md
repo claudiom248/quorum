@@ -26,6 +26,7 @@
 ## Version: SemVer computed from git
 - **MinVer** reads the latest `vX.Y.Z` tag: the version ends up in the assemblies, the Docker image and `/api/version`.
 - Between tags the version is a pre-release (e.g. `0.2.0-alpha.0.5`).
+- The first release is `0.1.0` (`initial-version` in `release-please-config.json`); 1.0.0 is cut deliberately with a `Release-As: 1.0.0` commit footer.
 - Before 1.0, breaking changes bump the minor version.
 
 ## Releasing with release-please
