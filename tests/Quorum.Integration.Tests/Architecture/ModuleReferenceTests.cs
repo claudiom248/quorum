@@ -52,6 +52,16 @@ public sealed class ModuleReferenceTests
         Assert.All(references, name => Assert.Equal("Quorum.Shared", name));
     }
 
+    [Fact]
+    public void TheWebClientReferencesNoProject()
+    {
+        // The UI is a client of the public HTTP API like any other: it shares no code with the server.
+        var references = XDocument.Load(Path.Combine(RepositoryRoot, "src", "Quorum.Web.Client", "Quorum.Web.Client.csproj"))
+            .Descendants("ProjectReference");
+
+        Assert.Empty(references);
+    }
+
     private static string FindRepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

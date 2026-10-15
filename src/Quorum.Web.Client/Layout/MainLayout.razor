@@ -1,0 +1,80 @@
+@inherits LayoutComponentBase
+@inject Session Session
+@inject QuorumApi Api
+@inject ThemeState Theme
+@inject NavigationManager Navigation
+
+@* Pages under this layout need a signed-in user: the layout sends everybody else to the setup or the login. *@
+@if (_state == SessionState.SignedIn)
+{
+    <MudLayout>
+        <MudAppBar Elevation="0" Dense="true" Class="app-bar">
+            <MudText Typo="Typo.h6" Class="brand">Quorum</MudText>
+            <MudButton Href="" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Chat" Class="ml-4">Chat</MudButton>
+            <MudButton Href="settings" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Tune">Settings</MudButton>
+            <MudButton Href="lab/editor" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Code">Editor lab</MudButton>
+            <MudSpacer />
+            <MudIconButton Icon="@(Theme.IsDark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           OnClick="ToggleTheme" title="Toggle light/dark theme" />
+            <MudText Typo="Typo.body2" Class="mx-2" title="@Session.User?.Email">@Session.User?.DisplayName</MudText>
+            <MudButton Variant="Variant.Text" OnClick="SignOutAsync">Sign out</MudButton>
+        </MudAppBar>
+        <MudMainContent Class="app-main">
+            @Body
+        </MudMainContent>
+    </MudLayout>
+}
+else if (_state == SessionState.Unavailable)
+{
+    <div class="centered-page">
+        <MudText Typo="Typo.h4" Class="brand">Quorum</MudText>
+        <MudPaper Class="card pa-6" Outlined="true">
+            <ProblemMessage Problem="Session.Problem" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync">Try again</MudButton>
+        </MudPaper>
+    </div>
+}
+else
+{
+    <p class="loading">Loading…</p>
+}
+
+@code {
+    private SessionState? _state;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _state = null;
+        var state = await Session.LoadAsync();
+
+        switch (state)
+        {
+            case SessionState.SetupRequired:
+                Navigation.NavigateTo("setup", replace: true);
+                break;
+            case SessionState.SignedOut:
+                Navigation.NavigateTo(LoginUri(), replace: true);
+                break;
+            default:
+                _state = state;
+                break;
+        }
+    }
+
+    private void ToggleTheme() => Theme.IsDark = !Theme.IsDark;
+
+    private async Task SignOutAsync()
+    {
+        await Api.LogoutAsync();
+        Session.Reset();
+        Navigation.NavigateTo("login", forceLoad: true);
+    }
+
+    private string LoginUri()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        return string.IsNullOrEmpty(relative) ? "login" : $"login?returnUrl={Uri.EscapeDataString(relative)}";
+    }
+}

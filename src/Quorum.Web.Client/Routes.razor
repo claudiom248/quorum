@@ -1,0 +1,44 @@
+@implements IDisposable
+@inject ThemeState Theme
+
+<MudThemeProvider @ref="_provider" Theme="_theme" IsDarkMode="Theme.IsDark" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(CenteredLayout)">
+            <MudText Typo="Typo.h5" Class="mb-2">Page not found</MudText>
+            <MudLink Href="">Back to Quorum</MudLink>
+        </LayoutView>
+    </NotFound>
+</Router>
+
+@code {
+    private MudThemeProvider? _provider;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight { Primary = "#3b5bdb", AppbarBackground = "#ffffff", AppbarText = "#1b1f24" },
+        PaletteDark = new PaletteDark { Primary = "#748ffc" },
+    };
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _provider is not null)
+        {
+            Theme.IsDark = await _provider.GetSystemDarkModeAsync();
+        }
+    }
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

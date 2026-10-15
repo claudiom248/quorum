@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Quorum.Host/Quorum.Host.csproj" />
     <Project Path="src/Quorum.Shared/Quorum.Shared.csproj" />
+    <Project Path="src/Quorum.Web.Client/Quorum.Web.Client.csproj" />
   </Folder>
   <Folder Name="/src/Modules/" />
   <Folder Name="/src/Modules/Agents/">

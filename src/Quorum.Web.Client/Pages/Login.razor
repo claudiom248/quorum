@@ -1,0 +1,67 @@
+@page "/login"
+@layout CenteredLayout
+@inject QuorumApi Api
+@inject Session Session
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · Quorum</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">Sign in</MudText>
+
+<form @onsubmit="SignInAsync">
+    <MudStack Spacing="3">
+        <MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined"
+                      Required="true" AutoFocus="true" autocomplete="username" />
+        <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined"
+                      Required="true" autocomplete="current-password" />
+        <ProblemMessage Problem="_problem" />
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Sign in</MudButton>
+    </MudStack>
+</form>
+
+@code {
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private ApiProblem? _problem;
+    private bool _busy;
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Session.LoadAsync();
+        if (state == SessionState.SetupRequired)
+        {
+            Navigation.NavigateTo("setup", replace: true);
+        }
+        else if (state == SessionState.SignedIn)
+        {
+            Navigation.NavigateTo(SafeReturnUrl(), replace: true);
+        }
+    }
+
+    private async Task SignInAsync()
+    {
+        _busy = true;
+        _problem = null;
+
+        var result = await Api.LoginAsync(_email, _password);
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem;
+            return;
+        }
+
+        Session.Reset();
+        Navigation.NavigateTo(SafeReturnUrl());
+    }
+
+    // Only relative paths inside the app: an absolute return URL could send the user to another site.
+    private string SafeReturnUrl() =>
+        string.IsNullOrEmpty(ReturnUrl) || ReturnUrl.Contains(':', StringComparison.Ordinal) || ReturnUrl.StartsWith('/') || ReturnUrl.StartsWith('\\')
+            ? string.Empty
+            : ReturnUrl;
+}

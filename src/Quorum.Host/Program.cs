@@ -28,6 +28,8 @@ builder.Services.AddConversationsModule();
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ClientDisconnectMiddleware>();
@@ -42,6 +44,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.Assembly, ConversationsModule.Assembly);
+
+// The web UI is a single-page app: every non-API path that is not a file falls back to its entry page.
+app.MapFallback("/api/{**path}", () => TypedResults.NotFound());
+app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
 

@@ -1,0 +1,188 @@
+@page "/settings"
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+
+<PageTitle>Settings · Quorum</PageTitle>
+
+<div class="settings">
+    <MudText Typo="Typo.h5" Class="mb-4">Assistant settings</MudText>
+
+    @if (Unverified is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
+            The model could not be reached during setup. Check the endpoint below and use "Test connection".
+        </MudAlert>
+    }
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_form is not null)
+    {
+        <form @onsubmit="SaveAsync">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.subtitle1">Model</MudText>
+                <MudTextField @bind-Value="_form.BaseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true"
+                              HelperText="Include the version segment, e.g. http://ollama:11434/v1" />
+                <MudTextField @bind-Value="_apiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined"
+                              autocomplete="off"
+                              HelperText="@(_hasApiKey ? "A key is stored. Leave empty to keep it." : "No key is stored.")" />
+                @if (_hasApiKey)
+                {
+                    <MudCheckBox T="bool" @bind-Value="_removeKey" Label="Remove the stored key" />
+                }
+                <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="_busy"
+                           StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
+                @if (_models is not null)
+                {
+                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Connected. @_models.Count model(s) available.</MudAlert>
+                }
+
+                @if (_models is { Count: > 0 })
+                {
+                    <MudSelect T="string" @bind-Value="_form.ModelName" Label="Model" Variant="Variant.Outlined" Required="true">
+                        @foreach (var model in _models)
+                        {
+                            <MudSelectItem Value="@model">@model</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else
+                {
+                    <MudTextField @bind-Value="_form.ModelName" Label="Model" Variant="Variant.Outlined" Required="true" />
+                }
+
+                <MudNumericField T="int" @bind-Value="_form.ContextTokenBudget" Label="Context budget (tokens)"
+                                 Variant="Variant.Outlined" Min="256" Max="1000000" />
+
+                <MudText Typo="Typo.subtitle1" Class="mt-2">Behaviour</MudText>
+                <MudTextField @bind-Value="_form.SystemPrompt" Label="System prompt" Variant="Variant.Outlined" Lines="8" />
+
+                <ProblemMessage Problem="_problem" />
+                @if (_saved)
+                {
+                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Settings saved.</MudAlert>
+                }
+
+                <MudStack Row="true" Justify="Justify.FlexEnd">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                </MudStack>
+            </MudStack>
+        </form>
+    }
+    else
+    {
+        <ProblemMessage Problem="_problem" />
+    }
+</div>
+
+@code {
+    private SettingsForm? _form;
+    private IReadOnlyList<string>? _models;
+    private ApiProblem? _problem;
+    private string? _apiKey;
+    private bool _hasApiKey;
+    private bool _removeKey;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _saved;
+
+    [SupplyParameterFromQuery]
+    public string? Unverified { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetAssistantSettingsAsync();
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem;
+            return;
+        }
+
+        var s = result.Value;
+        _hasApiKey = s.HasApiKey;
+        _form = new SettingsForm
+        {
+            BaseUrl = s.BaseUrl,
+            ModelName = s.ModelName,
+            ContextTokenBudget = s.ContextTokenBudget,
+            SystemPrompt = s.SystemPrompt,
+        };
+    }
+
+    private async Task TestAsync()
+    {
+        _busy = true;
+        _problem = null;
+        _models = null;
+
+        // A null key makes the server test with the stored one.
+        var result = await Api.TestAssistantModelAsync(_form!.BaseUrl.Trim(), KeyToSend());
+        _busy = false;
+
+        if (result.IsSuccess)
+        {
+            _models = result.Value.Models;
+        }
+        else
+        {
+            _problem = result.Problem;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _problem = null;
+        _saved = false;
+
+        var request = new UpdateAssistantSettingsRequest(
+            _form!.BaseUrl.Trim(),
+            _form.ModelName.Trim(),
+            _removeKey ? string.Empty : KeyToSend(),
+            _form.ContextTokenBudget,
+            _form.SystemPrompt);
+        var result = await Api.UpdateAssistantSettingsAsync(request);
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem;
+            return;
+        }
+
+        _saved = true;
+        if (!string.IsNullOrWhiteSpace(_apiKey))
+        {
+            _hasApiKey = true;
+        }
+
+        if (_removeKey)
+        {
+            _hasApiKey = false;
+        }
+
+        _apiKey = null;
+        _removeKey = false;
+        if (Unverified is not null)
+        {
+            Navigation.NavigateTo("settings", replace: true);
+        }
+    }
+
+    private string? KeyToSend() => string.IsNullOrWhiteSpace(_apiKey) ? null : _apiKey.Trim();
+
+    private sealed class SettingsForm
+    {
+        public string BaseUrl { get; set; } = string.Empty;
+
+        public string ModelName { get; set; } = string.Empty;
+
+        public int ContextTokenBudget { get; set; }
+
+        public string SystemPrompt { get; set; } = string.Empty;
+    }
+}
