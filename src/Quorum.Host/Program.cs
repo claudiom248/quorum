@@ -1,5 +1,7 @@
 using Quorum.Host.Infrastructure;
 using Quorum.Host.Infrastructure.Database;
+using Quorum.Modules.Agents;
+using Quorum.Modules.Tenancy;
 using Quorum.Shared.Endpoints;
 using Scalar.AspNetCore;
 using Serilog;
@@ -17,11 +19,17 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddQuorumDataProtection(builder.Configuration);
 builder.Services.AddPlatformDatabase(builder.Configuration);
 
+// Module order is startup order: each module's database initializers run in registration order.
+builder.Services.AddTenancyModule();
+builder.Services.AddAgentsModule();
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -29,7 +37,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.MapEndpoints(typeof(Program).Assembly);
+app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.Assembly);
 
 await app.RunAsync();
 

@@ -13,7 +13,9 @@
 | Response already in progress (409) | In-memory lock per conversation (single app instance) |
 | Data access | EF Core + Npgsql, one DbContext and one schema per module (`tenancy`, `agents`, `conversations`), migrations at startup |
 | Users and login | ASP.NET Core Identity in the Tenancy module, HttpOnly cookie, lockout after 5 attempts |
-| Secret encryption | ASP.NET Core Data Protection with keys in a dedicated volume |
+| Secret encryption | ASP.NET Core Data Protection with keys in a dedicated volume, unencrypted at rest (decided in PR 2: protects against database-only leaks such as backups; certificate protection of the key ring is future work) |
+| Cross-module transaction | Scoped `IPlatformUnitOfWork` sharing one Npgsql connection; module DbContexts join its transaction on save |
+| Model base URL | The OpenAI base URL including the version segment (e.g. `http://ollama:11434/v1`); the probe calls `{baseUrl}/models` |
 | Model client | Microsoft.Extensions.AI (`IChatClient`) with the OpenAI provider on the configured URL; `GET /v1/models` via `IHttpClientFactory` |
 | Streaming | `TypedResults.ServerSentEvents`; streaming fetch on the WASM side |
 | UI | Blazor Web App, global InteractiveWebAssembly render mode without prerendering (`Quorum.Web.Client` hosted by the Host) |

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "quorum-host",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/Quorum.Host", "--launch-profile", "http"],
+      "port": 5250
+    }
+  ]
+}

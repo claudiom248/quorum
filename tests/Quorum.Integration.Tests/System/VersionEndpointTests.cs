@@ -5,11 +5,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.System;
 
-public sealed class VersionEndpointTests(AppFixture app)
+public sealed class VersionEndpointTests(PostgresFixture postgres)
 {
     [Fact]
     public async Task ReturnsTheVersionStampedOnTheHostAssembly()
     {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = app.CreateClient();
 
         using var response = await client.GetAsync(new Uri("/api/version", UriKind.Relative), TestContext.Current.CancellationToken);
