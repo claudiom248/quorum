@@ -486,3 +486,6 @@ $RECYCLE.BIN/
 # Claude Code
 *.bak
 .claude/settings.local.json
+
+# Local Data Protection keys
+.data/
