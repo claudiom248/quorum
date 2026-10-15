@@ -17,8 +17,9 @@
 | Cross-module transaction | Scoped `IPlatformUnitOfWork` sharing one Npgsql connection; module DbContexts join its transaction on save |
 | Model base URL | The OpenAI base URL including the version segment (e.g. `http://ollama:11434/v1`); the probe calls `{baseUrl}/models` |
 | Model client | Microsoft.Extensions.AI (`IChatClient`) with the OpenAI provider on the configured URL; `GET /v1/models` via `IHttpClientFactory` |
-| Streaming | `TypedResults.ServerSentEvents`; streaming fetch on the WASM side |
-| UI | Blazor Web App, global InteractiveWebAssembly render mode without prerendering (`Quorum.Web.Client` hosted by the Host) |
+| Streaming | `TypedResults.ServerSentEvents`; streaming fetch on the WASM side. The model stream is read directly (`POST {baseUrl}/chat/completions`) rather than through an SDK so that reasoning fields are surfaced; the UI throttles renders to keep the single-threaded WASM runtime responsive |
+| UI | Standalone Blazor WebAssembly app (`Quorum.Web.Client`) served by the Host as static files with an SPA fallback; no server-side rendering. Components: MudBlazor; markdown via Markdig with a fixed safe extension set (model output is untrusted: no raw HTML, no generic attributes, images shown as links); Monaco (BlazorMonaco) loaded on demand for the config editor. The client references no project: it is a client of the HTTP API only |
+| Container image | `Dockerfile` copies a `dotnet publish` done beforehand (fast, no downloads inside Docker); `Dockerfile.ci` builds from sources for releases. The bundled PostgreSQL is the `bundled-db` compose profile; the port is published on loopback unless `QUORUM_BIND` says otherwise |
 | Packages | Central Package Management |
 | Tests | xUnit v3 + Testcontainers (Postgres); fake `IChatClient` for streaming and errors |
 
@@ -42,7 +43,7 @@
 11. Streaming chat: `IAssistantChat` in Agents (system prompt, budget as characters/4 with a 20% margin, rejection of over-long messages); SSE, `Interrupted`/`Failed` statuses, 409, regeneration. AC-13, AC-15, AC-15b, AC-16, AC-17, AC-18, AC-19.
 
 ### PR 4 - UI and installation (`feat/001-ui`)
-12. Blazor WASM client (wizard, login, conversations and chat, settings); container image via the SDK; `docker-compose.yml` with the `bundled-db` profile; `.env.example`. AC-26. Close with `/verify`.
+12. Blazor WASM client (wizard, login, conversations and chat, settings); container image (see the decision above); `docker-compose.yml` with the `bundled-db` profile; `.env.example`. AC-26. Close with `/verify`.
 
 ## Risks
 - Transaction across several DbContexts: requires a shared Npgsql connection. Fallback: create the assistant first, close SetupState last, idempotent completion.
