@@ -7,9 +7,12 @@ internal static class CsvTable
 {
     private static readonly char[] Delimiters = [',', ';', '\t'];
 
-    public static string ToMarkdown(string csv, CancellationToken cancellationToken)
+    public static string ToMarkdown(string csv, CancellationToken cancellationToken) =>
+        Table(Parse(csv, DetectDelimiter(csv), cancellationToken));
+
+    /// <summary>Rows of cells as a compact Markdown table whose first row is the header; short rows are padded.</summary>
+    public static string Table(IReadOnlyList<List<string>> rows)
     {
-        var rows = Parse(csv, DetectDelimiter(csv), cancellationToken);
         if (rows.Count == 0)
         {
             return string.Empty;

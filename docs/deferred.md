@@ -12,6 +12,7 @@ Backlog of things decided *not* to do yet, so they are not forgotten. An item en
 | Room for the model's answer in the context budget | Specs 001/002 | Nothing is reserved and no maximum output is set; keeps the budget rule simple | Truncated or failed answers with large attachments |
 | Documents longer than the context budget | Spec 002 | Rejected with a clear error; no silent truncation or automatic summarization | Knowledge bases (spec 003) |
 | Antivirus/malware scan of uploaded files (e.g. ClamAV) | Spec 002 | Not considered for now: other mitigations come first (extraction never executes or resolves file content, bounded reads, hardened XML); a scanner is an extra service to operate | Other mitigations prove insufficient, compliance requirements, or any feature that stores or re-serves the original file |
+| Process isolation of the document parsers (PDF, DOCX) | Spec 002 | The parsers run inside the Host process with size, part and time limits; a pathological file could still exhaust memory or overflow the stack, which would stop the application for every tenant | Multi-user deployments, or any report of a crash while reading a document: move extraction to a worker process |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
