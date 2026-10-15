@@ -19,15 +19,16 @@ public static class AgentsModule
         services.AddModuleDbContext<AgentsDbContext>(AgentsDbContext.Schema);
 
         services.AddHttpClient(ModelEndpointProbe.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
-        // Answers stream for as long as the model needs; the OpenAI client's network timeout bounds each request.
-        services.AddHttpClient(ChatClientFactory.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        // The timeout bounds the wait for the model's first byte (small local models can take minutes to load);
+        // once the answer streams, it runs for as long as the model needs.
+        services.AddHttpClient(OpenAiChatStream.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();
         services.AddScoped<IAssistantChat>(provider => provider.GetRequiredService<AssistantChat>());
         services.AddScoped<IAssistantCatalog>(provider => provider.GetRequiredService<AssistantChat>());
-        services.AddSingleton<ChatClientFactory>();
+        services.AddSingleton<OpenAiChatStream>();
         services.AddSingleton<ApiKeyProtector>();
 
         return services;

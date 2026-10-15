@@ -1,0 +1,427 @@
+@page "/"
+@page "/c/{Id:guid}"
+@implements IAsyncDisposable
+@inject QuorumApi Api
+@inject Session Session
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject TimeProvider Clock
+
+<PageTitle>@(_title ?? "Chat") · Quorum</PageTitle>
+
+<div class="chat-layout">
+    <aside class="chat-side">
+        <div class="pa-3">
+            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" OnClick="NewConversation"
+                       Disabled="_streaming" StartIcon="@Icons.Material.Filled.Add">New conversation</MudButton>
+        </div>
+        <div class="chat-list">
+            @foreach (var item in _conversations)
+            {
+                <div class="chat-item @(item.Id == Id ? "active" : null)">
+                    <a href="c/@item.Id">@(item.Title ?? "New conversation")</a>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" title="Delete"
+                                   OnClick="() => DeleteAsync(item)" Disabled="@(_streaming && item.Id == Id)" />
+                </div>
+            }
+        </div>
+    </aside>
+
+    <section class="chat-main">
+        @if (Id is not null)
+        {
+            <div class="chat-head">
+                @if (_renaming)
+                {
+                    <form @onsubmit="RenameAsync" style="display:flex;flex:1;gap:.5rem;align-items:center">
+                        <MudTextField @bind-Value="_newTitle" Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="60" AutoFocus="true" />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Save</MudButton>
+                        <MudButton OnClick="@(() => _renaming = false)">Cancel</MudButton>
+                    </form>
+                }
+                else
+                {
+                    <h1>@(_title ?? "New conversation")</h1>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" title="Rename"
+                                   OnClick="StartRename" Disabled="@(_title is null || _streaming)" />
+                }
+            </div>
+        }
+
+        <div class="messages" @ref="_messagesElement">
+            <div class="messages-inner">
+                @if (_messages.Count == 0 && !_streaming)
+                {
+                    <div class="empty">
+                        <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" />
+                        <MudText Typo="Typo.h6">Ask your assistant anything</MudText>
+                    </div>
+                }
+
+                @foreach (var message in _messages)
+                {
+                    @if (message.Role == MessageRoles.User)
+                    {
+                        <div class="turn user"><div class="bubble">@message.Content</div></div>
+                    }
+                    else
+                    {
+                        <div class="turn assistant">
+                            <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                            @if (message.Status == MessageStatuses.Interrupted)
+                            {
+                                <span class="status-note">Stopped. You can regenerate the answer.</span>
+                            }
+                            else if (message.Status == MessageStatuses.Failed)
+                            {
+                                <span class="status-note">The answer broke off: the model failed or is not reachable.</span>
+                            }
+                        </div>
+                    }
+                }
+
+                @if (_streaming)
+                {
+                    <div class="turn assistant">
+                        @if (_reasoning.Length > 0)
+                        {
+                            <details class="reasoning" open="@(_partial.Length == 0)">
+                                <summary>💭 Thinking@(_partial.Length == 0 ? "…" : string.Empty)</summary>
+                                <div class="reasoning-text">@_reasoning</div>
+                            </details>
+                        }
+
+                        @if (_partial.Length > 0)
+                        {
+                            <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(_partial))</div>
+                        }
+                        else if (_reasoning.Length == 0)
+                        {
+                            <div class="bubble"><MudText Typo="Typo.body2">Thinking…</MudText><MudProgressLinear Indeterminate="true" Size="Size.Small" /></div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="composer">
+            <div class="composer-inner">
+                <textarea @ref="_composerElement" @bind="_draft" @bind:event="oninput" rows="1"
+                          placeholder="Write a message (Shift+Enter for a new line)" disabled="@_streaming"></textarea>
+                @if (_streaming)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Stop"
+                               StartIcon="@Icons.Material.Filled.Stop">Stop</MudButton>
+                }
+                else
+                {
+                    @if (CanRegenerate)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" title="Regenerate the last answer" OnClick="RegenerateAsync" />
+                    }
+
+                    <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Variant="Variant.Filled"
+                                   title="Send" OnClick="SendAsync" Disabled="@string.IsNullOrWhiteSpace(_draft)" />
+                }
+            </div>
+            <div class="composer-inner"><ProblemMessage Problem="_problem" /></div>
+        </div>
+    </section>
+</div>
+
+@code {
+    private readonly List<MessageDto> _messages = [];
+    private List<ConversationSummary> _conversations = [];
+    private ConversationDetail? _loaded;
+    private CancellationTokenSource? _stream;
+    private DotNetObjectReference<Chat>? _self;
+    private ElementReference _messagesElement;
+    private ElementReference _composerElement;
+    private ApiProblem? _problem;
+    private string? _title;
+    private string _newTitle = string.Empty;
+    private string _draft = string.Empty;
+    private string _partial = string.Empty;
+    private string _reasoning = string.Empty;
+    private bool _streaming;
+    private bool _renaming;
+
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(60);
+
+    private bool CanRegenerate => _messages.Count > 0 && Id is not null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _renaming = false;
+
+        // Already showing this conversation (e.g. the address changed after the first answer of a new one): keep it.
+        if (Id is not null && _loaded?.Id == Id)
+        {
+            return;
+        }
+
+        await RefreshListAsync();
+        await LoadConversationAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _self = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("quorumChat.bindComposer", _composerElement, _self);
+        }
+    }
+
+    /// <summary>Called by the composer's Enter key handler.</summary>
+    [JSInvokable]
+    public Task SendFromKeyboard() => InvokeAsync(SendAsync);
+
+    private async Task RefreshListAsync()
+    {
+        var list = await Api.ListConversationsAsync();
+        if (list.IsSuccess)
+        {
+            _conversations = list.Value;
+        }
+        else if (list.Problem!.IsUnauthorized)
+        {
+            Expired();
+        }
+    }
+
+    private async Task LoadConversationAsync()
+    {
+        _problem = null;
+        _messages.Clear();
+        _title = null;
+        _loaded = null;
+
+        if (Id is not { } id)
+        {
+            return;
+        }
+
+        var result = await Api.GetConversationAsync(id);
+        if (!result.IsSuccess)
+        {
+            if (result.Problem!.IsUnauthorized)
+            {
+                Expired();
+            }
+            else if (result.Problem.Status == 404)
+            {
+                Navigation.NavigateTo(string.Empty, replace: true);
+            }
+            else
+            {
+                _problem = result.Problem;
+            }
+
+            return;
+        }
+
+        _loaded = result.Value;
+        _title = result.Value.Title;
+        _messages.AddRange(result.Value.Messages);
+        await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
+    }
+
+    private void NewConversation() => Navigation.NavigateTo(string.Empty);
+
+    private async Task SendAsync()
+    {
+        var content = _draft.Trim();
+        if (content.Length == 0 || _streaming)
+        {
+            return;
+        }
+
+        _problem = null;
+
+        if (Id is null)
+        {
+            var created = await Api.CreateConversationAsync();
+            if (!created.IsSuccess)
+            {
+                _problem = created.Problem;
+                return;
+            }
+
+            _loaded = new ConversationDetail(created.Value, null, []);
+            Id = created.Value;
+        }
+
+        _draft = string.Empty;
+        _messages.Add(new MessageDto(Guid.NewGuid(), MessageRoles.User, content, MessageStatuses.Completed, Clock.GetUtcNow()));
+        await StreamAsync(token => Api.SendMessageAsync(Id!.Value, content, token));
+    }
+
+    private async Task RegenerateAsync()
+    {
+        if (Id is null || _streaming)
+        {
+            return;
+        }
+
+        _problem = null;
+        if (_messages is [.., { Role: MessageRoles.Assistant }])
+        {
+            _messages.RemoveAt(_messages.Count - 1);
+        }
+
+        await StreamAsync(token => Api.RegenerateAsync(Id!.Value, token));
+    }
+
+    private async Task StreamAsync(Func<CancellationToken, IAsyncEnumerable<AnswerEvent>> start)
+    {
+        var id = Id!.Value;
+        _streaming = true;
+        _partial = string.Empty;
+        _reasoning = string.Empty;
+        _stream = new CancellationTokenSource();
+        await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
+        await RefreshAsync();
+
+        var finished = false;
+        var stopped = false;
+        var lastRender = Clock.GetTimestamp();
+
+        try
+        {
+            await foreach (var answerEvent in start(_stream.Token))
+            {
+                switch (answerEvent)
+                {
+                    case AnswerReasoning reasoning:
+                        _reasoning += reasoning.Text;
+                        break;
+                    case AnswerDelta delta:
+                        _partial += delta.Text;
+                        break;
+                    case AnswerDone:
+                        finished = true;
+                        break;
+                    case AnswerRejected rejected:
+                        _problem = rejected.Problem;
+                        finished = true;
+                        if (rejected.Problem.IsUnauthorized)
+                        {
+                            Expired();
+                        }
+
+                        break;
+                }
+
+                // A render per token would freeze the single-threaded WebAssembly UI on long answers.
+                if (Clock.GetElapsedTime(lastRender) >= RenderInterval)
+                {
+                    lastRender = Clock.GetTimestamp();
+                    await RefreshAsync();
+                }
+            }
+
+            await RefreshAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            stopped = true;
+        }
+        finally
+        {
+            _streaming = false;
+            _stream?.Dispose();
+            _stream = null;
+        }
+
+        // The server stores the final text and status: reload so the screen shows what is persisted.
+        if (finished || stopped)
+        {
+            if (stopped)
+            {
+                await Task.Delay(300);
+            }
+
+            var keep = _problem;
+            await LoadConversationAsync();
+            _problem = keep;
+            await RefreshListAsync();
+        }
+
+        if (Navigation.ToBaseRelativePath(Navigation.Uri) != $"c/{id}")
+        {
+            Navigation.NavigateTo($"c/{id}", replace: true);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        StateHasChanged();
+        await JS.InvokeVoidAsync("quorumChat.scrollToEnd", _messagesElement);
+    }
+
+    private void Stop() => _stream?.Cancel();
+
+    private void StartRename()
+    {
+        _newTitle = _title ?? string.Empty;
+        _renaming = true;
+    }
+
+    private async Task RenameAsync()
+    {
+        if (Id is not { } id)
+        {
+            return;
+        }
+
+        var result = await Api.RenameConversationAsync(id, _newTitle.Trim());
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem;
+            return;
+        }
+
+        _renaming = false;
+        _title = _newTitle.Trim();
+        await RefreshListAsync();
+    }
+
+    private async Task DeleteAsync(ConversationSummary item)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("quorumChat.confirm", $"Delete \"{item.Title ?? "New conversation"}\" and all its messages? This cannot be undone.");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await Api.DeleteConversationAsync(item.Id);
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem;
+            return;
+        }
+
+        await RefreshListAsync();
+        if (item.Id == Id)
+        {
+            Navigation.NavigateTo(string.Empty);
+        }
+    }
+
+    private void Expired()
+    {
+        Session.Reset();
+        Navigation.NavigateTo("login", forceLoad: true);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _stream?.Cancel();
+        _self?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

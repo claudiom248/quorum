@@ -66,7 +66,7 @@ Errors use ProblemDetails. All routes are under `/api`.
 | GET | `/conversations/{id}` | - | `{ id, title, messages[] }` | 401; 404 |
 | PATCH | `/conversations/{id}` | `{ title }` | 204 | 400; 401; 404 |
 | DELETE | `/conversations/{id}` | - | 204 | 401; 404 |
-| POST | `/conversations/{id}/messages` | `{ content }` | SSE stream of tokens, final event with status | 400; 401; 404; 409 response already in progress |
+| POST | `/conversations/{id}/messages` | `{ content }` | SSE stream: `reasoning` events (the model's thinking, when it shows it; not stored), `delta` events (answer text), then one `done` event with the status | 400; 401; 404; 409 response already in progress |
 | POST | `/conversations/{id}/regenerate` | - | SSE stream that replaces the last response | 401; 404; 409 |
 
 - The setup token travels in a dedicated header (e.g. `X-Setup-Token`).
@@ -156,3 +156,4 @@ _None._
 | Date | Change |
 |---|---|
 | 2026-10-15 | `GET /setup/status` also returns `defaultSystemPrompt` (only in setup mode, `null` afterwards) so the wizard can show the default system prompt; added AC-1b. |
+| 2026-10-15 | The chat stream gains `reasoning` events: the model's thinking, shown live by the UI and never stored in the message. A stream that ends without any answer text (e.g. the model spent its whole budget thinking) ends as `Failed`. Reasoning is read from `delta.reasoning` (Ollama) and `delta.reasoning_content` (LiteLLM and others). |

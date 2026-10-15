@@ -1,0 +1,52 @@
+# Quorum: the app and (optionally) a bundled PostgreSQL.
+#
+#   cp .env.example .env        # then set POSTGRES_PASSWORD
+#   dotnet publish src/Quorum.Host -c Release -o artifacts/publish
+#   docker compose --profile bundled-db up --build
+#
+# To build from the sources inside Docker instead (slow on the first run, used by releases),
+# add `dockerfile: Dockerfile.ci` under `build:` below and skip the dotnet publish step.
+#
+# Open http://localhost:8080 and paste the setup token printed in the logs
+# (docker compose logs quorum). To use your own PostgreSQL, set QUORUM_DATABASE in .env
+# and start without the profile: docker compose up --build
+name: quorum
+
+services:
+  quorum:
+    build:
+      context: .
+    image: quorum:local
+    restart: unless-stopped
+    ports:
+      # Loopback by default: set QUORUM_BIND=0.0.0.0 (ideally behind a TLS reverse proxy) to serve other machines.
+      - "${QUORUM_BIND:-127.0.0.1}:${QUORUM_PORT:-8080}:8080"
+    environment:
+      ConnectionStrings__Platform: ${QUORUM_DATABASE:-Host=postgres;Port=5432;Database=quorum;Username=quorum;Password=${POSTGRES_PASSWORD:-}}
+      DataProtection__KeysPath: /var/lib/quorum/keys
+    volumes:
+      - quorum-keys:/var/lib/quorum/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  postgres:
+    profiles: [bundled-db]
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: quorum
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: quorum
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quorum -d quorum"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  quorum-keys:
+  postgres-data:

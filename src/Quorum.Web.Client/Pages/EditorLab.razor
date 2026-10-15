@@ -1,0 +1,105 @@
+@page "/lab/editor"
+@using BlazorMonaco
+@using BlazorMonaco.Editor
+@implements IDisposable
+@inject ThemeState Theme
+@inject IJSRuntime JS
+
+<PageTitle>Editor lab · Quorum</PageTitle>
+
+<div class="editor-lab">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h6">Agent definition</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Info">Prototype</MudChip>
+        <MudSpacer />
+        <MudText Typo="Typo.caption">@_lines lines · @_chars characters</MudText>
+        <MudButton Variant="Variant.Outlined" OnClick="ResetAsync">Reset sample</MudButton>
+    </MudStack>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+        Same editor that will sit next to the visual graph editor: both read and write the same declarative file.
+        This page is a preview and does not save anything yet.
+    </MudAlert>
+
+    <div class="editor-frame">
+        @if (_ready)
+        {
+        <StandaloneCodeEditor @ref="_editor" Id="agent-editor" ConstructionOptions="BuildOptions"
+                              OnDidChangeModelContent="OnContentChanged" />
+        }
+    </div>
+</div>
+
+@code {
+    private const string Sample = """
+        # An agent is a declarative file: the visual editor reads and writes this same schema.
+        apiVersion: quorum/v1
+        kind: Agent
+        name: support-assistant
+        description: Answers customer questions using the knowledge base.
+
+        model:
+          provider: openai-compatible
+          name: qwen2.5-coder:14b
+          contextTokenBudget: 4096
+
+        systemPrompt: |
+          You are a helpful assistant for the people of this organization.
+          Answer in the same language as the user's message.
+
+        tools:
+          - name: web_search
+            confirm: false
+          - name: send_email
+            confirm: true   # destructive: ask the human first
+        """;
+
+    private StandaloneCodeEditor? _editor;
+    private int _lines = Sample.Split('\n').Length;
+    private int _chars = Sample.Length;
+
+    private bool _ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Theme.Changed += OnThemeChanged;
+        await JS.InvokeVoidAsync("quorumEditor.load");
+        _ready = true;
+    }
+
+    private StandaloneEditorConstructionOptions BuildOptions(StandaloneCodeEditor editor) => new()
+    {
+        AutomaticLayout = true,
+        Language = "yaml",
+        Value = Sample,
+        Theme = Theme.IsDark ? "vs-dark" : "vs",
+        Minimap = new EditorMinimapOptions { Enabled = false },
+        FontSize = 14,
+        TabSize = 2,
+        ScrollBeyondLastLine = false,
+    };
+
+    private async Task OnContentChanged(ModelContentChangedEvent _)
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var value = await _editor.GetValue();
+        _lines = value.Split('\n').Length;
+        _chars = value.Length;
+    }
+
+    private async Task ResetAsync()
+    {
+        if (_editor is not null)
+        {
+            await _editor.SetValue(Sample);
+        }
+    }
+
+    private void OnThemeChanged() => InvokeAsync(async () => await Global.SetTheme(JS, Theme.IsDark ? "vs-dark" : "vs"));
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}
