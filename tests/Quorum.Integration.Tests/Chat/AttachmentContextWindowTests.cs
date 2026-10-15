@@ -145,6 +145,61 @@ public sealed class AttachmentContextWindowTests
         Assert.True(usage.RemainingCharacters < 0);
     }
 
+    [Fact]
+    public void ASmallOverrunIsNotReportedAsZeroTokensRemaining()
+    {
+        var usage = new ContextUsage(SmallBudget, UsableCharacters: 100, SystemPromptCharacters: 0, AttachmentsCharacters: 103, MessagesCharacters: 0);
+
+        Assert.Equal(-3, usage.RemainingCharacters);
+        Assert.True(usage.RemainingTokens < 0);
+    }
+
+    [Fact]
+    public void TheMeasuredLengthIsTheRenderedLengthEvenForDocumentsOfZeros()
+    {
+        var attachments = new[] { new ChatAttachment("dump.csv", new string('0', 3200)), new ChatAttachment("b.txt", "text") };
+
+        var rendered = AttachmentBlock.Render(attachments, AttachmentBlock.NewDelimiter());
+
+        Assert.Equal(rendered.Length, AttachmentBlock.Length(attachments));
+        Assert.Equal(0, AttachmentBlock.Length([]));
+    }
+
+    [Fact]
+    public void TheBlockCarriesItsOwnSeparatorFromTheSystemPrompt()
+    {
+        var block = AttachmentBlock.Render([new ChatAttachment("a.txt", "x")], Delimiter);
+
+        Assert.StartsWith("\n\n", block, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADelimiterIsRandomHexOfTheMeasuredLength()
+    {
+        var first = AttachmentBlock.NewDelimiter();
+
+        Assert.Equal(32, first.Length);
+        Assert.NotEqual(first, AttachmentBlock.NewDelimiter());
+    }
+
+    [Fact]
+    public void WhenTheSystemPromptLeavesNoRoomTheErrorIsAboutTheSystemPrompt()
+    {
+        var selection = ContextWindow.Select(new string('s', 900), [User("hi")], [Attachment("a.txt", 10)], SmallBudget);
+
+        Assert.False(selection.IsSuccess);
+        Assert.Equal("chat.system_prompt_too_long", selection.Error.Code);
+    }
+
+    [Fact]
+    public void AnEmptyHistoryIsAValidationErrorNotACrash()
+    {
+        var selection = ContextWindow.Select("system", [], [], SmallBudget);
+
+        Assert.False(selection.IsSuccess);
+        Assert.Equal("chat.no_message", selection.Error.Code);
+    }
+
     private const Quorum.Shared.Results.ErrorType ErrorTypeValidation = Quorum.Shared.Results.ErrorType.Validation;
 
     private static int Count(string text, string value)

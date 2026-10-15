@@ -2,7 +2,7 @@ namespace Quorum.Web.Client.Api;
 
 // Client-side copies of the public API contract: the UI depends on the HTTP API only, never on module types.
 
-public sealed record SetupStatus(bool IsSetupMode, string? DefaultSystemPrompt);
+public sealed record SetupStatus(bool IsSetupMode, string? DefaultSystemPrompt, int? DefaultContextTokenBudget);
 
 public sealed record CurrentUser(string Email, string DisplayName, string Role);
 

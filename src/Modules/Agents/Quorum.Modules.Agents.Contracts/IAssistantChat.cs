@@ -55,7 +55,8 @@ public sealed record ContextUsage(
 
     public int RemainingCharacters => UsableCharacters - SystemPromptCharacters - AttachmentsCharacters - MessagesCharacters;
 
-    public int RemainingTokens => RemainingCharacters / CharactersPerToken;
+    // Rounded down, so a few characters over the budget are a negative margin rather than "0 tokens left".
+    public int RemainingTokens => (int)Math.Floor(RemainingCharacters / (double)CharactersPerToken);
 }
 
 /// <summary>Finds the assistants of the current tenant.</summary>

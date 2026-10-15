@@ -35,7 +35,7 @@ internal sealed class AssistantChat(AgentsDbContext db, ApiKeyProtector apiKeyPr
         }
 
         var block = AttachmentBlock.Render(attachments, AttachmentBlock.NewDelimiter());
-        var systemPrompt = block.Length == 0 ? configuration.SystemPrompt : $"{configuration.SystemPrompt}\n\n{block}";
+        var systemPrompt = configuration.SystemPrompt + block; // the block carries its own separator
 
         var answer = chatStream.StreamAsync(
             new Uri(configuration.BaseUrl),

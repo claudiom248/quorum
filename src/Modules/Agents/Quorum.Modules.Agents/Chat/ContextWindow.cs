@@ -25,9 +25,21 @@ internal static class ContextWindow
         IReadOnlyList<ChatAttachment> attachments,
         int contextTokenBudget)
     {
-        var budget = CharacterBudget(contextTokenBudget);
-        var afterSystemPrompt = budget - systemPrompt.Length;
-        var attachmentCharacters = AttachmentCharacters(attachments);
+        if (history.Count == 0)
+        {
+            return Error.Validation("chat.no_message", "There is no message to answer.");
+        }
+
+        var afterSystemPrompt = CharacterBudget(contextTokenBudget) - systemPrompt.Length;
+        var attachmentCharacters = AttachmentBlock.Length(attachments);
+
+        // Removing attachments cannot help when the system prompt alone leaves no room for them.
+        if (attachments.Count > 0 && afterSystemPrompt < AttachmentBlock.PreambleLength)
+        {
+            return Error.Validation(
+                "chat.system_prompt_too_long",
+                "The system prompt leaves no room for attachments in this model's context: shorten it or raise the context budget in the settings.");
+        }
 
         if (attachments.Count > 0 && attachmentCharacters > afterSystemPrompt)
         {
@@ -68,7 +80,8 @@ internal static class ContextWindow
         IReadOnlyList<ChatAttachment> attachments,
         int contextTokenBudget)
     {
-        var available = CharacterBudget(contextTokenBudget) - systemPrompt.Length - AttachmentCharacters(attachments);
+        var attachmentCharacters = AttachmentBlock.Length(attachments);
+        var available = CharacterBudget(contextTokenBudget) - systemPrompt.Length - attachmentCharacters;
 
         var messageCharacters = 0;
         for (var i = history.Count - 1; i >= 0 && history[i].Content.Length <= available - messageCharacters; i--)
@@ -80,23 +93,20 @@ internal static class ContextWindow
             contextTokenBudget,
             CharacterBudget(contextTokenBudget),
             systemPrompt.Length,
-            AttachmentCharacters(attachments),
+            attachmentCharacters,
             messageCharacters);
     }
-
-    private static int AttachmentCharacters(IReadOnlyList<ChatAttachment> attachments) =>
-        AttachmentBlock.Render(attachments, AttachmentBlock.MeasuringDelimiter).Length;
 
     /// <summary>The newest attachments, enough of them that what is left fits.</summary>
     private static List<string> AttachmentsToRemove(IReadOnlyList<ChatAttachment> attachments, int available)
     {
-        var remaining = attachments.ToList();
+        var total = AttachmentBlock.Length(attachments);
         var names = new List<string>();
 
-        while (remaining.Count > 0 && AttachmentCharacters(remaining) > available)
+        for (var i = attachments.Count - 1; i >= 0 && total > available; i--)
         {
-            names.Add(remaining[^1].FileName);
-            remaining.RemoveAt(remaining.Count - 1);
+            names.Add(attachments[i].FileName);
+            total = i == 0 ? 0 : total - AttachmentBlock.Length(attachments[i]);
         }
 
         return names;
