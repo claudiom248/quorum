@@ -13,6 +13,13 @@ Backlog of things decided *not* to do yet, so they are not forgotten. An item en
 | Documents longer than the context budget | Spec 002 | Rejected with a clear error; no silent truncation or automatic summarization | Knowledge bases (spec 003) |
 | Antivirus/malware scan of uploaded files (e.g. ClamAV) | Spec 002 | Not considered for now: other mitigations come first (extraction never executes or resolves file content, bounded reads, hardened XML); a scanner is an extra service to operate | Other mitigations prove insufficient, compliance requirements, or any feature that stores or re-serves the original file |
 | Process isolation of the document parsers (PDF, DOCX) | Spec 002 | The parsers run inside the Host process with size, part and time limits; a pathological file could still exhaust memory or overflow the stack, which would stop the application for every tenant | Multi-user deployments, or any report of a crash while reading a document: move extraction to a worker process |
+| Users and roles (User: chat only; Builder: configures assistants, agents and topologies; Admin: models, users, license, MCP servers, tool policies, audit log) mapped onto the permission names of spec 004 | Spec 004 | Needs user management, OIDC and license seats; spec 004 only defines and checks the permission names, held by `Admin` | Dedicated users/roles spec |
+| stdio MCP servers registered from the UI through a Quorum-controlled `mcp-runner` sidecar (own container with Node and uv, authenticated HTTP API, no access to the key ring or the database; Quorum stays the source of truth and re-syncs the runner) | Spec 004 | Spawning processes inside Quorum would expose the master key and database credentials to third-party packages; spec 004 supports Streamable HTTP only, with stdio reachable through an operator-run gateway (supergateway) | Dedicated spec after 004, when customers need stdio servers without editing the compose file |
+| Audit log viewer in the UI (table with filters and pagination over the tool audit log) | Spec 004 | Spec 004 exposes the audit log through the API only (read with `tools.manage`) | Dedicated spec after 004 |
+| OAuth flow for MCP servers (callback, token refresh, per-user or per-server grants) | Spec 004 | Spec 004 authenticates to HTTP MCP servers with static headers only; OAuth needs a redirect flow, token storage and refresh | Dedicated spec, when customers need SaaS MCP servers that require OAuth |
+| Native tool: queries over CSV attachments (sum, filter, group) | Spec 004 | Needs a contract between Conversations (attachments) and Agents; small local models do arithmetic on tables badly | After 004, when attachments and tools are in use |
+| Persisting tool calls in the conversation history | Spec 004 | Tool calls are shown live and audited, not stored with the messages; later turns do not see earlier tool results | Users asking to review past tool calls, or models needing earlier results |
+| MCP resources, prompts, sampling and elicitation | Spec 004 | The client supports tools only; sampling is excluded for safety | A concrete need |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
@@ -27,3 +34,7 @@ Decided on 2026-10-15 when splitting the MVP; each gets its own spec, plan and P
 | 005 | Declarative config and topology: format for assistants, agents and topologies, multi-agent execution |
 | 006 | Web search as a tool (after 004) |
 | - | Licensing (no number yet) |
+| - | Users and roles (User, Builder, Admin) mapped onto the permission names of spec 004 |
+| - | `mcp-runner` sidecar: stdio MCP servers registered from the UI (after 004) |
+| - | Audit log UI (after 004) |
+| - | OAuth flow for MCP servers (after 004) |
