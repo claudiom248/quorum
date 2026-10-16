@@ -98,9 +98,12 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .context-wrap { position: relative; }
 .context-pill { display: inline-flex; align-items: center; gap: .45rem; padding: .25rem .65rem; border: 1px solid var(--mud-palette-lines-default); border-radius: 999px; background: none; font: inherit; font-size: .8rem; color: var(--mud-palette-text-secondary); cursor: pointer; white-space: nowrap; }
 .context-pill:hover { background: var(--mud-palette-action-default-hover); }
+.context-pill.level-normal { color: var(--mud-palette-info); border-color: var(--mud-palette-info); }
 .context-pill.level-warning { color: var(--mud-palette-warning); border-color: var(--mud-palette-warning); }
 .context-pill.level-critical, .context-pill.level-over { color: var(--mud-palette-error); border-color: var(--mud-palette-error); }
-.context-ring { width: 1rem; height: 1rem; border-radius: 50%; background: conic-gradient(currentColor var(--used), var(--mud-palette-lines-default) 0); -webkit-mask: radial-gradient(circle, transparent 0.28rem, #000 0.3rem); mask: radial-gradient(circle, transparent 0.28rem, #000 0.3rem); }
+.context-gauge { display: inline-flex; align-items: flex-end; gap: 2px; height: .9rem; }
+.context-gauge i { display: block; width: 3px; height: 100%; border-radius: 1px; background: var(--mud-palette-lines-default); }
+.context-gauge i.lit { background: currentColor; }
 .popover-backdrop { position: fixed; inset: 0; z-index: 1200; }
 .context-popover { position: absolute; right: 0; bottom: calc(100% + .5rem); z-index: 1201; width: 22rem; max-width: calc(100vw - 2rem); padding: .9rem 1rem; background: var(--mud-palette-surface); border: 1px solid var(--mud-palette-lines-default); border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
 .popover-title { font-weight: 600; }

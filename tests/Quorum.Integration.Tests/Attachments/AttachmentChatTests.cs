@@ -42,7 +42,7 @@ public sealed class AttachmentChatTests(PostgresFixture postgres)
         await AttachmentApi.AttachAsync(client, conversation, "a.txt", new string('d', 300));
         for (var i = 1; i <= 4; i++)
         {
-            await ChatApi.SendAsync(client, conversation, $"Question {i} {new string('x', 80)}");
+            await ChatApi.SendAsync(client, conversation, $"Question {i} {new string('x', 160)}");
         }
 
         var sent = app.ModelServer.ChatRequests[^1].GetProperty("messages").EnumerateArray().ToList();

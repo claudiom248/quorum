@@ -75,7 +75,12 @@
                     <button type="button" class="context-pill level-@_breakdown!.Level.ToString().ToLowerInvariant()"
                             aria-expanded="@_showBreakdown" title="How much of the model's context this conversation uses"
                             @onclick="() => _showBreakdown = !_showBreakdown">
-                        <span class="context-ring" style="--used:@_breakdown.Percent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                        <span class="context-gauge" aria-hidden="true">
+                            @for (var tick = 1; tick <= ContextBreakdown.GaugeTicks; tick++)
+                            {
+                                <i class="@(tick <= _breakdown.LitTicks ? "lit" : null)"></i>
+                            }
+                        </span>
                         <span>@_breakdown.Summary</span>
                     </button>
 
@@ -120,8 +125,7 @@
 
                             <div class="popover-note">
                                 Token counts are estimates (about 4 characters each). The model's budget is
-                                @ContextBreakdown.FormatTokens(_breakdown.BudgetTokens) tokens; 20% is kept as a safety margin, so
-                                @ContextBreakdown.FormatTokens(_breakdown.UsableTokens) are usable.
+                                @ContextBreakdown.FormatTokens(_breakdown.BudgetTokens) tokens; the gauge turns yellow at 75% and red at 90%.
                                 @if (_breakdown.IsOver)
                                 {
                                     <span class="over"> Remove an attachment or raise the budget in Settings.</span>

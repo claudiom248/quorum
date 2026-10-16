@@ -8,7 +8,7 @@ public sealed class AttachmentContextWindowTests
 {
     private const string Delimiter = "0123456789abcdef0123456789abcdef";
 
-    // 256 tokens give 256 * 0.8 * 4 = 819 usable characters.
+    // 256 tokens give 256 * 4 = 1024 usable characters.
     private const int SmallBudget = 256;
 
     private static ChatTurn User(string content) => new(ChatTurnRole.User, content);
@@ -60,7 +60,7 @@ public sealed class AttachmentContextWindowTests
     public void AttachmentsAreKeptAndOlderMessagesAreDroppedFirst()
     {
         var attachments = new[] { Attachment("a.txt", 300) };
-        var history = new[] { User(new string('1', 100)), Assistant(new string('2', 100)), User(new string('3', 100)), Assistant(new string('4', 100)), User("last") };
+        var history = new[] { User(new string('1', 200)), Assistant(new string('2', 200)), User(new string('3', 200)), Assistant(new string('4', 200)), User("last") };
 
         var selection = ContextWindow.Select("system", history, attachments, SmallBudget);
 
@@ -100,7 +100,7 @@ public sealed class AttachmentContextWindowTests
     [Fact]
     public void WithoutAttachmentsTheMessageErrorDoesNotMentionThem()
     {
-        var selection = ContextWindow.Select("system", [User(new string('x', 1000))], [], SmallBudget);
+        var selection = ContextWindow.Select("system", [User(new string('x', 1100))], [], SmallBudget);
 
         Assert.False(selection.IsSuccess);
         Assert.Equal("chat.message_too_long", selection.Error.Code);

@@ -56,7 +56,7 @@ Every application entity carries `TenantId`.
 
 - The original bytes are never persisted: only `Text` and `ContentHash` (used for duplicate detection).
 - `FileName` is for display and for the prompt only: it is never used to build a path, and it is sanitized (no path separators, control characters, length limit).
-- **Context usage** is derived, not stored: system prompt + attachments + the messages that fit after them (rule D-6), in characters and as estimated tokens (characters / 4, with the 20% margin of spec 001).
+- **Context usage** is derived, not stored: system prompt + attachments + the messages that fit after them (rule D-6), in characters and as estimated tokens (characters / 4; the 20% margin of spec 001 was dropped, so the whole budget is usable).
 - **Module boundaries**: attachments belong to Conversations. Text and the budget decision go through the `Quorum.Modules.Agents.Contracts` project: `IAssistantChat.StartAnswerAsync` receives the conversation's attachments, and a contract query returns the context usage for the indicator and the upload check. Conversations never reads the model endpoint configuration directly.
 
 ## API Contract
