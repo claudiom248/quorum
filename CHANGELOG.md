@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/claudiom248/quorum/compare/v0.6.1...v0.7.0) (2026-10-16)
+
+
+### Features
+
+* use the whole context budget and show a context gauge (spec 002) ([#25](https://github.com/claudiom248/quorum/issues/25)) ([00272cc](https://github.com/claudiom248/quorum/commit/00272ccf001fa89708b2adc9c15bbe26f6b519df))
+
 ## [0.6.1](https://github.com/claudiom248/quorum/compare/v0.6.0...v0.6.1) (2026-10-16)
 
 
