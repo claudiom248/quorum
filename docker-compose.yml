@@ -3,6 +3,9 @@
 #   cp .env.example .env        # then set POSTGRES_PASSWORD
 #   docker compose --profile bundled-db up --build
 #
+# To stamp the real version on the image (shown by /api/version), run docker compose through deploy/compose.sh:
+#   sh deploy/compose.sh --profile bundled-db up --build -d
+#
 # The image is built from the sources inside Docker (no step to run beforehand).
 #
 # Open http://localhost:8080 and paste the setup token printed in the logs
@@ -14,6 +17,9 @@ services:
   quorum:
     build:
       context: .
+      # The version stamped on the image (/api/version): the build has no git history, so deploy/compose.sh passes it.
+      args:
+        VERSION: ${QUORUM_VERSION:-0.0.0-local}
     image: quorum:local
     restart: unless-stopped
     ports:

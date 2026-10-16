@@ -1,0 +1,2 @@
+# Shell scripts run on Linux and in Git Bash: a CRLF line ending would break them after a checkout with autocrlf.
+*.sh text eol=lf
