@@ -44,6 +44,12 @@ public sealed record ContextBreakdown(
     private const double WarningFrom = 75;
     private const double CriticalFrom = 90;
 
+    /// <summary>How many ticks the gauge has; each one stands for a tenth of the context.</summary>
+    public const int GaugeTicks = 10;
+
+    /// <summary>The gauge ticks to light: a tick is lit as soon as its tenth is entered, so any use shows.</summary>
+    public int LitTicks => (int)Math.Ceiling(Percent / 100 * GaugeTicks);
+
     public static ContextBreakdown From(ConversationContext context, IReadOnlyList<AttachmentInfo> attachments)
     {
         ArgumentNullException.ThrowIfNull(context);

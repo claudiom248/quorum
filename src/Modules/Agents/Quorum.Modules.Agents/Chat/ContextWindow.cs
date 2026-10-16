@@ -5,15 +5,13 @@ namespace Quorum.Modules.Agents.Chat;
 
 /// <summary>
 /// Chooses what fits in a model's context. Tokens are estimated as characters / 4 (no model-specific tokenizer),
-/// with a 20% safety margin on the budget. The system prompt comes first, then all the attachments, then the most
+/// and the whole configured budget is usable. The system prompt comes first, then all the attachments, then the most
 /// recent messages that fit.
 /// </summary>
 internal static class ContextWindow
 {
-    private const double SafetyMargin = 0.8;
-
     public static int CharacterBudget(int contextTokenBudget) =>
-        (int)(contextTokenBudget * SafetyMargin * ContextUsage.CharactersPerToken);
+        contextTokenBudget * ContextUsage.CharactersPerToken;
 
     /// <summary>
     /// The most recent turns that fit after the system prompt and the attachments; the last turn must fit on its own.

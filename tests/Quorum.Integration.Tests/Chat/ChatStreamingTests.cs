@@ -76,7 +76,7 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     public async Task OnlyTheMostRecentMessagesThatFitTheContextBudgetAreSent()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        // 256 tokens with a 20% margin ≈ 819 characters of context.
+        // 256 tokens ≈ 1024 characters of context.
         using var client = await app.SetUpAsync(systemPrompt: "Short.", contextTokenBudget: 256);
         app.ModelServer.Chat = FakeModelServer.ChatScript.Reply(new string('a', 150));
         var id = await ChatApi.CreateConversationAsync(client);
@@ -91,7 +91,7 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
         Assert.Equal("system", sent[0].GetProperty("role").GetString());
         Assert.StartsWith("Question 5", sent[^1].GetProperty("content").GetString(), StringComparison.Ordinal);
         Assert.True(sent.Count < 10, $"Expected older messages to be dropped, but {sent.Count} were sent.");
-        Assert.True(totalCharacters <= 256 * 4 * 0.8, $"Sent {totalCharacters} characters, over the budget.");
+        Assert.True(totalCharacters <= 256 * 4, $"Sent {totalCharacters} characters, over the budget.");
         Assert.Equal(10, (await ChatApi.GetAsync(client, id)).Messages.Count);
     }
 

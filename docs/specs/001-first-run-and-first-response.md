@@ -89,7 +89,7 @@ Errors use ProblemDetails. All routes are under `/api`.
 - **Restart during setup**: a new token in the logs; the old one is no longer valid; no partial data is persisted before `/setup/complete`.
 - **Deletion**: explicit confirmation in the UI; permanent deletion of the conversation and its messages. Deleting during an in-progress response cancels the response.
 - **Message longer than the context budget** (together with the system prompt): rejected with 400 stating the maximum length.
-- **Token estimation**: characters / 4, with a 20% safety margin on the budget; replaceable later without changing the API.
+- **Token estimation**: characters / 4, the whole budget being usable (no safety margin, revised after spec 002); replaceable later without changing the API.
 - **Database unreachable at startup**: the app waits (the compose file uses the Postgres healthcheck), then exits with a clear error in the logs if it cannot connect.
 
 ## Non-Functional Requirements

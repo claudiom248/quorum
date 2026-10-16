@@ -9,7 +9,21 @@ public sealed class ContextBreakdownTests
         new(Guid.NewGuid(), name, "application/octet-stream", characters, characters, DateTimeOffset.UnixEpoch);
 
     private static ConversationContext Context(int usable, int system, int attachments, int messages) =>
-        new(ContextTokenBudget: (int)(usable / 0.8), UsableTokens: usable, system, attachments, messages, usable - system - attachments - messages);
+        new(ContextTokenBudget: usable, UsableTokens: usable, system, attachments, messages, usable - system - attachments - messages);
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(100, 1)]
+    [InlineData(101, 2)]
+    [InlineData(750, 8)]
+    [InlineData(1000, 10)]
+    public void TheGaugeLightsATickAsSoonAsItsTenthIsEntered(int used, int lit)
+    {
+        var breakdown = ContextBreakdown.From(Context(usable: 1000, system: 0, attachments: 0, messages: used), []);
+
+        Assert.Equal(lit, breakdown.LitTicks);
+    }
 
     [Fact]
     public void TheSegmentsFillTheUsableContextAndNameWhatIsLeft()
