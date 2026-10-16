@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/claudiom248/quorum/compare/v0.6.0...v0.6.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* make the Chat button in the app bar navigate ([#22](https://github.com/claudiom248/quorum/issues/22)) ([437858a](https://github.com/claudiom248/quorum/commit/437858ae93c2bba25096280d795135cf9b84e10f))
+
 ## [0.6.0](https://github.com/claudiom248/quorum/compare/v0.5.0...v0.6.0) (2026-10-15)
 
 
