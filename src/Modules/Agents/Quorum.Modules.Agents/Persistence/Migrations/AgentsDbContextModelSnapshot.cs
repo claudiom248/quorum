@@ -53,6 +53,26 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("assistants", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AssistantTool", b =>
+                {
+                    b.Property<Guid>("AssistantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ToolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("AssistantId", "ToolId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ToolId");
+
+                    b.ToTable("assistant_tools", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.ModelEndpoint", b =>
                 {
                     b.Property<Guid>("Id")
@@ -75,6 +95,9 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<string>("ProtectedApiKey")
                         .HasColumnType("text");
 
+                    b.Property<bool>("SupportsTools")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -88,11 +111,170 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("model_endpoints", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Tool", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("InputSchema")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Policy")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Origin", "Name")
+                        .IsUnique();
+
+                    b.ToTable("tools", "agents");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.ToolAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Arguments")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("ArgumentsTruncated")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("AssistantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CallId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Decision")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("DurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("ResultCharacters")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ServerName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "StartedAt");
+
+                    b.HasIndex("TenantId", "ToolName");
+
+                    b.ToTable("tool_audit_entries", "agents");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.ToolSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AuditRetentionDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CallTimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConfirmationTimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxResultCharacters")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxRounds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalTimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("tool_settings", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.Assistant", b =>
                 {
                     b.HasOne("Quorum.Modules.Agents.Domain.ModelEndpoint", null)
                         .WithMany()
                         .HasForeignKey("ModelEndpointId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AssistantTool", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Assistant", null)
+                        .WithMany()
+                        .HasForeignKey("AssistantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Quorum.Modules.Agents.Domain.Tool", null)
+                        .WithMany()
+                        .HasForeignKey("ToolId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

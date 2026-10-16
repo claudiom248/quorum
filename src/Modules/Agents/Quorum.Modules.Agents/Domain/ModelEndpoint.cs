@@ -19,24 +19,40 @@ internal sealed class ModelEndpoint
 
     public int ContextTokenBudget { get; private set; }
 
+    /// <summary>
+    /// Whether the model accepts the <c>tools</c> parameter. Models that do not would fail every request that carries tools,
+    /// so an assistant on such a model must be told not to send them.
+    /// </summary>
+    public bool SupportsTools { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public static ModelEndpoint Create(Guid tenantId, Uri baseUrl, string modelName, string? protectedApiKey, int contextTokenBudget, DateTimeOffset now) => new()
-    {
-        Id = Guid.CreateVersion7(now),
-        TenantId = tenantId,
-        BaseUrl = baseUrl.ToString(),
-        ModelName = modelName,
-        ProtectedApiKey = protectedApiKey,
-        ContextTokenBudget = contextTokenBudget,
-        UpdatedAt = now,
-    };
+    public static ModelEndpoint Create(
+        Guid tenantId,
+        Uri baseUrl,
+        string modelName,
+        string? protectedApiKey,
+        int contextTokenBudget,
+        bool supportsTools,
+        DateTimeOffset now) => new()
+        {
+            Id = Guid.CreateVersion7(now),
+            TenantId = tenantId,
+            BaseUrl = baseUrl.ToString(),
+            ModelName = modelName,
+            ProtectedApiKey = protectedApiKey,
+            ContextTokenBudget = contextTokenBudget,
+            SupportsTools = supportsTools,
+            UpdatedAt = now,
+        };
 
-    public void Configure(Uri baseUrl, string modelName, int contextTokenBudget, DateTimeOffset now)
+    /// <param name="supportsTools"><see langword="null"/> keeps the current value.</param>
+    public void Configure(Uri baseUrl, string modelName, int contextTokenBudget, bool? supportsTools, DateTimeOffset now)
     {
         BaseUrl = baseUrl.ToString();
         ModelName = modelName;
         ContextTokenBudget = contextTokenBudget;
+        SupportsTools = supportsTools ?? SupportsTools;
         UpdatedAt = now;
     }
 
