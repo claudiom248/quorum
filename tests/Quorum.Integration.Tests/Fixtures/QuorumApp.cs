@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Probing;
+using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
@@ -28,10 +30,11 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     private readonly string _connectionString;
     private readonly string _dataProtectionKeysPath;
 
-    private QuorumApp(string connectionString, string dataProtectionKeysPath)
+    private QuorumApp(string connectionString, string dataProtectionKeysPath, FakeTimeProvider? clock)
     {
         _connectionString = connectionString;
         _dataProtectionKeysPath = dataProtectionKeysPath;
+        Clock = clock;
     }
 
     public LogCapture Logs { get; } = new();
@@ -44,17 +47,26 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     public string SetupToken => Services.GetRequiredService<SetupMode>().Token
         ?? throw new InvalidOperationException("The app is not in setup mode.");
 
-    public static QuorumApp Start(string connectionString, string? dataProtectionKeysPath = null)
+    /// <summary>
+    /// The application's clock when the app was started with one; tests move it to cross time limits without waiting.
+    /// </summary>
+    public FakeTimeProvider? Clock { get; }
+
+    /// <summary>A native tool that tests script: register its row with <see cref="ToolFixtures"/> and set <see cref="ProbeTool.Handler"/>.</summary>
+    public ProbeTool Probe { get; } = new();
+
+    public static QuorumApp Start(string connectionString, string? dataProtectionKeysPath = null, FakeTimeProvider? clock = null)
     {
         var app = new QuorumApp(
             connectionString,
-            dataProtectionKeysPath ?? Path.Combine(Path.GetTempPath(), "quorum-tests", Guid.NewGuid().ToString("N")));
+            dataProtectionKeysPath ?? Path.Combine(Path.GetTempPath(), "quorum-tests", Guid.NewGuid().ToString("N")),
+            clock);
         _ = app.Server;
         return app;
     }
 
-    public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres) =>
-        Start(await postgres.CreateDatabaseAsync());
+    public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres, FakeTimeProvider? clock = null) =>
+        Start(await postgres.CreateDatabaseAsync(), clock: clock);
 
     /// <summary>A new app instance on the same database and key ring, as after a container restart.</summary>
     public QuorumApp Restart() => Start(_connectionString, _dataProtectionKeysPath);
@@ -75,8 +87,12 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         return client;
     }
 
-    /// <summary>Completes the setup against the fake model and returns the signed-in administrator's client.</summary>
-    public async Task<HttpClient> SetUpAsync(string? systemPrompt = "You are Acme's assistant.", int contextTokenBudget = 4096)
+    /// <summary>
+    /// Completes the setup against the fake model and returns the signed-in administrator's client.
+    /// The setup activates the native tools on the default assistant (spec 004, AC-16); <paramref name="toolsActive"/> = false
+    /// deactivates them, for tests about the plain chat.
+    /// </summary>
+    public async Task<HttpClient> SetUpAsync(string? systemPrompt = "You are Acme's assistant.", int contextTokenBudget = 4096, bool toolsActive = true)
     {
         ModelServer.Serve(ModelBaseUrl, "llama3.2");
 
@@ -97,6 +113,11 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         }
 
         client.DefaultRequestHeaders.Remove("X-Setup-Token");
+        if (!toolsActive)
+        {
+            await Tools.ToolFixtures.ActivateOnlyAsync(client);
+        }
+
         return client;
     }
 
@@ -160,6 +181,11 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
                 preserveStaticLogger: true);
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatStream.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddSingleton<INativeTool>(Probe);
+            if (Clock is not null)
+            {
+                services.AddSingleton<TimeProvider>(Clock);
+            }
         });
     }
 }
