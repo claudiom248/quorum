@@ -79,6 +79,43 @@ public sealed class ToolCallViewTests
         Assert.False(call.IsWaiting);
     }
 
+    [Theory]
+    [InlineData(ToolCallState.Running)]
+    [InlineData(ToolCallState.WaitingForConfirmation)]
+    [InlineData(ToolCallState.WaitingForAnswer)]
+    [InlineData(ToolCallState.Replied)]
+    public void AbandoningACallThatHasNoResultMarksItStoppedAndEndsTheWait(ToolCallState before)
+    {
+        var call = ToolCallView.From(Event("{}", confirm: before == ToolCallState.WaitingForConfirmation));
+        switch (before)
+        {
+            case ToolCallState.WaitingForAnswer:
+                call.Apply(new AskUserEvent(call.CallId, "Which?", DateTimeOffset.UtcNow.AddMinutes(5)));
+                break;
+            case ToolCallState.Replied:
+                call.Apply(new AskUserEvent(call.CallId, "Which?", DateTimeOffset.UtcNow.AddMinutes(5)));
+                call.MarkReplied();
+                break;
+        }
+
+        call.Abandon();
+
+        Assert.Equal(ToolCallState.Cancelled, call.State);
+        Assert.False(call.IsWaiting);
+        Assert.Null(call.ExpiresAt);
+    }
+
+    [Fact]
+    public void AbandoningACallThatHasItsResultChangesNothing()
+    {
+        var call = ToolCallView.From(Event("{}"));
+        call.Apply(new ToolResultEvent(call.CallId, "succeeded", "4", 1));
+
+        call.Abandon();
+
+        Assert.Equal(ToolCallState.Succeeded, call.State);
+    }
+
     [Fact]
     public void AReplyAfterTheResultDoesNotBringTheWaitBack()
     {

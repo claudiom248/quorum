@@ -200,11 +200,14 @@ else
         }
     }
 
-    // What the server reports pre-fills the flag; when it does not say, it stays on, as the server defaults it.
+    // What the server reports pre-fills the flag; when it does not say, the value stays (on, as the server defaults it, until the admin changes it).
     private void ApplyToolSupport(bool? reported)
     {
         _detectedToolSupport = reported;
-        _supportsTools = reported ?? true;
+        if (reported is { } value)
+        {
+            _supportsTools = value;
+        }
     }
 
     // An unreachable model does not block the setup (it may still be starting): the settings page warns about it.

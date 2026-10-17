@@ -143,6 +143,19 @@ public sealed class ToolCallView
         };
     }
 
+    /// <summary>The answer ended with no result for this call (stopped, connection lost): nothing waits for the user any more.</summary>
+    public void Abandon()
+    {
+        if (Result is not null || State is ToolCallState.Cancelled)
+        {
+            return;
+        }
+
+        Busy = false;
+        ExpiresAt = null;
+        State = ToolCallState.Cancelled;
+    }
+
     /// <summary>The user's reply reached the server; the dialog or prompt goes away until the result arrives.</summary>
     public void MarkReplied()
     {

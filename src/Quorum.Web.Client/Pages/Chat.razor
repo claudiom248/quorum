@@ -67,6 +67,11 @@
                     else
                     {
                         <div class="turn assistant">
+                            @if (ReferenceEquals(message, _messages[^1]) && !_streaming && _calls.Count > 0)
+                            {
+                                @Calls
+                            }
+
                             <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
                             @if (message.Status == MessageStatuses.Interrupted)
                             {
@@ -80,7 +85,8 @@
                     }
                 }
 
-                @if (!_streaming && _calls.Count > 0)
+                @* With the answer on screen the cards sit above it, as they do while it streams; this one is for when it is not (yet). *@
+                @if (!_streaming && _calls.Count > 0 && _messages is not [.., { Role: MessageRoles.Assistant }])
                 {
                     <div class="turn assistant">@Calls</div>
                 }
@@ -419,6 +425,12 @@
             _streaming = false;
             _stream?.Dispose();
             _stream = null;
+
+            // Whatever ended the answer, a call still without a result is over: nothing may keep waiting for the user.
+            foreach (var call in _calls)
+            {
+                call.Abandon();
+            }
         }
 
         // The server stores the final text and status: reload so the screen shows what is persisted.

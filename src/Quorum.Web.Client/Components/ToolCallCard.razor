@@ -1,3 +1,5 @@
+@inject IJSRuntime JS
+
 <div class="tool-card state-@Call.State.ToString().ToLowerInvariant()">
     <div class="tool-head">
         <MudIcon Icon="@Icons.Material.Outlined.Build" Size="Size.Small" />
@@ -42,7 +44,8 @@
 @if (Call.State == ToolCallState.WaitingForConfirmation)
 {
     <div class="tool-dialog-backdrop">
-        <div class="tool-dialog" role="dialog" aria-modal="true" aria-label="Confirm tool call">
+        <div class="tool-dialog" role="dialog" aria-modal="true" aria-label="Confirm tool call" tabindex="-1"
+             @ref="_dialog" @onkeydown="OnKeyDownAsync" @onkeydown:stopPropagation="true">
             <h2>Allow this tool to run?</h2>
             <p>The assistant wants to call <strong>@Call.DisplayName</strong>@(Call.HasArguments ? " with these arguments:" : " without arguments.")</p>
             @if (Call.HasArguments)
@@ -54,7 +57,7 @@
                 <p class="tool-hint">Nothing runs until you approve. Decide before @until.ToLocalTime().ToString("HH:mm:ss"); otherwise the call is denied.</p>
             }
             <div class="tool-dialog-actions">
-                <MudButton Variant="Variant.Outlined" Disabled="Call.Busy" OnClick="() => DecideAsync(false)">Deny</MudButton>
+                <MudButton Variant="Variant.Outlined" Disabled="Call.Busy" OnClick="() => DecideAsync(false)" data-initial-focus="true">Deny</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="Call.Busy" OnClick="() => DecideAsync(true)">Approve</MudButton>
             </div>
         </div>
@@ -63,6 +66,8 @@
 
 @code {
     private string _answer = string.Empty;
+    private ElementReference _dialog;
+    private bool _focused;
 
     [Parameter, EditorRequired]
     public ToolCallView Call { get; set; } = default!;
@@ -73,6 +78,24 @@
 
     [Parameter]
     public EventCallback<string> OnAnswer { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var open = Call.State == ToolCallState.WaitingForConfirmation;
+        if (open && !_focused)
+        {
+            // Deny first: the safe answer is the one a stray Enter gives. The script also keeps Tab inside the dialog.
+            _focused = true;
+            await JS.InvokeVoidAsync("quorumChat.focusDialog", _dialog);
+        }
+        else if (!open)
+        {
+            _focused = false;
+        }
+    }
+
+    private Task OnKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key == "Escape" && !Call.Busy ? DecideAsync(false) : Task.CompletedTask;
 
     private Task DecideAsync(bool approved) => OnDecide.InvokeAsync(approved);
 

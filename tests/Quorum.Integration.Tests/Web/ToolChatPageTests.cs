@@ -213,6 +213,96 @@ public sealed class ToolChatPageTests : BunitContext
     }
 
     [Fact]
+    public async Task AStreamThatEndsWhileAConfirmationIsOpenClosesTheDialogAndMarksTheCallStopped()
+    {
+        var (page, sending) = await StartAnswerAsync();
+        await PushToolCallAsync("""{"expression":"2+2"}""", requiresConfirmation: true);
+        page.WaitForAssertion(() => page.Find("[role=dialog]"));
+
+        // The connection goes away: no result and no done event ever arrive.
+        _stream.Writer.Complete();
+        await sending;
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Empty(page.FindAll("[role=dialog]"));
+            Assert.Contains("Stopped", page.Find(".tool-card").TextContent, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task AQuestionStillOpenWhenTheStreamEndsIsClosedToo()
+    {
+        var (page, sending) = await StartAnswerAsync();
+        await PushAsync("tool_call", new { callId = Call, tool = "native__ask_user", arguments = new { question = "Which?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
+        await PushAsync("ask_user", new { callId = Call, question = "Which?", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
+        page.WaitForAssertion(() => page.Find(".tool-question"));
+
+        _stream.Writer.Complete();
+        await sending;
+
+        page.WaitForAssertion(() => Assert.Empty(page.FindAll(".tool-question")));
+    }
+
+    [Fact]
+    public async Task TheCardsStayAboveTheFinalAnswerWhenItEnds()
+    {
+        var (page, sending) = await StartAnswerAsync();
+        await PushToolCallAsync("""{"expression":"2+2"}""", requiresConfirmation: false);
+        await PushAsync("tool_result", new { callId = Call, status = "succeeded", content = "4", sizeCharacters = 1 });
+        await FinishAnswerAsync();
+        _stream.Writer.Complete();
+        await sending;
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("Stored: It is 4.", page.Markup, StringComparison.Ordinal);
+            Assert.True(
+                page.Markup.IndexOf("tool-card", StringComparison.Ordinal) < page.Markup.IndexOf("Stored: It is 4.", StringComparison.Ordinal),
+                "The tool card must come before the answer, as it does while streaming.");
+        });
+    }
+
+    [Fact]
+    public async Task TheDialogTakesTheFocusWhenItOpens()
+    {
+        var (page, sending) = await StartAnswerAsync();
+
+        await PushToolCallAsync("""{"expression":"2+2"}""", requiresConfirmation: true);
+
+        page.WaitForAssertion(() => page.Find("[role=dialog]"));
+
+        // The script is called after the render that shows the dialog, so no further render announces it: poll.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!JSInterop.Invocations.Any(i => i.Identifier == "quorumChat.focusDialog") && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25, Xunit.TestContext.Current.CancellationToken);
+        }
+
+        Assert.Single(JSInterop.Invocations, i => i.Identifier == "quorumChat.focusDialog");
+        await FinishAnswerAsync();
+        _stream.Writer.Complete();
+        await sending;
+    }
+
+    [Fact]
+    public async Task EscapeDeniesTheCall()
+    {
+        var (page, sending) = await StartAnswerAsync();
+        await PushToolCallAsync("""{"expression":"2+2"}""", requiresConfirmation: true);
+        page.WaitForAssertion(() => page.Find("[role=dialog]"));
+
+        page.Find("[role=dialog]").KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, $"/tool-calls/{Call}/decision")));
+        using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Post, "/decision")!);
+        Assert.False(body.RootElement.GetProperty("approved").GetBoolean());
+        await FinishAnswerAsync();
+        _stream.Writer.Complete();
+        await sending;
+    }
+
+    [Fact]
     public async Task AQuestionOfTheModelIsShownAndTheAnswerIsSentForThatCall()
     {
         var (page, sending) = await StartAnswerAsync();
