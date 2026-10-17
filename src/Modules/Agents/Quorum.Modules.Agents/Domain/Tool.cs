@@ -48,6 +48,15 @@ internal sealed class Tool
 
     public ToolPolicy Policy { get; private set; }
 
+    /// <summary>The MCP server that offers the tool; <see langword="null"/> for native tools.</summary>
+    public Guid? ServerId { get; private set; }
+
+    /// <summary>SHA-256 of name, description and canonical input schema: how a refresh tells that a tool changed (D-14).</summary>
+    public string? DefinitionHash { get; private set; }
+
+    /// <summary>The hints the server sent (<c>readOnlyHint</c>, <c>destructiveHint</c>...) as a JSON object. Untrusted: shown to the admin, never used to decide anything.</summary>
+    public string? Annotations { get; private set; }
+
     public static Tool CreateNative(Guid tenantId, string name, string description, string inputSchema) => new()
     {
         Id = Guid.CreateVersion7(),
@@ -59,6 +68,36 @@ internal sealed class Tool
         State = ToolState.Enabled,
         Policy = ToolPolicy.Auto,
     };
+
+    /// <summary>A tool a server listed for the first time: not offered to any model until the admin reviews it, and it asks for confirmation.</summary>
+    public static Tool CreateMcp(Guid tenantId, Guid serverId, string name, string description, string inputSchema, string definitionHash, string? annotations) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        ServerId = serverId,
+        Origin = ToolOrigin.Mcp,
+        Name = name,
+        Description = description,
+        InputSchema = inputSchema,
+        DefinitionHash = definitionHash,
+        Annotations = annotations,
+        State = ToolState.PendingReview,
+        Policy = ToolPolicy.Confirm,
+    };
+
+    /// <summary>The server now describes the tool differently: what the admin approved no longer applies, so it goes back to review and to confirmation.</summary>
+    public void RedefineFromServer(string description, string inputSchema, string definitionHash, string? annotations)
+    {
+        Description = description;
+        InputSchema = inputSchema;
+        DefinitionHash = definitionHash;
+        Annotations = annotations;
+        State = ToolState.PendingReview;
+        Policy = ToolPolicy.Confirm;
+    }
+
+    /// <summary>Annotations are information only and are not part of the hash, so they follow the server without a new review.</summary>
+    public void UpdateAnnotations(string? annotations) => Annotations = annotations;
 
     /// <summary>Follows a new release's definition of a native tool; what the admin decided (state, policy) is kept.</summary>
     public void Redefine(string description, string inputSchema)

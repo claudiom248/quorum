@@ -11,6 +11,7 @@ using Microsoft.Extensions.Time.Testing;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
@@ -40,6 +41,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     public LogCapture Logs { get; } = new();
 
     public FakeModelServer ModelServer { get; } = new();
+
+    /// <summary>Script host names for MCP servers (a name that resolves to a blocked address, or changes address).</summary>
+    public TestHostResolver McpHosts { get; } = new();
 
     public string ConnectionString => _connectionString;
 
@@ -182,6 +186,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddSingleton<INativeTool>(Probe);
+            services.AddSingleton<IMcpHostResolver>(McpHosts);
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);
