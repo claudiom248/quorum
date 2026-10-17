@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
@@ -13,71 +14,132 @@ namespace Quorum.Modules.Agents.Tools;
 internal sealed record ToolCallResult(ToolResultStatus Status, string Content);
 
 /// <summary>
-/// Runs one tool call the model asked for: finds the tool, checks at call time that it is still active, validates the arguments,
-/// records the call in the audit log before running it, runs it within the call timeout, and caps the result. Whatever goes
-/// wrong becomes an error result for the model; nothing here throws for a bad call.
+/// The <see cref="FunctionInvokingChatClient.FunctionInvoker"/> of an answer: runs one tool call the model asked for. It checks at
+/// call time that the tool is still active, validates the arguments, records the call in the audit log before running it, runs
+/// it within the call timeout and the time left, and caps the result. Whatever goes wrong becomes an error result for the model;
+/// nothing here throws for a bad call, because the function-invoking client would turn an exception into a vague error.
 /// </summary>
-internal sealed partial class ToolExecutor(
-    AgentsDbContext db,
-    IEnumerable<INativeTool> nativeTools,
-    TimeProvider clock,
-    ILogger<ToolExecutor> logger)
+internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider clock, ILogger<ToolCallInvoker> logger)
 {
     private const int MaxAuditedNameLength = 128;
 
-    private readonly Dictionary<string, INativeTool> _nativeTools = nativeTools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
-
-    /// <param name="cancellationToken">Stops the call: the user left, or the answer ran out of total time.</param>
-    /// <param name="userCancellation">The part of <paramref name="cancellationToken"/> that is the user stopping the answer.</param>
     /// <exception cref="OperationCanceledException">The user stopped the answer; the call was audited as cancelled.</exception>
-    public async Task<ToolCallResult> ExecuteAsync(
-        ModelToolCall call,
-        Guid callId,
-        ToolRunContext context,
-        CancellationToken cancellationToken,
-        CancellationToken userCancellation)
+    public async ValueTask<object?> InvokeAsync(AnswerRun run, FunctionInvocationContext invocation, CancellationToken cancellationToken)
     {
-        var tool = context.Tools.FirstOrDefault(t => t.ExposedName == call.Name);
-        var (auditArguments, truncated) = AuditRedactor.Redact(call.Arguments);
-        var info = new CallInfo(callId, tool?.ServerName, tool?.Name ?? Shorten(call.Name), auditArguments, truncated, clock.GetTimestamp());
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(invocation);
 
-        if (tool is null)
+        try
         {
-            var names = string.Join(", ", context.Tools.Select(t => t.ExposedName));
-            return await RefuseAsync(context, info, ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.unknown", $"Unknown tool '{call.Name}'. The available tools are: {names}.");
+            return await InvokeCoreAsync(run, invocation, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException))
+        {
+            // MEAI would turn this into an error result for the model, and its logger is off: end the answer with the failure instead.
+            LogInvokerFailed(logger, exception);
+            run.Fail(exception);
+            invocation.Terminate = true;
+            return "The tool was not run because of an internal error.";
+        }
+    }
+
+    private async ValueTask<object?> InvokeCoreAsync(AnswerRun run, FunctionInvocationContext invocation, CancellationToken cancellationToken)
+    {
+        var call = invocation.CallContent;
+        run.MarkHandled(call.CallId);
+
+        // The client always makes one more request after the last iteration it allows. When the limit leaves no such iteration
+        // (one round), a call could never be answered, so it is not run.
+        if (invocation.Iteration + 1 >= run.Context.Limits.MaxRounds)
+        {
+            run.StopFor(AnswerStop.Rounds);
+            invocation.Terminate = true;
+            return "The tool was not run because the round limit was reached.";
         }
 
-        var policy = await CurrentPolicyAsync(context, tool, cancellationToken);
-        if (policy is null || (tool.Origin == ToolOrigin.Native && !_nativeTools.ContainsKey(tool.Name)))
+        var callId = Guid.CreateVersion7();
+        var raw = OpenAiChatClient.RawArguments(call);
+        var (auditArguments, truncated) = AuditRedactor.Redact(raw);
+
+        var tool = invocation.Function as QuorumTool;
+        var info = new CallInfo(callId, tool?.Descriptor.ServerName, tool?.Descriptor.Name ?? Shorten(call.Name), auditArguments, truncated, clock.GetTimestamp());
+
+        var prepared = await PrepareAsync(run.Context, tool, call, raw, cancellationToken);
+
+        // Where a call that needs the user's confirmation is published, with its expiry, before the answer waits for the decision.
+        await run.PublishAsync(
+            new AnswerChunk(
+                AnswerChunkKind.ToolCall,
+                string.Empty,
+                new ToolCallEvent(callId, call.Name, raw, RequiresConfirmation: false, ExpiresAt: null)),
+            cancellationToken);
+
+        var result = prepared.Refusal is { } refusal
+            ? await RefuseAsync(run.Context, info, refusal)
+            : await ExecuteAsync(run, tool!, call, raw, info, cancellationToken);
+
+        await run.PublishAsync(
+            new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, result.Status, result.Content, result.Content.Length)),
+            cancellationToken);
+
+        if (run.Deadline.IsExpired)
         {
-            return await RefuseAsync(context, info, ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.unavailable", $"The tool '{call.Name}' is no longer available.");
+            // The loop must not ask the model again, and a thrown exception would only reach the model as an error.
+            run.StopFor(AnswerStop.TotalTime);
+            invocation.Terminate = true;
         }
 
-        var problem = ToolArgumentValidator.Validate(tool.InputSchema, call.Arguments);
+        return result.Content;
+    }
+
+    /// <summary>The checks at call time that decide whether the call may run. Nothing is written yet.</summary>
+    private async Task<Prepared> PrepareAsync(ToolRunContext context, QuorumTool? tool, FunctionCallContent call, string rawArguments, CancellationToken cancellationToken)
+    {
+        var policy = tool is null ? null : await CurrentPolicyAsync(context, tool.Descriptor, cancellationToken);
+        if (tool is null || policy is null)
+        {
+            return new Prepared(null, new Refusal(ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.unavailable", $"The tool '{call.Name}' is no longer available."));
+        }
+
+        // A call whose arguments are not even JSON arrives with its parse error; the validator names what is wrong with the rest.
+        var problem = ToolArgumentValidator.Validate(tool.Descriptor.InputSchema, rawArguments)
+            ?? (call.Exception is null ? null : "The arguments are not valid JSON.");
         if (problem is not null)
         {
-            return await RefuseAsync(context, info, ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.invalid_arguments", $"The arguments for '{call.Name}' are not valid. {problem}");
+            return new Prepared(policy, new Refusal(ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.invalid_arguments", $"The arguments for '{call.Name}' are not valid. {problem}"));
         }
 
         if (policy == ToolPolicy.Confirm)
         {
             // Asking the user comes with the confirmation flow; until then a tool that needs a yes never runs.
-            return await RefuseAsync(
-                context,
-                info,
-                ToolOutcome.Denied,
-                ToolResultStatus.Denied,
-                ToolDecision.Denied,
-                "tool.confirmation_unavailable",
-                $"The tool '{call.Name}' needs the user's confirmation, which is not available yet, so it was not run.");
+            return new Prepared(
+                policy,
+                new Refusal(
+                    ToolOutcome.Denied,
+                    ToolResultStatus.Denied,
+                    ToolDecision.Denied,
+                    "tool.confirmation_unavailable",
+                    $"The tool '{call.Name}' needs the user's confirmation, which is not available yet, so it was not run."));
         }
 
+        return new Prepared(policy, null);
+    }
+
+    private async Task<ToolCallResult> ExecuteAsync(
+        AnswerRun run,
+        QuorumTool tool,
+        FunctionCallContent call,
+        string rawArguments,
+        CallInfo info,
+        CancellationToken cancellationToken)
+    {
+        var context = run.Context;
         var entry = ToolAuditEntry.Start(
             context.TenantId,
             context.UserId,
             context.AssistantId,
             context.ConversationId,
-            callId,
+            info.CallId,
             info.ServerName,
             info.ToolName,
             ToolDecision.Auto,
@@ -90,21 +152,10 @@ internal sealed partial class ToolExecutor(
             return new ToolCallResult(ToolResultStatus.Failed, "The tool was not run because the call could not be recorded in the audit log.");
         }
 
-        return await RunAsync(tool, call, entry, info, context, cancellationToken, userCancellation);
-    }
-
-    private async Task<ToolCallResult> RunAsync(
-        ActiveTool tool,
-        ModelToolCall call,
-        ToolAuditEntry entry,
-        CallInfo info,
-        ToolRunContext context,
-        CancellationToken cancellationToken,
-        CancellationToken userCancellation)
-    {
         using var callTimeout = new CancellationTokenSource(context.Limits.CallTimeout, clock);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, callTimeout.Token);
-        using var arguments = JsonDocument.Parse(string.IsNullOrWhiteSpace(call.Arguments) ? "{}" : call.Arguments);
+        using var totalTime = run.Deadline.CreateWatch(cancellationToken);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(totalTime.Token, callTimeout.Token);
+        using var arguments = JsonDocument.Parse(string.IsNullOrWhiteSpace(rawArguments) ? "{}" : rawArguments);
 
         ToolOutcome outcome;
         ToolResultStatus status;
@@ -115,7 +166,7 @@ internal sealed partial class ToolExecutor(
         try
         {
             // WaitAsync makes the timeout hold even for a tool that never looks at its token.
-            var output = await Execute(tool, arguments.RootElement, linked.Token).WaitAsync(linked.Token);
+            var output = await tool.RunAsync(arguments.RootElement, linked.Token).WaitAsync(linked.Token);
             if (output.Length > context.Limits.MaxResultCharacters)
             {
                 outcome = ToolOutcome.Failed;
@@ -133,8 +184,9 @@ internal sealed partial class ToolExecutor(
                 content = output;
             }
         }
-        catch (OperationCanceledException) when (userCancellation.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // The user stopped the answer (the deadline's own cancellation is a different token).
             await CompleteAsync(entry, ToolOutcome.Cancelled, null, "tool.cancelled", info);
             throw;
         }
@@ -143,9 +195,9 @@ internal sealed partial class ToolExecutor(
             outcome = ToolOutcome.TimedOut;
             status = ToolResultStatus.TimedOut;
             errorCode = "tool.timed_out";
-            content = callTimeout.IsCancellationRequested
-                ? $"The tool did not finish in time and was cancelled after {context.Limits.CallTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} seconds."
-                : "The answer reached its total time limit and the tool was cancelled.";
+            content = run.Deadline.IsExpired
+                ? "The answer reached its total time limit and the tool was cancelled."
+                : $"The tool did not finish in time and was cancelled after {context.Limits.CallTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} seconds.";
         }
         catch (ToolFailedException exception)
         {
@@ -167,9 +219,6 @@ internal sealed partial class ToolExecutor(
         await CompleteAsync(entry, outcome, resultCharacters, errorCode, info);
         return new ToolCallResult(status, content);
     }
-
-    private Task<string> Execute(ActiveTool tool, JsonElement arguments, CancellationToken cancellationToken) =>
-        _nativeTools[tool.Name].ExecuteAsync(arguments, cancellationToken);
 
     /// <returns>The tool's policy now, or <see langword="null"/> when it is no longer enabled and activated on the assistant.</returns>
     private async Task<ToolPolicy?> CurrentPolicyAsync(ToolRunContext context, ActiveTool tool, CancellationToken cancellationToken) =>
@@ -216,14 +265,7 @@ internal sealed partial class ToolExecutor(
         LogCall(logger, info.CallId, info.ToolName, outcome, (int)duration.TotalMilliseconds);
     }
 
-    private async Task<ToolCallResult> RefuseAsync(
-        ToolRunContext context,
-        CallInfo info,
-        ToolOutcome outcome,
-        ToolResultStatus status,
-        ToolDecision? decision,
-        string errorCode,
-        string message)
+    private async Task<ToolCallResult> RefuseAsync(ToolRunContext context, CallInfo info, Refusal refusal)
     {
         var entry = ToolAuditEntry.Start(
             context.TenantId,
@@ -233,11 +275,11 @@ internal sealed partial class ToolExecutor(
             info.CallId,
             info.ServerName,
             info.ToolName,
-            decision,
+            refusal.Decision,
             info.Arguments,
             info.ArgumentsTruncated,
             clock.GetUtcNow());
-        entry.Complete(outcome, null, errorCode, clock.GetUtcNow(), clock.GetElapsedTime(info.Timestamp));
+        entry.Complete(refusal.Outcome, null, refusal.ErrorCode, clock.GetUtcNow(), clock.GetElapsedTime(info.Timestamp));
 
         try
         {
@@ -251,8 +293,8 @@ internal sealed partial class ToolExecutor(
             LogAuditWriteFailed(logger, exception);
         }
 
-        LogCall(logger, info.CallId, info.ToolName, outcome, 0);
-        return new ToolCallResult(status, message);
+        LogCall(logger, info.CallId, info.ToolName, refusal.Outcome, 0);
+        return new ToolCallResult(refusal.Status, refusal.Message);
     }
 
     private static string Shorten(string name) => name.Length <= MaxAuditedNameLength ? name : name[..MaxAuditedNameLength];
@@ -266,8 +308,15 @@ internal sealed partial class ToolExecutor(
     [LoggerMessage(Level = LogLevel.Error, Message = "The audit entry of tool call {CallId} could not be completed")]
     private static partial void LogAuditCompletionFailed(ILogger logger, Exception exception, Guid callId);
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "The tool-call invoker failed, so the answer was stopped")]
+    private static partial void LogInvokerFailed(ILogger logger, Exception exception);
+
     [LoggerMessage(Level = LogLevel.Error, Message = "Tool call {CallId} to {Tool} threw an exception")]
     private static partial void LogToolCrashed(ILogger logger, Exception exception, Guid callId, string tool);
 
     private sealed record CallInfo(Guid CallId, string? ServerName, string ToolName, string Arguments, bool ArgumentsTruncated, long Timestamp);
+
+    private sealed record Refusal(ToolOutcome Outcome, ToolResultStatus Status, ToolDecision? Decision, string ErrorCode, string Message);
+
+    private sealed record Prepared(ToolPolicy? Policy, Refusal? Refusal);
 }

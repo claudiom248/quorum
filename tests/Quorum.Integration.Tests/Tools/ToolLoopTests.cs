@@ -276,6 +276,25 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
         Assert.Equal(2, app.ModelServer.ChatRequests.Count);
     }
 
+    [Fact] // AC-22
+    public async Task WithASingleRoundACallIsNeverRunAndTheAnswerFails()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await SetLimitsAsync(client, maxRounds: 1);
+        await ToolFixtures.AddProbeAsync(app);
+        app.ModelServer.Chat = ChatScript.Reply("Trying. ") with { ToolCalls = [Probe("x")] };
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        var events = await ChatApi.SendAsync(client, id, "Go");
+
+        Assert.Equal("Failed", events[^1].Data.GetProperty("status").GetString());
+        Assert.Contains("1 rounds", events[^1].Data.GetProperty("error").GetString(), StringComparison.Ordinal);
+        Assert.Single(app.ModelServer.ChatRequests);
+        Assert.Empty(app.Probe.Calls);
+        Assert.Empty(await ToolFixtures.AuditRowsAsync(app));
+    }
+
     [Fact] // AC-25
     public async Task AnUnknownToolIsReturnedToTheModelAsAnErrorAndTheRoundCounts()
     {

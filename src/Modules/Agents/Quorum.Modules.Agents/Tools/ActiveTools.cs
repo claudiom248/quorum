@@ -4,11 +4,8 @@ using Quorum.Modules.Agents.Persistence;
 
 namespace Quorum.Modules.Agents.Tools;
 
-/// <summary>A tool offered to the model in an answer: what the model sees and what the executor needs to find it again.</summary>
-internal sealed record ActiveTool(Guid ToolId, ToolOrigin Origin, string Name, string ExposedName, string? ServerName, string Description, string InputSchema)
-{
-    public ToolDefinition Definition => new(ExposedName, Description, InputSchema);
-}
+/// <summary>A tool of an assistant as stored: what the model sees (name, description, schema) and what the invoker needs to audit and check it.</summary>
+internal sealed record ActiveTool(Guid ToolId, ToolOrigin Origin, string Name, string ExposedName, string? ServerName, string Description, string InputSchema);
 
 /// <summary>The limits of the tool-calling loop for one answer, read once from the tenant's settings.</summary>
 internal sealed record ToolLimits(int MaxRounds, TimeSpan TotalTimeout, TimeSpan CallTimeout, int MaxResultCharacters)
@@ -25,13 +22,12 @@ internal sealed record ToolLimits(int MaxRounds, TimeSpan TotalTimeout, TimeSpan
     public static ToolLimits Unbounded { get; } = new(1, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan, int.MaxValue);
 }
 
-/// <summary>Who is answering what, for the executor and the audit log.</summary>
+/// <summary>Who is answering what, for the invoker and the audit log.</summary>
 internal sealed record ToolRunContext(
     Guid TenantId,
     Guid UserId,
     Guid AssistantId,
     Guid ConversationId,
-    IReadOnlyList<ActiveTool> Tools,
     ToolLimits Limits);
 
 internal static class ActiveToolsQuery

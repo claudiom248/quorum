@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
@@ -11,7 +12,8 @@ namespace Quorum.Modules.Agents.Chat;
 internal sealed class AssistantChat(
     AgentsDbContext db,
     ApiKeyProtector apiKeyProtector,
-    ToolLoop toolLoop,
+    AnswerPipeline pipeline,
+    QuorumToolFactory toolFactory,
     ToolAccess toolAccess) : IAssistantChat, IAssistantCatalog
 {
     // Added to the system prompt only when tools are offered (D-31); attached documents carry the same warning in their own block.
@@ -40,6 +42,7 @@ internal sealed class AssistantChat(
             return AssistantNotFound;
         }
 
+        // Rejecting what does not fit happens here, before the answer starts, so the caller can answer with a plain error and store nothing.
         var turns = ContextWindow.Select(prepared.SystemPrompt, history, attachments, prepared.ContextTokenBudget, prepared.ToolsCharacters);
         if (!turns.IsSuccess)
         {
@@ -47,29 +50,23 @@ internal sealed class AssistantChat(
         }
 
         var block = AttachmentBlock.Render(attachments, AttachmentBlock.NewDelimiter());
-        var systemPrompt = prepared.SystemPrompt + block; // the block carries its own separator
-
-        List<ModelMessage> messages = [new SystemMessage(systemPrompt)];
-        messages.AddRange(turns.Value.Select(turn => turn.Role == ChatTurnRole.User
-            ? (ModelMessage)new UserMessage(turn.Content)
-            : new AssistantMessage(turn.Content, [])));
 
         var context = new ToolRunContext(
             prepared.Caller?.TenantId ?? Guid.Empty,
             prepared.Caller?.UserId ?? Guid.Empty,
             assistantId,
             conversationId,
-            prepared.Tools,
             prepared.Limits);
 
-        var answer = toolLoop.RunAsync(
-            new ToolLoopRequest(
+        var answer = pipeline.RunAsync(
+            new AnswerRequest(
                 new Uri(prepared.BaseUrl),
                 prepared.ModelName,
                 apiKeyProtector.Unprotect(prepared.ProtectedApiKey),
-                messages,
-                prepared.Tools.Count == 0 ? null : ToolDefinitionRenderer.Render(prepared.Tools.Select(t => t.Definition)),
-                systemPrompt.Length + prepared.ToolsCharacters + turns.Value.Sum(turn => turn.Content.Length),
+                prepared.SystemPrompt,
+                block.Length == 0 ? null : block,
+                turns.Value.Select(turn => new ChatMessage(turn.Role == ChatTurnRole.User ? ChatRole.User : ChatRole.Assistant, turn.Content)).ToList(),
+                prepared.Tools,
                 ContextWindow.CharacterBudget(prepared.ContextTokenBudget),
                 context),
             cancellationToken);
@@ -135,7 +132,9 @@ internal sealed class AssistantChat(
         }
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
-        IReadOnlyList<ActiveTool> tools = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken);
+        var tools = caller is null
+            ? []
+            : toolFactory.Create(await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken));
         if (tools.Count == 0)
         {
             return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded);
@@ -147,7 +146,7 @@ internal sealed class AssistantChat(
             configuration.SystemPrompt + ToolDataNotice,
             caller,
             tools,
-            ToolDefinitionRenderer.Length(tools.Select(t => t.Definition).ToList()),
+            ToolDefinitionRenderer.Length(tools.Select(ToolDefinition.From).ToList()),
             settings is null ? ToolLimits.Default : ToolLimits.From(settings));
     }
 
@@ -163,7 +162,7 @@ internal sealed class AssistantChat(
         AssistantConfiguration Configuration,
         string SystemPrompt,
         ToolCaller? Caller,
-        IReadOnlyList<ActiveTool> Tools,
+        IReadOnlyList<QuorumTool> Tools,
         int ToolsCharacters,
         ToolLimits Limits)
     {
