@@ -13,4 +13,7 @@ public static class QuorumPolicies
 
     /// <summary>Invoke tools by chatting with an assistant that has them.</summary>
     public const string ToolsUse = "tools.use";
+
+    /// <summary>Manage the metadata dictionary and the knowledge bases: register, verify, map, try a search.</summary>
+    public const string KnowledgeBaseManage = "knowledge_base.manage";
 }
