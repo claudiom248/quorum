@@ -55,13 +55,33 @@ internal sealed class ContextGuardChatClient(IChatClient inner, AnswerRun run) :
         }
     }
 
+    // The same tool list goes to every request of the answer (the function-invoking client swaps it for another only on its last one),
+    // so what its definitions cost is worked out once per list.
+    private IList<AITool>? _countedTools;
+    private int _countedToolsCharacters;
+
+    private int ToolsCharacters(IList<AITool>? tools)
+    {
+        if (tools is null)
+        {
+            return 0;
+        }
+
+        if (!ReferenceEquals(tools, _countedTools))
+        {
+            _countedToolsCharacters = ToolDefinitionRenderer.Length(tools.OfType<AIFunctionDeclaration>().Select(ToolDefinition.From).ToList());
+            _countedTools = tools;
+        }
+
+        return _countedToolsCharacters;
+    }
+
     /// <summary>What the request takes in the context, in characters: the instructions, the tool definitions and the messages.</summary>
-    internal static int Characters(IEnumerable<ChatMessage> messages, ChatOptions? options)
+    private int Characters(IEnumerable<ChatMessage> messages, ChatOptions? options)
     {
         var characters = options?.Instructions?.Length ?? 0;
 
-        var tools = options?.Tools?.OfType<AIFunctionDeclaration>().Select(ToolDefinition.From).ToList() ?? [];
-        characters += ToolDefinitionRenderer.Length(tools);
+        characters += ToolsCharacters(options?.Tools);
 
         foreach (var content in messages.SelectMany(message => message.Contents))
         {

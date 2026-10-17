@@ -29,7 +29,13 @@ internal sealed class AnswerRun(ToolRunContext context, AnswerDeadline deadline,
 
     public AnswerStop Stop { get; private set; }
 
-    public void Publish(AnswerChunk chunk) => events.TryWrite(chunk);
+    /// <summary>An unexpected failure of the invoker. It ends the answer: MEAI would only turn the exception into an error for the model.</summary>
+    public Exception? Failure { get; private set; }
+
+    /// <summary>Waits when the reader is behind, so a slow client slows the model stream instead of piling the answer up in memory.</summary>
+    public ValueTask PublishAsync(AnswerChunk chunk, CancellationToken cancellationToken) => events.WriteAsync(chunk, cancellationToken);
+
+    public void Fail(Exception exception) => Failure ??= exception;
 
     /// <summary>Remembers the first limit reached; the answer ends with its message.</summary>
     public void StopFor(AnswerStop reason)
@@ -43,5 +49,6 @@ internal sealed class AnswerRun(ToolRunContext context, AnswerDeadline deadline,
     /// <summary>The invoker took this call of the model, so it publishes the call's events itself.</summary>
     public void MarkHandled(string modelCallId) => _handledCalls.Add(modelCallId);
 
-    public bool WasHandled(string modelCallId) => _handledCalls.Contains(modelCallId);
+    /// <summary>Whether the invoker took this call, forgetting it: servers may reuse an id in a later round.</summary>
+    public bool ConsumeHandled(string modelCallId) => _handledCalls.Remove(modelCallId);
 }

@@ -29,6 +29,22 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
         ArgumentNullException.ThrowIfNull(run);
         ArgumentNullException.ThrowIfNull(invocation);
 
+        try
+        {
+            return await InvokeCoreAsync(run, invocation, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException))
+        {
+            // MEAI would turn this into an error result for the model, and its logger is off: end the answer with the failure instead.
+            LogInvokerFailed(logger, exception);
+            run.Fail(exception);
+            invocation.Terminate = true;
+            return "The tool was not run because of an internal error.";
+        }
+    }
+
+    private async ValueTask<object?> InvokeCoreAsync(AnswerRun run, FunctionInvocationContext invocation, CancellationToken cancellationToken)
+    {
         var call = invocation.CallContent;
         run.MarkHandled(call.CallId);
 
@@ -51,16 +67,20 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
         var prepared = await PrepareAsync(run.Context, tool, call, raw, cancellationToken);
 
         // Where a call that needs the user's confirmation is published, with its expiry, before the answer waits for the decision.
-        run.Publish(new AnswerChunk(
-            AnswerChunkKind.ToolCall,
-            string.Empty,
-            new ToolCallEvent(callId, call.Name, raw, RequiresConfirmation: false, ExpiresAt: null)));
+        await run.PublishAsync(
+            new AnswerChunk(
+                AnswerChunkKind.ToolCall,
+                string.Empty,
+                new ToolCallEvent(callId, call.Name, raw, RequiresConfirmation: false, ExpiresAt: null)),
+            cancellationToken);
 
         var result = prepared.Refusal is { } refusal
             ? await RefuseAsync(run.Context, info, refusal)
             : await ExecuteAsync(run, tool!, call, raw, info, cancellationToken);
 
-        run.Publish(new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, result.Status, result.Content, result.Content.Length)));
+        await run.PublishAsync(
+            new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, result.Status, result.Content, result.Content.Length)),
+            cancellationToken);
 
         if (run.Deadline.IsExpired)
         {
@@ -287,6 +307,9 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
 
     [LoggerMessage(Level = LogLevel.Error, Message = "The audit entry of tool call {CallId} could not be completed")]
     private static partial void LogAuditCompletionFailed(ILogger logger, Exception exception, Guid callId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The tool-call invoker failed, so the answer was stopped")]
+    private static partial void LogInvokerFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Tool call {CallId} to {Tool} threw an exception")]
     private static partial void LogToolCrashed(ILogger logger, Exception exception, Guid callId, string tool);

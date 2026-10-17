@@ -100,18 +100,20 @@ internal sealed class ToolCallAssembler
         try
         {
             using var document = JsonDocument.Parse(raw);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
             {
-                throw new JsonException("The arguments are not a JSON object.");
-            }
+                var arguments = new Dictionary<string, object?>(StringComparer.Ordinal);
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    arguments[property.Name] = property.Value.Clone();
+                }
 
-            var arguments = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var property in document.RootElement.EnumerateObject())
+                call = new FunctionCallContent(id, name, arguments);
+            }
+            else
             {
-                arguments[property.Name] = property.Value.Clone();
+                call = new FunctionCallContent(id, name, null) { Exception = new JsonException("The arguments are not a JSON object.") };
             }
-
-            call = new FunctionCallContent(id, name, arguments);
         }
         catch (JsonException exception)
         {

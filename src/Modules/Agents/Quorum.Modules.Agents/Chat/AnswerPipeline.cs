@@ -37,7 +37,7 @@ internal sealed partial class AnswerPipeline(IHttpClientFactory httpClientFactor
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var channel = Channel.CreateUnbounded<AnswerChunk>(new UnboundedChannelOptions { SingleReader = true });
+        var channel = Channel.CreateBounded<AnswerChunk>(new BoundedChannelOptions(256) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         var run = new AnswerRun(request.Context, new AnswerDeadline(request.Context.Limits.TotalTimeout, clock), channel.Writer, request.UsableCharacters);
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -91,8 +91,13 @@ internal sealed partial class AnswerPipeline(IHttpClientFactory httpClientFactor
             {
                 foreach (var content in update.Contents)
                 {
-                    Observe(content, run, asked);
+                    await ObserveAsync(content, run, asked, cancellationToken);
                 }
+            }
+
+            if (run.Failure is { } failure)
+            {
+                throw failure;
             }
 
             if (run.Stop == AnswerStop.TotalTime)
@@ -114,23 +119,23 @@ internal sealed partial class AnswerPipeline(IHttpClientFactory httpClientFactor
         {
             writer.TryComplete(TotalTimeExceeded(limits));
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // Whatever ended the answer, the reader must see it: it decides what the stored answer becomes.
             writer.TryComplete(exception);
         }
     }
 
-    private void Observe(AIContent content, AnswerRun run, Dictionary<string, FunctionCallContent> asked)
+    private async Task ObserveAsync(AIContent content, AnswerRun run, Dictionary<string, FunctionCallContent> asked, CancellationToken cancellationToken)
     {
         switch (content)
         {
             case TextContent { Text.Length: > 0 } text:
-                run.Publish(new AnswerChunk(AnswerChunkKind.Text, text.Text));
+                await run.PublishAsync(new AnswerChunk(AnswerChunkKind.Text, text.Text), cancellationToken);
                 break;
 
             case TextReasoningContent { Text.Length: > 0 } reasoning:
-                run.Publish(new AnswerChunk(AnswerChunkKind.Reasoning, reasoning.Text));
+                await run.PublishAsync(new AnswerChunk(AnswerChunkKind.Reasoning, reasoning.Text), cancellationToken);
                 break;
 
             case FunctionCallContent asking:
@@ -140,19 +145,20 @@ internal sealed partial class AnswerPipeline(IHttpClientFactory httpClientFactor
             case FunctionResultContent result:
                 // The invoker publishes the events of the calls it ran. A call to a tool that was not offered never reaches it: the
                 // function-invoking client answers the model itself, so it is only logged and shown to the user as a failed call.
-                if (asked.Remove(result.CallId, out var call) && !run.WasHandled(result.CallId))
+                if (asked.Remove(result.CallId, out var call) && !run.ConsumeHandled(result.CallId))
                 {
                     LogUnknownTool(logger, call.Name.Length <= 128 ? call.Name : call.Name[..128]);
                     var callId = Guid.CreateVersion7();
                     var message = OpenAiChatClient.ResultText(result);
-                    run.Publish(new AnswerChunk(
-                        AnswerChunkKind.ToolCall,
-                        string.Empty,
-                        new ToolCallEvent(callId, call.Name, OpenAiChatClient.RawArguments(call), RequiresConfirmation: false, ExpiresAt: null)));
-                    run.Publish(new AnswerChunk(
-                        AnswerChunkKind.ToolResult,
-                        string.Empty,
-                        new ToolResultEvent(callId, ToolResultStatus.Failed, message, message.Length)));
+                    await run.PublishAsync(
+                        new AnswerChunk(
+                            AnswerChunkKind.ToolCall,
+                            string.Empty,
+                            new ToolCallEvent(callId, call.Name, OpenAiChatClient.RawArguments(call), RequiresConfirmation: false, ExpiresAt: null)),
+                        cancellationToken);
+                    await run.PublishAsync(
+                        new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, ToolResultStatus.Failed, message, message.Length)),
+                        cancellationToken);
                 }
 
                 break;

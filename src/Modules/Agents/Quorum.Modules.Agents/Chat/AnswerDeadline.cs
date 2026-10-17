@@ -27,8 +27,6 @@ internal sealed class AnswerDeadline
 
     public bool IsUnbounded => _total == Timeout.InfiniteTimeSpan;
 
-    public TimeSpan Total => _total;
-
     /// <summary>What is left of the total time, never negative; <see cref="Timeout.InfiniteTimeSpan"/> when there is no limit.</summary>
     public TimeSpan Remaining
     {

@@ -108,6 +108,11 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
                         contents = ParseContents(items.Current.Data, assembler);
                     }
                 }
+                catch (IOException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // The stream was cut because the answer was cancelled (user stop or total time), not because the connection broke.
+                    throw new OperationCanceledException(cancellationToken);
+                }
                 catch (IOException exception)
                 {
                     throw new ModelStreamException($"The connection to the model broke: {exception.Message}", exception);
