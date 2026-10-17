@@ -2,6 +2,7 @@ using Quorum.Host.Infrastructure;
 using Quorum.Host.Infrastructure.Database;
 using Quorum.Modules.Agents;
 using Quorum.Modules.Conversations;
+using Quorum.Modules.KnowledgeBase;
 using Quorum.Modules.Tenancy;
 using Quorum.Shared.Endpoints;
 using Scalar.AspNetCore;
@@ -23,6 +24,7 @@ builder.Services.AddPlatformDatabase(builder.Configuration);
 // Module order is startup order: each module's database initializers run in registration order.
 builder.Services.AddTenancyModule();
 builder.Services.AddAgentsModule();
+builder.Services.AddKnowledgeBaseModule();
 builder.Services.AddConversationsModule();
 
 var app = builder.Build();
@@ -43,7 +45,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.Assembly, ConversationsModule.Assembly);
+app.MapEndpoints(typeof(Program).Assembly, TenancyModule.Assembly, AgentsModule.Assembly, KnowledgeBaseModule.Assembly, ConversationsModule.Assembly);
 
 // The web UI is a single-page app: every non-API path that is not a file falls back to its entry page.
 app.MapFallback("/api/{**path}", () => TypedResults.NotFound());

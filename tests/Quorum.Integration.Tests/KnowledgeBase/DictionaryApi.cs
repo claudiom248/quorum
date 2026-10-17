@@ -1,0 +1,38 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace Quorum.Integration.Tests.KnowledgeBase;
+
+/// <summary>Routes and body shapes of the dictionary API, as a client would use them.</summary>
+internal static class DictionaryApi
+{
+    public static Uri Dictionary { get; } = new("/api/knowledge-bases/dictionary", UriKind.Relative);
+
+    public static Uri Field(Guid id) => new($"/api/knowledge-bases/dictionary/{id}", UriKind.Relative);
+
+    public static Task<HttpResponseMessage> CreateAsync(HttpClient client, string name, string type = "Text", string? description = null, string scope = "Tenant") =>
+        client.PostAsJsonAsync(Dictionary, new { name, type, description, scope }, TestContext.Current.CancellationToken);
+
+    /// <summary>Creates a field that must be accepted and returns its id.</summary>
+    public static async Task<Guid> CreateOkAsync(HttpClient client, string name, string type = "Text", string? description = null, string scope = "Tenant")
+    {
+        using var response = await CreateAsync(client, name, type, description, scope);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<CreatedBody>(TestContext.Current.CancellationToken))!.Id;
+    }
+
+    public static async Task<IReadOnlyList<FieldBody>> ListAsync(HttpClient client) =>
+        (await client.GetFromJsonAsync<List<FieldBody>>(Dictionary, TestContext.Current.CancellationToken))!;
+
+    /// <summary>The stable <c>code</c> of a ProblemDetails response.</summary>
+    public static async Task<string?> ProblemCodeAsync(HttpResponseMessage response)
+    {
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        return document.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
+    }
+
+    public sealed record CreatedBody(Guid Id);
+
+    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount);
+}

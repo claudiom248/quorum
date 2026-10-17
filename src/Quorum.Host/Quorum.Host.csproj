@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Modules\Agents\Quorum.Modules.Agents\Quorum.Modules.Agents.csproj" />
     <ProjectReference Include="..\Modules\Conversations\Quorum.Modules.Conversations\Quorum.Modules.Conversations.csproj" />
+    <ProjectReference Include="..\Modules\KnowledgeBase\Quorum.Modules.KnowledgeBase\Quorum.Modules.KnowledgeBase.csproj" />
     <ProjectReference Include="..\Modules\Licensing\Quorum.Modules.Licensing\Quorum.Modules.Licensing.csproj" />
     <ProjectReference Include="..\Modules\Tenancy\Quorum.Modules.Tenancy\Quorum.Modules.Tenancy.csproj" />
     <ProjectReference Include="..\Quorum.Shared\Quorum.Shared.csproj" />

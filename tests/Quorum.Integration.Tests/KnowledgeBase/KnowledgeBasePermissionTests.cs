@@ -1,0 +1,41 @@
+using System.Net;
+using System.Net.Http.Json;
+using Quorum.Integration.Tests.Fixtures;
+
+namespace Quorum.Integration.Tests.KnowledgeBase;
+
+public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact] // AC-42 (the /knowledge-bases half)
+    public async Task ManagingTheDictionaryNeedsThePermissionAndAnonymousCallersAreRejected()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        using var member = await app.CreateMemberClientAsync();
+        using var anonymous = app.CreateUiClient();
+
+        var fieldId = await DictionaryApi.CreateOkAsync(admin, "existing");
+
+        var requests = new List<Func<HttpClient, Task<HttpResponseMessage>>>
+        {
+            client => client.GetAsync(DictionaryApi.Dictionary, Ct),
+            client => client.PostAsJsonAsync(DictionaryApi.Dictionary, new { name = "created", type = "Text", scope = "Tenant" }, Ct),
+            client => client.PutAsJsonAsync(DictionaryApi.Field(fieldId), new { description = "changed" }, Ct),
+            // Last: the administrator's call removes the field.
+            client => client.DeleteAsync(DictionaryApi.Field(fieldId), Ct),
+        };
+
+        foreach (var send in requests)
+        {
+            using var asMember = await send(member);
+            using var asAnonymous = await send(anonymous);
+            using var asAdmin = await send(admin);
+
+            Assert.Equal(HttpStatusCode.Forbidden, asMember.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, asAnonymous.StatusCode);
+            Assert.True(asAdmin.IsSuccessStatusCode, $"The administrator was refused: {(int)asAdmin.StatusCode}");
+        }
+    }
+}
