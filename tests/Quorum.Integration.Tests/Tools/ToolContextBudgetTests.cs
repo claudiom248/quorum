@@ -155,7 +155,7 @@ public sealed class ToolContextBudgetTests(PostgresFixture postgres)
         await ToolFixtures.ActivateOnlyAsync(client);
         var without = await client.GetFromJsonAsync<ContextBody>(new Uri($"/api/conversations/{id}/context", UriKind.Relative), Ct);
 
-        Assert.True(withTools!.ToolsTokens > 100, $"Expected the native tools to take some context, got {withTools.ToolsTokens}.");
+        Assert.True(withTools!.ToolsTokens > 100, $"Expected the built-in tools to take some context, got {withTools.ToolsTokens}.");
         Assert.Equal(0, without!.ToolsTokens);
         Assert.True(withTools.RemainingTokens < without.RemainingTokens);
     }
@@ -169,7 +169,7 @@ public sealed class ToolContextBudgetTests(PostgresFixture postgres)
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = (_, _) => Task.FromResult(new string('r', 4000));
         app.ModelServer.EnqueueRounds(
-            ChatScript.Reply("Looking it up. ") with { ToolCalls = [new FakeToolCall("native__probe", """{"text":"x"}""")] },
+            ChatScript.Reply("Looking it up. ") with { ToolCalls = [new FakeToolCall("builtin__probe", """{"text":"x"}""")] },
             ChatScript.Reply("Should not be asked."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -191,7 +191,7 @@ public sealed class ToolContextBudgetTests(PostgresFixture postgres)
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = (_, _) => Task.FromResult(new string('r', 2000));
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__probe", """{"text":"x"}""")),
+            ChatScript.CallTools(new FakeToolCall("builtin__probe", """{"text":"x"}""")),
             ChatScript.Reply("Done."));
         var id = await ChatApi.CreateConversationAsync(client);
 

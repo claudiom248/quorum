@@ -43,7 +43,7 @@ internal sealed class ToolAuditEntry
     /// <summary>The model's id for the call, also used by the confirmation endpoints.</summary>
     public Guid CallId { get; private set; }
 
-    /// <summary>Null for native tools.</summary>
+    /// <summary>Null for built-in tools.</summary>
     public string? ServerName { get; private set; }
 
     public string ToolName { get; private set; } = null!;

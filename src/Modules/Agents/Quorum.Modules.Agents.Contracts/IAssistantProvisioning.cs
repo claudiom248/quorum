@@ -1,7 +1,7 @@
 namespace Quorum.Modules.Agents.Contracts;
 
 /// <summary>
-/// Creates a tenant's default assistant, its model endpoint and its native tools (active on the assistant),
+/// Creates a tenant's default assistant, its model endpoint and its built-in tools (active on the assistant),
 /// inside the caller's platform transaction.
 /// </summary>
 public interface IAssistantProvisioning

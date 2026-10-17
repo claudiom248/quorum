@@ -9,7 +9,7 @@ namespace Quorum.Integration.Tests.Tools;
 /// <summary>The audit log of tool calls (spec 004, AC-41 to AC-44).</summary>
 public sealed class ToolAuditTests(PostgresFixture postgres)
 {
-    private static FakeToolCall Probe(string arguments, string id = "call_1") => new("native__probe", arguments, id);
+    private static FakeToolCall Probe(string arguments, string id = "call_1") => new("builtin__probe", arguments, id);
 
     [Fact] // AC-41, AC-42
     public async Task EveryCallLeavesAnEntryWithWhoWhenWhatAndTheOutcomeButNotTheResult()
@@ -17,7 +17,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__calculator", """{"expression":"2+2*3"}""")),
+            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"2+2*3"}""")),
             ChatScript.Reply("Eight."));
         var conversationId = await ChatApi.CreateConversationAsync(client);
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
@@ -86,7 +86,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__calculator", """{"where":"home"}""")),
+            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"where":"home"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -105,14 +105,14 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__teleport", """{"where":"home"}""")),
+            ChatScript.CallTools(new FakeToolCall("builtin__teleport", """{"where":"home"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
         await ChatApi.SendAsync(client, id, "Go");
 
         Assert.Empty(await ToolFixtures.AuditRowsAsync(app));
-        Assert.Contains(app.Logs.Messages, message => message.Contains("native__teleport", StringComparison.Ordinal));
+        Assert.Contains(app.Logs.Messages, message => message.Contains("builtin__teleport", StringComparison.Ordinal));
     }
 
     [Fact] // AC-41
@@ -121,7 +121,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__calculator", """{"expression":"1/0"}""")),
+            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"1/0"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -248,8 +248,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(
-                new FakeToolCall("native__calculator", """{"expression":"1+1"}""", "call_1"),
-                new FakeToolCall("native__calculator", """{"expression":"2+2"}""", "call_2")),
+                new FakeToolCall("builtin__calculator", """{"expression":"1+1"}""", "call_1"),
+                new FakeToolCall("builtin__calculator", """{"expression":"2+2"}""", "call_2")),
             ChatScript.Reply("Done."));
         var id = await ChatApi.CreateConversationAsync(client);
 

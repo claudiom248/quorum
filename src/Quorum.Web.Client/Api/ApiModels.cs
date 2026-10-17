@@ -52,7 +52,7 @@ public sealed record AnswerReasoning(string Text) : AnswerEvent;
 public sealed record AnswerDone(Guid MessageId, string Status, string? Error) : AnswerEvent;
 
 /// <summary>The model asked for a tool. <c>Arguments</c> is a JSON object, or the text the model sent when it was not valid JSON.</summary>
-/// <param name="Tool">The name the model used, e.g. <c>native__calculator</c>.</param>
+/// <param name="Tool">The name the model used, e.g. <c>builtin__calculator</c>.</param>
 /// <param name="ExpiresAt">When a call that needs confirmation counts as denied.</param>
 public sealed record ToolCallEvent(Guid CallId, string Tool, JsonElement Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt) : AnswerEvent;
 

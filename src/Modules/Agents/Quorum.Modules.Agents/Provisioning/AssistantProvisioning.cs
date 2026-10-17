@@ -27,9 +27,9 @@ internal sealed class AssistantProvisioning(AgentsDbContext db, ApiKeyProtector 
         db.Assistants.Add(assistant);
         await db.SaveChangesAsync(cancellationToken);
 
-        // A new installation starts with the native tools active; existing installations keep their behaviour on upgrade.
-        var nativeTools = await NativeToolProvisioner.EnsureAsync(db, tenantId, cancellationToken);
-        db.AssistantTools.AddRange(nativeTools.Select(tool => AssistantTool.Create(tenantId, assistant.Id, tool.Id)));
+        // A new installation starts with the built-in tools active; existing installations keep their behaviour on upgrade.
+        var builtinTools = await BuiltinToolProvisioner.EnsureAsync(db, tenantId, cancellationToken);
+        db.AssistantTools.AddRange(builtinTools.Select(tool => AssistantTool.Create(tenantId, assistant.Id, tool.Id)));
         await db.SaveChangesAsync(cancellationToken);
     }
 }

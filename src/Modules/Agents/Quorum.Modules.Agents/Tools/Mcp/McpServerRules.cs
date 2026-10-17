@@ -14,8 +14,8 @@ internal static partial class McpServerRules
 
     public const int MaxHeaderValueLength = 4096;
 
-    /// <summary>The prefix of native tools: a server with this name would be able to pose as them.</summary>
-    private const string ReservedName = "native";
+    /// <summary>The prefix of built-in tools: a server with this name would be able to pose as them.</summary>
+    private const string ReservedName = "builtin";
 
     // The headers the transport or the protocol own; letting an admin set them would break or confuse the connection.
     private static readonly HashSet<string> ReservedHeaders = new(StringComparer.OrdinalIgnoreCase)

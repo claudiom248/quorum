@@ -144,7 +144,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
 
         var servers = await ToolsApi.ListServersAsync(client);
         var tools = (await ToolsApi.ListToolsAsync(client)).Where(t => t.Origin == "Mcp").Select(t => t.ServerName).ToArray();
-        var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Select(t => t.Name).Where(n => !n.StartsWith("native__", StringComparison.Ordinal)).ToArray();
+        var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Select(t => t.Name).Where(n => !n.StartsWith("builtin__", StringComparison.Ordinal)).ToArray();
         var detail = await ToolsApi.GetServerAsync(client, global.ServerId);
         using var hidden = await client.GetAsync(ToolsApi.Server(Guid.Parse(await ServerIdAsync(app, "tenant-private"))), Ct);
         using var edit = await client.PutAsJsonAsync(ToolsApi.Server(global.ServerId), new { name = "mine-now", url = "http://127.0.0.1:1/mcp", scope = ToolsApi.TenantScope }, Ct);

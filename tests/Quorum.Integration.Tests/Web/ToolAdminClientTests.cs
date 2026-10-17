@@ -43,8 +43,8 @@ public sealed class ToolAdminClientTests(PostgresFixture postgres)
         Assert.Equal(["list"], refreshed.Value.Added);
         Assert.Equal(["search"], refreshed.Value.Removed);
 
-        var native = (await api.ListToolsAsync(Ct)).Value.Where(t => t.Origin == "Native").Select(t => t.Name).Order().ToArray();
-        Assert.Contains("calculator", native);
+        var builtin = (await api.ListToolsAsync(Ct)).Value.Where(t => t.Origin == "Builtin").Select(t => t.Name).Order().ToArray();
+        Assert.Contains("calculator", builtin);
 
         var renamed = await api.UpdateToolServerAsync(server.Value.Id, new ToolServerRequest("files2", mcp.Url, Headers: null, tenantScope), Ct);
         Assert.True(renamed.IsSuccess);

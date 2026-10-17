@@ -64,8 +64,8 @@ public sealed class SettingsToolsPageTests : BunitContext
                 {
                     pool = new object[]
                     {
-                        new { toolId = Calculator, name = "native__calculator", active = true },
-                        new { toolId = Clock, name = "native__current_datetime", active = false },
+                        new { toolId = Calculator, name = "builtin__calculator", active = true },
+                        new { toolId = Clock, name = "builtin__current_datetime", active = false },
                     },
                     warnings = _warnings,
                 });

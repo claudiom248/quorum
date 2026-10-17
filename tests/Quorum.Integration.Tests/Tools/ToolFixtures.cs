@@ -22,7 +22,7 @@ internal static class ToolFixtures
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
-        var tool = Tool.CreateNative(tenantId, ProbeTool.ToolName, "A tool that tests control.", ProbeSchema);
+        var tool = Tool.CreateBuiltin(tenantId, ProbeTool.ToolName, "A tool that tests control.", ProbeSchema);
         tool.Review(ToolState.Enabled, policy);
         db.Tools.Add(tool);
         db.AssistantTools.Add(AssistantTool.Create(tenantId, assistantId, tool.Id));
@@ -30,7 +30,7 @@ internal static class ToolFixtures
         return tool.Id;
     }
 
-    /// <summary>Activates exactly the named tools (exposed names such as <c>native__calculator</c>) on the default assistant.</summary>
+    /// <summary>Activates exactly the named tools (exposed names such as <c>builtin__calculator</c>) on the default assistant.</summary>
     public static async Task ActivateOnlyAsync(HttpClient client, params string[] exposedNames)
     {
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);

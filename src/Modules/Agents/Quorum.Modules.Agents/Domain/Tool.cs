@@ -2,7 +2,7 @@ namespace Quorum.Modules.Agents.Domain;
 
 internal enum ToolOrigin
 {
-    Native,
+    Builtin,
     Mcp,
 }
 
@@ -23,7 +23,7 @@ internal enum ToolPolicy
     Confirm,
 }
 
-/// <summary>A capability the model can call: an in-process native tool or a tool discovered on an MCP server.</summary>
+/// <summary>A capability the model can call: an in-process built-in tool or a tool discovered on an MCP server.</summary>
 internal sealed class Tool
 {
     private Tool()
@@ -48,7 +48,7 @@ internal sealed class Tool
 
     public ToolPolicy Policy { get; private set; }
 
-    /// <summary>The MCP server that offers the tool; <see langword="null"/> for native tools.</summary>
+    /// <summary>The MCP server that offers the tool; <see langword="null"/> for built-in tools.</summary>
     public Guid? ServerId { get; private set; }
 
     /// <summary>SHA-256 of name, description and canonical input schema: how a refresh tells that a tool changed (D-14).</summary>
@@ -57,11 +57,11 @@ internal sealed class Tool
     /// <summary>The hints the server sent (<c>readOnlyHint</c>, <c>destructiveHint</c>...) as a JSON object. Untrusted: shown to the admin, never used to decide anything.</summary>
     public string? Annotations { get; private set; }
 
-    public static Tool CreateNative(Guid tenantId, string name, string description, string inputSchema) => new()
+    public static Tool CreateBuiltin(Guid tenantId, string name, string description, string inputSchema) => new()
     {
         Id = Guid.CreateVersion7(),
         TenantId = tenantId,
-        Origin = ToolOrigin.Native,
+        Origin = ToolOrigin.Builtin,
         Name = name,
         Description = description,
         InputSchema = inputSchema,
@@ -99,7 +99,7 @@ internal sealed class Tool
     /// <summary>Annotations are information only and are not part of the hash, so they follow the server without a new review.</summary>
     public void UpdateAnnotations(string? annotations) => Annotations = annotations;
 
-    /// <summary>Follows a new release's definition of a native tool; what the admin decided (state, policy) is kept.</summary>
+    /// <summary>Follows a new release's definition of a built-in tool; what the admin decided (state, policy) is kept.</summary>
     public void Redefine(string description, string inputSchema)
     {
         Description = description;

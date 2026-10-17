@@ -41,7 +41,7 @@ internal abstract class QuorumTool : AIFunction
 }
 
 /// <summary>A tool Quorum runs in-process.</summary>
-internal sealed class NativeQuorumTool(ActiveTool descriptor, INativeTool implementation) : QuorumTool(descriptor)
+internal sealed class BuiltinQuorumTool(ActiveTool descriptor, IBuiltinTool implementation) : QuorumTool(descriptor)
 {
     public override Task<string> RunAsync(JsonElement arguments, CancellationToken cancellationToken) =>
         implementation.ExecuteAsync(arguments, cancellationToken);
@@ -58,14 +58,14 @@ internal sealed class AskUserQuorumTool(ActiveTool descriptor) : QuorumTool(desc
 }
 
 /// <summary>Turns the active tools of an assistant into what the model is offered.</summary>
-internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools, McpServerClient mcpClient, McpHeadersProtector headersProtector)
+internal sealed class QuorumToolFactory(IEnumerable<IBuiltinTool> builtinTools, McpServerClient mcpClient, McpHeadersProtector headersProtector)
 {
-    private readonly Dictionary<string, INativeTool> _nativeTools = nativeTools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
+    private readonly Dictionary<string, IBuiltinTool> _builtinTools = builtinTools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
 
     /// <summary>The sessions with MCP servers of one answer; the answer disposes it when it ends.</summary>
     public McpAnswerConnections NewConnections() => new(mcpClient, headersProtector);
 
-    /// <summary>A native tool without an implementation in this build cannot be called, so it is not offered.</summary>
+    /// <summary>A built-in tool without an implementation in this build cannot be called, so it is not offered.</summary>
     public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections? connections)
     {
         ArgumentNullException.ThrowIfNull(tools);
@@ -74,8 +74,8 @@ internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools, Mc
             .Select(tool => tool.Origin switch
             {
                 Domain.ToolOrigin.Mcp when tool.Server is not null && connections is not null => new McpQuorumTool(tool, connections),
-                Domain.ToolOrigin.Native when tool.Name == NativeToolCatalog.AskUser => new AskUserQuorumTool(tool),
-                Domain.ToolOrigin.Native when _nativeTools.TryGetValue(tool.Name, out var implementation) => new NativeQuorumTool(tool, implementation),
+                Domain.ToolOrigin.Builtin when tool.Name == BuiltinToolCatalog.AskUser => new AskUserQuorumTool(tool),
+                Domain.ToolOrigin.Builtin when _builtinTools.TryGetValue(tool.Name, out var implementation) => new BuiltinQuorumTool(tool, implementation),
                 _ => (QuorumTool?)null,
             })
             .OfType<QuorumTool>()

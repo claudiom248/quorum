@@ -119,7 +119,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [InlineData("has space")]
     [InlineData("dotted.name")]
     [InlineData("double__underscore")]
-    [InlineData("native")]
+    [InlineData("builtin")]
     [InlineData("-leading")]
     [InlineData("this-name-is-longer-than-thirty-two-characters")]
     public async Task AnInvalidServerNameIsRejected(string name)

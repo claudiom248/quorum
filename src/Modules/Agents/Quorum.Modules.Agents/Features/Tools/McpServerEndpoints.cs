@@ -307,7 +307,7 @@ internal sealed record ServerInput(
 {
     private static readonly Error InvalidName = Error.Validation(
         "tool.invalid_name",
-        $"The name must be 1 to {McpServerRules.MaxNameLength} characters: lower-case letters, digits, '-' and '_', starting with a letter or digit, without '__' and not 'native'.");
+        $"The name must be 1 to {McpServerRules.MaxNameLength} characters: lower-case letters, digits, '-' and '_', starting with a letter or digit, without '__' and not 'builtin'.");
 
     private static readonly Error InvalidUrl = Error.Validation(
         "tool.invalid_url",

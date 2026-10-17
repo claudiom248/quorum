@@ -56,7 +56,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     /// </summary>
     public FakeTimeProvider? Clock { get; }
 
-    /// <summary>A native tool that tests script: register its row with <see cref="ToolFixtures"/> and set <see cref="ProbeTool.Handler"/>.</summary>
+    /// <summary>A built-in tool that tests script: register its row with <see cref="ToolFixtures"/> and set <see cref="ProbeTool.Handler"/>.</summary>
     public ProbeTool Probe { get; } = new();
 
     public static QuorumApp Start(string connectionString, string? dataProtectionKeysPath = null, FakeTimeProvider? clock = null)
@@ -93,7 +93,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     /// <summary>
     /// Completes the setup against the fake model and returns the signed-in administrator's client.
-    /// The setup activates the native tools on the default assistant (spec 004, AC-16); <paramref name="toolsActive"/> = false
+    /// The setup activates the built-in tools on the default assistant (spec 004, AC-16); <paramref name="toolsActive"/> = false
     /// deactivates them, for tests about the plain chat.
     /// </summary>
     public async Task<HttpClient> SetUpAsync(string? systemPrompt = "You are Acme's assistant.", int contextTokenBudget = 4096, bool toolsActive = true)
@@ -185,7 +185,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
                 preserveStaticLogger: true);
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
-            services.AddSingleton<INativeTool>(Probe);
+            services.AddSingleton<IBuiltinTool>(Probe);
             services.AddSingleton<IMcpHostResolver>(McpHosts);
             if (Clock is not null)
             {

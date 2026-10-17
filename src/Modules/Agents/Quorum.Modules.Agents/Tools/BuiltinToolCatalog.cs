@@ -1,13 +1,13 @@
 namespace Quorum.Modules.Agents.Tools;
 
-/// <summary>The definition of a native tool as the model sees it. The name has no origin prefix.</summary>
-internal sealed record NativeToolDefinition(string Name, string Description, string InputSchema);
+/// <summary>The definition of a built-in tool as the model sees it. The name has no origin prefix.</summary>
+internal sealed record BuiltinToolDefinition(string Name, string Description, string InputSchema);
 
 /// <summary>
 /// The tools Quorum runs in-process. A release that changes a definition updates the stored copy at startup
-/// (<see cref="NativeToolProvisioner"/>); what the admin decided (state, policy) is kept.
+/// (<see cref="BuiltinToolProvisioner"/>); what the admin decided (state, policy) is kept.
 /// </summary>
-internal static class NativeToolCatalog
+internal static class BuiltinToolCatalog
 {
     public const string CurrentDateTime = "current_datetime";
 
@@ -19,7 +19,7 @@ internal static class NativeToolCatalog
     /// </summary>
     public const string AskUser = "ask_user";
 
-    public static IReadOnlyList<NativeToolDefinition> All { get; } =
+    public static IReadOnlyList<BuiltinToolDefinition> All { get; } =
     [
         new(
             AskUser,

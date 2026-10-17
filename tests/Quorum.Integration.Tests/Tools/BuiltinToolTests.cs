@@ -1,12 +1,12 @@
 using System.Text.Json;
 using Microsoft.Extensions.Time.Testing;
 using Quorum.Modules.Agents.Tools;
-using Quorum.Modules.Agents.Tools.Native;
+using Quorum.Modules.Agents.Tools.Builtin;
 
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>The built-in tools, without a database or a model (spec 004, D-15, AC-19).</summary>
-public sealed class NativeToolTests
+public sealed class BuiltinToolTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -159,7 +159,7 @@ public sealed class NativeToolTests
     [Fact]
     public void TheToolsKnowTheirCatalogNames()
     {
-        Assert.Equal(NativeToolCatalog.Calculator, new CalculatorTool().Name);
-        Assert.Equal(NativeToolCatalog.CurrentDateTime, new CurrentDateTimeTool(TimeProvider.System).Name);
+        Assert.Equal(BuiltinToolCatalog.Calculator, new CalculatorTool().Name);
+        Assert.Equal(BuiltinToolCatalog.CurrentDateTime, new CurrentDateTimeTool(TimeProvider.System).Name);
     }
 }

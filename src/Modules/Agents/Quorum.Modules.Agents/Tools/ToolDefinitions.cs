@@ -16,14 +16,14 @@ internal sealed record ToolDefinition(string Name, string Description, string In
 
 internal static class ToolNaming
 {
-    public const string NativePrefix = "native__";
+    public const string BuiltinPrefix = "builtin__";
 
     /// <summary>The longest name the model APIs accept (D-16).</summary>
     public const int MaxLength = 64;
 
     private const int HashLength = 8;
 
-    public static string Native(string toolName) => NativePrefix + toolName;
+    public static string Builtin(string toolName) => BuiltinPrefix + toolName;
 
     /// <summary>
     /// <c>&lt;server&gt;__&lt;tool&gt;</c>. A tool name the model APIs would not accept (characters outside <c>[a-zA-Z0-9_-]</c>, or too

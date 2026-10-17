@@ -88,7 +88,7 @@ public sealed class ToolChatPageTests : BunitContext
         PushAsync("tool_call", new
         {
             callId = Call,
-            tool = "native__calculator",
+            tool = "builtin__calculator",
             arguments = JsonDocument.Parse(arguments).RootElement,
             requiresConfirmation,
             expiresAt = requiresConfirmation ? DateTimeOffset.UtcNow.AddMinutes(5) : (DateTimeOffset?)null,
@@ -234,7 +234,7 @@ public sealed class ToolChatPageTests : BunitContext
     public async Task AQuestionStillOpenWhenTheStreamEndsIsClosedToo()
     {
         var (page, sending) = await StartAnswerAsync();
-        await PushAsync("tool_call", new { callId = Call, tool = "native__ask_user", arguments = new { question = "Which?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
+        await PushAsync("tool_call", new { callId = Call, tool = "builtin__ask_user", arguments = new { question = "Which?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
         await PushAsync("ask_user", new { callId = Call, question = "Which?", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
         page.WaitForAssertion(() => page.Find(".tool-question"));
 
@@ -306,7 +306,7 @@ public sealed class ToolChatPageTests : BunitContext
     public async Task AQuestionOfTheModelIsShownAndTheAnswerIsSentForThatCall()
     {
         var (page, sending) = await StartAnswerAsync();
-        await PushAsync("tool_call", new { callId = Call, tool = "native__ask_user", arguments = new { question = "Which city?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
+        await PushAsync("tool_call", new { callId = Call, tool = "builtin__ask_user", arguments = new { question = "Which city?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
         await PushAsync("ask_user", new { callId = Call, question = "Which city?", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
 
         page.WaitForAssertion(() => Assert.Contains("Which city?", page.Find(".tool-question").TextContent, StringComparison.Ordinal));

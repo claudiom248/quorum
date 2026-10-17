@@ -10,7 +10,7 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 
 namespace Quorum.Integration.Tests.Tools;
 
-/// <summary>Running the tools of an MCP server in an answer, through the same pipeline as native tools (spec 004, AC-19, AC-20, AC-23 to AC-26, AC-47).</summary>
+/// <summary>Running the tools of an MCP server in an answer, through the same pipeline as built-in tools (spec 004, AC-19, AC-20, AC-23 to AC-26, AC-47).</summary>
 public sealed class McpToolExecutionTests(PostgresFixture postgres)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

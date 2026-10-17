@@ -3,9 +3,9 @@ using System.Text.Json;
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>A tool Quorum runs in-process. It goes through the same executor pipeline as any other tool.</summary>
-internal interface INativeTool
+internal interface IBuiltinTool
 {
-    /// <summary>The tool's own name, as in <see cref="NativeToolCatalog"/> (without the <c>native__</c> prefix).</summary>
+    /// <summary>The tool's own name, as in <see cref="BuiltinToolCatalog"/> (without the <c>builtin__</c> prefix).</summary>
     string Name { get; }
 
     /// <returns>The result the model receives.</returns>
