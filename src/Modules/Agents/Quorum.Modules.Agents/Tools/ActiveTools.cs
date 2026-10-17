@@ -5,7 +5,7 @@ using Quorum.Modules.Agents.Persistence;
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>A tool of an assistant as stored: what the model sees (name, description, schema) and what the invoker needs to audit, check and run it.</summary>
-/// <param name="Server">Where an MCP tool runs; <see langword="null"/> for native tools.</param>
+/// <param name="Server">Where an MCP tool runs; <see langword="null"/> for built-in tools.</param>
 /// <param name="DefinitionHash">The hash of the definition the model is offered; a call is refused when the stored one differs by then.</param>
 internal sealed record ActiveTool(
     Guid ToolId,

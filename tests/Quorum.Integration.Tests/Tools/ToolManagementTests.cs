@@ -8,7 +8,7 @@ public sealed class ToolManagementTests(PostgresFixture postgres)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    [Fact] // AC-8 (native tools start enabled; pending review arrives with MCP servers)
+    [Fact] // AC-8 (built-in tools start enabled; pending review arrives with MCP servers)
     public async Task TheAdminCanDisableAToolAndChangeItsPolicy()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);

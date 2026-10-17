@@ -8,7 +8,7 @@ using Quorum.Modules.Agents.Provisioning;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
-using Quorum.Modules.Agents.Tools.Native;
+using Quorum.Modules.Agents.Tools.Builtin;
 using Quorum.Shared.Persistence;
 
 namespace Quorum.Modules.Agents;
@@ -21,7 +21,7 @@ public static class AgentsModule
     {
         services.AddModuleDbContext<AgentsDbContext>(AgentsDbContext.Schema);
         // After the migrations (registered by the line above): initializers run in registration order.
-        services.AddSingleton<IDatabaseInitializer, NativeToolsInitializer>();
+        services.AddSingleton<IDatabaseInitializer, BuiltinToolsInitializer>();
         services.AddHostedService<AuditRetentionService>();
 
         services.AddHttpClient(ModelEndpointProbe.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
@@ -41,8 +41,8 @@ public static class AgentsModule
         services.AddSingleton<PendingInteractions>();
         services.AddScoped<AuditRetention>();
         services.AddScoped<IToolInteractions, ToolInteractions>();
-        services.AddSingleton<INativeTool, CalculatorTool>();
-        services.AddSingleton<INativeTool, CurrentDateTimeTool>();
+        services.AddSingleton<IBuiltinTool, CalculatorTool>();
+        services.AddSingleton<IBuiltinTool, CurrentDateTimeTool>();
         services.AddSingleton<ApiKeyProtector>();
         services.AddSingleton<McpHeadersProtector>();
 

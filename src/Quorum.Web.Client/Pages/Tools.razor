@@ -211,14 +211,14 @@
         <MudDivider Class="my-6" />
 
         <MudText Typo="Typo.subtitle1" Class="mb-2">Built-in tools</MudText>
-        @if (_native.Count == 0)
+        @if (_builtin.Count == 0)
         {
             <MudText Typo="Typo.body2" Class="tools-support-hint">No built-in tools.</MudText>
         }
         else
         {
             <div class="tool-rows">
-                @foreach (var tool in _native)
+                @foreach (var tool in _builtin)
                 {
                     <ToolRow @key="(tool.Id, _rowGeneration)" Tool="tool" Busy="_busy" OnChange="ChangeToolAsync" />
                 }
@@ -229,7 +229,7 @@
 
 @code {
     private List<ToolServer> _servers = [];
-    private List<ToolInfo> _native = [];
+    private List<ToolInfo> _builtin = [];
     private IReadOnlyList<AssistantSummary> _assistants = [];
     private ApiProblem? _loadProblem;
     private ApiProblem? _problem;
@@ -301,7 +301,7 @@
 
         _servers = detailed;
         _detailErrors = failures;
-        _native = tools.Value.Where(t => t.Origin == "Native").ToList();
+        _builtin = tools.Value.Where(t => t.Origin == "Builtin").ToList();
 
         var assistants = await Api.ListAssistantsAsync();
         _assistants = assistants.IsSuccess ? assistants.Value : [];

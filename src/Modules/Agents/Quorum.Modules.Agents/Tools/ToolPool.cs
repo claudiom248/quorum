@@ -9,18 +9,18 @@ internal sealed class PoolTool
 {
     public required Tool Tool { get; init; }
 
-    /// <summary>Null for native tools.</summary>
+    /// <summary>Null for built-in tools.</summary>
     public string? ServerName { get; init; }
 
-    public string ExposedName => Tool.Origin == ToolOrigin.Native
-        ? ToolNaming.Native(Tool.Name)
+    public string ExposedName => Tool.Origin == ToolOrigin.Builtin
+        ? ToolNaming.Builtin(Tool.Name)
         : ToolNaming.Mcp(ServerName ?? throw new InvalidOperationException("An MCP tool has a server."), Tool.Name);
 
     public ToolDefinition Definition => new(ExposedName, Tool.Description, Tool.InputSchema);
 }
 
 /// <summary>
-/// The tools an assistant of the current tenant can use (D-2, D-23): enabled native tools of the tenant, and enabled tools of
+/// The tools an assistant of the current tenant can use (D-2, D-23): enabled built-in tools of the tenant, and enabled tools of
 /// available MCP servers whose scope covers the assistant. Activation (<see cref="AssistantTool"/>) picks from this pool.
 /// </summary>
 internal static class ToolPool

@@ -52,7 +52,7 @@ public sealed class ToolsPageTests : BunitContext
 
             if (path == "/api/tools" && method == HttpMethod.Get)
             {
-                return FakeApiHandler.Json(new[] { Tool(CalculatorTool, "Native", null, "calculator", "Enabled", "Auto", null) });
+                return FakeApiHandler.Json(new[] { Tool(CalculatorTool, "Builtin", null, "calculator", "Enabled", "Auto", null) });
             }
 
             if (path == "/api/assistants")
@@ -246,7 +246,7 @@ public sealed class ToolsPageTests : BunitContext
     }
 
     [Fact]
-    public void ANativeToolIsManagedLikeAnyOther()
+    public void ABuiltinToolIsManagedLikeAnyOther()
     {
         var page = RenderPage();
 

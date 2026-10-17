@@ -27,7 +27,7 @@ public sealed class McpToolReviewTests(PostgresFixture postgres)
         }
 
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "native__calculator");
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
         using var activate = await client.PutAsJsonAsync(
             ToolsApi.AssistantTools(assistantId),
             new { toolIds = new[] { calculator.ToolId, tools["changes"].Id, tools["stays"].Id, tools["vanishes"].Id } },
@@ -52,7 +52,7 @@ public sealed class McpToolReviewTests(PostgresFixture postgres)
         Assert.Equal("After.", after["changes"].Description);
         Assert.Equal(("PendingReview", "Confirm"), (after["brand-new"].State, after["brand-new"].Policy));
         Assert.Equal(("Enabled", "Auto"), (after["stays"].State, after["stays"].Policy));
-        Assert.Equal(["files__stays", "native__calculator"], pool.Where(t => t.Active).Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["builtin__calculator", "files__stays"], pool.Where(t => t.Active).Select(t => t.Name).Order().ToArray());
         Assert.DoesNotContain(pool, t => t.Name is "files__changes" or "files__brand-new" or "files__vanishes");
         Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.assistant_tools WHERE \"ToolId\" = '" + tools["vanishes"].Id + "'"));
     }

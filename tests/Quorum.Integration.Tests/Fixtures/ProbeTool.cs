@@ -5,10 +5,10 @@ using Quorum.Modules.Agents.Tools;
 namespace Quorum.Integration.Tests.Fixtures;
 
 /// <summary>
-/// A native tool whose behaviour tests script: it records the arguments it receives and runs <see cref="Handler"/>.
+/// A built-in tool whose behaviour tests script: it records the arguments it receives and runs <see cref="Handler"/>.
 /// Its row is created by <see cref="ToolFixtures.AddProbeAsync"/>.
 /// </summary>
-public sealed class ProbeTool : INativeTool
+public sealed class ProbeTool : IBuiltinTool
 {
     public const string ToolName = "probe";
 

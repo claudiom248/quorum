@@ -6,12 +6,12 @@ using Quorum.Shared.Persistence;
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>
-/// Makes sure a tenant has a row for every native tool and its tool settings. Idempotent: it runs at startup for every
-/// tenant (a release can add or redefine native tools) and when a tenant is created.
+/// Makes sure a tenant has a row for every built-in tool and its tool settings. Idempotent: it runs at startup for every
+/// tenant (a release can add or redefine built-in tools) and when a tenant is created.
 /// </summary>
-internal static class NativeToolProvisioner
+internal static class BuiltinToolProvisioner
 {
-    /// <returns>The tenant's native tools, after the missing ones were created.</returns>
+    /// <returns>The tenant's built-in tools, after the missing ones were created.</returns>
     public static async Task<IReadOnlyList<Tool>> EnsureAsync(AgentsDbContext db, Guid tenantId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -33,15 +33,15 @@ internal static class NativeToolProvisioner
         // Provisioning runs with no signed-in tenant (startup, setup), so the tenant filter is replaced by an explicit predicate.
         var tools = await db.Tools
             .IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.Origin == ToolOrigin.Native)
+            .Where(t => t.TenantId == tenantId && t.Origin == ToolOrigin.Builtin)
             .ToListAsync(cancellationToken);
 
-        foreach (var definition in NativeToolCatalog.All)
+        foreach (var definition in BuiltinToolCatalog.All)
         {
             var existing = tools.Find(t => t.Name == definition.Name);
             if (existing is null)
             {
-                var created = Tool.CreateNative(tenantId, definition.Name, definition.Description, definition.InputSchema);
+                var created = Tool.CreateBuiltin(tenantId, definition.Name, definition.Description, definition.InputSchema);
                 db.Tools.Add(created);
                 tools.Add(created);
             }

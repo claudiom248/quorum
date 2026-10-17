@@ -52,7 +52,7 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
 
         if (!string.IsNullOrWhiteSpace(query.Tool))
         {
-            // The name the model saw (native__calculator, files__read) or the tool's own name.
+            // The name the model saw (builtin__calculator, files__read) or the tool's own name.
             // Compared column by column, never on a concatenation, so the index on (TenantId, ToolName) stays usable.
             var tool = query.Tool.Trim();
             var split = tool.IndexOf("__", StringComparison.Ordinal);
@@ -60,8 +60,8 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
             {
                 var origin = tool[..split];
                 var name = tool[(split + 2)..];
-                var native = origin == "native";
-                entries = entries.Where(e => e.ToolName == tool || (e.ToolName == name && (native ? e.ServerName == null : e.ServerName == origin)));
+                var builtin = origin == "builtin";
+                entries = entries.Where(e => e.ToolName == tool || (e.ToolName == name && (builtin ? e.ServerName == null : e.ServerName == origin)));
             }
             else
             {
@@ -177,7 +177,7 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
 
 /// <param name="From">Entries started at or after this moment: a date (<c>2026-10-12</c>, from 00:00 UTC) or a time (UTC when it has no offset).</param>
 /// <param name="To">Entries started at or before this moment: a date covers the whole day in UTC; a time without offset is UTC.</param>
-/// <param name="Tool">The name the model saw (<c>native__calculator</c>) or the tool's own name.</param>
+/// <param name="Tool">The name the model saw (<c>builtin__calculator</c>) or the tool's own name.</param>
 /// <param name="Outcome">A <see cref="ToolOutcome"/> name, in any case.</param>
 internal sealed record ToolAuditQuery(
     string? From,

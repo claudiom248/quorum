@@ -1,20 +1,20 @@
 using System.Globalization;
 using System.Text.Json;
 
-namespace Quorum.Modules.Agents.Tools.Native;
+namespace Quorum.Modules.Agents.Tools.Builtin;
 
 /// <summary>
 /// Evaluates arithmetic exactly, for models that cannot. A small recursive-descent parser over <see cref="decimal"/>: it only
 /// knows numbers, <c>+ - * / % ^</c>, parentheses and a fixed set of functions, so there is nothing to escape from.
 /// </summary>
-internal sealed class CalculatorTool : INativeTool
+internal sealed class CalculatorTool : IBuiltinTool
 {
     public const int MaxExpressionLength = 500;
 
     /// <summary>Nesting of parentheses, calls, unary operators and powers; keeps the recursion far from the stack limit.</summary>
     public const int MaxDepth = 64;
 
-    public string Name => NativeToolCatalog.Calculator;
+    public string Name => BuiltinToolCatalog.Calculator;
 
     public Task<string> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
     {

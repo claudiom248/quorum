@@ -5,7 +5,7 @@ using ModelContextProtocol.Protocol;
 namespace Quorum.Modules.Agents.Tools.Mcp;
 
 /// <summary>
-/// A tool of an MCP server. It goes through the same pipeline as a native tool (policy, confirmation, audit, timeouts, result cap):
+/// A tool of an MCP server. It goes through the same pipeline as a built-in tool (policy, confirmation, audit, timeouts, result cap):
 /// this class only knows how to reach the server and how to read what it answers.
 /// </summary>
 internal sealed class McpQuorumTool(ActiveTool descriptor, McpAnswerConnections connections) : QuorumTool(descriptor)

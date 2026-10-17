@@ -6,10 +6,10 @@ using Quorum.Shared.Persistence;
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>
-/// At startup, gives every existing tenant the native tools and tool settings a release introduced. Tools are created
+/// At startup, gives every existing tenant the built-in tools and tool settings a release introduced. Tools are created
 /// inactive: an upgrade must not change what an installation's assistants do.
 /// </summary>
-internal sealed class NativeToolsInitializer(IServiceScopeFactory scopeFactory) : IDatabaseInitializer
+internal sealed class BuiltinToolsInitializer(IServiceScopeFactory scopeFactory) : IDatabaseInitializer
 {
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -20,7 +20,7 @@ internal sealed class NativeToolsInitializer(IServiceScopeFactory scopeFactory) 
         var tenantIds = await db.Assistants.IgnoreQueryFilters().Select(a => a.TenantId).Distinct().ToListAsync(cancellationToken);
         foreach (var tenantId in tenantIds)
         {
-            await NativeToolProvisioner.EnsureAsync(db, tenantId, cancellationToken);
+            await BuiltinToolProvisioner.EnsureAsync(db, tenantId, cancellationToken);
         }
     }
 }

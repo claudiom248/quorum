@@ -15,10 +15,10 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static FakeToolCall Probe(string text, string id = "call_1") =>
-        new("native__probe", JsonSerializer.Serialize(new { text }), id);
+        new("builtin__probe", JsonSerializer.Serialize(new { text }), id);
 
     private static FakeToolCall Ask(string question, string id = "call_1") =>
-        new("native__ask_user", JsonSerializer.Serialize(new { question }), id);
+        new("builtin__ask_user", JsonSerializer.Serialize(new { question }), id);
 
     private static List<JsonElement> Messages(QuorumApp app, int request) =>
         app.ModelServer.ChatRequests[request].GetProperty("messages").EnumerateArray().ToList();
@@ -50,7 +50,7 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
         var call = await answer.UntilAsync("tool_call");
 
         Assert.True(call.Data.GetProperty("requiresConfirmation").GetBoolean());
-        Assert.Equal("native__probe", call.Data.GetProperty("tool").GetString());
+        Assert.Equal("builtin__probe", call.Data.GetProperty("tool").GetString());
         Assert.Equal("danger", call.Data.GetProperty("arguments").GetProperty("text").GetString());
         Assert.True(call.Data.GetProperty("expiresAt").GetDateTimeOffset() > DateTimeOffset.UtcNow);
         Assert.Null(await answer.NextAsync(TimeSpan.FromMilliseconds(300)));
@@ -521,7 +521,7 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__ask_user", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
+            ChatScript.CallTools(new FakeToolCall("builtin__ask_user", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
             ChatScript.Reply("Sorry."));
         var id = await ChatApi.CreateConversationAsync(client);
 

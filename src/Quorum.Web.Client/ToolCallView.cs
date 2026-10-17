@@ -41,7 +41,7 @@ public sealed class ToolCallView
 
     public Guid CallId { get; private init; }
 
-    /// <summary>The name the model used, e.g. <c>native__calculator</c>.</summary>
+    /// <summary>The name the model used, e.g. <c>builtin__calculator</c>.</summary>
     public string ToolName { get; private init; } = string.Empty;
 
     /// <summary>The arguments as the user reads them before approving: indented JSON, or the text the model sent.</summary>
@@ -63,7 +63,7 @@ public sealed class ToolCallView
 
     public bool IsWaiting => State is ToolCallState.WaitingForConfirmation or ToolCallState.WaitingForAnswer;
 
-    /// <summary><c>calculator</c> for <c>native__calculator</c>, <c>files · read</c> for <c>files__read</c>.</summary>
+    /// <summary><c>calculator</c> for <c>builtin__calculator</c>, <c>files · read</c> for <c>files__read</c>.</summary>
     public string DisplayName => DisplayNameOf(ToolName);
 
     /// <summary>The name of a tool as people read it, from the name the model uses.</summary>
@@ -79,7 +79,7 @@ public sealed class ToolCallView
 
         var origin = toolName[..split];
         var name = toolName[(split + 2)..];
-        return origin == "native" ? name : $"{origin} · {name}";
+        return origin == "builtin" ? name : $"{origin} · {name}";
     }
 
     public string StatusLabel => State switch

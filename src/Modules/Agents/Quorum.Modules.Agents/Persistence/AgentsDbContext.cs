@@ -61,7 +61,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             tool.Property(t => t.State).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.Policy).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.DefinitionHash).HasMaxLength(64);
-            // A native tool is unique in its tenant; an MCP tool in its server (two servers may both offer "search").
+            // A built-in tool is unique in its tenant; an MCP tool in its server (two servers may both offer "search").
             tool.HasIndex(t => new { t.TenantId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NULL");
             tool.HasIndex(t => new { t.ServerId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NOT NULL");
             tool.HasOne<McpServer>().WithMany().HasForeignKey(t => t.ServerId).OnDelete(DeleteBehavior.Cascade);

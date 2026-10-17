@@ -108,7 +108,7 @@ public sealed record AnswerChunk(AnswerChunkKind Kind, string Text, ToolEvent? T
 /// <summary>What happened to a tool call, for the user to watch.</summary>
 public abstract record ToolEvent(Guid CallId);
 
-/// <param name="Tool">The name the model called the tool by, e.g. <c>native__calculator</c>.</param>
+/// <param name="Tool">The name the model called the tool by, e.g. <c>builtin__calculator</c>.</param>
 /// <param name="Arguments">The arguments as the model sent them: JSON text when they are valid JSON.</param>
 public sealed record ToolCallEvent(Guid CallId, string Tool, string Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt)
     : ToolEvent(CallId);

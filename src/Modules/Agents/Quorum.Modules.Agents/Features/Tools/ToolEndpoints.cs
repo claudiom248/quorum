@@ -11,7 +11,7 @@ using Quorum.Shared.Endpoints;
 
 namespace Quorum.Modules.Agents.Features.Tools;
 
-/// <summary>The tools of the tenant, native and from MCP servers: the admin enables, disables and sets the policy of each.</summary>
+/// <summary>The tools of the tenant, built-in and from MCP servers: the admin enables, disables and sets the policy of each.</summary>
 internal sealed class ToolEndpoints : IEndpointGroup
 {
     public void Map(IEndpointRouteBuilder app)

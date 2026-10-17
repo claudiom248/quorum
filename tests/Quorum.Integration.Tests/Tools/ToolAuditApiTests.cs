@@ -114,7 +114,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     }
 
     [Theory] // AC-46
-    [InlineData("native__calculator", 1)]
+    [InlineData("builtin__calculator", 1)]
     [InlineData("files__read", 1)]
     [InlineData("calculator", 1)]
     [InlineData("read", 1)]

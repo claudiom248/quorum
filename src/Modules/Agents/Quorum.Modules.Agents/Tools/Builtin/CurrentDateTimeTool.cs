@@ -1,12 +1,12 @@
 using System.Globalization;
 using System.Text.Json;
 
-namespace Quorum.Modules.Agents.Tools.Native;
+namespace Quorum.Modules.Agents.Tools.Builtin;
 
 /// <summary>Tells the model what day and time it is, which it cannot know.</summary>
-internal sealed class CurrentDateTimeTool(TimeProvider clock) : INativeTool
+internal sealed class CurrentDateTimeTool(TimeProvider clock) : IBuiltinTool
 {
-    public string Name => NativeToolCatalog.CurrentDateTime;
+    public string Name => BuiltinToolCatalog.CurrentDateTime;
 
     public Task<string> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
     {

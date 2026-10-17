@@ -27,7 +27,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "native__calculator");
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
 
         using var only = await client.PutAsJsonAsync(ToolsApi.AssistantTools(assistantId), new { toolIds = new[] { calculator.ToolId } }, Ct);
         var afterOnly = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
@@ -35,7 +35,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
         var afterNone = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
 
         Assert.Equal(HttpStatusCode.NoContent, only.StatusCode);
-        Assert.Equal(["native__calculator"], afterOnly.Where(t => t.Active).Select(t => t.Name).ToArray());
+        Assert.Equal(["builtin__calculator"], afterOnly.Where(t => t.Active).Select(t => t.Name).ToArray());
         Assert.Equal(HttpStatusCode.NoContent, none.StatusCode);
         Assert.All(afterNone, tool => Assert.False(tool.Active));
     }
@@ -46,7 +46,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "native__calculator");
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
 
         using var response = await client.PutAsJsonAsync(ToolsApi.AssistantTools(assistantId), new { toolIds = new[] { calculator.ToolId, calculator.ToolId } }, Ct);
 
