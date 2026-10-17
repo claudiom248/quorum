@@ -18,7 +18,31 @@ internal static class ToolNaming
 {
     public const string NativePrefix = "native__";
 
+    /// <summary>The longest name the model APIs accept (D-16).</summary>
+    public const int MaxLength = 64;
+
+    private const int HashLength = 8;
+
     public static string Native(string toolName) => NativePrefix + toolName;
+
+    /// <summary>
+    /// <c>&lt;server&gt;__&lt;tool&gt;</c>. A tool name the model APIs would not accept (characters outside <c>[a-zA-Z0-9_-]</c>, or too
+    /// long) is sanitized and gets a short hash of the original name, so two different names never collapse into one. The
+    /// name is never parsed back: the model's name is mapped to the tool through the request's own table.
+    /// </summary>
+    public static string Mcp(string serverName, string toolName)
+    {
+        var prefix = serverName + "__";
+        var budget = MaxLength - prefix.Length;
+        var sanitized = new string([.. toolName.Select(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_' or '-' ? c : '_')]);
+        if (sanitized == toolName && toolName.Length <= budget)
+        {
+            return prefix + toolName;
+        }
+
+        var suffix = "_" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(toolName)))[..HashLength];
+        return prefix + sanitized[..Math.Min(sanitized.Length, budget - suffix.Length)] + suffix;
+    }
 }
 
 /// <summary>

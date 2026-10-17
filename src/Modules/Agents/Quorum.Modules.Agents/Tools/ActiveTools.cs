@@ -37,22 +37,22 @@ internal static class ActiveToolsQuery
     public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid assistantId, CancellationToken cancellationToken)
     {
         var tools = await (
-            from tool in ToolPool.For(db)
-            join activation in db.AssistantTools on tool.Id equals activation.ToolId
+            from pooled in ToolPool.For(db, assistantId)
+            join activation in db.AssistantTools on pooled.Tool.Id equals activation.ToolId
             where activation.AssistantId == assistantId
-            select tool)
+            select pooled)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
         return tools
-            .Select(tool => new ActiveTool(
-                tool.Id,
-                tool.Origin,
-                tool.Name,
-                ToolPool.ExposedName(tool),
-                ServerName: null,
-                tool.Description,
-                tool.InputSchema))
+            .Select(pooled => new ActiveTool(
+                pooled.Tool.Id,
+                pooled.Tool.Origin,
+                pooled.Tool.Name,
+                pooled.ExposedName,
+                pooled.ServerName,
+                pooled.Tool.Description,
+                pooled.Tool.InputSchema))
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
             .ToList();
     }

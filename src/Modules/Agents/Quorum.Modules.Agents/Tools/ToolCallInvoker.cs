@@ -338,10 +338,10 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
     /// <returns>The tool's policy now, or <see langword="null"/> when it is no longer enabled and activated on the assistant.</returns>
     private async Task<ToolPolicy?> CurrentPolicyAsync(ToolRunContext context, ActiveTool tool, CancellationToken cancellationToken) =>
         await (
-            from candidate in ToolPool.For(db)
-            where candidate.Id == tool.ToolId
-                  && db.AssistantTools.Any(a => a.ToolId == candidate.Id && a.AssistantId == context.AssistantId)
-            select (ToolPolicy?)candidate.Policy)
+            from candidate in ToolPool.For(db, context.AssistantId)
+            where candidate.Tool.Id == tool.ToolId
+                  && db.AssistantTools.Any(a => a.ToolId == candidate.Tool.Id && a.AssistantId == context.AssistantId)
+            select (ToolPolicy?)candidate.Tool.Policy)
             .SingleOrDefaultAsync(cancellationToken);
 
     private async Task<bool> TryRecordAsync(ToolAuditEntry entry)

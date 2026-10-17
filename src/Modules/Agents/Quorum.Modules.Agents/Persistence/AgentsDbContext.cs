@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Quorum.Modules.Agents.Domain;
+using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Tenancy;
 
@@ -22,7 +23,13 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<ToolAuditEntry> ToolAuditEntries => Set<ToolAuditEntry>();
 
-    private Guid? CurrentTenantId => tenantContext.TenantId;
+    public DbSet<McpServer> McpServers => Set<McpServer>();
+
+    /// <summary>
+    /// The tenant of the request. Queries that must also see what other tenants share with this one (a server's scope) turn the
+    /// tenant filter off and state the rule themselves, with this value.
+    /// </summary>
+    public Guid? CurrentTenantId => tenantContext.TenantId;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,8 +60,24 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             tool.Property(t => t.Name).HasMaxLength(128);
             tool.Property(t => t.State).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.Policy).HasConversion<string>().HasMaxLength(20);
-            tool.HasIndex(t => new { t.TenantId, t.Origin, t.Name }).IsUnique();
+            tool.Property(t => t.DefinitionHash).HasMaxLength(64);
+            // A native tool is unique in its tenant; an MCP tool in its server (two servers may both offer "search").
+            tool.HasIndex(t => new { t.TenantId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NULL");
+            tool.HasIndex(t => new { t.ServerId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NOT NULL");
+            tool.HasOne<McpServer>().WithMany().HasForeignKey(t => t.ServerId).OnDelete(DeleteBehavior.Cascade);
             tool.HasQueryFilter(t => t.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<McpServer>(server =>
+        {
+            server.ToTable("mcp_servers");
+            server.Property(s => s.Name).HasMaxLength(McpServerRules.MaxNameLength);
+            server.Property(s => s.Url).HasMaxLength(McpServerRules.MaxUrlLength);
+            server.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+            server.Property(s => s.Scope).HasConversion<string>().HasMaxLength(20);
+            server.Property(s => s.LastError).HasMaxLength(500);
+            server.HasIndex(s => new { s.TenantId, s.Name }).IsUnique();
+            server.HasQueryFilter(s => s.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AssistantTool>(activation =>

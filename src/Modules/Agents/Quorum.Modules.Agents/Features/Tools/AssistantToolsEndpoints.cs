@@ -53,17 +53,17 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
             return AssistantNotFound.ToProblem();
         }
 
-        var pool = await ToolPool.For(db).AsNoTracking().ToListAsync(cancellationToken);
+        var pool = await ToolPool.For(db, id).AsNoTracking().ToListAsync(cancellationToken);
         var active = (await db.AssistantTools.Where(a => a.AssistantId == id).Select(a => a.ToolId).ToListAsync(cancellationToken)).ToHashSet();
 
-        var activeDefinitions = pool.Where(t => active.Contains(t.Id)).Select(ToolPool.Definition).ToList();
+        var activeDefinitions = pool.Where(t => active.Contains(t.Tool.Id)).Select(t => t.Definition).ToList();
         var warnings = ToolWarnings.Evaluate(
             activeDefinitions.Count,
             ToolDefinitionRenderer.Length(activeDefinitions),
             budget.Value * ContextUsage.CharactersPerToken);
 
         return TypedResults.Ok(new AssistantToolsResponse(
-            pool.Select(t => new PoolToolResponse(t.Id, ToolPool.ExposedName(t), active.Contains(t.Id)))
+            pool.Select(t => new PoolToolResponse(t.Tool.Id, t.ExposedName, active.Contains(t.Tool.Id)))
                 .OrderBy(t => t.Name, StringComparer.Ordinal)
                 .ToList(),
             warnings));
@@ -82,7 +82,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         }
 
         var wanted = (request.ToolIds ?? []).Distinct().ToList();
-        var inPool = await ToolPool.For(db).Where(t => wanted.Contains(t.Id)).Select(t => t.Id).ToListAsync(cancellationToken);
+        var inPool = await ToolPool.For(db, id).Where(t => wanted.Contains(t.Tool.Id)).Select(t => t.Tool.Id).ToListAsync(cancellationToken);
         if (inPool.Count != wanted.Count)
         {
             return NotInPool.ToProblem();
