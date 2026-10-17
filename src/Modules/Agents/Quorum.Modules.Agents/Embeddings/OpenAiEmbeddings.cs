@@ -69,7 +69,8 @@ internal sealed partial class OpenAiEmbeddings(AgentsDbContext db, ApiKeyProtect
         }
         catch (ClientResultException exception)
         {
-            LogUnreachable(logger, exception.InnerException?.GetType().Name ?? exception.GetType().Name);
+            var reason = exception.InnerException?.GetType().Name ?? exception.GetType().Name;
+            LogUnreachable(logger, reason);
             return Error.Unprocessable(Unreachable, "The model endpoint cannot be reached to embed the text.");
         }
         catch (Exception exception) when (exception is JsonException or FormatException)

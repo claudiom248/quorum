@@ -148,7 +148,8 @@ internal sealed partial class KnowledgeBaseInspector(
             unindexed,
             warnings.Select(w => new WarningDto(w.Code, w.Message, w.Path)).ToList());
 
-        LogInspected(logger, response.Reachable, response.CollectionExists, fields.Count, warnings.Count, (int)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        var elapsedMilliseconds = (int)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        LogInspected(logger, response.Reachable, response.CollectionExists, fields.Count, warnings.Count, elapsedMilliseconds);
         return response;
     }
 
