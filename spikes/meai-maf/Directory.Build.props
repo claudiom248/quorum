@@ -1,0 +1,3 @@
+<Project>
+  <!-- Isolation: the spike must not inherit the solution's settings, and is not part of Quorum.slnx. -->
+</Project>
