@@ -5,8 +5,8 @@ namespace Quorum.Modules.Agents.Chat;
 
 /// <summary>
 /// Chooses what fits in a model's context. Tokens are estimated as characters / 4 (no model-specific tokenizer),
-/// and the whole configured budget is usable. The system prompt comes first, then all the attachments, then the most
-/// recent messages that fit.
+/// and the whole configured budget is usable. The system prompt comes first, then all the attachments, then the definitions
+/// of the active tools, then the most recent messages that fit.
 /// </summary>
 internal static class ContextWindow
 {
@@ -14,14 +14,16 @@ internal static class ContextWindow
         contextTokenBudget * ContextUsage.CharactersPerToken;
 
     /// <summary>
-    /// The most recent turns that fit after the system prompt and the attachments; the last turn must fit on its own.
-    /// Fails, instead of dropping anything, when the attachments do not fit or the last message does not fit after them.
+    /// The most recent turns that fit after the system prompt, the attachments and the tool definitions; the last turn must fit on its own.
+    /// Fails, instead of dropping anything, when the attachments or the definitions do not fit or the last message does not fit after them.
     /// </summary>
+    /// <param name="toolsCharacters">What the definitions of the active tools take in the request (zero without tools).</param>
     public static Result<IReadOnlyList<ChatTurn>> Select(
         string systemPrompt,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        int contextTokenBudget)
+        int contextTokenBudget,
+        int toolsCharacters = 0)
     {
         if (history.Count == 0)
         {
@@ -47,7 +49,18 @@ internal static class ContextWindow
                 $"Remove {string.Join(", ", AttachmentsToRemove(attachments, afterSystemPrompt))} or raise the model's context budget in the settings.");
         }
 
-        var available = afterSystemPrompt - attachmentCharacters;
+        var afterAttachments = afterSystemPrompt - attachmentCharacters;
+        if (toolsCharacters > afterAttachments)
+        {
+            var fit = Math.Max(0, afterAttachments);
+            return Error.Validation(
+                "chat.tools_exceed_budget",
+                $"The definitions of the assistant's active tools take {toolsCharacters} characters but only {fit} fit this model's context " +
+                $"after the system prompt{(attachments.Count > 0 ? " and the attachments" : string.Empty)}: {toolsCharacters - fit} characters are missing. " +
+                "Deactivate some of the assistant's tools or raise the model's context budget in the settings.");
+        }
+
+        var available = afterAttachments - toolsCharacters;
         var last = history[^1];
 
         if (last.Content.Length > available)
@@ -55,6 +68,11 @@ internal static class ContextWindow
             var hint = attachments.Count > 0
                 ? $" The {attachments.Count} attachment(s) take {attachmentCharacters} characters: remove some to make room."
                 : string.Empty;
+            if (toolsCharacters > 0)
+            {
+                hint += $" The active tools' definitions take {toolsCharacters} characters: deactivate some tools to make room.";
+            }
+
             return Error.Validation(
                 "chat.message_too_long",
                 $"The message is too long for this model's context: keep it under {Math.Max(0, available)} characters.{hint}");
@@ -76,20 +94,27 @@ internal static class ContextWindow
         string systemPrompt,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        int contextTokenBudget) =>
-        Measure(systemPrompt, history, AttachmentBlock.Length(attachments), contextTokenBudget);
+        int contextTokenBudget,
+        int toolsCharacters = 0) =>
+        Measure(systemPrompt, history, AttachmentBlock.Length(attachments), contextTokenBudget, toolsCharacters);
 
-    /// <summary>Same as <see cref="Measure(string, IReadOnlyList{ChatTurn}, IReadOnlyList{ChatAttachment}, int)"/>, from the attachments' sizes.</summary>
+    /// <summary>Same as <see cref="Measure(string, IReadOnlyList{ChatTurn}, IReadOnlyList{ChatAttachment}, int, int)"/>, from the attachments' sizes.</summary>
     public static ContextUsage Measure(
         string systemPrompt,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachmentSize> attachments,
-        int contextTokenBudget) =>
-        Measure(systemPrompt, history, AttachmentBlock.Length(attachments), contextTokenBudget);
+        int contextTokenBudget,
+        int toolsCharacters = 0) =>
+        Measure(systemPrompt, history, AttachmentBlock.Length(attachments), contextTokenBudget, toolsCharacters);
 
-    private static ContextUsage Measure(string systemPrompt, IReadOnlyList<ChatTurn> history, int attachmentCharacters, int contextTokenBudget)
+    private static ContextUsage Measure(
+        string systemPrompt,
+        IReadOnlyList<ChatTurn> history,
+        int attachmentCharacters,
+        int contextTokenBudget,
+        int toolsCharacters)
     {
-        var available = CharacterBudget(contextTokenBudget) - systemPrompt.Length - attachmentCharacters;
+        var available = CharacterBudget(contextTokenBudget) - systemPrompt.Length - attachmentCharacters - toolsCharacters;
 
         var messageCharacters = 0;
         for (var i = history.Count - 1; i >= 0 && history[i].Content.Length <= available - messageCharacters; i--)
@@ -102,7 +127,8 @@ internal static class ContextWindow
             CharacterBudget(contextTokenBudget),
             systemPrompt.Length,
             attachmentCharacters,
-            messageCharacters);
+            messageCharacters,
+            toolsCharacters);
     }
 
     /// <summary>The newest attachments, enough of them that what is left fits.</summary>

@@ -27,7 +27,7 @@ public sealed class AssistantSettingsTests(PostgresFixture postgres)
     public async Task ChangesApplyToTheNextMessages()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        using var client = await app.SetUpAsync(toolsActive: false);
         app.ModelServer.Serve("http://vllm.test:8000/v1", "qwen2.5:14b");
 
         using var update = await client.PutAsJsonAsync(

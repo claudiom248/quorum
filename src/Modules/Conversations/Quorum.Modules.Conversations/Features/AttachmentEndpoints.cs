@@ -150,9 +150,11 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
             return usage.Error.ToProblem();
         }
 
-        if (usage.Value.RemainingCharacters < 0)
+        // Attachments come before the tool definitions in the budget (D-27): the definitions never make an upload fail.
+        var remainingForAttachments = usage.Value.RemainingCharacters + usage.Value.ToolsCharacters;
+        if (remainingForAttachments < 0)
         {
-            return AttachmentErrors.ExceedsBudget(-usage.Value.RemainingCharacters).ToProblem();
+            return AttachmentErrors.ExceedsBudget(-remainingForAttachments).ToProblem();
         }
 
         var attachment = Attachment.Create(conversation, fileName, extracted.Value.MediaType, content.Length, hash, extracted.Value.Text, clock.GetUtcNow());
@@ -284,7 +286,8 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
                 usage.Value.SystemPromptTokens,
                 usage.Value.AttachmentsTokens,
                 usage.Value.MessagesTokens,
-                usage.Value.RemainingTokens))
+                usage.Value.RemainingTokens,
+                usage.Value.ToolsTokens))
             : usage.Error.ToProblem();
     }
 
@@ -343,4 +346,5 @@ internal sealed record ContextResponse(
     int SystemPromptTokens,
     int AttachmentsTokens,
     int MessagesTokens,
-    int RemainingTokens);
+    int RemainingTokens,
+    int ToolsTokens);
