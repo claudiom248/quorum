@@ -49,6 +49,7 @@ Names that reach the public API are hard to change later, so these terms are fix
 ## Data
 - **Platform database**: always PostgreSQL (tenants, users, configuration, license, document metadata). No choice in the wizard. It holds no vectors.
 - **Conversation store**: abstract and replaceable; default implementation on the same PostgreSQL.
+- **Amended by spec 003**: knowledge bases are registered per KB (connection, embedding model, field mapping) and only consumed by Quorum; ingestion belongs to the data owners, and the wizard no longer chooses a vector store. The bundled `qdrant` service stays as a default target.
 - **Vector store for RAG**: abstract and configurable, separate from the platform database. MVP implementations:
   - **Qdrant** (default in the compose file);
   - **PostgreSQL + pgvector** on its own server/database, not necessarily the platform one.

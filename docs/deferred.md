@@ -22,6 +22,12 @@ Backlog of things decided *not* to do yet, so they are not forgotten. An item en
 | MCP resources, prompts, sampling and elicitation | Spec 004 | The client supports tools only; sampling is excluded for safety | A concrete need |
 | Standard assistant behaviour where pre-check failures (message too long, attachments or tool definitions that do not fit) become inline errors in the conversation instead of an HTTP 400 | Specs 001/002/004 | Pre-checks stay a 400 before the stream starts, so nothing is stored and the client can fix the request | A UI or product decision to match other assistants, which accept the message and show the error in the conversation |
 | Tool confirmation through `ToolApprovalRequestContent` / `ApprovalRequiredAIFunction` (Microsoft.Extensions.AI, with the session binding of Microsoft Agent Framework) instead of our own pause | Spec 004 | They suspend and resume: the answer ends at the approval request and the decision arrives with a new request that carries the approval messages in the history. Spec 004 chose a stream that stays open and waits (D-9): timeout, closed stream and restart are denials, tool messages are never stored (AC-28), and `ask_user` and the audit log need the same pause, which MEAI/MAF do not cover | Streams held open for minutes prove a problem (proxies, single instance), or stored tool messages are wanted for another reason (replay, multi-agent topologies in spec 005) |
+| Ingestion in Quorum (extraction, chunking, embedding, writing into the store) | Spec 003 | Data owners populate knowledge bases, often with their own ETL; Quorum only registers and queries them | Customers without ETL capability |
+| Other knowledge base kinds: pgvector (tables and columns, own connection), raw documents from folders, S3-compatible or remote storage with a blob pattern, external SQL/MongoDB sources | Spec 003 | Spec 003 implements Qdrant only, behind a per-kind abstraction; raw documents need query-time parsing, a search strategy and permissions on the sources | A customer needs them; each kind is a dedicated spec |
+| Embedding endpoint per knowledge base (different servers and models) | Spec 003 | The installation's model endpoint is used, with the embedding model name stored per KB | A KB indexed with a model the installation endpoint does not serve |
+| Hybrid search, sparse vectors and reranking for knowledge bases | Spec 003 | Dense vector search only | Poor retrieval quality on exact terms or codes |
+| Per-user or per-document permissions on knowledge bases (e.g. from OIDC claims) | Spec 003 | Access is at KB level; the admin carves slices with fixed filters | Users and roles spec, KBs shared among mixed audiences |
+| Background verification and payload drift detection for knowledge bases | Spec 003 | Verification is manual | Many KBs or frequent payload changes |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
@@ -31,7 +37,7 @@ Decided on 2026-10-15 when splitting the MVP; each gets its own spec, plan and P
 | Spec | Topic |
 |---|---|
 | 002 | Conversation attachments: text extracted from uploaded files used as context of one conversation |
-| 003 | Knowledge bases (RAG): admin-defined collections on Qdrant/pgvector, ingestion, chunking, citations |
+| 003 | Knowledge bases (RAG): consume-only (no ingestion), Qdrant, metadata dictionary and mapping, `rag` tool with filters, citations |
 | 004 | MCP tools: client, registry, per-agent/role permissions, human confirmation, audit log |
 | 005 | Declarative config and topology: format for assistants, agents and topologies, multi-agent execution |
 | 006 | Web search as a tool (after 004) |
