@@ -20,6 +20,7 @@ Backlog of things decided *not* to do yet, so they are not forgotten. An item en
 | Native tool: queries over CSV attachments (sum, filter, group) | Spec 004 | Needs a contract between Conversations (attachments) and Agents; small local models do arithmetic on tables badly | After 004, when attachments and tools are in use |
 | Persisting tool calls in the conversation history | Spec 004 | Tool calls are shown live and audited, not stored with the messages; later turns do not see earlier tool results | Users asking to review past tool calls, or models needing earlier results |
 | MCP resources, prompts, sampling and elicitation | Spec 004 | The client supports tools only; sampling is excluded for safety | A concrete need |
+| Standard assistant behaviour where pre-check failures (message too long, attachments or tool definitions that do not fit) become inline errors in the conversation instead of an HTTP 400 | Specs 001/002/004 | Pre-checks stay a 400 before the stream starts, so nothing is stored and the client can fix the request | A UI or product decision to match other assistants, which accept the message and show the error in the conversation |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
