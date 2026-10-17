@@ -42,6 +42,61 @@ internal static class ToolFixtures
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Writes one audit entry straight to the database, as a finished call unless <paramref name="outcome"/> is
+    /// <see cref="ToolOutcome.Started"/>. <paramref name="tenantId"/> defaults to the tenant of the default assistant.
+    /// </summary>
+    public static async Task AddAuditEntryAsync(
+        QuorumApp app,
+        DateTimeOffset startedAt,
+        string tool = "calculator",
+        string? server = null,
+        ToolOutcome outcome = ToolOutcome.Succeeded,
+        Guid? userId = null,
+        Guid? tenantId = null,
+        string arguments = "{}")
+    {
+        var tenant = tenantId ?? await ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
+        var assistant = await ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.assistants LIMIT 1");
+
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
+        db.ToolAuditEntries.Add(NewAuditEntry(tenant, assistant, startedAt, tool, server, outcome, userId ?? Guid.NewGuid(), arguments));
+        await db.SaveChangesAsync(Ct);
+    }
+
+    /// <summary>Writes many audit entries in one save, for tests that need a log larger than one batch.</summary>
+    public static async Task AddManyAuditEntriesAsync(QuorumApp app, DateTimeOffset startedAt, int count, string tool = "bulk")
+    {
+        var tenant = await ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
+        var assistant = await ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.assistants LIMIT 1");
+
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
+        db.ToolAuditEntries.AddRange(Enumerable.Range(0, count)
+            .Select(i => NewAuditEntry(tenant, assistant, startedAt.AddSeconds(i), tool, null, ToolOutcome.Succeeded, Guid.NewGuid(), "{}")));
+        await db.SaveChangesAsync(Ct);
+    }
+
+    private static ToolAuditEntry NewAuditEntry(
+        Guid tenant,
+        Guid assistant,
+        DateTimeOffset startedAt,
+        string tool,
+        string? server,
+        ToolOutcome outcome,
+        Guid userId,
+        string arguments)
+    {
+        var entry = ToolAuditEntry.Start(tenant, userId, assistant, Guid.NewGuid(), Guid.NewGuid(), server, tool, ToolDecision.Auto, arguments, false, startedAt);
+        if (outcome != ToolOutcome.Started)
+        {
+            entry.Complete(outcome, 5, null, startedAt.AddMilliseconds(40), TimeSpan.FromMilliseconds(40));
+        }
+
+        return entry;
+    }
+
     /// <summary>Sets the tool-calling limits of the tenant; the values are the defaults unless a test needs another.</summary>
     public static async Task SetLimitsAsync(
         HttpClient client,

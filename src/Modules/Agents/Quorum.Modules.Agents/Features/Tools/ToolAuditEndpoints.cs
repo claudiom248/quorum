@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -32,30 +33,40 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
         AgentsDbContext db,
         CancellationToken cancellationToken)
     {
-        var errors = Validate(query, out var outcome);
+        var errors = Validate(query, out var outcome, out var from, out var to);
         if (errors.Count > 0)
         {
             return TypedResults.ValidationProblem(errors);
         }
 
         var entries = db.ToolAuditEntries.AsNoTracking().AsQueryable();
-        if (query.From is { } from)
+        if (from is { } start)
         {
-            entries = entries.Where(e => e.StartedAt >= from);
+            entries = entries.Where(e => e.StartedAt >= start);
         }
 
-        if (query.To is { } to)
+        if (to is { } end)
         {
-            entries = entries.Where(e => e.StartedAt <= to);
+            entries = entries.Where(e => e.StartedAt <= end);
         }
 
         if (!string.IsNullOrWhiteSpace(query.Tool))
         {
             // The name the model saw (native__calculator, files__read) or the tool's own name.
+            // Compared column by column, never on a concatenation, so the index on (TenantId, ToolName) stays usable.
             var tool = query.Tool.Trim();
-            entries = entries.Where(e =>
-                e.ToolName == tool
-                || (e.ServerName == null ? "native__" + e.ToolName : e.ServerName + "__" + e.ToolName) == tool);
+            var split = tool.IndexOf("__", StringComparison.Ordinal);
+            if (split > 0)
+            {
+                var origin = tool[..split];
+                var name = tool[(split + 2)..];
+                var native = origin == "native";
+                entries = entries.Where(e => e.ToolName == tool || (e.ToolName == name && (native ? e.ServerName == null : e.ServerName == origin)));
+            }
+            else
+            {
+                entries = entries.Where(e => e.ToolName == tool);
+            }
         }
 
         if (query.UserId is { } userId)
@@ -69,19 +80,26 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
         }
 
         var total = await entries.CountAsync(cancellationToken);
-        var page = await entries
-            .OrderByDescending(e => e.StartedAt).ThenByDescending(e => e.Id)
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
-            .ToListAsync(cancellationToken);
+
+        // A product of two ints wraps to a negative offset for a huge page, which the database rejects: past int range there is nothing to skip to.
+        var offset = (long)(query.Page - 1) * query.PageSize;
+        var page = offset > int.MaxValue
+            ? []
+            : await entries
+                .OrderByDescending(e => e.StartedAt).ThenByDescending(e => e.Id)
+                .Skip((int)offset)
+                .Take(query.PageSize)
+                .ToListAsync(cancellationToken);
 
         return TypedResults.Ok(new ToolAuditPage(page.Select(ToolAuditItem.From).ToList(), total));
     }
 
-    private static Dictionary<string, string[]> Validate(ToolAuditQuery query, out ToolOutcome? outcome)
+    private static Dictionary<string, string[]> Validate(ToolAuditQuery query, out ToolOutcome? outcome, out DateTimeOffset? from, out DateTimeOffset? to)
     {
         var errors = new Dictionary<string, string[]>();
         outcome = null;
+        from = null;
+        to = null;
 
         if (query.Page < 1)
         {
@@ -93,7 +111,17 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
             errors["pageSize"] = [$"The page size must be between 1 and {MaxPageSize}."];
         }
 
-        if (query.From is { } from && query.To is { } to && from > to)
+        if (!TryParseMoment(query.From, endOfDay: false, out from))
+        {
+            errors["from"] = ["Use a date (2026-10-12) or a date and time (2026-10-12T08:30:00Z)."];
+        }
+
+        if (!TryParseMoment(query.To, endOfDay: true, out to))
+        {
+            errors["to"] = ["Use a date (2026-10-12) or a date and time (2026-10-12T08:30:00Z)."];
+        }
+
+        if (from is { } periodStart && to is { } periodEnd && periodStart > periodEnd)
         {
             errors["from"] = ["The start of the period is after its end."];
         }
@@ -115,15 +143,45 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
 
         return errors;
     }
+
+    /// <summary>
+    /// A date covers its whole day in UTC (<paramref name="endOfDay"/> picks which end it stands for); a time without an offset
+    /// is UTC, never the server's own zone.
+    /// </summary>
+    private static bool TryParseMoment(string? text, bool endOfDay, out DateTimeOffset? moment)
+    {
+        moment = null;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        var value = text.Trim();
+        if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+        {
+            var start = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            moment = endOfDay ? start.AddDays(1).AddTicks(-1) : start;
+            return true;
+        }
+
+        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+        {
+            // Npgsql writes only UTC instants: an offset in the query would be a 500, not a filter.
+            moment = parsed.ToUniversalTime();
+            return true;
+        }
+
+        return false;
+    }
 }
 
-/// <param name="From">Entries started at or after this moment.</param>
-/// <param name="To">Entries started at or before this moment.</param>
+/// <param name="From">Entries started at or after this moment: a date (<c>2026-10-12</c>, from 00:00 UTC) or a time (UTC when it has no offset).</param>
+/// <param name="To">Entries started at or before this moment: a date covers the whole day in UTC; a time without offset is UTC.</param>
 /// <param name="Tool">The name the model saw (<c>native__calculator</c>) or the tool's own name.</param>
 /// <param name="Outcome">A <see cref="ToolOutcome"/> name, in any case.</param>
 internal sealed record ToolAuditQuery(
-    DateTimeOffset? From,
-    DateTimeOffset? To,
+    string? From,
+    string? To,
     string? Tool,
     Guid? UserId,
     string? Outcome,

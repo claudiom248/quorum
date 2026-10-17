@@ -9,7 +9,10 @@ namespace Quorum.Integration.Tests.Fixtures;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    // Every app instance keeps its own connection pool, and the apps of a whole run live side by side: the default 100 connections run out.
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
+        .WithCommand("-c", "max_connections=500")
+        .Build();
 
     public async ValueTask InitializeAsync() => await _container.StartAsync();
 

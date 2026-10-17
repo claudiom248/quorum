@@ -23,31 +23,6 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     private static Uri Query(params (string Name, object Value)[] parameters) =>
         new($"/api/tools/audit?{string.Join('&', parameters.Select(p => $"{p.Name}={Uri.EscapeDataString(p.Value is DateTimeOffset at ? at.ToString("O") : p.Value.ToString()!)}"))}", UriKind.Relative);
 
-    private static async Task AddEntryAsync(
-        QuorumApp app,
-        DateTimeOffset startedAt,
-        string tool = "calculator",
-        string? server = null,
-        ToolOutcome outcome = ToolOutcome.Succeeded,
-        Guid? userId = null,
-        Guid? tenantId = null,
-        string arguments = "{}")
-    {
-        var tenant = tenantId ?? await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
-        var assistant = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.assistants LIMIT 1");
-
-        await using var scope = app.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
-        var entry = ToolAuditEntry.Start(tenant, userId ?? UserA, assistant, Guid.NewGuid(), Guid.NewGuid(), server, tool, ToolDecision.Auto, arguments, false, startedAt);
-        if (outcome != ToolOutcome.Started)
-        {
-            entry.Complete(outcome, 5, null, startedAt.AddMilliseconds(40), TimeSpan.FromMilliseconds(40));
-        }
-
-        db.ToolAuditEntries.Add(entry);
-        await db.SaveChangesAsync(Ct);
-    }
-
     private static async Task<AuditPage> ReadAsync(HttpClient client, Uri uri)
     {
         using var response = await client.GetAsync(uri, Ct);
@@ -75,9 +50,9 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon.AddHours(-2), tool: "old");
-        await AddEntryAsync(app, Noon, tool: "new", server: "files", outcome: ToolOutcome.Failed, arguments: """{"path":"a.txt"}""");
-        await AddEntryAsync(app, Noon.AddHours(-1), tool: "middle");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddHours(-2), tool: "old");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "new", server: "files", outcome: ToolOutcome.Failed, userId: UserA, arguments: """{"path":"a.txt"}""");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddHours(-1), tool: "middle");
 
         var page = await ReadAsync(client, Audit);
 
@@ -101,7 +76,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, outcome: ToolOutcome.Started);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, outcome: ToolOutcome.Started);
 
         var item = Assert.Single((await ReadAsync(client, Audit)).Items);
 
@@ -115,9 +90,9 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon.AddDays(-3), tool: "before");
-        await AddEntryAsync(app, Noon.AddDays(-1), tool: "inside");
-        await AddEntryAsync(app, Noon.AddDays(2), tool: "after");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddDays(-3), tool: "before");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddDays(-1), tool: "inside");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddDays(2), tool: "after");
 
         var page = await ReadAsync(client, Query(("from", Noon.AddDays(-2)), ("to", Noon)));
 
@@ -130,8 +105,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, tool: "at-from");
-        await AddEntryAsync(app, Noon.AddHours(1), tool: "at-to");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "at-from");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddHours(1), tool: "at-to");
 
         var page = await ReadAsync(client, Query(("from", Noon), ("to", Noon.AddHours(1))));
 
@@ -149,8 +124,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, tool: "calculator");
-        await AddEntryAsync(app, Noon.AddMinutes(1), tool: "read", server: "files");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "calculator");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "read", server: "files");
 
         var page = await ReadAsync(client, Query(("tool", tool)));
 
@@ -162,8 +137,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, tool: "mine", userId: UserA);
-        await AddEntryAsync(app, Noon.AddMinutes(1), tool: "theirs", userId: UserB);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "mine", userId: UserA);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "theirs", userId: UserB);
 
         var page = await ReadAsync(client, Query(("userId", UserB)));
 
@@ -178,8 +153,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, tool: "ok", outcome: ToolOutcome.Succeeded);
-        await AddEntryAsync(app, Noon.AddMinutes(1), tool: "no", outcome: ToolOutcome.Denied);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "ok", outcome: ToolOutcome.Succeeded);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "no", outcome: ToolOutcome.Denied);
 
         var page = await ReadAsync(client, Query(("outcome", outcome)));
 
@@ -191,9 +166,9 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, tool: "calculator", userId: UserA, outcome: ToolOutcome.Failed);
-        await AddEntryAsync(app, Noon.AddMinutes(1), tool: "calculator", userId: UserB, outcome: ToolOutcome.Failed);
-        await AddEntryAsync(app, Noon.AddMinutes(2), tool: "calculator", userId: UserA, outcome: ToolOutcome.Succeeded);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "calculator", userId: UserA, outcome: ToolOutcome.Failed);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "calculator", userId: UserB, outcome: ToolOutcome.Failed);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(2), tool: "calculator", userId: UserA, outcome: ToolOutcome.Succeeded);
 
         var page = await ReadAsync(client, Query(("tool", "calculator"), ("userId", UserA), ("outcome", "failed")));
 
@@ -208,7 +183,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
         using var client = await app.SetUpAsync();
         for (var i = 0; i < 5; i++)
         {
-            await AddEntryAsync(app, Noon.AddMinutes(i), tool: $"t{i}");
+            await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(i), tool: $"t{i}");
         }
 
         var second = await ReadAsync(client, Query(("page", 2), ("pageSize", 2)));
@@ -228,7 +203,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
         using var client = await app.SetUpAsync();
         for (var i = 0; i < 52; i++)
         {
-            await AddEntryAsync(app, Noon.AddMinutes(i));
+            await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(i));
         }
 
         var page = await ReadAsync(client, Audit);
@@ -261,8 +236,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon, tool: "mine");
-        await AddEntryAsync(app, Noon.AddMinutes(1), tool: "foreign", tenantId: Guid.CreateVersion7());
+        await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "mine");
+        await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "foreign", tenantId: Guid.CreateVersion7());
 
         var page = await ReadAsync(client, Audit);
 
@@ -279,7 +254,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon);
         var id = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.tool_audit_entries LIMIT 1");
 
         foreach (var uri in new[] { Audit, new Uri($"/api/tools/audit/{id}", UriKind.Relative) })
@@ -300,7 +275,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, Noon);
+        await ToolFixtures.AddAuditEntryAsync(app, Noon);
 
         using var response = await client.GetAsync(Audit, Ct);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
@@ -308,6 +283,53 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
 
         Assert.Contains("resultCharacters", properties);
         Assert.DoesNotContain(properties, name => name.Contains("content", StringComparison.OrdinalIgnoreCase) || name.Equals("result", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(21_474_837)]
+    [InlineData(int.MaxValue)]
+    public async Task APageFarBeyondTheEndIsEmptyNotAnError(int page)
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.AddAuditEntryAsync(app, Noon);
+
+        var result = await ReadAsync(client, Query(("page", page), ("pageSize", 200)));
+
+        Assert.Empty(result.Items);
+        Assert.Equal(1, result.Total);
+    }
+
+    [Fact]
+    public async Task ADateWithoutATimeCoversTheWholeDayInUtc()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        var day = new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.Zero);
+        await ToolFixtures.AddAuditEntryAsync(app, day.AddSeconds(-1), tool: "previous");
+        await ToolFixtures.AddAuditEntryAsync(app, day, tool: "start");
+        await ToolFixtures.AddAuditEntryAsync(app, day.AddHours(23).AddMinutes(59).AddSeconds(59), tool: "end");
+        await ToolFixtures.AddAuditEntryAsync(app, day.AddDays(1), tool: "next");
+
+        var page = await ReadAsync(client, Query(("from", "2026-10-12"), ("to", "2026-10-12")));
+
+        Assert.Equal(["end", "start"], page.Items.Select(i => i.ToolName));
+    }
+
+    [Fact]
+    public async Task ATimeWithoutAnOffsetIsTakenAsUtcAndAnOffsetIsRespected()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.AddAuditEntryAsync(app, new DateTimeOffset(2026, 10, 12, 10, 0, 0, TimeSpan.Zero), tool: "ten-utc");
+
+        var withoutOffset = await ReadAsync(client, Query(("from", "2026-10-12T10:00:00"), ("to", "2026-10-12T10:00:00")));
+        var withOffset = await ReadAsync(client, Query(("from", "2026-10-12T12:00:00+02:00"), ("to", "2026-10-12T12:00:00+02:00")));
+        var elsewhere = await ReadAsync(client, Query(("from", "2026-10-12T10:00:00+02:00"), ("to", "2026-10-12T10:00:00+02:00")));
+
+        Assert.Equal(["ten-utc"], withoutOffset.Items.Select(i => i.ToolName));
+        Assert.Equal(["ten-utc"], withOffset.Items.Select(i => i.ToolName));
+        Assert.Empty(elsewhere.Items);
     }
 
     private sealed record AuditPage(IReadOnlyList<AuditItem> Items, int Total);

@@ -14,19 +14,6 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static async Task AddEntryAsync(QuorumApp app, DateTimeOffset startedAt, string tool, Guid? tenantId = null)
-    {
-        var tenant = tenantId ?? await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
-        var assistant = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.assistants LIMIT 1");
-
-        await using var scope = app.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
-        var entry = ToolAuditEntry.Start(tenant, Guid.NewGuid(), assistant, Guid.NewGuid(), Guid.NewGuid(), null, tool, ToolDecision.Auto, "{}", false, startedAt);
-        entry.Complete(ToolOutcome.Succeeded, 1, null, startedAt.AddMilliseconds(5), TimeSpan.FromMilliseconds(5));
-        db.ToolAuditEntries.Add(entry);
-        await db.SaveChangesAsync(Ct);
-    }
-
     private static async Task<int> PurgeAsync(QuorumApp app)
     {
         await using var scope = app.Services.CreateAsyncScope();
@@ -47,10 +34,10 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
         using var client = await app.SetUpAsync();
         var now = clock.GetUtcNow();
-        await AddEntryAsync(app, now.AddDays(-91), "ancient");
-        await AddEntryAsync(app, now.AddDays(-90).AddMinutes(-1), "just-over");
-        await AddEntryAsync(app, now.AddDays(-89), "recent");
-        await AddEntryAsync(app, now, "today");
+        await ToolFixtures.AddAuditEntryAsync(app, now.AddDays(-91), "ancient");
+        await ToolFixtures.AddAuditEntryAsync(app, now.AddDays(-90).AddMinutes(-1), "just-over");
+        await ToolFixtures.AddAuditEntryAsync(app, now.AddDays(-89), "recent");
+        await ToolFixtures.AddAuditEntryAsync(app, now, "today");
 
         var deleted = await PurgeAsync(app);
 
@@ -64,7 +51,7 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, clock.GetUtcNow().AddDays(-90), "at-the-limit");
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-90), "at-the-limit");
 
         var deleted = await PurgeAsync(app);
 
@@ -84,8 +71,8 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
             new { maxRounds = 8, totalTimeoutSeconds = 300, callTimeoutSeconds = 30, confirmationTimeoutSeconds = 300, maxResultCharacters = 20_000, auditRetentionDays = 10 },
             Ct);
         change.EnsureSuccessStatusCode();
-        await AddEntryAsync(app, clock.GetUtcNow().AddDays(-20), "twenty-days");
-        await AddEntryAsync(app, clock.GetUtcNow().AddDays(-5), "five-days");
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-20), "twenty-days");
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-5), "five-days");
 
         await PurgeAsync(app);
 
@@ -110,8 +97,8 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
 
         var sixtyDays = clock.GetUtcNow().AddDays(-60);
         await ToolFixtures.ExecuteAsync(app, "UPDATE agents.tool_settings SET \"AuditRetentionDays\" = 30 WHERE \"TenantId\" <> '" + other + "'");
-        await AddEntryAsync(app, sixtyDays, "mine-old");
-        await AddEntryAsync(app, sixtyDays, "theirs-old", tenantId: other);
+        await ToolFixtures.AddAuditEntryAsync(app, sixtyDays, "mine-old");
+        await ToolFixtures.AddAuditEntryAsync(app, sixtyDays, "theirs-old", tenantId: other);
 
         await PurgeAsync(app);
 
@@ -125,8 +112,8 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
         using var client = await app.SetUpAsync();
         var orphan = Guid.CreateVersion7();
-        await AddEntryAsync(app, clock.GetUtcNow().AddDays(-120), "orphan-old", tenantId: orphan);
-        await AddEntryAsync(app, clock.GetUtcNow().AddDays(-10), "orphan-recent", tenantId: orphan);
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-120), "orphan-old", tenantId: orphan);
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-10), "orphan-recent", tenantId: orphan);
 
         await PurgeAsync(app);
 
@@ -139,7 +126,7 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
         using var client = await app.SetUpAsync();
-        await AddEntryAsync(app, clock.GetUtcNow().AddDays(-89), "about-to-expire");
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-89), "about-to-expire");
         Assert.Equal(["about-to-expire"], await RemainingAsync(app));
 
         // Two days later the entry is past 90 days: the daily tick must have removed it without anyone asking.
@@ -153,17 +140,64 @@ public sealed class ToolAuditRetentionTests(PostgresFixture postgres)
     }
 
     [Fact] // AC-45
-    public async Task EntriesThatExpiredWhileTheApplicationWasStoppedAreDeletedAtStartup()
+    public async Task EntriesThatExpiredWhileTheApplicationWasStoppedAreDeletedShortlyAfterStartup()
     {
         await using var first = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await first.SetUpAsync();
-        await AddEntryAsync(first, DateTimeOffset.UtcNow.AddDays(-200), "expired-while-down");
-        await AddEntryAsync(first, DateTimeOffset.UtcNow.AddDays(-1), "yesterday");
+        await ToolFixtures.AddAuditEntryAsync(first, DateTimeOffset.UtcNow.AddDays(-200), "expired-while-down");
+        await ToolFixtures.AddAuditEntryAsync(first, DateTimeOffset.UtcNow.AddDays(-1), "yesterday");
 
         await using var restarted = first.Restart();
         using var again = restarted.CreateUiClient();
 
+        // The first purge runs in the background once the application is up, not before it accepts requests.
+        for (var attempt = 0; attempt < 100 && (await RemainingAsync(restarted)).Length > 1; attempt++)
+        {
+            await Task.Delay(50, Ct);
+        }
+
         Assert.Equal(["yesterday"], await RemainingAsync(restarted));
+    }
+
+    [Fact] // AC-45
+    public async Task AnOldLogLargerThanOneBatchIsDeletedCompletely()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
+        using var client = await app.SetUpAsync();
+        const int count = 2_500;
+        Assert.True(count > AuditRetention.BatchSize, "The test must need more than one batch.");
+        await ToolFixtures.AddManyAuditEntriesAsync(app, clock.GetUtcNow().AddDays(-200), count);
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-1), "recent");
+
+        var deleted = await PurgeAsync(app);
+
+        Assert.Equal(count, deleted);
+        Assert.Equal(["recent"], await RemainingAsync(app));
+    }
+
+    [Fact]
+    public async Task AFailingPurgeIsLoggedAsAWarningAndDoesNotThrow()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.AddAuditEntryAsync(app, clock.GetUtcNow().AddDays(-200), "old");
+        await ToolFixtures.ExecuteAsync(app, "ALTER TABLE agents.tool_audit_entries RENAME TO tool_audit_entries_off");
+        try
+        {
+            await using var scope = app.Services.CreateAsyncScope();
+            var deleted = await scope.ServiceProvider.GetRequiredService<AuditRetention>().TryPurgeAsync(Ct);
+
+            Assert.Equal(0, deleted);
+            Assert.Contains(app.Logs.Messages, message => message.Contains("purge of old audit entries failed", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await ToolFixtures.ExecuteAsync(app, "ALTER TABLE agents.tool_audit_entries_off RENAME TO tool_audit_entries");
+        }
+
+        Assert.Equal(["old"], await RemainingAsync(app));
     }
 
     [Fact]

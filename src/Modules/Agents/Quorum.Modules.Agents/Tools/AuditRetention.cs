@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
-using Quorum.Shared.Persistence;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -15,6 +14,25 @@ namespace Quorum.Modules.Agents.Tools;
 /// </summary>
 internal sealed partial class AuditRetention(AgentsDbContext db, TimeProvider clock, ILogger<AuditRetention> logger)
 {
+    /// <summary>How many entries one delete takes, so a large backlog never becomes one long statement.</summary>
+    internal const int BatchSize = 1000;
+
+    /// <summary>The purge as the background job runs it: a failure is logged and the job tries again at its next turn.</summary>
+    /// <returns>How many entries were deleted; zero when the purge failed.</returns>
+    public async Task<int> TryPurgeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await PurgeAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException)
+        {
+            // The log only grows meanwhile; nothing else depends on the purge.
+            LogPurgeFailed(logger, exception);
+            return 0;
+        }
+    }
+
     /// <returns>How many entries were deleted.</returns>
     public async Task<int> PurgeAsync(CancellationToken cancellationToken)
     {
@@ -30,10 +48,26 @@ internal sealed partial class AuditRetention(AgentsDbContext db, TimeProvider cl
         {
             var days = retentionByTenant.GetValueOrDefault(tenantId, ToolSettings.DefaultAuditRetentionDays);
             var cutoff = now.AddDays(-days);
-            deleted += await db.ToolAuditEntries
-                .IgnoreQueryFilters()
-                .Where(e => e.TenantId == tenantId && e.StartedAt < cutoff)
-                .ExecuteDeleteAsync(cancellationToken);
+            while (true)
+            {
+                var batch = await db.ToolAuditEntries
+                    .IgnoreQueryFilters()
+                    .Where(e => e.TenantId == tenantId && e.StartedAt < cutoff)
+                    .OrderBy(e => e.StartedAt)
+                    .Select(e => e.Id)
+                    .Take(BatchSize)
+                    .ToListAsync(cancellationToken);
+                if (batch.Count == 0)
+                {
+                    break;
+                }
+
+                deleted += await db.ToolAuditEntries.IgnoreQueryFilters().Where(e => batch.Contains(e.Id)).ExecuteDeleteAsync(cancellationToken);
+                if (batch.Count < BatchSize)
+                {
+                    break;
+                }
+            }
         }
 
         if (deleted > 0)
@@ -46,51 +80,34 @@ internal sealed partial class AuditRetention(AgentsDbContext db, TimeProvider cl
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {Count} audit entries past their retention")]
     private static partial void LogPurged(ILogger logger, int count);
-}
 
-/// <summary>Purges once at startup, for entries that expired while the application was stopped. A failure must not stop the application from starting.</summary>
-internal sealed partial class AuditRetentionInitializer(IServiceScopeFactory scopeFactory, ILogger<AuditRetentionInitializer> logger) : IDatabaseInitializer
-{
-    public async Task InitializeAsync(CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        try
-        {
-            await scope.ServiceProvider.GetRequiredService<AuditRetention>().PurgeAsync(cancellationToken);
-        }
-        catch (Exception exception) when (exception is DbException or InvalidOperationException)
-        {
-            LogPurgeFailed(logger, exception);
-        }
-    }
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The startup purge of old audit entries failed; the daily job will try again")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The purge of old audit entries failed; it will run again at the next turn")]
     private static partial void LogPurgeFailed(ILogger logger, Exception exception);
 }
 
-/// <summary>The daily purge. The first tick comes a day after startup; <see cref="AuditRetentionInitializer"/> covers the start.</summary>
-internal sealed partial class AuditRetentionService(IServiceScopeFactory scopeFactory, TimeProvider clock, ILogger<AuditRetentionService> logger) : BackgroundService
+/// <summary>
+/// The purge job: once right after startup, for entries that expired while the application was stopped, then once a day. It runs
+/// in the background so a large backlog never delays the start. Hosted services start in registration order and the platform
+/// database startup is registered before the modules, so the database is ready when this runs.
+/// </summary>
+internal sealed class AuditRetentionService(IServiceScopeFactory scopeFactory, TimeProvider clock) : BackgroundService
 {
     internal static readonly TimeSpan Interval = TimeSpan.FromDays(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await PurgeAsync(stoppingToken);
+
         using var timer = new PeriodicTimer(Interval, clock);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            try
-            {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<AuditRetention>().PurgeAsync(stoppingToken);
-            }
-            catch (Exception exception) when (exception is DbException or InvalidOperationException)
-            {
-                // Next day, then: the log only grows, it does not break anything.
-                LogPurgeFailed(logger, exception);
-            }
+            await PurgeAsync(stoppingToken);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The purge of old audit entries failed; it will run again in a day")]
-    private static partial void LogPurgeFailed(ILogger logger, Exception exception);
+    private async Task PurgeAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<AuditRetention>().TryPurgeAsync(cancellationToken);
+    }
 }

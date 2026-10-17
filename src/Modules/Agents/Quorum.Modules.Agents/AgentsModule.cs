@@ -21,7 +21,6 @@ public static class AgentsModule
         services.AddModuleDbContext<AgentsDbContext>(AgentsDbContext.Schema);
         // After the migrations (registered by the line above): initializers run in registration order.
         services.AddSingleton<IDatabaseInitializer, NativeToolsInitializer>();
-        services.AddSingleton<IDatabaseInitializer, AuditRetentionInitializer>();
         services.AddHostedService<AuditRetentionService>();
 
         services.AddHttpClient(ModelEndpointProbe.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
