@@ -5,6 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="Qdrant.Client" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -12,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Quorum.Shared\Quorum.Shared.csproj" />
+    <ProjectReference Include="..\..\Agents\Quorum.Modules.Agents.Contracts\Quorum.Modules.Agents.Contracts.csproj" />
     <ProjectReference Include="..\Quorum.Modules.KnowledgeBase.Contracts\Quorum.Modules.KnowledgeBase.Contracts.csproj" />
   </ItemGroup>
 

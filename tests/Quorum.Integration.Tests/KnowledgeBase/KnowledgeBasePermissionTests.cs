@@ -38,4 +38,23 @@ public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
             Assert.True(asAdmin.IsSuccessStatusCode, $"The administrator was refused: {(int)asAdmin.StatusCode}");
         }
     }
+
+    [Fact] // AC-42 (the /knowledge-bases half)
+    public async Task InspectingNeedsThePermissionAndAnonymousCallersAreRejected()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        using var member = await app.CreateMemberClientAsync();
+        using var anonymous = app.CreateUiClient();
+
+        // The request is incomplete on purpose: a caller who may inspect gets a 400, and nothing is contacted.
+        var body = new { kind = "Qdrant" };
+        using var asMember = await member.PostAsJsonAsync(InspectApi.Inspect, body, Ct);
+        using var asAnonymous = await anonymous.PostAsJsonAsync(InspectApi.Inspect, body, Ct);
+        using var asAdmin = await admin.PostAsJsonAsync(InspectApi.Inspect, body, Ct);
+
+        Assert.Equal(HttpStatusCode.Forbidden, asMember.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, asAnonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, asAdmin.StatusCode);
+    }
 }

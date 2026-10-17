@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Quorum.Shared.Networking;
 
 namespace Quorum.Modules.Agents.Tools.Mcp;
 
@@ -20,7 +21,7 @@ internal sealed class McpServerException(string code, string message) : Exceptio
 }
 
 /// <summary>The MCP client of Quorum: Streamable HTTP, tools only (D-29), through the guarded <c>mcp-server</c> HTTP client.</summary>
-internal sealed class McpServerClient(IHttpClientFactory httpClientFactory, McpUrlGuard guard)
+internal sealed class McpServerClient(IHttpClientFactory httpClientFactory, OutboundUrlGuard guard)
 {
     public const string HttpClientName = "mcp-server";
 
@@ -191,7 +192,7 @@ internal sealed class McpServerClient(IHttpClientFactory httpClientFactory, McpU
     {
         for (var current = exception; current is not null; current = current.InnerException)
         {
-            if (current is McpUrlBlockedException)
+            if (current is OutboundUrlBlockedException)
             {
                 return true;
             }
