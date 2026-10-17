@@ -371,7 +371,8 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
             LogAuditWriteFailed(logger, exception);
         }
 
-        LogCall(logger, info.CallId, info.ToolName, verdict.Outcome, (int)clock.GetElapsedTime(info.Timestamp).TotalMilliseconds);
+        var duration = clock.GetElapsedTime(info.Timestamp);
+        LogCall(logger, info.CallId, info.ToolName, verdict.Outcome, (int)duration.TotalMilliseconds);
         return new ToolCallResult(verdict.Status, verdict.Message);
     }
 
