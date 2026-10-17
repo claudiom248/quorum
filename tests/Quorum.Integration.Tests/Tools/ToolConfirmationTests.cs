@@ -101,6 +101,29 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
         Assert.Equal(("Denied", "Denied"), (audit.Decision, audit.Outcome));
     }
 
+    [Theory] // D-9, D-17
+    [InlineData("UPDATE agents.tools SET \"State\" = 'Disabled' WHERE \"Name\" = 'probe'")]
+    [InlineData("DELETE FROM agents.assistant_tools WHERE \"ToolId\" IN (SELECT \"Id\" FROM agents.tools WHERE \"Name\" = 'probe')")]
+    public async Task AToolThatStopsBeingAvailableWhileWaitingIsNotRunEvenWhenApproved(string change)
+    {
+        var (app, client, id) = await StartConfirmationAsync(postgres);
+        await using var _ = app;
+        using var __ = client;
+        await using var answer = await LiveAnswer.StartAsync(client, id, "Go");
+        var callId = CallId(await answer.UntilAsync("tool_call"));
+        await ToolFixtures.ExecuteAsync(app, change);
+
+        using var decision = await ChatApi.DecideAsync(client, id, callId, approved: true);
+        var events = await answer.FinishAsync();
+
+        Assert.Equal(HttpStatusCode.NoContent, decision.StatusCode);
+        Assert.Empty(app.Probe.Calls);
+        Assert.Equal("failed", Assert.Single(events, e => e.Type == "tool_result").Data.GetProperty("status").GetString());
+        Assert.Contains("no longer available", Messages(app, 1)[^1].GetProperty("content").GetString()!, StringComparison.Ordinal);
+        var audit = Assert.Single(await ToolFixtures.AuditRowsAsync(app));
+        Assert.Equal(("Approved", "Failed", "tool.unavailable"), (audit.Decision, audit.Outcome, audit.ErrorCode));
+    }
+
     [Fact] // AC-35
     public async Task WhenTheConfirmationTimeoutPassesItCountsAsDeniedAndNothingRuns()
     {
@@ -406,6 +429,48 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
         Assert.Contains("did not answer", Messages(app, 1)[^1].GetProperty("content").GetString()!, StringComparison.Ordinal);
         Assert.Equal("Completed", events[^1].Data.GetProperty("status").GetString());
         Assert.Equal("TimedOut", Assert.Single(await ToolFixtures.AuditRowsAsync(app)).Outcome);
+    }
+
+    [Fact] // D-15
+    public async Task TheQuestionToolAsksEvenWhenItsPolicyIsConfirm()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.ExecuteAsync(app, "UPDATE agents.tools SET \"Policy\" = 'Confirm' WHERE \"Name\" = 'ask_user'");
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Ask("Which city?")), ChatScript.Reply("Thanks."));
+        var id = await ChatApi.CreateConversationAsync(client);
+        await using var answer = await LiveAnswer.StartAsync(client, id, "Weather?");
+
+        var call = await answer.UntilAsync("tool_call");
+        await answer.UntilAsync("ask_user");
+        using var reply = await ChatApi.AnswerAsync(client, id, CallId(call), "Rome");
+        var events = await answer.FinishAsync();
+
+        Assert.False(call.Data.GetProperty("requiresConfirmation").GetBoolean());
+        Assert.Equal(HttpStatusCode.NoContent, reply.StatusCode);
+        Assert.Equal("Completed", events[^1].Data.GetProperty("status").GetString());
+    }
+
+    [Fact] // D-10
+    public async Task AnAnswerLongerThanTheResultLimitIsNotTruncatedTheModelGetsATooLargeError()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.SetLimitsAsync(client, maxResult: 1000);
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Ask("Describe it.")), ChatScript.Reply("Too long, sorry."));
+        var id = await ChatApi.CreateConversationAsync(client);
+        await using var answer = await LiveAnswer.StartAsync(client, id, "Go");
+        var callId = CallId(await answer.UntilAsync("tool_call"));
+
+        using var reply = await ChatApi.AnswerAsync(client, id, callId, new string('x', 1001));
+        var events = await answer.FinishAsync();
+
+        Assert.Equal(HttpStatusCode.NoContent, reply.StatusCode);
+        Assert.Equal("failed", Assert.Single(events, e => e.Type == "tool_result").Data.GetProperty("status").GetString());
+        var sent = Messages(app, 1)[^1].GetProperty("content").GetString()!;
+        Assert.Contains("too large", sent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("xxxxx", sent, StringComparison.Ordinal);
+        Assert.Equal("Failed", Assert.Single(await ToolFixtures.AuditRowsAsync(app)).Outcome);
     }
 
     [Fact] // AC-37, AC-40

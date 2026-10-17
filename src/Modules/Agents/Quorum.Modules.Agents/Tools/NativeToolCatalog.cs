@@ -13,7 +13,10 @@ internal static class NativeToolCatalog
 
     public const string Calculator = "calculator";
 
-    /// <summary>The model asks the user a question. The invoker runs it: it pauses the answer like a confirmation does.</summary>
+    /// <summary>
+    /// The model asks the user a question. The invoker runs it: it pauses the answer like a confirmation does. Its policy is not
+    /// consulted, because asking is already the interaction: <c>confirm</c> would only ask the user whether they want to be asked.
+    /// </summary>
     public const string AskUser = "ask_user";
 
     public static IReadOnlyList<NativeToolDefinition> All { get; } =

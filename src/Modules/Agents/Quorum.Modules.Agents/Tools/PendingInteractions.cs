@@ -42,10 +42,12 @@ internal sealed class PendingInteraction(Guid callId, Guid tenantId, Guid userId
     internal bool TryReply(InteractionReply reply) => _reply.TrySetResult(reply);
 
     /// <summary>The wait is over without a reply (timeout, the answer was stopped): a reply that comes later is too late.</summary>
-    internal void GiveUp(long timestamp)
+    /// <returns><see langword="false"/> when a reply came first: the wait is then over with that reply, not without one.</returns>
+    internal bool GiveUp(long timestamp)
     {
-        _reply.TrySetCanceled();
+        var cancelled = _reply.TrySetCanceled();
         Settle(timestamp);
+        return cancelled;
     }
 
     internal void Settle(long timestamp) => Interlocked.CompareExchange(ref _settledAt, timestamp, 0);
@@ -75,10 +77,11 @@ internal sealed class PendingInteractions(TimeProvider clock)
     }
 
     /// <summary>The wait for this reply ended with no reply (the confirmation timeout, or the answer was stopped).</summary>
-    public void GiveUp(PendingInteraction interaction)
+    /// <returns><see langword="false"/> when the user's reply arrived first and is the one to use.</returns>
+    public bool GiveUp(PendingInteraction interaction)
     {
         ArgumentNullException.ThrowIfNull(interaction);
-        interaction.GiveUp(clock.GetTimestamp());
+        return interaction.GiveUp(clock.GetTimestamp());
     }
 
     /// <summary>The answer of this conversation has ended, so nothing it was waiting for can be replied to any more.</summary>
@@ -91,6 +94,8 @@ internal sealed class PendingInteractions(TimeProvider clock)
                 interaction.GiveUp(clock.GetTimestamp());
             }
         }
+
+        Purge();
     }
 
     /// <summary>Replies on behalf of a user. Another user's, another conversation's or an unknown call looks the same: not found.</summary>

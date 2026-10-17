@@ -85,18 +85,28 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
 
         using var _ = wait;
 
-        await run.PublishAsync(
-            new AnswerChunk(
-                AnswerChunkKind.ToolCall,
-                string.Empty,
-                new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null)),
-            cancellationToken);
-
-        if (asksUser)
+        try
         {
             await run.PublishAsync(
-                new AnswerChunk(AnswerChunkKind.UserQuestion, string.Empty, new UserQuestionEvent(callId, prepared.Question!, expiresAt!.Value)),
+                new AnswerChunk(
+                    AnswerChunkKind.ToolCall,
+                    string.Empty,
+                    new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null)),
                 cancellationToken);
+
+            if (asksUser)
+            {
+                await run.PublishAsync(
+                    new AnswerChunk(AnswerChunkKind.UserQuestion, string.Empty, new UserQuestionEvent(callId, prepared.Question!, expiresAt!.Value)),
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (pending is not null)
+        {
+            // Stopped before the wait began: the call was announced, so it is recorded as cancelled like one stopped while waiting.
+            interactions.GiveUp(pending);
+            await RecordAsync(run.Context, info, Cancelled(pending.Kind));
+            throw;
         }
 
         ToolCallResult result;
@@ -114,9 +124,9 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
             result = reply switch
             {
                 null => await RecordAsync(run.Context, info, asksUser ? QuestionTimedOut : ConfirmationTimedOut),
-                { } answered when asksUser => await RecordAsync(run.Context, info, Answered(answered.Answer!)),
+                { } answered when asksUser => await RecordAsync(run.Context, info, Answered(answered.Answer!, run.Context.Limits.MaxResultCharacters)),
                 { Approved: false } => await RecordAsync(run.Context, info, Denied),
-                _ => await ExecuteAsync(run, tool!, call, raw, info, ToolDecision.Approved, cancellationToken),
+                _ => await RunApprovedAsync(run, tool!, call, raw, info, cancellationToken),
             };
         }
 
@@ -132,6 +142,34 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         }
 
         return result.Content;
+    }
+
+    /// <summary>
+    /// Runs a call the user approved. The wait can be long, so the tool is checked again: one that an administrator disabled or took
+    /// off the assistant meanwhile must not run on an approval given for what was true before.
+    /// </summary>
+    private async Task<ToolCallResult> RunApprovedAsync(
+        AnswerRun run,
+        QuorumTool tool,
+        FunctionCallContent call,
+        string rawArguments,
+        CallInfo info,
+        CancellationToken cancellationToken)
+    {
+        if (await CurrentPolicyAsync(run.Context, tool.Descriptor, cancellationToken) is null)
+        {
+            return await RecordAsync(
+                run.Context,
+                info,
+                new Verdict(
+                    ToolOutcome.Failed,
+                    ToolResultStatus.Failed,
+                    ToolDecision.Approved,
+                    "tool.unavailable",
+                    $"The tool '{call.Name}' is no longer available, so it was not run."));
+        }
+
+        return await ExecuteAsync(run, tool, call, rawArguments, info, ToolDecision.Approved, cancellationToken);
     }
 
     /// <summary>The checks at call time that decide whether the call may run. Nothing is written yet.</summary>
@@ -184,8 +222,8 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            interactions.GiveUp(pending);
-            return null;
+            // A reply that came in the same instant as the timeout was accepted (the user got a 204), so it is the one that counts.
+            return interactions.GiveUp(pending) ? null : pending.Reply.Result;
         }
         catch (OperationCanceledException)
         {
@@ -379,8 +417,18 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
     private static Verdict Failed(string errorCode, string message) =>
         new(ToolOutcome.Failed, ToolResultStatus.Failed, null, errorCode, message);
 
-    private static Verdict Answered(string answer) =>
-        new(ToolOutcome.Succeeded, ToolResultStatus.Succeeded, ToolDecision.Auto, null, answer, answer.Length);
+    /// <summary>The user's answer is a tool result like any other: one over the limit is not truncated but turned into an error (D-10).</summary>
+    private static Verdict Answered(string answer, int maxCharacters) =>
+        answer.Length > maxCharacters
+            ? new Verdict(
+                ToolOutcome.Failed,
+                ToolResultStatus.Failed,
+                ToolDecision.Auto,
+                "tool.result_too_large",
+                $"The user's answer is too large ({answer.Length} characters; the limit is {maxCharacters}) so it was not returned. " +
+                "Ask the question again, asking for a shorter answer.",
+                answer.Length)
+            : new Verdict(ToolOutcome.Succeeded, ToolResultStatus.Succeeded, ToolDecision.Auto, null, answer, answer.Length);
 
     private static Verdict Cancelled(InteractionKind kind) =>
         new(ToolOutcome.Cancelled, ToolResultStatus.Cancelled, kind == InteractionKind.Confirmation ? ToolDecision.Denied : ToolDecision.Auto, "tool.cancelled", "The answer was stopped.");
