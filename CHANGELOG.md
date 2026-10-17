@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/claudiom248/quorum/compare/v0.8.0...v0.9.0) (2026-10-17)
+
+
+### Features
+
+* knowledge base module and metadata dictionary (spec 003) ([#43](https://github.com/claudiom248/quorum/issues/43)) ([b41724b](https://github.com/claudiom248/quorum/commit/b41724bdf54c2be1ccbb965e5f302d4da884c3fb))
+
 ## [0.8.0](https://github.com/claudiom248/quorum/compare/v0.7.0...v0.8.0) (2026-10-17)
 
 
