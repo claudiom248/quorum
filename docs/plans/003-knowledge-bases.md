@@ -3,11 +3,12 @@
 **Spec:** `docs/specs/003-knowledge-bases.md` (Approved 2026-10-17)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** In Review
+**Status:** Approved (2026-10-17)
 
 ## Decisions
 | Topic | Choice |
 |---|---|
+| Tool origins | `ToolOrigin` is `Builtin` (ships with Quorum, fixed catalog, same for every tenant), `Mcp` (discovered from a server) and `Rag` (configured by an admin over knowledge bases). `Native` is renamed `Builtin` before the rag tool is added, because the rag tool is also in-process code and the old name no longer tells the origins apart. Everything named after it follows: `INativeTool` → `IBuiltinTool`, `NativeToolCatalog`, `NativeToolProvisioner`, `NativeToolsInitializer`, `NativeQuorumTool`, the exposed prefix `native__` → `builtin__`, the stored value `Native` → `Builtin`, the `origin` of `GET /tools` and the Web client models. The tool name the model sees is not stored with conversations, and the audit log keeps names without prefix, so no history needs migrating; only the rows of `agents.tools` do. Spec 004 gets an amendment note rather than a rewrite |
 | Ownership | A new module **KnowledgeBase** (`Quorum.Modules.KnowledgeBase` + `.Contracts`, schema `knowledge_base`) owns dictionary, KB registrations, the Qdrant connector, discovery and search. The **rag tool** is a tool of origin `Rag` in **Agents** (pool, activation, policy, audit and the loop are there). **Conversations** stores and returns the sources of a message and relays the new SSE event. Nobody reads another module's tables |
 | Contracts between modules | `KnowledgeBase.Contracts`: `IKnowledgeBaseSearch` (search the given KBs for a tenant and assistant) and `IKnowledgeBaseCatalog` (describe the visible KBs and fields of a binding; check that a binding's KBs and fields are visible to a whole scope). `Agents.Contracts` gains `IEmbeddings` (KnowledgeBase embeds a text with a named model on the tenant's endpoint) and `IRagToolUsage` (which rag tools use a dictionary field, for `knowledge_base.field_in_use` and `usedByCount`). Contracts reference only `Quorum.Shared` (the architecture test already enforces it); the two Contracts projects do not reference each other. No Microsoft.Extensions.AI type crosses a Contracts project |
 | Permission | `QuorumPolicies.KnowledgeBaseManage = "knowledge_base.manage"`, registered in `TenancyModule` next to the tool policies (`Admin` today). Rag tool endpoints use `tools.manage` / `tools.attach` / `tools.use` |
@@ -28,6 +29,11 @@
 | UI | Existing MudBlazor components and the `ToolAdminView` style (logic in plain classes, covered by bUnit). Admin: a "Knowledge" area with the dictionary, the knowledge bases (guided registration, verify, test search) and, in the Tools page, the rag tool editor with the definition preview. Chat: a `SourcesList` under the answer |
 
 ## Steps
+
+### PR 0 - `Builtin` origin (`refactor/003-builtin-origin`)
+R1. Rename `ToolOrigin.Native` to `Builtin` and the types, files and namespaces named after it (see Decisions), the prefix `native__` to `builtin__`, and the `origin` value in the API and the Web client. Behaviour unchanged: the existing tool tests must pass with only the names updated.
+R2. Migration `RenameNativeOriginToBuiltin`: updates the stored value in `agents.tools` and is reversible; a test starts from a database holding `Native` rows.
+R3. Amendment note at the top of `docs/specs/004-mcp-tools.md` and `docs/plans/004-mcp-tools.md` (origin and prefix renamed by spec 003) and the matching mention in `docs/deferred.md`.
 
 ### PR 1 - Module and dictionary (`feat/003-dictionary`)
 1. `Quorum.Modules.KnowledgeBase` and `.Contracts` projects, solution entries, `AddKnowledgeBaseModule` registered in the Host, `KnowledgeBaseDbContext` (schema `knowledge_base`, tenant filter, design-time factory), migration `Initial`. The module-reference architecture tests must pass without changes.
@@ -99,5 +105,6 @@
 - Round-robin order is by KB name, so results are deterministic.
 - Embedding calls are one text at a time; no caching in this spec (deferred).
 - `ToolAuditEntry.SourceCount` is a new nullable column.
+- `Native` becomes `Builtin` in PR 0 (decided in review on 2026-10-17); `Rag` is added as a third value in PR 5.
 - Sampling reads the first 20 points returned by `scroll` (not a random sample).
 - The test-only dependency `Testcontainers.Qdrant` (or a generic Qdrant container) and the new `tools/Quorum.SampleKnowledgeBase` project, referenced by the integration tests and by nothing in the product.

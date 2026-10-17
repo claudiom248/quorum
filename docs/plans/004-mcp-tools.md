@@ -4,6 +4,8 @@
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
 **Status:** Approved (2026-10-17)
+**Amended by spec 003 (2026-10-17):** the tool origin `Native` is renamed `Builtin` and the exposed prefix `native__` becomes `builtin__`; "native tools" in this document are the built-in tools. Rows, API values and names in the code follow the new vocabulary.
+
 
 ## Decisions
 | Topic | Choice |
