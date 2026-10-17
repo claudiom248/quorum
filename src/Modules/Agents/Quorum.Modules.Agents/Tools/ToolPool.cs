@@ -12,6 +12,11 @@ internal sealed class PoolTool
     /// <summary>Null for native tools.</summary>
     public string? ServerName { get; init; }
 
+    /// <summary>Filled by <see cref="ToolPool.For"/> only, which is what runs tools; listings do not read the encrypted headers.</summary>
+    public string? ServerUrl { get; init; }
+
+    public string? ProtectedHeaders { get; init; }
+
     public string ExposedName => Tool.Origin == ToolOrigin.Native
         ? ToolNaming.Native(Tool.Name)
         : ToolNaming.Mcp(ServerName ?? throw new InvalidOperationException("An MCP tool has a server."), Tool.Name);
@@ -44,7 +49,13 @@ internal static class ToolPool
                               || (server.Scope == ToolScopeKind.Tenant && (server.TenantId == tenantId || server.ScopeTenantIds.Contains(tenantId)))
                               // An owner lists only its own assistants; a foreign owner naming ours reaches nothing.
                               || (server.Scope == ToolScopeKind.Assistant && server.TenantId == tenantId && server.ScopeAssistantIds.Contains(assistantId)))))
-            select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
+            select new PoolTool
+            {
+                Tool = tool,
+                ServerName = server == null ? null : server.Name,
+                ServerUrl = server == null ? null : server.Url,
+                ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
+            };
     }
 }
 

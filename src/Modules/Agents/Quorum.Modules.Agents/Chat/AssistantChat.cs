@@ -5,6 +5,7 @@ using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Agents.Chat;
@@ -68,7 +69,8 @@ internal sealed class AssistantChat(
                 turns.Value.Select(turn => new ChatMessage(turn.Role == ChatTurnRole.User ? ChatRole.User : ChatRole.Assistant, turn.Content)).ToList(),
                 prepared.Tools,
                 ContextWindow.CharacterBudget(prepared.ContextTokenBudget),
-                context),
+                context,
+                prepared.Connections),
             cancellationToken);
 
         return Result<IAsyncEnumerable<AnswerChunk>>.Success(answer);
@@ -132,12 +134,13 @@ internal sealed class AssistantChat(
         }
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
+        var connections = toolFactory.NewConnections();
         var tools = caller is null
             ? []
-            : toolFactory.Create(await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken));
+            : toolFactory.Create(await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken), connections);
         if (tools.Count == 0)
         {
-            return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded);
+            return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded, connections);
         }
 
         var settings = await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
@@ -147,7 +150,8 @@ internal sealed class AssistantChat(
             caller,
             tools,
             ToolDefinitionRenderer.Length(tools.Select(ToolDefinition.From).ToList()),
-            settings is null ? ToolLimits.Default : ToolLimits.From(settings));
+            settings is null ? ToolLimits.Default : ToolLimits.From(settings),
+            connections);
     }
 
     private sealed record AssistantConfiguration(
@@ -164,7 +168,8 @@ internal sealed class AssistantChat(
         ToolCaller? Caller,
         IReadOnlyList<QuorumTool> Tools,
         int ToolsCharacters,
-        ToolLimits Limits)
+        ToolLimits Limits,
+        McpAnswerConnections Connections)
     {
         public string BaseUrl => Configuration.BaseUrl;
 

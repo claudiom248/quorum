@@ -6,6 +6,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Mcp;
 
 namespace Quorum.Modules.Agents.Chat;
 
@@ -23,7 +24,8 @@ internal sealed record AnswerRequest(
     IReadOnlyList<ChatMessage> History,
     IReadOnlyList<QuorumTool> Tools,
     int UsableCharacters,
-    ToolRunContext Context);
+    ToolRunContext Context,
+    McpAnswerConnections? Connections = null);
 
 /// <summary>
 /// The answer of an assistant: a <see cref="ChatClientAgent"/> over our model adapter and a function-invoking client whose
@@ -59,6 +61,12 @@ internal sealed partial class AnswerPipeline(
             // The producer is done before the answer is, so that what it records (a cancelled tool call) is recorded when the caller goes on.
             await stop.CancelAsync();
             await producer;
+
+            // The sessions with MCP servers were opened for this answer only.
+            if (request.Connections is not null)
+            {
+                await request.Connections.DisposeAsync();
+            }
 
             // No one waits for the user any more; a reply that comes now is for an answer that is over.
             interactions.CloseConversation(request.Context.ConversationId);
