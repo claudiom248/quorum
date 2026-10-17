@@ -31,7 +31,10 @@ internal static partial class McpServerRules
         && !name.Contains("__", StringComparison.Ordinal)
         && !string.Equals(name, ReservedName, StringComparison.Ordinal);
 
-    /// <summary>An absolute http(s) URL without credentials: secrets belong in the headers, which are stored encrypted.</summary>
+    /// <summary>
+    /// An absolute http(s) URL without credentials: secrets belong in the headers, which are stored encrypted. The URL itself,
+    /// query string included, is stored as it is and returned by the API, so a key placed in it is not protected.
+    /// </summary>
     public static bool TryParseUrl(string? url, out Uri uri)
     {
         uri = null!;

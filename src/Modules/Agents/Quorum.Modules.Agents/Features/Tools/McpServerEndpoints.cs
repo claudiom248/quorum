@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Secrets;
@@ -18,7 +19,7 @@ using Quorum.Shared.Tenancy;
 namespace Quorum.Modules.Agents.Features.Tools;
 
 /// <summary>The MCP servers of the tenant: registered, tested, refreshed and scoped by the admin (D-1, D-14, D-17, D-25).</summary>
-internal sealed class McpServerEndpoints : IEndpointGroup
+internal sealed partial class McpServerEndpoints : IEndpointGroup
 {
     private static readonly Error ServerNotFound = Error.NotFound("tool.server_not_found", "The server does not exist.");
 
@@ -115,6 +116,7 @@ internal sealed class McpServerEndpoints : IEndpointGroup
         McpUrlGuard guard,
         McpHeadersProtector protector,
         TimeProvider clock,
+        ILogger<McpServerEndpoints> logger,
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
@@ -158,6 +160,7 @@ internal sealed class McpServerEndpoints : IEndpointGroup
         {
             server.MarkUnavailable(exception.Message, now);
             warning = $"The server could not be reached, so it is saved as unavailable: {exception.Message}";
+            LogServerUnavailable(logger, server.Id, exception.Code);
         }
 
         try
@@ -170,6 +173,7 @@ internal sealed class McpServerEndpoints : IEndpointGroup
         }
 
         var tools = await db.Tools.AsNoTracking().Where(t => t.ServerId == server.Id).OrderBy(t => t.Name).ToListAsync(cancellationToken);
+        LogServerRegistered(logger, server.Id, server.Status, tools.Count);
         return TypedResults.CreatedAtRoute(
             new CreateServerResponse(server.Id, server.Status.ToString(), warning, [.. tools.Select(t => ToolResponse.From(t, server.Name))]),
             "GetToolServer",
@@ -204,7 +208,15 @@ internal sealed class McpServerEndpoints : IEndpointGroup
 
         // Omitted headers keep the stored ones; an empty object removes them.
         var headers = request.Headers is null ? server.ProtectedHeaders : protector.ProtectHeaders(input.Headers);
-        server.Edit(input.Name!, input.Url!.AbsoluteUri, headers, input.Scope, input.TenantIds, input.AssistantIds, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var urlChanged = !string.Equals(server.Url, input.Url!.AbsoluteUri, StringComparison.Ordinal);
+        server.Edit(input.Name!, input.Url.AbsoluteUri, headers, input.Scope, input.TenantIds, input.AssistantIds, now);
+        if (urlChanged)
+        {
+            // What was approved was approved for the old address: the server offers nothing until a refresh reads
+            // the tools from the new one and the review flow (D-14) judges them.
+            server.MarkUnavailable("The address was changed: refresh the server to read its tools again.", now);
+        }
 
         try
         {
@@ -237,6 +249,7 @@ internal sealed class McpServerEndpoints : IEndpointGroup
         McpServerClient client,
         McpHeadersProtector protector,
         TimeProvider clock,
+        ILogger<McpServerEndpoints> logger,
         CancellationToken cancellationToken)
     {
         if (await db.McpServers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken) is not { } server)
@@ -254,6 +267,7 @@ internal sealed class McpServerEndpoints : IEndpointGroup
             var result = McpToolSync.Apply(db, server, stored, listed);
             await db.SaveChangesAsync(cancellationToken);
 
+            LogServerRefreshed(logger, server.Id, result.Added.Count, result.Changed.Count, result.Removed.Count);
             return TypedResults.Ok(new RefreshResponse(server.Status.ToString(), result.Added, result.Changed, result.Removed));
         }
         catch (McpServerException exception)
@@ -261,6 +275,7 @@ internal sealed class McpServerEndpoints : IEndpointGroup
             // What was approved stays stored, but an unavailable server offers nothing until a refresh succeeds.
             server.MarkUnavailable(exception.Message, now);
             await db.SaveChangesAsync(cancellationToken);
+            LogServerUnavailable(logger, server.Id, exception.Code);
             return Error.Unprocessable(exception.Code, exception.Message).ToProblem();
         }
         catch (DbUpdateException exception) when (exception.IsUniqueViolation())
@@ -268,6 +283,16 @@ internal sealed class McpServerEndpoints : IEndpointGroup
             return RefreshConflict.ToProblem();
         }
     }
+
+    // Only ids, counts and codes: never headers, URLs or what the server said.
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP server {ServerId} registered as {Status} with {ToolCount} tools")]
+    private static partial void LogServerRegistered(ILogger logger, Guid serverId, McpServerStatus status, int toolCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP server {ServerId} refreshed: {Added} added, {Changed} changed, {Removed} removed")]
+    private static partial void LogServerRefreshed(ILogger logger, Guid serverId, int added, int changed, int removed);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "MCP server {ServerId} is unavailable: {Code}")]
+    private static partial void LogServerUnavailable(ILogger logger, Guid serverId, string code);
 }
 
 /// <summary>What the admin entered for a server, checked and normalized; <see cref="Error"/> says what is wrong when it cannot be used.</summary>
@@ -286,7 +311,7 @@ internal sealed record ServerInput(
 
     private static readonly Error InvalidUrl = Error.Validation(
         "tool.invalid_url",
-        "The URL must be an absolute http or https address without a user name or password. Put credentials in the headers.");
+        "The URL must be an absolute http or https address without a user name or password. Put credentials in the headers: the URL is stored unencrypted and shown in the API, only headers are encrypted.");
 
     private static readonly Error ScopeNotSupported = Error.Validation(
         "tool.scope_not_supported",

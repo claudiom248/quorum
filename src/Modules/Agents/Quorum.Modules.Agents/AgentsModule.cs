@@ -52,7 +52,9 @@ public static class AgentsModule
         // Every connection to an MCP server goes through this client (D-18): no redirects (a 3xx is a failed call), no system
         // proxy (it would connect on the guard's behalf, to an address the guard never saw), and the guard checks the address
         // the socket is really opened to. The timeouts are the caller's: calls are cancelled through their own tokens.
+        // The factory's request logging is removed: it writes the full URL, and a server's URL may carry a secret.
         services.AddHttpClient(McpServerClient.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .RemoveAllLoggers()
             .ConfigurePrimaryHttpMessageHandler(provider => new SocketsHttpHandler
             {
                 AllowAutoRedirect = false,

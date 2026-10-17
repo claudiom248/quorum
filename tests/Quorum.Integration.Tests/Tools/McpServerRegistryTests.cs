@@ -332,6 +332,159 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         Assert.All([get, put, delete, refresh], response => Assert.Equal(HttpStatusCode.NotFound, response.StatusCode));
     }
 
+    [Fact] // AC-5 on update
+    public async Task RenamingAServerToAnExistingNameIsRejectedWith409()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync();
+        await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
+        var other = await ToolsApi.RegisterServerOkAsync(client, "docs", mcp.Url);
+
+        using var response = await client.PutAsJsonAsync(ToolsApi.Server(other.Id), new { name = "files", url = mcp.Url, scope = ToolsApi.TenantScope }, Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("tool.server_name_taken", await ToolsApi.ProblemCodeAsync(response));
+        Assert.Equal("docs", (await ToolsApi.GetServerAsync(client, other.Id)).Name);
+    }
+
+    [Fact] // AC-3 on update
+    public async Task UpdatingAServerToABlockedUrlIsRejectedAndChangesNothing()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
+
+        using var response = await client.PutAsJsonAsync(
+            ToolsApi.Server(created.Id),
+            new { name = "files", url = "http://168.63.129.16/mcp", scope = ToolsApi.TenantScope },
+            Ct);
+        var server = await ToolsApi.GetServerAsync(client, created.Id);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("tool.url_blocked", await ToolsApi.ProblemCodeAsync(response));
+        Assert.Equal(("Available", mcp.Url), (server.Status, server.Url));
+    }
+
+    [Fact]
+    public async Task UpdatingAServerWithInvalidHeadersIsRejected()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync();
+        var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
+
+        using var response = await client.PutAsJsonAsync(
+            ToolsApi.Server(created.Id),
+            new { name = "files", url = mcp.Url, headers = new Dictionary<string, string> { ["Host"] = "evil.example" }, scope = ToolsApi.TenantScope },
+            Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("tool.invalid_headers", await ToolsApi.ProblemCodeAsync(response));
+        Assert.False((await ToolsApi.GetServerAsync(client, created.Id)).HasHeaders);
+    }
+
+    [Fact] // D-14: approvals were given for the old address
+    public async Task ChangingTheUrlTakesTheServerOutOfThePoolUntilItIsRefreshed()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var first = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        await using var second = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        var created = await ToolsApi.RegisterServerOkAsync(client, "files", first.Url);
+        using var approve = await client.PutAsJsonAsync(ToolsApi.Tool(created.Tools.Single().Id), new { state = "Enabled", policy = "Auto" }, Ct);
+        var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
+
+        using var move = await client.PutAsJsonAsync(ToolsApi.Server(created.Id), new { name = "files", url = second.Url, scope = ToolsApi.TenantScope }, Ct);
+        var moved = await ToolsApi.GetServerAsync(client, created.Id);
+        var poolWhileMoved = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
+        var refresh = await ToolsApi.RefreshServerOkAsync(client, created.Id);
+        var poolAfterRefresh = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
+
+        Assert.Equal(HttpStatusCode.NoContent, move.StatusCode);
+        Assert.Equal(("Unavailable", second.Url), (moved.Status, moved.Url));
+        Assert.DoesNotContain(poolWhileMoved, t => t.Name == "files__search");
+        Assert.Equal("Available", refresh.Status);
+        Assert.Contains(poolAfterRefresh, t => t.Name == "files__search");
+    }
+
+    [Fact]
+    public async Task ASameUrlUpdateKeepsTheServerAvailable()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
+
+        using var response = await client.PutAsJsonAsync(ToolsApi.Server(created.Id), new { name = "docs", url = mcp.Url, scope = ToolsApi.TenantScope }, Ct);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("Available", (await ToolsApi.GetServerAsync(client, created.Id)).Status);
+    }
+
+    [Fact]
+    public async Task AServerListingMoreThanTheToolCapIsUnavailable()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync([.. Enumerable.Range(0, 501).Select(i => McpTestServer.NewTool($"tool{i}"))]);
+
+        var created = await ToolsApi.RegisterServerOkAsync(client, "huge", mcp.Url);
+        var server = await ToolsApi.GetServerAsync(client, created.Id);
+
+        Assert.Equal("Unavailable", created.Status);
+        Assert.Empty(created.Tools);
+        Assert.Contains("500", server.LastError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AToolDefinitionAboveTheSizeCapMakesTheServerUnavailable()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("bloated", new string('x', 60_000)));
+
+        var created = await ToolsApi.RegisterServerOkAsync(client, "bloated", mcp.Url);
+        var server = await ToolsApi.GetServerAsync(client, created.Id);
+
+        Assert.Equal("Unavailable", created.Status);
+        Assert.Empty(created.Tools);
+        Assert.Contains("too large", server.LastError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheTotalSizeOfTheDefinitionsIsCappedToo()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        // Each tool is within its own cap; together they pass one million characters.
+        await using var mcp = await McpTestServer.StartAsync([.. Enumerable.Range(0, 25).Select(i => McpTestServer.NewTool($"tool{i}", new string('x', 45_000)))]);
+
+        var created = await ToolsApi.RegisterServerOkAsync(client, "bulky", mcp.Url);
+
+        Assert.Equal("Unavailable", created.Status);
+        Assert.Empty(created.Tools);
+    }
+
+    [Fact]
+    public async Task DiscoveryIsLoggedWithoutTheServersAddressOrHeaders()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+
+        var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url, new Dictionary<string, string> { ["Authorization"] = "Bearer log-me-not" });
+        await ToolsApi.RefreshServerOkAsync(client, created.Id);
+        await mcp.DisposeAsync();
+        using var failed = await client.PostAsync(ToolsApi.ServerRefresh(created.Id), content: null, Ct);
+
+        Assert.Contains(app.Logs.Messages, m => m.Contains($"MCP server {created.Id} registered as Available with 1 tools", StringComparison.Ordinal));
+        Assert.Contains(app.Logs.Messages, m => m.Contains($"MCP server {created.Id} refreshed: 0 added, 0 changed, 0 removed", StringComparison.Ordinal));
+        Assert.Contains(app.Logs.Messages, m => m.Contains($"MCP server {created.Id} is unavailable: \"tool.server_unreachable\"", StringComparison.Ordinal));
+        Assert.DoesNotContain(app.Logs.Messages, m => m.Contains("log-me-not", StringComparison.Ordinal) || m.Contains(mcp.Url, StringComparison.Ordinal));
+    }
+
     /// <summary>A loopback port nothing listens on.</summary>
     internal static int UnusedPort()
     {

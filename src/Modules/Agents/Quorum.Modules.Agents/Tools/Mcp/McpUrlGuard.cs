@@ -29,9 +29,15 @@ internal sealed class McpUrlGuard(IMcpHostResolver resolver)
     // Embedded IPv4 prefix of NAT64 (RFC 6052): on such a network 64:ff9b::a9fe:a9fe reaches 169.254.169.254.
     private static readonly byte[] Nat64Prefix = [0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    private static readonly IPAddress AlibabaMetadata = IPAddress.Parse("100.100.100.200");
-
-    private static readonly IPAddress AwsIpv6Metadata = IPAddress.Parse("fd00:ec2::254");
+    // Metadata and platform services that are not link-local: Alibaba, Azure WireServer, Oracle, AWS IPv6, GCP IPv6.
+    private static readonly HashSet<IPAddress> MetadataAddresses =
+    [
+        IPAddress.Parse("100.100.100.200"),
+        IPAddress.Parse("168.63.129.16"),
+        IPAddress.Parse("192.0.0.192"),
+        IPAddress.Parse("fd00:ec2::254"),
+        IPAddress.Parse("fd20:ce::254"),
+    ];
 
     public static bool IsBlocked(IPAddress address)
     {
@@ -47,12 +53,12 @@ internal sealed class McpUrlGuard(IMcpHostResolver resolver)
             var bytes = address.GetAddressBytes();
             return bytes[0] == 0 // 0.0.0.0/8: "this host" on many systems
                 || (bytes[0] == 169 && bytes[1] == 254) // link-local, AWS/Azure/GCP metadata
-                || address.Equals(AlibabaMetadata);
+                || MetadataAddresses.Contains(address);
         }
 
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            if (address.Equals(IPAddress.IPv6Any) || address.IsIPv6LinkLocal || address.Equals(AwsIpv6Metadata))
+            if (address.Equals(IPAddress.IPv6Any) || address.IsIPv6LinkLocal || MetadataAddresses.Contains(address))
             {
                 return true;
             }
@@ -99,20 +105,24 @@ internal sealed class McpUrlGuard(IMcpHostResolver resolver)
         foreach (var address in addresses)
         {
             var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            var handedOver = false;
             try
             {
                 await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), cancellationToken);
-                return new NetworkStream(socket, ownsSocket: true);
+                var stream = new NetworkStream(socket, ownsSocket: true);
+                handedOver = true;
+                return stream;
             }
             catch (SocketException exception)
             {
-                socket.Dispose();
                 last = exception;
             }
-            catch
+            finally
             {
-                socket.Dispose();
-                throw;
+                if (!handedOver)
+                {
+                    socket.Dispose();
+                }
             }
         }
 

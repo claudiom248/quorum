@@ -16,6 +16,8 @@ public sealed class McpUrlGuardTests(PostgresFixture postgres)
     [InlineData("http://[fd00:ec2::254]/mcp")]
     [InlineData("http://[::ffff:169.254.169.254]/mcp")]
     [InlineData("http://0.0.0.0/mcp")]
+    [InlineData("http://168.63.129.16/mcp")]
+    [InlineData("http://[fd20:ce::254]/mcp")]
     public async Task ABlockedAddressIsRefusedWhenRegisteringAndTesting(string url)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
