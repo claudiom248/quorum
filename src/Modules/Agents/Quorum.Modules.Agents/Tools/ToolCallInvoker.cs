@@ -335,14 +335,37 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         return new ToolCallResult(status, content);
     }
 
-    /// <returns>The tool's policy now, or <see langword="null"/> when it is no longer enabled and activated on the assistant.</returns>
-    private async Task<ToolPolicy?> CurrentPolicyAsync(ToolRunContext context, ActiveTool tool, CancellationToken cancellationToken) =>
-        await (
+    /// <summary>
+    /// The tool's policy now, or <see langword="null"/> when it is no longer enabled and activated on the assistant, its server is no longer
+    /// available to it, its definition is not the one the model was offered (an administrator approved another meanwhile), or the
+    /// server's address or headers changed since the answer began (an approval is for the address it was given for).
+    /// </summary>
+    private async Task<ToolPolicy?> CurrentPolicyAsync(ToolRunContext context, ActiveTool tool, CancellationToken cancellationToken)
+    {
+        var current = await (
             from candidate in ToolPool.For(db, context.AssistantId)
+            join server in db.McpServers.IgnoreQueryFilters() on candidate.Tool.ServerId equals server.Id into servers
+            from server in servers.DefaultIfEmpty()
             where candidate.Tool.Id == tool.ToolId
                   && db.AssistantTools.Any(a => a.ToolId == candidate.Tool.Id && a.AssistantId == context.AssistantId)
-            select (ToolPolicy?)candidate.Tool.Policy)
+            select new
+            {
+                candidate.Tool.Policy,
+                candidate.Tool.DefinitionHash,
+                ServerUrl = server == null ? null : server.Url,
+                ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
+            })
             .SingleOrDefaultAsync(cancellationToken);
+
+        if (current is null || current.DefinitionHash != tool.DefinitionHash)
+        {
+            return null;
+        }
+
+        return tool.Server is { } offered && (current.ServerUrl != offered.Url || current.ProtectedHeaders != offered.ProtectedHeaders)
+            ? null
+            : current.Policy;
+    }
 
     private async Task<bool> TryRecordAsync(ToolAuditEntry entry)
     {

@@ -49,21 +49,14 @@ internal sealed class McpServerClient(IHttpClientFactory httpClientFactory, McpU
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(url);
-
-        if (await guard.IsBlockedAsync(url, cancellationToken))
-        {
-            throw new McpServerException(McpServerException.UrlBlocked, BlockedMessage);
-        }
+        await EnsureAllowedAsync(url, cancellationToken);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ConnectionTimeout);
 
         try
         {
-            await using var client = await McpClient.CreateAsync(
-                CreateTransport(url, headers),
-                new McpClientOptions { ClientInfo = ClientInfo, Capabilities = new ClientCapabilities() },
-                cancellationToken: timeout.Token);
+            await using var client = await OpenAsync(url, headers, timeout.Token);
 
             var tools = await client.ListToolsAsync(cancellationToken: timeout.Token);
             if (tools.Count > MaxTools)
@@ -81,19 +74,62 @@ internal sealed class McpServerClient(IHttpClientFactory httpClientFactory, McpU
 
             return described;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (IsServerFailure(exception, cancellationToken))
         {
-            throw new McpServerException(McpServerException.Unreachable, $"The server did not answer within {ConnectionTimeout.TotalSeconds:0} seconds.");
+            throw ToServerException(exception);
         }
-        catch (Exception exception) when (IsBlocked(exception))
+    }
+
+    /// <summary>
+    /// Opens a session with the server for the calls of one answer; the caller disposes it. Nothing here is cached: a session lives
+    /// as long as the answer that asked for it.
+    /// </summary>
+    /// <exception cref="McpServerException">The URL is blocked, or the server did not answer as an MCP server within the connection timeout.</exception>
+    public async Task<McpClient> ConnectAsync(Uri url, IReadOnlyDictionary<string, string>? headers, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        await EnsureAllowedAsync(url, cancellationToken);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ConnectionTimeout);
+
+        try
+        {
+            return await OpenAsync(url, headers, timeout.Token);
+        }
+        catch (Exception exception) when (IsServerFailure(exception, cancellationToken))
+        {
+            throw ToServerException(exception);
+        }
+    }
+
+    /// <summary>Whether a failure while talking to a server is the server's (or the network's) rather than ours or the caller's cancellation.</summary>
+    internal static bool IsServerFailure(Exception exception, CancellationToken callerToken) =>
+        exception is OperationCanceledException
+            ? !callerToken.IsCancellationRequested
+            : IsBlocked(exception) || exception is McpException or HttpRequestException or IOException or JsonException or InvalidOperationException;
+
+    /// <summary>The error to show for a failure that <see cref="IsServerFailure"/> accepted. It never carries header values.</summary>
+    internal static McpServerException ToServerException(Exception exception) => exception switch
+    {
+        OperationCanceledException => new McpServerException(McpServerException.Unreachable, $"The server did not answer within {ConnectionTimeout.TotalSeconds:0} seconds."),
+        _ when IsBlocked(exception) => new McpServerException(McpServerException.UrlBlocked, BlockedMessage),
+        _ => new McpServerException(McpServerException.Unreachable, Explain(exception)),
+    };
+
+    private async Task EnsureAllowedAsync(Uri url, CancellationToken cancellationToken)
+    {
+        if (await guard.IsBlockedAsync(url, cancellationToken))
         {
             throw new McpServerException(McpServerException.UrlBlocked, BlockedMessage);
         }
-        catch (Exception exception) when (exception is McpException or HttpRequestException or IOException or JsonException or InvalidOperationException)
-        {
-            throw new McpServerException(McpServerException.Unreachable, Explain(exception));
-        }
     }
+
+    private Task<McpClient> OpenAsync(Uri url, IReadOnlyDictionary<string, string>? headers, CancellationToken cancellationToken) =>
+        McpClient.CreateAsync(
+            CreateTransport(url, headers),
+            new McpClientOptions { ClientInfo = ClientInfo, Capabilities = new ClientCapabilities() },
+            cancellationToken: cancellationToken);
 
     /// <summary>The HTTP transport every connection to a server uses (also by the tool invoker): the guarded client, static headers and no redirects.</summary>
     internal HttpClientTransport CreateTransport(Uri url, IReadOnlyDictionary<string, string>? headers) => new(

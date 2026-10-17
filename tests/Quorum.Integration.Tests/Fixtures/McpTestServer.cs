@@ -41,6 +41,13 @@ public sealed class McpTestServer : IAsyncDisposable
     /// <summary>What the server lists. Change it between a registration and a refresh.</summary>
     public List<Tool> Tools { get; } = [];
 
+    /// <summary>What <c>tools/call</c> answers; by default <c>called &lt;name&gt;</c>. Tests replace it to return big results, errors or to never answer.</summary>
+    public Func<CallToolRequestParams, CancellationToken, ValueTask<CallToolResult>> CallHandler { get; set; } = (request, _) =>
+        ValueTask.FromResult(new CallToolResult { Content = [new TextContentBlock { Text = $"called {request.Name}" }] });
+
+    /// <summary>The tool name and the arguments (as JSON text) of every <c>tools/call</c> received, oldest first.</summary>
+    public ConcurrentQueue<(string Name, string Arguments)> Calls { get; } = new();
+
     /// <summary>The headers of every request that reached the MCP endpoint, as <c>Name: value</c>.</summary>
     public ConcurrentQueue<string> ReceivedHeaders { get; } = new();
 
@@ -60,10 +67,12 @@ public sealed class McpTestServer : IAsyncDisposable
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = true)
             .WithListToolsHandler((_, _) => ValueTask.FromResult(new ListToolsResult { Tools = [.. self!.Tools] }))
-            .WithCallToolHandler((context, _) => ValueTask.FromResult(new CallToolResult
+            .WithCallToolHandler((context, cancellationToken) =>
             {
-                Content = [new TextContentBlock { Text = $"called {context.Params!.Name}" }],
-            }));
+                var request = context.Params!;
+                self!.Calls.Enqueue((request.Name, JsonSerializer.Serialize(request.Arguments)));
+                return self.CallHandler(request, cancellationToken);
+            });
 
         var app = builder.Build();
         app.Use(async (context, next) =>

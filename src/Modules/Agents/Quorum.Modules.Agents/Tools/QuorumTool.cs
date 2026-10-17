@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Quorum.Modules.Agents.Secrets;
+using Quorum.Modules.Agents.Tools.Mcp;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -56,19 +58,26 @@ internal sealed class AskUserQuorumTool(ActiveTool descriptor) : QuorumTool(desc
 }
 
 /// <summary>Turns the active tools of an assistant into what the model is offered.</summary>
-internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools)
+internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools, McpServerClient mcpClient, McpHeadersProtector headersProtector)
 {
     private readonly Dictionary<string, INativeTool> _nativeTools = nativeTools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
 
+    /// <summary>The sessions with MCP servers of one answer; the answer disposes it when it ends.</summary>
+    public McpAnswerConnections NewConnections() => new(mcpClient, headersProtector);
+
     /// <summary>A native tool without an implementation in this build cannot be called, so it is not offered.</summary>
-    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools)
+    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections? connections)
     {
         ArgumentNullException.ThrowIfNull(tools);
+
         return tools
-            .Where(tool => tool.Origin == Domain.ToolOrigin.Native)
-            .Select(tool => tool.Name == NativeToolCatalog.AskUser
-                ? new AskUserQuorumTool(tool)
-                : _nativeTools.TryGetValue(tool.Name, out var implementation) ? (QuorumTool)new NativeQuorumTool(tool, implementation) : null)
+            .Select(tool => tool.Origin switch
+            {
+                Domain.ToolOrigin.Mcp when tool.Server is not null && connections is not null => new McpQuorumTool(tool, connections),
+                Domain.ToolOrigin.Native when tool.Name == NativeToolCatalog.AskUser => new AskUserQuorumTool(tool),
+                Domain.ToolOrigin.Native when _nativeTools.TryGetValue(tool.Name, out var implementation) => new NativeQuorumTool(tool, implementation),
+                _ => (QuorumTool?)null,
+            })
             .OfType<QuorumTool>()
             .ToList();
     }
