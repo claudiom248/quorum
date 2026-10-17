@@ -109,6 +109,12 @@
                         }
                     </div>
                 }
+                else if (_detailErrors.TryGetValue(server.Id, out var detailError))
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">
+                        The tools of this server could not be loaded: @detailError Reload the page to try again.
+                    </MudAlert>
+                }
                 else
                 {
                     <div class="tool-hint mt-2">The server offers no tools.</div>
@@ -186,6 +192,11 @@
                             }
                         }
 
+                        @if (_form.HadHeaders)
+                        {
+                            <div class="tool-hint">Test connection uses only the headers typed above, not the stored ones.</div>
+                        }
+
                         <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
                             <MudButton Variant="Variant.Text" OnClick="CancelForm" Disabled="_busy">Cancel</MudButton>
                             <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="_busy"
@@ -224,6 +235,7 @@
     private ApiProblem? _problem;
     private bool _loading = true;
     private bool _loaded;
+    private Dictionary<Guid, string> _detailErrors = [];
     private int _rowGeneration;
     private bool _busy;
     private string? _notice;
@@ -270,15 +282,25 @@
             return;
         }
 
-        // The list leaves the tools out; the detail of each server has them, with the review state.
+        // The list leaves the tools out; the detail of each server has them, with the review state. They are fetched together.
+        var details = await Task.WhenAll(servers.Value.Select(server => Api.GetToolServerAsync(server.Id)));
         var detailed = new List<ToolServer>();
-        foreach (var server in servers.Value)
+        var failures = new Dictionary<Guid, string>();
+        for (var i = 0; i < details.Length; i++)
         {
-            var detail = await Api.GetToolServerAsync(server.Id);
-            detailed.Add(detail.IsSuccess ? detail.Value : server);
+            if (details[i].IsSuccess)
+            {
+                detailed.Add(details[i].Value);
+            }
+            else
+            {
+                detailed.Add(servers.Value[i]);
+                failures[servers.Value[i].Id] = details[i].Problem!.Message;
+            }
         }
 
         _servers = detailed;
+        _detailErrors = failures;
         _native = tools.Value.Where(t => t.Origin == "Native").ToList();
 
         var assistants = await Api.ListAssistantsAsync();

@@ -464,6 +464,45 @@ public sealed class ToolsPageTests : BunitContext
         page.WaitForAssertion(() => Assert.Contains("unavailable until you refresh it", page.Markup, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void EachSwitchIsNamedAfterItsTool()
+    {
+        var page = RenderPage();
+
+        Assert.Contains("Enabled (search)", page.Find("[data-tool=search] .mud-switch").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Enabled (calculator)", page.Find("[data-tool=calculator] .mud-switch").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AServerWhoseToolsCouldNotBeLoadedSaysSoInsteadOfOfferingNone()
+    {
+        var script = _api.Respond;
+        _api.Respond = (method, path) =>
+            method == HttpMethod.Get && path == $"/api/tools/servers/{ServerId}"
+                ? FakeApiHandler.Json(new { title = "Down", detail = "The detail timed out." }, HttpStatusCode.GatewayTimeout)
+                : script(method, path);
+
+        var page = RenderPage();
+
+        var server = page.Find("[data-server=files]").TextContent;
+        Assert.Contains("could not be loaded: The detail timed out.", server, StringComparison.Ordinal);
+        Assert.DoesNotContain("offers no tools", server, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EditingAServerWithStoredHeadersSaysTheTestDoesNotUseThem()
+    {
+        var page = RenderPage();
+        Assert.Empty(page.FindAll("[data-form=server]"));
+
+        Click(page, "Add server");
+        Assert.DoesNotContain("not the stored ones", page.Markup, StringComparison.Ordinal);
+        Click(page, "Cancel");
+        Click(page, "Edit");
+
+        Assert.Contains("not the stored ones", page.Find("[data-form=server]").TextContent, StringComparison.Ordinal);
+    }
+
     private static bool SwitchIsOn(IRenderedComponent<ToolsPage> page, string tool)
     {
         var input = page.Find($"[data-tool={tool}] .mud-switch input");

@@ -43,8 +43,9 @@
     else
     {
         <div class="tool-row-controls">
+            @* The label is the switch's accessible name: the tool's name is added for screen readers, so the switches differ. *@
             <MudSwitch T="bool" Value="Tool.State == ToolStates.Enabled" ValueChanged="EnabledChangedAsync" Color="Color.Primary"
-                       Label="Enabled" Disabled="Busy" aria-label="@($"Enable {Tool.Name}")" />
+                       Disabled="Busy">Enabled<span class="sr-only"> (@Tool.Name)</span></MudSwitch>
             <label class="tool-policy">Policy
                 <select aria-label="Policy of @Tool.Name" value="@Tool.Policy" @onchange="PolicyChangedAsync" disabled="@Busy">
                     <option value="@ToolPolicies.Confirm">Ask before running</option>
