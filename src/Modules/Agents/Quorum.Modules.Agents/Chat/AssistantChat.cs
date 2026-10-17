@@ -134,10 +134,10 @@ internal sealed class AssistantChat(
         }
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
-        var connections = toolFactory.NewConnections();
-        var tools = caller is null
-            ? []
-            : toolFactory.Create(await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken), connections);
+        IReadOnlyList<ActiveTool> active = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken);
+        // Only an assistant with MCP tools has sessions to open and close.
+        var connections = active.Any(tool => tool.Server is not null) ? toolFactory.NewConnections() : null;
+        var tools = toolFactory.Create(active, connections);
         if (tools.Count == 0)
         {
             return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded, connections);
@@ -169,7 +169,7 @@ internal sealed class AssistantChat(
         IReadOnlyList<QuorumTool> Tools,
         int ToolsCharacters,
         ToolLimits Limits,
-        McpAnswerConnections Connections)
+        McpAnswerConnections? Connections)
     {
         public string BaseUrl => Configuration.BaseUrl;
 

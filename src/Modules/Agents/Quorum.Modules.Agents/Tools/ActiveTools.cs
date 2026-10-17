@@ -58,6 +58,15 @@ internal static class ActiveToolsQuery
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
+        // The encrypted headers are read only here, for the tools that will run, and not by every listing of the pool.
+        var serverIds = tools.Select(pooled => pooled.Tool.ServerId).OfType<Guid>().Distinct().ToList();
+        var endpoints = serverIds.Count == 0
+            ? []
+            : await db.McpServers.IgnoreQueryFilters()
+                .Where(server => serverIds.Contains(server.Id))
+                .Select(server => new McpServerEndpoint(server.Id, server.Url, server.ProtectedHeaders))
+                .ToDictionaryAsync(endpoint => endpoint.ServerId, cancellationToken);
+
         return tools
             .Select(pooled => new ActiveTool(
                 pooled.Tool.Id,
@@ -68,7 +77,7 @@ internal static class ActiveToolsQuery
                 pooled.Tool.Description,
                 pooled.Tool.InputSchema,
                 pooled.Tool.DefinitionHash,
-                pooled.Tool.ServerId is { } serverId && pooled.ServerUrl is { } url ? new McpServerEndpoint(serverId, url, pooled.ProtectedHeaders) : null))
+                pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null))
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
             .ToList();
     }

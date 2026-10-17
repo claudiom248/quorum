@@ -29,6 +29,12 @@ internal sealed class McpQuorumTool(ActiveTool descriptor, McpAnswerConnections 
         {
             throw new ToolFailedException(exception.Message);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The call timeout, the total time or the user cut the request short: the session may be left half-way, so the next call opens a new one.
+            await connections.DropAsync(server.ServerId);
+            throw;
+        }
         catch (Exception exception) when (McpServerClient.IsServerFailure(exception, cancellationToken))
         {
             // After a failure of the transport the session may be dead; a protocol error leaves it usable.

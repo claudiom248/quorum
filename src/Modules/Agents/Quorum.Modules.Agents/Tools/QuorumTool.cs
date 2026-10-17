@@ -66,15 +66,14 @@ internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools, Mc
     public McpAnswerConnections NewConnections() => new(mcpClient, headersProtector);
 
     /// <summary>A native tool without an implementation in this build cannot be called, so it is not offered.</summary>
-    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections connections)
+    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections? connections)
     {
         ArgumentNullException.ThrowIfNull(tools);
-        ArgumentNullException.ThrowIfNull(connections);
 
         return tools
             .Select(tool => tool.Origin switch
             {
-                Domain.ToolOrigin.Mcp when tool.Server is not null => new McpQuorumTool(tool, connections),
+                Domain.ToolOrigin.Mcp when tool.Server is not null && connections is not null => new McpQuorumTool(tool, connections),
                 Domain.ToolOrigin.Native when tool.Name == NativeToolCatalog.AskUser => new AskUserQuorumTool(tool),
                 Domain.ToolOrigin.Native when _nativeTools.TryGetValue(tool.Name, out var implementation) => new NativeQuorumTool(tool, implementation),
                 _ => (QuorumTool?)null,

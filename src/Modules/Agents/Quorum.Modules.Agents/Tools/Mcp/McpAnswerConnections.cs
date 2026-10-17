@@ -9,6 +9,8 @@ namespace Quorum.Modules.Agents.Tools.Mcp;
 /// </summary>
 internal sealed class McpAnswerConnections(McpServerClient client, McpHeadersProtector protector) : IAsyncDisposable
 {
+    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
+
     private readonly Dictionary<Guid, McpClient> _sessions = [];
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _disposed;
@@ -77,21 +79,19 @@ internal sealed class McpAnswerConnections(McpServerClient client, McpHeadersPro
             _gate.Release();
         }
 
-        foreach (var session in sessions)
-        {
-            await CloseAsync(session);
-        }
+        await Task.WhenAll(sessions.Select(CloseAsync));
     }
 
     private static async Task CloseAsync(McpClient session)
     {
         try
         {
-            await session.DisposeAsync();
+            // The answer ends (and releases its conversation) only after this: a server slow to close must not hold it.
+            await session.DisposeAsync().AsTask().WaitAsync(CloseTimeout);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            // The session is being thrown away: a server that fails to say goodbye changes nothing for the answer.
+            // The session is being thrown away: a server that fails to say goodbye, or not in time, changes nothing for the answer.
         }
     }
 }

@@ -189,6 +189,69 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
         Assert.Equal(("Approved", "Failed", "tool.unavailable"), (audit.Decision, audit.Outcome, audit.ErrorCode));
     }
 
+    [Fact] // D-9, D-18: an approval is for the address it was given for
+    public async Task AServerWhoseUrlChangedWhileWaitingForConfirmationIsNotCalledEvenWhenApproved()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        await RegisterAndActivateAsync(client, mcp, policy: "Confirm");
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("x")), ChatScript.Reply("Understood."));
+        var id = await ChatApi.CreateConversationAsync(client);
+        await using var answer = await LiveAnswer.StartAsync(client, id, "Go");
+        var call = await answer.UntilAsync("tool_call");
+        await ToolFixtures.ExecuteAsync(app, $"UPDATE agents.mcp_servers SET \"Url\" = '{mcp.Url}?moved=1'");
+
+        using var decision = await ChatApi.DecideAsync(client, id, CallId(call), approved: true);
+        var events = await answer.FinishAsync();
+
+        Assert.Equal("failed", Assert.Single(events, e => e.Type == "tool_result").Data.GetProperty("status").GetString());
+        Assert.Contains("no longer available", Messages(app, 1)[^1].GetProperty("content").GetString()!, StringComparison.Ordinal);
+        Assert.Empty(mcp.Calls);
+    }
+
+    [Fact] // D-18: the guard also holds when the call runs, not only when the server was registered
+    public async Task AServerWhoseUrlPointsToABlockedAddressIsNotContactedWhenTheCallRuns()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        await RegisterAndActivateAsync(client, mcp);
+        await ToolFixtures.ExecuteAsync(app, "UPDATE agents.mcp_servers SET \"Url\" = 'http://169.254.169.254/mcp'");
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("x")), ChatScript.Reply("It failed."));
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        var events = await ChatApi.SendAsync(client, id, "Go");
+
+        var result = Assert.Single(events, e => e.Type == "tool_result").Data;
+        Assert.Equal("failed", result.GetProperty("status").GetString());
+        Assert.Contains("not allowed", result.GetProperty("content").GetString()!, StringComparison.Ordinal);
+        Assert.Empty(mcp.Calls);
+    }
+
+    [Fact]
+    public async Task OnlyTextIsPassedOnNonTextContentIsNamedAndStructuredContentIsUsedWhenThereIsNoText()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
+        await RegisterAndActivateAsync(client, mcp);
+        mcp.CallHandler = (request, _) => ValueTask.FromResult(
+            request.Arguments!["text"].GetString() == "mixed"
+                ? new CallToolResult { Content = [new TextContentBlock { Text = "Chart:" }, new ImageContentBlock { Data = "cG5n"u8.ToArray(), MimeType = "image/png" }] }
+                : new CallToolResult { StructuredContent = JsonDocument.Parse("""{"count":3}""").RootElement.Clone() });
+        app.ModelServer.EnqueueRounds(
+            ChatScript.CallTools(Search("mixed", id: "call_1"), Search("structured", id: "call_2")),
+            ChatScript.Reply("Done."));
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        var events = await ChatApi.SendAsync(client, id, "Go");
+
+        Assert.Equal(
+            ["Chart:\n[image content (image/png) not shown]", """{"count":3}"""],
+            events.Where(e => e.Type == "tool_result").Select(e => e.Data.GetProperty("content").GetString()));
+    }
+
     [Fact] // AC-26
     public async Task AResultLargerThanTheLimitIsNotTruncatedTheModelGetsATooLargeError()
     {
