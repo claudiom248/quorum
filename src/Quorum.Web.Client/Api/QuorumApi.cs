@@ -55,6 +55,36 @@ public sealed class QuorumApi(HttpClient http)
     public Task<ApiResult> SetAssistantToolsAsync(Guid assistantId, IReadOnlyList<Guid> toolIds, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, $"api/assistants/{assistantId}/tools", new { toolIds }, setupToken: null, cancellationToken);
 
+    public Task<ApiResult<List<ToolInfo>>> ListToolsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<ToolInfo>>("api/tools", cancellationToken);
+
+    /// <summary>Enables or disables a tool and sets its policy. Enabling a tool pending review is how the admin approves it.</summary>
+    public Task<ApiResult> UpdateToolAsync(Guid toolId, string state, string policy, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/tools/{toolId}", new { state, policy }, setupToken: null, cancellationToken);
+
+    public Task<ApiResult<List<ToolServer>>> ListToolServersAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<ToolServer>>("api/tools/servers", cancellationToken);
+
+    public Task<ApiResult<ToolServer>> GetToolServerAsync(Guid id, CancellationToken cancellationToken = default) =>
+        GetAsync<ToolServer>($"api/tools/servers/{id}", cancellationToken);
+
+    /// <summary>Connects to a server without registering it and lists what it offers.</summary>
+    public Task<ApiResult<ToolServerTest>> TestToolServerAsync(string url, IReadOnlyDictionary<string, string>? headers, CancellationToken cancellationToken = default) =>
+        SendAsync<ToolServerTest>(HttpMethod.Post, "api/tools/servers/test", new { url, headers }, setupToken: null, cancellationToken);
+
+    public Task<ApiResult<CreatedToolServer>> CreateToolServerAsync(ToolServerRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<CreatedToolServer>(HttpMethod.Post, "api/tools/servers", request, setupToken: null, cancellationToken);
+
+    public Task<ApiResult> UpdateToolServerAsync(Guid id, ToolServerRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/tools/servers/{id}", request, setupToken: null, cancellationToken);
+
+    public Task<ApiResult> DeleteToolServerAsync(Guid id, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Delete, $"api/tools/servers/{id}", body: null, setupToken: null, cancellationToken);
+
+    /// <summary>Reads the server's tools again: new and changed ones go to review, vanished ones are removed.</summary>
+    public Task<ApiResult<ToolRefresh>> RefreshToolServerAsync(Guid id, CancellationToken cancellationToken = default) =>
+        SendAsync<ToolRefresh>(HttpMethod.Post, $"api/tools/servers/{id}/refresh", body: null, setupToken: null, cancellationToken);
+
     public Task<ApiResult<List<ConversationSummary>>> ListConversationsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<ConversationSummary>>("api/conversations", cancellationToken);
 

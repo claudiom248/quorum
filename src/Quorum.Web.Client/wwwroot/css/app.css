@@ -144,3 +144,17 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .popover-note { margin-top: .8rem; padding-top: .6rem; border-top: 1px solid var(--mud-palette-lines-default); font-size: .75rem; line-height: 1.4; color: var(--mud-palette-text-secondary); }
 .over { color: var(--mud-palette-error); }
 @media (max-width: 720px) { .chat-side { display: none; } .context-popover { right: -.5rem; } }
+
+/* Tools admin page */
+.tools-admin { max-width: 52rem; }
+.tool-row { padding: .6rem 0; border-top: 1px solid var(--mud-palette-lines-default); }
+.tool-row:first-child { border-top: 0; }
+.tool-row.state-pendingreview { border-left: 3px solid var(--mud-palette-warning); padding-left: .6rem; }
+.tool-row.state-disabled .tool-name { color: var(--mud-palette-text-secondary); }
+.tool-row-head { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.tool-row-description { margin-top: .2rem; font-size: .9rem; color: var(--mud-palette-text-secondary); white-space: pre-wrap; }
+.tool-row-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: .3rem; }
+.tool-policy { display: inline-flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--mud-palette-text-secondary); }
+.tool-policy select { padding: .3rem .5rem; border: 1px solid var(--mud-palette-lines-inputs); border-radius: 6px; background: var(--mud-palette-surface); color: var(--mud-palette-text-primary); font: inherit; }
+.tool-server .tool-rows { margin-top: .5rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

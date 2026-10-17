@@ -1,0 +1,569 @@
+@page "/tools"
+@inject QuorumApi Api
+
+<PageTitle>Tools · Quorum</PageTitle>
+
+<div class="settings tools-admin">
+    <MudText Typo="Typo.h5" Class="mb-1">Tools</MudText>
+    <MudText Typo="Typo.body2" Class="tools-support-hint mb-4">
+        Register MCP servers, review the tools they offer and decide which ones may run and whether they ask first.
+        Which tools an assistant uses is chosen in Settings.
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_loadProblem is not null)
+    {
+        <ProblemMessage Problem="_loadProblem" />
+        <MudButton Variant="Variant.Outlined" OnClick="ReloadAsync">Try again</MudButton>
+    }
+    else
+    {
+        @if (_notice is not null)
+        {
+            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-3" role="status">@_notice</MudAlert>
+        }
+
+        <ProblemMessage Problem="_problem" />
+
+        <MudText Typo="Typo.subtitle1" Class="mt-2 mb-2">MCP servers</MudText>
+
+        @foreach (var server in _servers)
+        {
+            <MudPaper Outlined="true" Class="pa-3 mb-3 tool-server" data-server="@server.Name">
+                <div class="tool-row-head">
+                    <span class="tool-name">@server.Name</span>
+                    @if (server.Status == ServerStatuses.Available)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Available</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">Unavailable</MudChip>
+                    }
+                    @if (server.Shared)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Shared with you</MudChip>
+                    }
+                    @if (server.PendingReviewCount > 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@server.PendingReviewCount to review</MudChip>
+                    }
+                </div>
+                <div class="tool-hint">@server.Url · @ToolAdminView.ScopeSummary(server.Scope, _assistants)@(server.HasHeaders ? " · headers stored" : string.Empty)</div>
+
+                @if (server.Status == ServerStatuses.Unavailable)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">
+                        The server is unavailable, so none of its tools are offered to a model.
+                        @if (!string.IsNullOrWhiteSpace(server.LastError))
+                        {
+                            <span> Last error: @server.LastError</span>
+                        }
+                    </MudAlert>
+                }
+
+                @if (_refreshed is { } refreshed && refreshed.ServerId == server.Id)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-2" role="status">
+                        Refreshed. @Describe("Added", refreshed.Result.Added) @Describe("Changed", refreshed.Result.Changed) @Describe("Removed", refreshed.Result.Removed)
+                        @if (refreshed.Result.Added.Count + refreshed.Result.Changed.Count == 0 && refreshed.Result.Removed.Count == 0)
+                        {
+                            <span>Nothing changed.</span>
+                        }
+                    </MudAlert>
+                }
+
+                @if (!server.Shared)
+                {
+                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_busy" OnClick="() => RefreshAsync(server)"
+                                   StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_busy" OnClick="() => Edit(server)"
+                                   StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Error" Disabled="_busy"
+                                   OnClick="() => _deleting = server.Id" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                    </MudStack>
+                }
+
+                @if (_deleting == server.Id)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-2">
+                        Delete @server.Name with its @server.ToolCount tool(s)? They are removed from every assistant. The audit log keeps their names.
+                        <MudStack Row="true" Spacing="2" Class="mt-2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" Disabled="_busy"
+                                       OnClick="() => DeleteAsync(server)">Delete server</MudButton>
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _deleting = null">Cancel</MudButton>
+                        </MudStack>
+                    </MudAlert>
+                }
+
+                @if (server.Tools is { Count: > 0 })
+                {
+                    <div class="tool-rows">
+                        @foreach (var tool in server.Tools)
+                        {
+                            <ToolRow @key="(tool.Id, _rowGeneration)" Tool="tool" ReadOnly="server.Shared" Busy="_busy" OnChange="ChangeToolAsync" />
+                        }
+                    </div>
+                }
+                else if (_detailErrors.TryGetValue(server.Id, out var detailError))
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">
+                        The tools of this server could not be loaded: @detailError Reload the page to try again.
+                    </MudAlert>
+                }
+                else
+                {
+                    <div class="tool-hint mt-2">The server offers no tools.</div>
+                }
+            </MudPaper>
+        }
+
+        @if (_servers.Count == 0 && _form is null)
+        {
+            <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">No MCP server is registered yet.</MudText>
+        }
+
+        @if (_form is null)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartNew" StartIcon="@Icons.Material.Filled.Add">Add server</MudButton>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="pa-4 mb-3" data-form="server">
+                <form @onsubmit="SaveAsync">
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.subtitle1">@(_form.Id is null ? "Add server" : $"Edit {_form.OriginalName}")</MudText>
+                        <MudTextField @bind-Value="_form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="32"
+                                      HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tools as name__tool." />
+                        <MudTextField @bind-Value="_form.Url" Label="URL" Variant="Variant.Outlined" Required="true"
+                                      HelperText="Streamable HTTP endpoint, e.g. http://host:3001/mcp. Put credentials in the headers, not in the URL." />
+                        <MudTextField @bind-Value="_form.HeadersText" Label="Headers" Variant="Variant.Outlined" Lines="3" autocomplete="off"
+                                      HelperText="@HeadersHint" />
+                        @if (_form.HadHeaders)
+                        {
+                            <MudCheckBox T="bool" @bind-Value="_form.RemoveHeaders" Label="Remove the stored headers" Dense="true" />
+                        }
+
+                        <label class="tool-policy">Who can use it
+                            <select aria-label="Scope" @bind="_form.Kind">
+                                <option value="@ScopeKinds.Tenant">This tenant</option>
+                                <option value="@ScopeKinds.Assistant">Chosen assistants</option>
+                                <option value="@ScopeKinds.Global">Every tenant</option>
+                            </select>
+                        </label>
+                        @if (_form.Kind == ScopeKinds.Assistant)
+                        {
+                            @foreach (var assistant in _assistants)
+                            {
+                                <MudCheckBox T="bool" Value="_form.AssistantIds.Contains(assistant.Id)"
+                                             ValueChanged="on => ToggleAssistant(assistant.Id, on)" Label="@assistant.Name" Dense="true" />
+                            }
+                        }
+                        else if (_form.Kind == ScopeKinds.Tenant)
+                        {
+                            <MudTextField @bind-Value="_form.TenantsText" Label="Other tenants (ids, optional)" Variant="Variant.Outlined" Lines="2"
+                                          HelperText="Tenants that may use the server besides this one, read-only. Leave empty to keep it to this tenant." />
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                Every tenant of this installation will see the server and its enabled tools.
+                            </MudAlert>
+                        }
+
+                        <ProblemMessage Problem="_formProblem" />
+                        @if (_formError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@_formError</MudAlert>
+                        }
+
+                        @if (_test is not null)
+                        {
+                            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">
+                                Connected. The server offers @_test.Tools.Count tool(s)@(_test.Tools.Count > 0 ? ": " + string.Join(", ", _test.Tools.Select(t => t.Name)) : ".")
+                            </MudAlert>
+                            @foreach (var tested in _test.Tools.Where(t => ToolAdminView.DescribeAnnotations(t.Annotations).Count > 0))
+                            {
+                                <div class="tool-hint">@tested.Name claims: @string.Join(", ", ToolAdminView.DescribeAnnotations(tested.Annotations))</div>
+                            }
+                        }
+
+                        @if (_form.HadHeaders)
+                        {
+                            <div class="tool-hint">Test connection uses only the headers typed above, not the stored ones.</div>
+                        }
+
+                        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                            <MudButton Variant="Variant.Text" OnClick="CancelForm" Disabled="_busy">Cancel</MudButton>
+                            <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="_busy"
+                                       StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </form>
+            </MudPaper>
+        }
+
+        <MudDivider Class="my-6" />
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Built-in tools</MudText>
+        @if (_native.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="tools-support-hint">No built-in tools.</MudText>
+        }
+        else
+        {
+            <div class="tool-rows">
+                @foreach (var tool in _native)
+                {
+                    <ToolRow @key="(tool.Id, _rowGeneration)" Tool="tool" Busy="_busy" OnChange="ChangeToolAsync" />
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<ToolServer> _servers = [];
+    private List<ToolInfo> _native = [];
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private ApiProblem? _loadProblem;
+    private ApiProblem? _problem;
+    private bool _loading = true;
+    private bool _loaded;
+    private Dictionary<Guid, string> _detailErrors = [];
+    private int _rowGeneration;
+    private bool _busy;
+    private string? _notice;
+    private Guid? _deleting;
+    private (Guid ServerId, ToolRefresh Result)? _refreshed;
+
+    private ServerForm? _form;
+    private ApiProblem? _formProblem;
+    private string? _formError;
+    private ToolServerTest? _test;
+
+    private string HeadersHint => _form is { HadHeaders: true }
+        ? "Stored headers are kept as they are. Type new ones, one per line as Name: value, to replace them."
+        : "Optional, one per line as Name: value, e.g. Authorization: Bearer … They are stored encrypted and never shown again.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _loadProblem = null;
+
+        var servers = await Api.ListToolServersAsync();
+        if (!servers.IsSuccess)
+        {
+            FailLoad(servers.Problem!);
+            return;
+        }
+
+        var tools = await Api.ListToolsAsync();
+        if (!tools.IsSuccess)
+        {
+            FailLoad(tools.Problem!);
+            return;
+        }
+
+        // The list leaves the tools out; the detail of each server has them, with the review state. They are fetched together.
+        var details = await Task.WhenAll(servers.Value.Select(server => Api.GetToolServerAsync(server.Id)));
+        var detailed = new List<ToolServer>();
+        var failures = new Dictionary<Guid, string>();
+        for (var i = 0; i < details.Length; i++)
+        {
+            if (details[i].IsSuccess)
+            {
+                detailed.Add(details[i].Value);
+            }
+            else
+            {
+                detailed.Add(servers.Value[i]);
+                failures[servers.Value[i].Id] = details[i].Problem!.Message;
+            }
+        }
+
+        _servers = detailed;
+        _detailErrors = failures;
+        _native = tools.Value.Where(t => t.Origin == "Native").ToList();
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        _loaded = true;
+    }
+
+    // Before anything was loaded the problem replaces the page; afterwards the data on screen stays, with the problem next to it.
+    private void FailLoad(ApiProblem problem)
+    {
+        if (_loaded)
+        {
+            _problem = problem;
+        }
+        else
+        {
+            _loadProblem = problem;
+        }
+    }
+
+    private async Task ChangeToolAsync((ToolInfo Tool, string State, string Policy) change)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.UpdateToolAsync(change.Tool.Id, change.State, change.Policy);
+            if (!result.IsSuccess)
+            {
+                // The control already shows what the admin chose: draw the rows again from what the server has.
+                _problem = result.Problem;
+                _rowGeneration++;
+            }
+
+            await LoadAsync();
+        });
+    }
+
+    private async Task RefreshAsync(ToolServer server)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.RefreshToolServerAsync(server.Id);
+            if (result.IsSuccess)
+            {
+                _refreshed = (server.Id, result.Value);
+            }
+            else
+            {
+                // A failed refresh marks the server unavailable: show that, along with why.
+                _problem = result.Problem;
+            }
+
+            await LoadAsync();
+        });
+    }
+
+    private async Task DeleteAsync(ToolServer server)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.DeleteToolServerAsync(server.Id);
+            _deleting = null;
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+                return;
+            }
+
+            _notice = $"{server.Name} was deleted.";
+            await LoadAsync();
+        });
+    }
+
+    private void StartNew()
+    {
+        ClearMessages();
+        _form = new ServerForm();
+    }
+
+    private void Edit(ToolServer server)
+    {
+        ClearMessages();
+        _form = new ServerForm
+        {
+            Id = server.Id,
+            OriginalName = server.Name,
+            OriginalUrl = server.Url,
+            Name = server.Name,
+            Url = server.Url,
+            HadHeaders = server.HasHeaders,
+            Kind = server.Scope.Kind,
+            TenantsText = string.Join(Environment.NewLine, server.Scope.TenantIds),
+            AssistantIds = [.. server.Scope.AssistantIds],
+        };
+    }
+
+    private void CancelForm()
+    {
+        _form = null;
+        _formProblem = null;
+        _formError = null;
+        _test = null;
+    }
+
+    private void ToggleAssistant(Guid id, bool on)
+    {
+        if (on)
+        {
+            _form!.AssistantIds.Add(id);
+        }
+        else
+        {
+            _form!.AssistantIds.Remove(id);
+        }
+    }
+
+    private async Task TestAsync()
+    {
+        _formProblem = null;
+        _formError = null;
+        _test = null;
+
+        var form = _form!;
+        var (headers, error) = ToolAdminView.ParseHeaders(form.HeadersText);
+        if (error is not null)
+        {
+            _formError = error;
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await Api.TestToolServerAsync(form.Url.Trim(), headers);
+            if (result.IsSuccess)
+            {
+                _test = result.Value;
+            }
+            else
+            {
+                _formProblem = result.Problem;
+            }
+        });
+    }
+
+    private async Task SaveAsync()
+    {
+        _formProblem = null;
+        _formError = null;
+        var form = _form!;
+
+        var (headers, headersError) = ToolAdminView.ParseHeaders(form.HeadersText);
+        var (tenantIds, tenantsError) = form.Kind == ScopeKinds.Tenant ? ToolAdminView.ParseIds(form.TenantsText) : ([], null);
+        if ((headersError ?? tenantsError) is { } error)
+        {
+            _formError = error;
+            return;
+        }
+
+        if (form.RemoveHeaders && headers is not null)
+        {
+            _formError = "Either remove the stored headers or type new ones to replace them, not both.";
+            return;
+        }
+
+        // Omitted headers keep the stored ones; an empty object removes them.
+        IReadOnlyDictionary<string, string>? sentHeaders = headers;
+        if (form.Id is not null && form.RemoveHeaders && headers is null)
+        {
+            sentHeaders = new Dictionary<string, string>();
+        }
+
+        var scope = new ToolScope(
+            form.Kind,
+            tenantIds,
+            form.Kind == ScopeKinds.Assistant ? [.. form.AssistantIds] : []);
+        var request = new ToolServerRequest(form.Name.Trim(), form.Url.Trim(), sentHeaders, scope);
+
+        await RunAsync(async () =>
+        {
+            if (form.Id is { } id)
+            {
+                var updated = await Api.UpdateToolServerAsync(id, request);
+                if (!updated.IsSuccess)
+                {
+                    _formProblem = updated.Problem;
+                    return;
+                }
+
+                _notice = string.Equals(form.OriginalUrl, request.Url, StringComparison.Ordinal)
+                    ? $"{request.Name} was saved."
+                    : $"{request.Name} was saved. The address changed, so the server is unavailable until you refresh it.";
+            }
+            else
+            {
+                var created = await Api.CreateToolServerAsync(request);
+                if (!created.IsSuccess)
+                {
+                    _formProblem = created.Problem;
+                    return;
+                }
+
+                var pending = created.Value.Tools.Count(t => t.State == ToolStates.PendingReview);
+                _notice = created.Value.Warning
+                    ?? (pending > 0
+                        ? $"{request.Name} was registered. Review its {pending} tool(s) below before any model can use them."
+                        : $"{request.Name} was registered.");
+            }
+
+            CancelForm();
+            await LoadAsync();
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        ClearMessages(keepForm: true);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ClearMessages(bool keepForm = false)
+    {
+        _problem = null;
+        _notice = null;
+        _refreshed = null;
+        _deleting = null;
+        if (!keepForm)
+        {
+            CancelForm();
+        }
+    }
+
+    private static string Describe(string what, IReadOnlyList<string> names) =>
+        names.Count == 0 ? string.Empty : $"{what}: {string.Join(", ", names)}.";
+
+    private sealed class ServerForm
+    {
+        public Guid? Id { get; init; }
+
+        public string OriginalName { get; init; } = string.Empty;
+
+        public string OriginalUrl { get; init; } = string.Empty;
+
+        public string Name { get; set; } = string.Empty;
+
+        public string Url { get; set; } = string.Empty;
+
+        public string HeadersText { get; set; } = string.Empty;
+
+        public bool HadHeaders { get; init; }
+
+        public bool RemoveHeaders { get; set; }
+
+        public string Kind { get; set; } = ScopeKinds.Tenant;
+
+        public string TenantsText { get; set; } = string.Empty;
+
+        public HashSet<Guid> AssistantIds { get; init; } = [];
+    }
+}

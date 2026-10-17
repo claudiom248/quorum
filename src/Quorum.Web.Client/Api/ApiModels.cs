@@ -87,3 +87,72 @@ public sealed record ToolWarning(string Code, string Message);
 
 /// <summary>The tools in an assistant's pool and what to watch out for in the active set (too many, too large).</summary>
 public sealed record AssistantTools(IReadOnlyList<PoolTool> Pool, IReadOnlyList<ToolWarning> Warnings);
+
+public static class ToolStates
+{
+    public const string PendingReview = "PendingReview";
+    public const string Enabled = "Enabled";
+    public const string Disabled = "Disabled";
+}
+
+public static class ToolPolicies
+{
+    public const string Auto = "Auto";
+    public const string Confirm = "Confirm";
+}
+
+public static class ServerStatuses
+{
+    public const string Available = "Available";
+    public const string Unavailable = "Unavailable";
+}
+
+public static class ScopeKinds
+{
+    public const string Global = "Global";
+    public const string Tenant = "Tenant";
+    public const string Assistant = "Assistant";
+}
+
+/// <param name="Annotations">What the server claims about the tool (<c>readOnlyHint</c>...): information only, it never changes the policy.</param>
+public sealed record ToolInfo(
+    Guid Id,
+    string Origin,
+    string? ServerName,
+    string Name,
+    string Description,
+    string State,
+    string Policy,
+    JsonElement? Annotations);
+
+/// <param name="TenantIds">Tenants besides the owner that see the server (scope <c>Tenant</c>).</param>
+/// <param name="AssistantIds">Assistants that may use the server (scope <c>Assistant</c>).</param>
+public sealed record ToolScope(string Kind, IReadOnlyList<Guid> TenantIds, IReadOnlyList<Guid> AssistantIds);
+
+/// <param name="HasHeaders">Whether static headers are stored. Their values are never returned.</param>
+/// <param name="Shared"><see langword="true"/> for a server of another tenant made visible by its scope: read-only here.</param>
+/// <param name="Tools">Only in the detail of one server.</param>
+public sealed record ToolServer(
+    Guid Id,
+    string Name,
+    string Url,
+    bool HasHeaders,
+    string Status,
+    string? LastError,
+    DateTimeOffset? LastRefreshedAt,
+    ToolScope Scope,
+    int ToolCount,
+    int PendingReviewCount,
+    bool Shared,
+    IReadOnlyList<ToolInfo>? Tools = null);
+
+/// <param name="Headers">Omitted on an update: the stored ones stay. An empty object removes them.</param>
+public sealed record ToolServerRequest(string Name, string Url, IReadOnlyDictionary<string, string>? Headers, ToolScope Scope);
+
+public sealed record TestedTool(string Name, string Description, JsonElement? Annotations);
+
+public sealed record ToolServerTest(bool Reachable, IReadOnlyList<TestedTool> Tools);
+
+public sealed record CreatedToolServer(Guid Id, string Status, string? Warning, IReadOnlyList<ToolInfo> Tools);
+
+public sealed record ToolRefresh(string Status, IReadOnlyList<string> Added, IReadOnlyList<string> Changed, IReadOnlyList<string> Removed);
