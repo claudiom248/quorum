@@ -1,0 +1,96 @@
+<div class="tool-row state-@Tool.State.ToLowerInvariant()" data-tool="@Tool.Name">
+    <div class="tool-row-head">
+        <span class="tool-name">@Tool.Name</span>
+        @if (Tool.State == ToolStates.PendingReview)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@ToolAdminView.StateLabel(Tool.State)</MudChip>
+        }
+        @foreach (var hint in ToolAdminView.DescribeAnnotations(Tool.Annotations))
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="tool-hint-chip">@hint</MudChip>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Tool.Description))
+    {
+        <div class="tool-row-description">@Tool.Description</div>
+    }
+
+    @if (ToolAdminView.DescribeAnnotations(Tool.Annotations).Count > 0)
+    {
+        <div class="tool-hint">Hints claimed by the server. They do not change the policy.</div>
+    }
+
+    @if (ReadOnly)
+    {
+        <div class="tool-hint">@ToolAdminView.StateLabel(Tool.State) · @PolicyLabel · managed by the tenant that owns the server</div>
+    }
+    else if (Tool.State == ToolStates.PendingReview)
+    {
+        <div class="tool-row-controls">
+            <label class="tool-policy">Policy
+                <select aria-label="Policy of @Tool.Name" @bind="_policy" disabled="@Busy">
+                    <option value="@ToolPolicies.Confirm">Ask before running</option>
+                    <option value="@ToolPolicies.Auto">Run without asking</option>
+                </select>
+            </label>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="Busy"
+                       OnClick="() => ChangeAsync(ToolStates.Enabled, _policy)">Approve and enable</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="Busy"
+                       OnClick="() => ChangeAsync(ToolStates.Disabled, _policy)">Keep disabled</MudButton>
+        </div>
+    }
+    else
+    {
+        <div class="tool-row-controls">
+            <MudSwitch T="bool" Value="Tool.State == ToolStates.Enabled" ValueChanged="EnabledChangedAsync" Color="Color.Primary"
+                       Label="Enabled" Disabled="Busy" aria-label="@($"Enable {Tool.Name}")" />
+            <label class="tool-policy">Policy
+                <select aria-label="Policy of @Tool.Name" value="@Tool.Policy" @onchange="PolicyChangedAsync" disabled="@Busy">
+                    <option value="@ToolPolicies.Confirm">Ask before running</option>
+                    <option value="@ToolPolicies.Auto">Run without asking</option>
+                </select>
+            </label>
+        </div>
+    }
+</div>
+
+@code {
+    private string _policy = ToolPolicies.Confirm;
+    private (Guid Id, string Policy)? _synced;
+
+    [Parameter, EditorRequired]
+    public ToolInfo Tool { get; set; } = null!;
+
+    /// <summary>A tool of a server another tenant shares: its review belongs to the owner.</summary>
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Called with the state and the policy the admin chose; the page sends them to the server.</summary>
+    [Parameter]
+    public EventCallback<(ToolInfo Tool, string State, string Policy)> OnChange { get; set; }
+
+    private string PolicyLabel => Tool.Policy == ToolPolicies.Auto ? "runs without asking" : "asks before running";
+
+    // A tool pending review shows the policy it came back with (Confirm) until the admin picks another; a re-render of the
+    // page must not undo that choice, so the stored value is copied only when it changed.
+    protected override void OnParametersSet()
+    {
+        if (_synced != (Tool.Id, Tool.Policy))
+        {
+            _policy = Tool.Policy;
+            _synced = (Tool.Id, Tool.Policy);
+        }
+    }
+
+    private Task EnabledChangedAsync(bool enabled) =>
+        ChangeAsync(enabled ? ToolStates.Enabled : ToolStates.Disabled, Tool.Policy);
+
+    private Task PolicyChangedAsync(ChangeEventArgs e) =>
+        ChangeAsync(Tool.State, e.Value?.ToString() ?? Tool.Policy);
+
+    private Task ChangeAsync(string state, string policy) => OnChange.InvokeAsync((Tool, state, policy));
+}

@@ -12,6 +12,11 @@
             <MudText Typo="Typo.h6" Class="brand">Quorum</MudText>
             <MudButton Href="/" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Chat" Class="ml-4">Chat</MudButton>
             <MudButton Href="settings" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Tune">Settings</MudButton>
+            @* Every call behind the Tools page needs tools.manage, which only Admin holds today. *@
+            @if (Session.User?.Role == "Admin")
+            {
+                <MudButton Href="tools" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Build">Tools</MudButton>
+            }
             <MudButton Href="lab/editor" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Code">Editor lab</MudButton>
             <MudSpacer />
             <MudIconButton Icon="@(Theme.IsDark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
