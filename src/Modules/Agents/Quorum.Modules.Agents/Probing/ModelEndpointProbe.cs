@@ -11,7 +11,7 @@ internal sealed partial class ModelEndpointProbe(IHttpClientFactory httpClientFa
 {
     public const string HttpClientName = "model-endpoint-probe";
 
-    public async Task<Result<ModelProbeResult>> ProbeAsync(Uri baseUrl, string? apiKey, CancellationToken cancellationToken)
+    public async Task<Result<ModelProbeResult>> ProbeAsync(Uri baseUrl, string? apiKey, string? modelName, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(baseUrl);
 
@@ -31,7 +31,8 @@ internal sealed partial class ModelEndpointProbe(IHttpClientFactory httpClientFa
             }
 
             var models = await response.Content.ReadFromJsonAsync<ModelList>(cancellationToken);
-            return new ModelProbeResult(models?.Data?.Select(model => model.Id).ToList() ?? []);
+            var supportsTools = string.IsNullOrWhiteSpace(modelName) ? null : await ReadToolSupportAsync(client, baseUrl, apiKey, modelName.Trim(), cancellationToken);
+            return new ModelProbeResult(models?.Data?.Select(model => model.Id).ToList() ?? [], supportsTools);
         }
         catch (HttpRequestException exception)
         {
@@ -48,6 +49,46 @@ internal sealed partial class ModelEndpointProbe(IHttpClientFactory httpClientFa
         }
     }
 
+    /// <summary>
+    /// Asks the server what the model can do through Ollama's <c>POST /api/show</c>, which lives at the server's root rather
+    /// than under the OpenAI base URL. Other servers have no such API: any failure just means the support is unknown.
+    /// </summary>
+    private static async Task<bool?> ReadToolSupportAsync(HttpClient client, Uri baseUrl, string? apiKey, string modelName, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUrl, "/api/show"))
+        {
+            Content = JsonContent.Create(new { model = modelName }),
+        };
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        }
+
+        try
+        {
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var details = await response.Content.ReadFromJsonAsync<ModelDetails>(cancellationToken);
+            return details?.Capabilities is null ? null : details.Capabilities.Contains("tools", StringComparer.OrdinalIgnoreCase);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static Error Unreachable(Uri baseUrl, string reason) =>
         Error.Unprocessable("model_endpoint.unreachable", $"Cannot reach the model endpoint at {baseUrl}: {reason}.");
 
@@ -57,4 +98,6 @@ internal sealed partial class ModelEndpointProbe(IHttpClientFactory httpClientFa
     private sealed record ModelList(IReadOnlyList<ModelEntry>? Data);
 
     private sealed record ModelEntry(string Id);
+
+    private sealed record ModelDetails(IReadOnlyList<string>? Capabilities);
 }

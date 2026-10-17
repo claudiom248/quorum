@@ -33,7 +33,13 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
             from assistant in db.Assistants
             join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
             orderby assistant.Id
-            select new AssistantSettingsResponse(endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey != null, endpoint.ContextTokenBudget, assistant.SystemPrompt))
+            select new AssistantSettingsResponse(
+                endpoint.BaseUrl,
+                endpoint.ModelName,
+                endpoint.ProtectedApiKey != null,
+                endpoint.ContextTokenBudget,
+                assistant.SystemPrompt,
+                endpoint.SupportsTools))
             .FirstOrDefaultAsync(cancellationToken);
 
         return settings is null ? NotConfigured.ToProblem() : TypedResults.Ok(settings);
@@ -41,6 +47,7 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
 
     /// <summary>
     /// <c>apiKey</c>: omitted or <see langword="null"/> keeps the stored key, an empty string removes it.
+    /// <c>supportsTools</c>: omitted or <see langword="null"/> keeps the stored value.
     /// </summary>
     private static async Task<Results<NoContent, ValidationProblem, ProblemHttpResult>> UpdateAsync(
         UpdateAssistantSettingsRequest request,
@@ -63,7 +70,7 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
         }
 
         var now = clock.GetUtcNow();
-        endpoint.Configure(baseUrl!, request.ModelName!.Trim(), request.ContextTokenBudget, now);
+        endpoint.Configure(baseUrl!, request.ModelName!.Trim(), request.ContextTokenBudget, request.SupportsTools, now);
         if (request.ApiKey is not null)
         {
             endpoint.ReplaceApiKey(apiKeyProtector.Protect(request.ApiKey.Trim()), now);
@@ -100,10 +107,10 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
             apiKey = apiKeyProtector.Unprotect(stored);
         }
 
-        var result = await probe.ProbeAsync(baseUrl, apiKey, cancellationToken);
+        var result = await probe.ProbeAsync(baseUrl, apiKey, request.ModelName, cancellationToken);
 
         return result.IsSuccess
-            ? TypedResults.Ok(new ModelConnectionResponse(Reachable: true, result.Value.Models))
+            ? TypedResults.Ok(new ModelConnectionResponse(Reachable: true, result.Value.Models, result.Value.SupportsTools))
             : result.Error.ToProblem();
     }
 
@@ -135,10 +142,22 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
     }
 }
 
-internal sealed record AssistantSettingsResponse(string BaseUrl, string ModelName, bool HasApiKey, int ContextTokenBudget, string SystemPrompt);
+internal sealed record AssistantSettingsResponse(
+    string BaseUrl,
+    string ModelName,
+    bool HasApiKey,
+    int ContextTokenBudget,
+    string SystemPrompt,
+    bool SupportsTools);
 
-internal sealed record UpdateAssistantSettingsRequest(string? BaseUrl, string? ModelName, string? ApiKey, int ContextTokenBudget, string? SystemPrompt);
+internal sealed record UpdateAssistantSettingsRequest(
+    string? BaseUrl,
+    string? ModelName,
+    string? ApiKey,
+    int ContextTokenBudget,
+    string? SystemPrompt,
+    bool? SupportsTools);
 
-internal sealed record TestConnectionRequest(string? BaseUrl, string? ApiKey);
+internal sealed record TestConnectionRequest(string? BaseUrl, string? ApiKey, string? ModelName);
 
-internal sealed record ModelConnectionResponse(bool Reachable, IReadOnlyList<string> Models);
+internal sealed record ModelConnectionResponse(bool Reachable, IReadOnlyList<string> Models, bool? SupportsTools);

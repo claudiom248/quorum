@@ -74,8 +74,13 @@ public static class TenancyModule
                 return Task.CompletedTask;
             };
         });
+        // The one place that says which role holds which permission: only the administrator exists today, and a
+        // dedicated users and roles spec will change this mapping without touching the endpoints, which name permissions.
         services.AddAuthorizationBuilder()
-            .AddPolicy(AdminPolicy, policy => policy.RequireRole(Roles.Admin));
+            .AddPolicy(AdminPolicy, policy => policy.RequireRole(Roles.Admin))
+            .AddPolicy(QuorumPolicies.ToolsManage, policy => policy.RequireRole(Roles.Admin))
+            .AddPolicy(QuorumPolicies.ToolsAttach, policy => policy.RequireRole(Roles.Admin))
+            .AddPolicy(QuorumPolicies.ToolsUse, policy => policy.RequireRole(Roles.Admin));
 
         return services;
     }

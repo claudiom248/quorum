@@ -14,6 +14,7 @@ namespace Quorum.Integration.Tests.Fixtures;
 public sealed class FakeModelServer : HttpMessageHandler
 {
     private readonly ConcurrentDictionary<string, string[]> _endpoints = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string[]> _capabilities = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<JsonElement> _chatRequests = new();
 
     public string? LastAuthorization { get; private set; }
@@ -25,12 +26,28 @@ public sealed class FakeModelServer : HttpMessageHandler
 
     public void Serve(string baseUrl, params string[] models) => _endpoints[baseUrl.TrimEnd('/')] = models;
 
+    /// <summary>
+    /// Makes the server describe a model the way Ollama's <c>POST /api/show</c> does. Models without a description answer 404,
+    /// like servers that have no such API.
+    /// </summary>
+    public void Describe(string baseUrl, string model, params string[] capabilities) =>
+        _capabilities[$"{new Uri(baseUrl).Authority}|{model}"] = capabilities;
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         LastAuthorization = request.Headers.Authorization?.ToString();
 
         var url = request.RequestUri!.GetLeftPart(UriPartial.Path);
+        if (request.Method == HttpMethod.Post && request.RequestUri.AbsolutePath == "/api/show"
+            && _endpoints.Keys.Any(baseUrl => new Uri(baseUrl).Authority.Equals(request.RequestUri.Authority, StringComparison.OrdinalIgnoreCase)))
+        {
+            var model = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.GetProperty("model").GetString();
+            return _capabilities.TryGetValue($"{request.RequestUri.Authority}|{model}", out var capabilities)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { capabilities }) }
+                : new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
+
         foreach (var (baseUrl, models) in _endpoints)
         {
             if (url.Equals($"{baseUrl}/models", StringComparison.OrdinalIgnoreCase))

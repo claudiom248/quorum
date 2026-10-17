@@ -17,14 +17,14 @@ internal static class TestModelConnection
             return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["baseUrl"] = [ModelEndpointRules.InvalidBaseUrl] });
         }
 
-        var result = await probe.ProbeAsync(baseUrl, request.ApiKey, cancellationToken);
+        var result = await probe.ProbeAsync(baseUrl, request.ApiKey, request.ModelName, cancellationToken);
 
         return result.IsSuccess
-            ? TypedResults.Ok(new ModelConnectionResponse(Reachable: true, result.Value.Models))
+            ? TypedResults.Ok(new ModelConnectionResponse(Reachable: true, result.Value.Models, result.Value.SupportsTools))
             : result.Error.ToProblem();
     }
 }
 
-internal sealed record TestModelConnectionRequest(string? BaseUrl, string? ApiKey);
+internal sealed record TestModelConnectionRequest(string? BaseUrl, string? ApiKey, string? ModelName);
 
-internal sealed record ModelConnectionResponse(bool Reachable, IReadOnlyList<string> Models);
+internal sealed record ModelConnectionResponse(bool Reachable, IReadOnlyList<string> Models, bool? SupportsTools);

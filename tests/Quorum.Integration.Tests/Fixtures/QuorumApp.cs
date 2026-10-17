@@ -2,11 +2,15 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Probing;
+using Quorum.Modules.Tenancy.Domain;
+using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
 using Serilog;
 
@@ -93,6 +97,40 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         }
 
         client.DefaultRequestHeaders.Remove("X-Setup-Token");
+        return client;
+    }
+
+    /// <summary>
+    /// Creates a signed-in user that holds none of the administrator's permissions (the users and roles spec will define real ones).
+    /// Call after <see cref="SetUpAsync"/>.
+    /// </summary>
+    public async Task<HttpClient> CreateMemberClientAsync(string email = "member@acme.test", string password = AdminPassword)
+    {
+        await using (var scope = Services.CreateAsyncScope())
+        {
+            var tenantId = await scope.ServiceProvider.GetRequiredService<TenancyDbContext>().Tenants.Select(t => t.Id).SingleAsync();
+            var created = await scope.ServiceProvider.GetRequiredService<UserManager<QuorumUser>>().CreateAsync(
+                new QuorumUser
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    UserName = email,
+                    Email = email,
+                    DisplayName = "Acme Member",
+                    Role = "Member",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    LockoutEnabled = true,
+                },
+                password);
+            if (!created.Succeeded)
+            {
+                throw new InvalidOperationException($"Cannot create the member: {string.Join("; ", created.Errors.Select(e => e.Description))}");
+            }
+        }
+
+        var client = CreateUiClient();
+        using var login = await client.PostAsJsonAsync(new Uri("/api/auth/login", UriKind.Relative), new { email, password });
+        login.EnsureSuccessStatusCode();
         return client;
     }
 

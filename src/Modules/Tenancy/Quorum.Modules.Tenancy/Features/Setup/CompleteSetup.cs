@@ -74,7 +74,8 @@ internal static class CompleteSetup
                         modelRequest.ModelName!.Trim(),
                         string.IsNullOrWhiteSpace(modelRequest.ApiKey) ? null : modelRequest.ApiKey.Trim(),
                         modelRequest.ContextTokenBudget ?? AssistantDefaults.ContextTokenBudget,
-                        string.IsNullOrWhiteSpace(request.SystemPrompt) ? AssistantDefaults.SystemPrompt : request.SystemPrompt.Trim()),
+                        string.IsNullOrWhiteSpace(request.SystemPrompt) ? AssistantDefaults.SystemPrompt : request.SystemPrompt.Trim(),
+                        modelRequest.SupportsTools ?? true),
                     cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
@@ -101,4 +102,4 @@ internal sealed record CompleteSetupRequest(AdminRequest? Admin, ModelRequest? M
 
 internal sealed record AdminRequest(string? Email, string? DisplayName, string? Password);
 
-internal sealed record ModelRequest(string? BaseUrl, string? ModelName, string? ApiKey, int? ContextTokenBudget);
+internal sealed record ModelRequest(string? BaseUrl, string? ModelName, string? ApiKey, int? ContextTokenBudget, bool? SupportsTools);
