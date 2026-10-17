@@ -1,9 +1,18 @@
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>A tool as it is sent to the model: the name the model calls it by, its description and its argument schema.</summary>
-internal sealed record ToolDefinition(string Name, string Description, string InputSchema);
+internal sealed record ToolDefinition(string Name, string Description, string InputSchema)
+{
+    /// <summary>The definition of a tool the model is offered: the one source of what its request carries and what the budget counts.</summary>
+    public static ToolDefinition From(AIFunctionDeclaration tool)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        return new ToolDefinition(tool.Name, tool.Description, tool.JsonSchema.GetRawText());
+    }
+}
 
 internal static class ToolNaming
 {

@@ -86,17 +86,33 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("native__teleport", """{"where":"home"}""")),
+            ChatScript.CallTools(new FakeToolCall("native__calculator", """{"where":"home"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
         await ChatApi.SendAsync(client, id, "Go");
 
         var entry = Assert.Single(await ToolFixtures.AuditRowsAsync(app));
-        Assert.Equal("native__teleport", entry.ToolName);
+        Assert.Equal("calculator", entry.ToolName);
         Assert.Equal("Failed", entry.Outcome);
-        Assert.Equal("tool.unknown", entry.ErrorCode);
+        Assert.Equal("tool.invalid_arguments", entry.ErrorCode);
         Assert.NotNull(entry.CompletedAt);
+    }
+
+    [Fact] // AC-41: a tool that was never offered cannot be called, so the call is only logged
+    public async Task ACallToAToolThatWasNotOfferedLeavesNoAuditEntryButIsLogged()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync();
+        app.ModelServer.EnqueueRounds(
+            ChatScript.CallTools(new FakeToolCall("native__teleport", """{"where":"home"}""")),
+            ChatScript.Reply("No."));
+        var id = await ChatApi.CreateConversationAsync(client);
+
+        await ChatApi.SendAsync(client, id, "Go");
+
+        Assert.Empty(await ToolFixtures.AuditRowsAsync(app));
+        Assert.Contains(app.Logs.Messages, message => message.Contains("native__teleport", StringComparison.Ordinal));
     }
 
     [Fact] // AC-41

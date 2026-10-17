@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 
 namespace Quorum.Modules.Agents.Chat;
 
@@ -12,8 +13,6 @@ internal sealed class ToolCallAssembler
 {
     private readonly List<Partial> _calls = [];
     private readonly Dictionary<int, Partial> _byIndex = [];
-
-    public bool HasCalls => _calls.Count > 0;
 
     /// <param name="toolCalls">The <c>tool_calls</c> array of one delta.</param>
     public void Add(JsonElement toolCalls)
@@ -66,11 +65,15 @@ internal sealed class ToolCallAssembler
         }
     }
 
-    /// <summary>The calls in the order the model emitted them, each with a unique id and arguments that are at least <c>{}</c>.</summary>
-    public IReadOnlyList<ModelToolCall> Build()
+    /// <summary>
+    /// The calls in the order the model emitted them, each with a unique id. The arguments text as sent is kept under
+    /// <see cref="OpenAiChatClient.RawArgumentsKey"/>; a call whose arguments are not a JSON object carries the reason in
+    /// <see cref="FunctionCallContent.Exception"/>.
+    /// </summary>
+    public IReadOnlyList<FunctionCallContent> Build()
     {
         var used = new HashSet<string>(StringComparer.Ordinal);
-        var calls = new List<ModelToolCall>(_calls.Count);
+        var calls = new List<FunctionCallContent>(_calls.Count);
 
         foreach (var partial in _calls)
         {
@@ -85,10 +88,38 @@ internal sealed class ToolCallAssembler
             }
 
             var arguments = partial.Arguments.ToString();
-            calls.Add(new ModelToolCall(id, partial.Name, string.IsNullOrWhiteSpace(arguments) ? "{}" : arguments));
+            calls.Add(Call(id, partial.Name, string.IsNullOrWhiteSpace(arguments) ? "{}" : arguments));
         }
 
         return calls;
+    }
+
+    private static FunctionCallContent Call(string id, string name, string raw)
+    {
+        FunctionCallContent call;
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("The arguments are not a JSON object.");
+            }
+
+            var arguments = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                arguments[property.Name] = property.Value.Clone();
+            }
+
+            call = new FunctionCallContent(id, name, arguments);
+        }
+        catch (JsonException exception)
+        {
+            call = new FunctionCallContent(id, name, null) { Exception = exception };
+        }
+
+        call.AdditionalProperties = new AdditionalPropertiesDictionary { [OpenAiChatClient.RawArgumentsKey] = raw };
+        return call;
     }
 
     private static string? Text(JsonElement element, string property) =>

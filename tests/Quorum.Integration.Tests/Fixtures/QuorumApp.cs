@@ -180,7 +180,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
                 },
                 preserveStaticLogger: true);
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
-            services.AddHttpClient(OpenAiChatStream.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddHttpClient(OpenAiChatClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddSingleton<INativeTool>(Probe);
             if (Clock is not null)
             {

@@ -16,6 +16,7 @@ Status: **initial solution scaffold created, no features implemented**. Product 
 
 - **.NET 10** / C# 14, ASP.NET Core Minimal APIs (`IEndpointGroup` per feature)
 - **EF Core** — one DbContext and one schema per module, **PostgreSQL**
+- **Microsoft.Extensions.AI** (`IChatClient`, `AIFunction`, `FunctionInvokingChatClient`) and **Microsoft Agent Framework** (`ChatClientAgent`) in the Agents module wherever they overlap with what we need; own adapters only at the edges (model endpoint, tool invoker). Their types never cross `Quorum.Modules.Agents.Contracts`.
 - **Wolverine** — inter-module messaging with transactional outbox (introduced with the first asynchronous flow)
 - **FluentValidation**, **Serilog**
 - **xUnit v3** + **Testcontainers**

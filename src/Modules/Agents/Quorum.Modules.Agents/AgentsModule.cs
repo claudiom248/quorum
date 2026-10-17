@@ -25,16 +25,16 @@ public static class AgentsModule
         services.AddHttpClient(ModelEndpointProbe.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
         // The timeout bounds the wait for the model's first byte (small local models can take minutes to load);
         // once the answer streams, it runs for as long as the model needs.
-        services.AddHttpClient(OpenAiChatStream.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
+        services.AddHttpClient(OpenAiChatClient.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();
         services.AddScoped<IAssistantChat>(provider => provider.GetRequiredService<AssistantChat>());
         services.AddScoped<IAssistantCatalog>(provider => provider.GetRequiredService<AssistantChat>());
-        services.AddSingleton<OpenAiChatStream>();
-        services.AddScoped<ToolLoop>();
-        services.AddScoped<ToolExecutor>();
+        services.AddSingleton<QuorumToolFactory>();
+        services.AddScoped<AnswerPipeline>();
+        services.AddScoped<ToolCallInvoker>();
         services.AddScoped<ToolAccess>();
         services.AddSingleton<INativeTool, CalculatorTool>();
         services.AddSingleton<INativeTool, CurrentDateTimeTool>();
