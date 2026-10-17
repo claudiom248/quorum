@@ -8,18 +8,19 @@ namespace Quorum.Modules.Agents.Tools;
 internal sealed record ActiveTool(Guid ToolId, ToolOrigin Origin, string Name, string ExposedName, string? ServerName, string Description, string InputSchema);
 
 /// <summary>The limits of the tool-calling loop for one answer, read once from the tenant's settings.</summary>
-internal sealed record ToolLimits(int MaxRounds, TimeSpan TotalTimeout, TimeSpan CallTimeout, int MaxResultCharacters)
+internal sealed record ToolLimits(int MaxRounds, TimeSpan TotalTimeout, TimeSpan CallTimeout, int MaxResultCharacters, TimeSpan ConfirmationTimeout)
 {
     public static ToolLimits From(ToolSettings settings) => new(
         settings.MaxRounds,
         TimeSpan.FromSeconds(settings.TotalTimeoutSeconds),
         TimeSpan.FromSeconds(settings.CallTimeoutSeconds),
-        settings.MaxResultCharacters);
+        settings.MaxResultCharacters,
+        TimeSpan.FromSeconds(settings.ConfirmationTimeoutSeconds));
 
     public static ToolLimits Default { get; } = From(ToolSettings.CreateDefault(Guid.Empty));
 
     /// <summary>For an answer without tools: one round and no time limit beyond what the model server imposes, as before tools existed.</summary>
-    public static ToolLimits Unbounded { get; } = new(1, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan, int.MaxValue);
+    public static ToolLimits Unbounded { get; } = new(1, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan, int.MaxValue, Timeout.InfiniteTimeSpan);
 }
 
 /// <summary>Who is answering what, for the invoker and the audit log.</summary>

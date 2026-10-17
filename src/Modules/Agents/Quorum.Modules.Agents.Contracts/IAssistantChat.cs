@@ -94,6 +94,9 @@ public enum AnswerChunkKind
 
     /// <summary>A tool call ended: <see cref="AnswerChunk.Tool"/> is a <see cref="ToolResultEvent"/>.</summary>
     ToolResult,
+
+    /// <summary>The model asks the user a question and the answer waits for it: <see cref="AnswerChunk.Tool"/> is a <see cref="UserQuestionEvent"/>.</summary>
+    UserQuestion,
 }
 
 /// <summary>
@@ -109,6 +112,10 @@ public abstract record ToolEvent(Guid CallId);
 /// <param name="Arguments">The arguments as the model sent them: JSON text when they are valid JSON.</param>
 public sealed record ToolCallEvent(Guid CallId, string Tool, string Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt)
     : ToolEvent(CallId);
+
+/// <param name="Question">What the model wants to know, as it wrote it.</param>
+/// <param name="ExpiresAt">When the question counts as unanswered.</param>
+public sealed record UserQuestionEvent(Guid CallId, string Question, DateTimeOffset ExpiresAt) : ToolEvent(CallId);
 
 /// <param name="Content">The result, or the error that the model received in its place.</param>
 public sealed record ToolResultEvent(Guid CallId, ToolResultStatus Status, string Content, int SizeCharacters)

@@ -15,12 +15,15 @@ internal sealed record ToolCallResult(ToolResultStatus Status, string Content);
 
 /// <summary>
 /// The <see cref="FunctionInvokingChatClient.FunctionInvoker"/> of an answer: runs one tool call the model asked for. It checks at
-/// call time that the tool is still active, validates the arguments, records the call in the audit log before running it, runs
-/// it within the call timeout and the time left, and caps the result. Whatever goes wrong becomes an error result for the model;
-/// nothing here throws for a bad call, because the function-invoking client would turn an exception into a vague error.
+/// call time that the tool is still active, validates the arguments, waits for the user's confirmation when the policy asks for
+/// it, records the call in the audit log before running it, runs it within the call timeout and the time left, and caps the result.
+/// Whatever goes wrong becomes an error result for the model; nothing here throws for a bad call, because the function-invoking
+/// client would turn an exception into a vague error.
 /// </summary>
-internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider clock, ILogger<ToolCallInvoker> logger)
+internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInteractions interactions, TimeProvider clock, ILogger<ToolCallInvoker> logger)
 {
+    internal const int MaxQuestionCharacters = 2000;
+
     private const int MaxAuditedNameLength = 128;
 
     /// <exception cref="OperationCanceledException">The user stopped the answer; the call was audited as cancelled.</exception>
@@ -66,17 +69,66 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
 
         var prepared = await PrepareAsync(run.Context, tool, call, raw, cancellationToken);
 
-        // Where a call that needs the user's confirmation is published, with its expiry, before the answer waits for the decision.
-        await run.PublishAsync(
-            new AnswerChunk(
-                AnswerChunkKind.ToolCall,
-                string.Empty,
-                new ToolCallEvent(callId, call.Name, raw, RequiresConfirmation: false, ExpiresAt: null)),
-            cancellationToken);
+        var asksUser = prepared.Refusal is null && prepared.Question is not null;
+        var needsConfirmation = prepared.Refusal is null && !asksUser && prepared.Policy == ToolPolicy.Confirm;
 
-        var result = prepared.Refusal is { } refusal
-            ? await RefuseAsync(run.Context, info, refusal)
-            : await ExecuteAsync(run, tool!, call, raw, info, cancellationToken);
+        // Everything the wait needs is in place before the call is published: the client may reply, or the time may pass, the moment it sees the event.
+        PendingInteraction? pending = null;
+        UserWait? wait = null;
+        DateTimeOffset? expiresAt = null;
+        if (asksUser || needsConfirmation)
+        {
+            pending = interactions.Register(callId, run.Context.TenantId, run.Context.UserId, run.Context.ConversationId, asksUser ? InteractionKind.Question : InteractionKind.Confirmation);
+            wait = new UserWait(new CancellationTokenSource(run.Context.Limits.ConfirmationTimeout, clock), run.Deadline.Pause());
+            expiresAt = clock.GetUtcNow() + run.Context.Limits.ConfirmationTimeout;
+        }
+
+        using var _ = wait;
+
+        try
+        {
+            await run.PublishAsync(
+                new AnswerChunk(
+                    AnswerChunkKind.ToolCall,
+                    string.Empty,
+                    new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null)),
+                cancellationToken);
+
+            if (asksUser)
+            {
+                await run.PublishAsync(
+                    new AnswerChunk(AnswerChunkKind.UserQuestion, string.Empty, new UserQuestionEvent(callId, prepared.Question!, expiresAt!.Value)),
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (pending is not null)
+        {
+            // Stopped before the wait began: the call was announced, so it is recorded as cancelled like one stopped while waiting.
+            interactions.GiveUp(pending);
+            await RecordAsync(run.Context, info, Cancelled(pending.Kind));
+            throw;
+        }
+
+        ToolCallResult result;
+        if (prepared.Refusal is { } refusal)
+        {
+            result = await RecordAsync(run.Context, info, refusal);
+        }
+        else if (pending is null)
+        {
+            result = await ExecuteAsync(run, tool!, call, raw, info, ToolDecision.Auto, cancellationToken);
+        }
+        else
+        {
+            var reply = await WaitForReplyAsync(run, info, pending, wait!, cancellationToken);
+            result = reply switch
+            {
+                null => await RecordAsync(run.Context, info, asksUser ? QuestionTimedOut : ConfirmationTimedOut),
+                { } answered when asksUser => await RecordAsync(run.Context, info, Answered(answered.Answer!, run.Context.Limits.MaxResultCharacters)),
+                { Approved: false } => await RecordAsync(run.Context, info, Denied),
+                _ => await RunApprovedAsync(run, tool!, call, raw, info, cancellationToken),
+            };
+        }
 
         await run.PublishAsync(
             new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, result.Status, result.Content, result.Content.Length)),
@@ -92,37 +144,99 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
         return result.Content;
     }
 
+    /// <summary>
+    /// Runs a call the user approved. The wait can be long, so the tool is checked again: one that an administrator disabled or took
+    /// off the assistant meanwhile must not run on an approval given for what was true before.
+    /// </summary>
+    private async Task<ToolCallResult> RunApprovedAsync(
+        AnswerRun run,
+        QuorumTool tool,
+        FunctionCallContent call,
+        string rawArguments,
+        CallInfo info,
+        CancellationToken cancellationToken)
+    {
+        if (await CurrentPolicyAsync(run.Context, tool.Descriptor, cancellationToken) is null)
+        {
+            return await RecordAsync(
+                run.Context,
+                info,
+                new Verdict(
+                    ToolOutcome.Failed,
+                    ToolResultStatus.Failed,
+                    ToolDecision.Approved,
+                    "tool.unavailable",
+                    $"The tool '{call.Name}' is no longer available, so it was not run."));
+        }
+
+        return await ExecuteAsync(run, tool, call, rawArguments, info, ToolDecision.Approved, cancellationToken);
+    }
+
     /// <summary>The checks at call time that decide whether the call may run. Nothing is written yet.</summary>
     private async Task<Prepared> PrepareAsync(ToolRunContext context, QuorumTool? tool, FunctionCallContent call, string rawArguments, CancellationToken cancellationToken)
     {
         var policy = tool is null ? null : await CurrentPolicyAsync(context, tool.Descriptor, cancellationToken);
         if (tool is null || policy is null)
         {
-            return new Prepared(null, new Refusal(ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.unavailable", $"The tool '{call.Name}' is no longer available."));
+            return new Prepared(null, Failed("tool.unavailable", $"The tool '{call.Name}' is no longer available."));
         }
 
         // A call whose arguments are not even JSON arrives with its parse error; the validator names what is wrong with the rest.
         var problem = ToolArgumentValidator.Validate(tool.Descriptor.InputSchema, rawArguments)
             ?? (call.Exception is null ? null : "The arguments are not valid JSON.");
-        if (problem is not null)
+        if (problem is null && tool is AskUserQuorumTool)
         {
-            return new Prepared(policy, new Refusal(ToolOutcome.Failed, ToolResultStatus.Failed, null, "tool.invalid_arguments", $"The arguments for '{call.Name}' are not valid. {problem}"));
+            var question = QuestionOf(rawArguments);
+            problem = question switch
+            {
+                { Length: 0 } => "The question is empty.",
+                { Length: > MaxQuestionCharacters } => $"The question is too long ({question.Length} characters; the limit is {MaxQuestionCharacters}).",
+                _ => null,
+            };
+            if (problem is null)
+            {
+                return new Prepared(policy, null, question);
+            }
         }
 
-        if (policy == ToolPolicy.Confirm)
-        {
-            // Asking the user comes with the confirmation flow; until then a tool that needs a yes never runs.
-            return new Prepared(
-                policy,
-                new Refusal(
-                    ToolOutcome.Denied,
-                    ToolResultStatus.Denied,
-                    ToolDecision.Denied,
-                    "tool.confirmation_unavailable",
-                    $"The tool '{call.Name}' needs the user's confirmation, which is not available yet, so it was not run."));
-        }
+        return problem is not null
+            ? new Prepared(policy, Failed("tool.invalid_arguments", $"The arguments for '{call.Name}' are not valid. {problem}"))
+            : new Prepared(policy, null);
+    }
 
-        return new Prepared(policy, null);
+    private static string QuestionOf(string rawArguments)
+    {
+        using var document = JsonDocument.Parse(rawArguments);
+        return document.RootElement.GetProperty("question").GetString()?.Trim() ?? string.Empty;
+    }
+
+    /// <summary>Waits for the user with the answer's clock stopped: the time spent deciding is not the model's or the tools'.</summary>
+    /// <returns>The reply, or <see langword="null"/> when the confirmation timeout passed.</returns>
+    /// <exception cref="OperationCanceledException">The user stopped the answer; the call was audited as cancelled.</exception>
+    private async Task<InteractionReply?> WaitForReplyAsync(AnswerRun run, CallInfo info, PendingInteraction pending, UserWait wait, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, wait.Expired);
+        try
+        {
+            return await pending.Reply.WaitAsync(linked.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A reply that came in the same instant as the timeout was accepted (the user got a 204), so it is the one that counts.
+            return interactions.GiveUp(pending) ? null : pending.Reply.Result;
+        }
+        catch (OperationCanceledException)
+        {
+            // Closing the stream, leaving the page and stopping the answer all count as a denial that nothing ran under.
+            interactions.GiveUp(pending);
+            await RecordAsync(run.Context, info, Cancelled(pending.Kind));
+            throw;
+        }
+        finally
+        {
+            // The tool, if it runs now, is run against the total time again.
+            wait.Resume();
+        }
     }
 
     private async Task<ToolCallResult> ExecuteAsync(
@@ -131,6 +245,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
         FunctionCallContent call,
         string rawArguments,
         CallInfo info,
+        ToolDecision decision,
         CancellationToken cancellationToken)
     {
         var context = run.Context;
@@ -142,7 +257,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
             info.CallId,
             info.ServerName,
             info.ToolName,
-            ToolDecision.Auto,
+            decision,
             info.Arguments,
             info.ArgumentsTruncated,
             clock.GetUtcNow());
@@ -265,7 +380,8 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
         LogCall(logger, info.CallId, info.ToolName, outcome, (int)duration.TotalMilliseconds);
     }
 
-    private async Task<ToolCallResult> RefuseAsync(ToolRunContext context, CallInfo info, Refusal refusal)
+    /// <summary>Records a call that ended without running a tool (refused, denied, unanswered, or a question answered) in one write.</summary>
+    private async Task<ToolCallResult> RecordAsync(ToolRunContext context, CallInfo info, Verdict verdict)
     {
         var entry = ToolAuditEntry.Start(
             context.TenantId,
@@ -275,11 +391,11 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
             info.CallId,
             info.ServerName,
             info.ToolName,
-            refusal.Decision,
+            verdict.Decision,
             info.Arguments,
             info.ArgumentsTruncated,
             clock.GetUtcNow());
-        entry.Complete(refusal.Outcome, null, refusal.ErrorCode, clock.GetUtcNow(), clock.GetElapsedTime(info.Timestamp));
+        entry.Complete(verdict.Outcome, verdict.ResultCharacters, verdict.ErrorCode, clock.GetUtcNow(), clock.GetElapsedTime(info.Timestamp));
 
         try
         {
@@ -293,9 +409,29 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
             LogAuditWriteFailed(logger, exception);
         }
 
-        LogCall(logger, info.CallId, info.ToolName, refusal.Outcome, 0);
-        return new ToolCallResult(refusal.Status, refusal.Message);
+        var duration = clock.GetElapsedTime(info.Timestamp);
+        LogCall(logger, info.CallId, info.ToolName, verdict.Outcome, (int)duration.TotalMilliseconds);
+        return new ToolCallResult(verdict.Status, verdict.Message);
     }
+
+    private static Verdict Failed(string errorCode, string message) =>
+        new(ToolOutcome.Failed, ToolResultStatus.Failed, null, errorCode, message);
+
+    /// <summary>The user's answer is a tool result like any other: one over the limit is not truncated but turned into an error (D-10).</summary>
+    private static Verdict Answered(string answer, int maxCharacters) =>
+        answer.Length > maxCharacters
+            ? new Verdict(
+                ToolOutcome.Failed,
+                ToolResultStatus.Failed,
+                ToolDecision.Auto,
+                "tool.result_too_large",
+                $"The user's answer is too large ({answer.Length} characters; the limit is {maxCharacters}) so it was not returned. " +
+                "Ask the question again, asking for a shorter answer.",
+                answer.Length)
+            : new Verdict(ToolOutcome.Succeeded, ToolResultStatus.Succeeded, ToolDecision.Auto, null, answer, answer.Length);
+
+    private static Verdict Cancelled(InteractionKind kind) =>
+        new(ToolOutcome.Cancelled, ToolResultStatus.Cancelled, kind == InteractionKind.Confirmation ? ToolDecision.Denied : ToolDecision.Auto, "tool.cancelled", "The answer was stopped.");
 
     private static string Shorten(string name) => name.Length <= MaxAuditedNameLength ? name : name[..MaxAuditedNameLength];
 
@@ -316,7 +452,43 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, TimeProvider c
 
     private sealed record CallInfo(Guid CallId, string? ServerName, string ToolName, string Arguments, bool ArgumentsTruncated, long Timestamp);
 
-    private sealed record Refusal(ToolOutcome Outcome, ToolResultStatus Status, ToolDecision? Decision, string ErrorCode, string Message);
+    /// <summary>How a call ended without a tool running (or, for a question, without one to run).</summary>
+    private sealed record Verdict(ToolOutcome Outcome, ToolResultStatus Status, ToolDecision? Decision, string? ErrorCode, string Message, int? ResultCharacters = null);
 
-    private sealed record Prepared(ToolPolicy? Policy, Refusal? Refusal);
+    private static readonly Verdict Denied = new(
+        ToolOutcome.Denied,
+        ToolResultStatus.Denied,
+        ToolDecision.Denied,
+        "tool.denied",
+        "The call was denied by the user, so the tool was not run.");
+
+    private static readonly Verdict ConfirmationTimedOut = new(
+        ToolOutcome.TimedOut,
+        ToolResultStatus.TimedOut,
+        ToolDecision.TimedOut,
+        "tool.confirmation_timed_out",
+        "The user did not respond in time, which counts as denied by the user, so the tool was not run.");
+
+    private static readonly Verdict QuestionTimedOut = new(
+        ToolOutcome.TimedOut,
+        ToolResultStatus.TimedOut,
+        ToolDecision.TimedOut,
+        "tool.question_timed_out",
+        "The user did not answer the question in time.");
+
+    /// <summary>What a wait for the user holds: the time after which it counts as unanswered, and the stopped clock of the answer.</summary>
+    private sealed class UserWait(CancellationTokenSource expiry, IDisposable pause) : IDisposable
+    {
+        public CancellationToken Expired => expiry.Token;
+
+        public void Resume() => pause.Dispose();
+
+        public void Dispose()
+        {
+            pause.Dispose();
+            expiry.Dispose();
+        }
+    }
+
+    private sealed record Prepared(ToolPolicy? Policy, Verdict? Refusal, string? Question = null);
 }

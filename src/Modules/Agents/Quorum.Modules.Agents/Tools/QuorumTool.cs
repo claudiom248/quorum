@@ -45,6 +45,16 @@ internal sealed class NativeQuorumTool(ActiveTool descriptor, INativeTool implem
         implementation.ExecuteAsync(arguments, cancellationToken);
 }
 
+/// <summary>
+/// The tool that asks the user a question. It runs nothing: <see cref="ToolCallInvoker"/> pauses the answer for the user's reply,
+/// because only it can publish the question and wait for the reply outside the call timeout.
+/// </summary>
+internal sealed class AskUserQuorumTool(ActiveTool descriptor) : QuorumTool(descriptor)
+{
+    public override Task<string> RunAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("The question to the user is asked by the invoker, not run as a tool.");
+}
+
 /// <summary>Turns the active tools of an assistant into what the model is offered.</summary>
 internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools)
 {
@@ -55,8 +65,11 @@ internal sealed class QuorumToolFactory(IEnumerable<INativeTool> nativeTools)
     {
         ArgumentNullException.ThrowIfNull(tools);
         return tools
-            .Where(tool => tool.Origin == Domain.ToolOrigin.Native && _nativeTools.ContainsKey(tool.Name))
-            .Select(tool => (QuorumTool)new NativeQuorumTool(tool, _nativeTools[tool.Name]))
+            .Where(tool => tool.Origin == Domain.ToolOrigin.Native)
+            .Select(tool => tool.Name == NativeToolCatalog.AskUser
+                ? new AskUserQuorumTool(tool)
+                : _nativeTools.TryGetValue(tool.Name, out var implementation) ? (QuorumTool)new NativeQuorumTool(tool, implementation) : null)
+            .OfType<QuorumTool>()
             .ToList();
     }
 }

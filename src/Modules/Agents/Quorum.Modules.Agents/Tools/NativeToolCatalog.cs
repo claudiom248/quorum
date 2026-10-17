@@ -13,8 +13,21 @@ internal static class NativeToolCatalog
 
     public const string Calculator = "calculator";
 
+    /// <summary>
+    /// The model asks the user a question. The invoker runs it: it pauses the answer like a confirmation does. Its policy is not
+    /// consulted, because asking is already the interaction: <c>confirm</c> would only ask the user whether they want to be asked.
+    /// </summary>
+    public const string AskUser = "ask_user";
+
     public static IReadOnlyList<NativeToolDefinition> All { get; } =
     [
+        new(
+            AskUser,
+            "Asks the user a question and returns their answer. Use it only when you cannot continue without information that only " +
+            "the user has, such as a choice between options or a missing detail. Do not use it to confirm something you can decide yourself.",
+            """
+            {"type":"object","properties":{"question":{"type":"string","description":"The question for the user, short and self-contained."}},"required":["question"],"additionalProperties":false}
+            """),
         new(
             CurrentDateTime,
             "Returns the current date and time. Use it whenever the answer depends on today's date or on the time of day, " +

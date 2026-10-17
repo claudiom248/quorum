@@ -14,6 +14,18 @@ internal static class ChatApi
 
     public static Uri Regenerate(Guid id) => new($"/api/conversations/{id}/regenerate", UriKind.Relative);
 
+    public static Uri ToolDecision(Guid id, Guid callId) => new($"/api/conversations/{id}/tool-calls/{callId}/decision", UriKind.Relative);
+
+    public static Uri ToolAnswer(Guid id, Guid callId) => new($"/api/conversations/{id}/tool-calls/{callId}/answer", UriKind.Relative);
+
+    /// <summary>Approves or denies a tool call that waits for the user. Returns the response as is, for tests about the errors.</summary>
+    public static Task<HttpResponseMessage> DecideAsync(HttpClient client, Guid conversationId, Guid callId, bool approved) =>
+        client.PostAsJsonAsync(ToolDecision(conversationId, callId), new { approved }, TestContext.Current.CancellationToken);
+
+    /// <summary>Answers a question of the model. Returns the response as is, for tests about the errors.</summary>
+    public static Task<HttpResponseMessage> AnswerAsync(HttpClient client, Guid conversationId, Guid callId, string answer) =>
+        client.PostAsJsonAsync(ToolAnswer(conversationId, callId), new { answer }, TestContext.Current.CancellationToken);
+
     public static async Task<Guid> CreateConversationAsync(HttpClient client)
     {
         using var response = await client.PostAsync(Conversations, content: null, TestContext.Current.CancellationToken);
