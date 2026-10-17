@@ -36,6 +36,8 @@ public static class AgentsModule
         services.AddScoped<AnswerPipeline>();
         services.AddScoped<ToolCallInvoker>();
         services.AddScoped<ToolAccess>();
+        services.AddSingleton<PendingInteractions>();
+        services.AddScoped<IToolInteractions, ToolInteractions>();
         services.AddSingleton<INativeTool, CalculatorTool>();
         services.AddSingleton<INativeTool, CurrentDateTimeTool>();
         services.AddSingleton<ApiKeyProtector>();

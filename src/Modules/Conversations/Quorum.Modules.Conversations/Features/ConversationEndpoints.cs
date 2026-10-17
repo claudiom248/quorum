@@ -16,6 +16,8 @@ namespace Quorum.Modules.Conversations.Features;
 
 internal sealed class ConversationEndpoints : IEndpointGroup
 {
+    internal const int MaxToolAnswerLength = 4000;
+
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
 
     public void Map(IEndpointRouteBuilder app)
@@ -31,6 +33,59 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         conversations.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteConversation");
         conversations.MapPost("/{id:guid}/messages", SendMessageAsync).WithName("SendMessage");
         conversations.MapPost("/{id:guid}/regenerate", RegenerateAsync).WithName("RegenerateAnswer");
+        conversations.MapPost("/{id:guid}/tool-calls/{callId:guid}/decision", DecideToolCallAsync).WithName("DecideToolCall");
+        conversations.MapPost("/{id:guid}/tool-calls/{callId:guid}/answer", AnswerQuestionAsync).WithName("AnswerQuestion");
+    }
+
+    /// <summary>Approves or denies a tool call the answer of this conversation waits to run.</summary>
+    private static async Task<Results<NoContent, ValidationProblem, ProblemHttpResult>> DecideToolCallAsync(
+        Guid id,
+        Guid callId,
+        ToolDecisionRequest request,
+        ConversationsDbContext db,
+        IToolInteractions interactions,
+        CancellationToken cancellationToken)
+    {
+        if (request.Approved is not { } approved)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["approved"] = ["Say whether the call is approved."] });
+        }
+
+        // The conversation is looked up through the tenant and user filters: someone else's looks like one that does not exist.
+        if (!await db.Conversations.AnyAsync(c => c.Id == id, cancellationToken))
+        {
+            return ConversationErrors.NotFound.ToProblem();
+        }
+
+        var result = interactions.Decide(id, callId, approved);
+        return result.IsSuccess ? TypedResults.NoContent() : result.Error.ToProblem();
+    }
+
+    /// <summary>Answers a question the model asked the user.</summary>
+    private static async Task<Results<NoContent, ValidationProblem, ProblemHttpResult>> AnswerQuestionAsync(
+        Guid id,
+        Guid callId,
+        ToolAnswerRequest request,
+        ConversationsDbContext db,
+        IToolInteractions interactions,
+        CancellationToken cancellationToken)
+    {
+        var answer = request.Answer?.Trim();
+        if (string.IsNullOrEmpty(answer) || answer.Length > MaxToolAnswerLength)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["answer"] = [$"Enter an answer of at most {MaxToolAnswerLength} characters."],
+            });
+        }
+
+        if (!await db.Conversations.AnyAsync(c => c.Id == id, cancellationToken))
+        {
+            return ConversationErrors.NotFound.ToProblem();
+        }
+
+        var result = interactions.Answer(id, callId, answer);
+        return result.IsSuccess ? TypedResults.NoContent() : result.Error.ToProblem();
     }
 
     private static async Task<Ok<List<ConversationSummary>>> ListAsync(ConversationsDbContext db, CancellationToken cancellationToken) =>
@@ -269,3 +324,7 @@ internal sealed record MessageResponse(Guid Id, string Role, string Content, str
 internal sealed record RenameConversationRequest(string? Title);
 
 internal sealed record SendMessageRequest(string? Content);
+
+internal sealed record ToolDecisionRequest(bool? Approved);
+
+internal sealed record ToolAnswerRequest(string? Answer);

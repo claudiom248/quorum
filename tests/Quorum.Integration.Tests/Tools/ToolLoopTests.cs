@@ -103,7 +103,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
 
         var tools = app.ModelServer.ChatRequests[^1].GetProperty("tools").EnumerateArray().ToList();
         Assert.Equal(
-            ["native__calculator", "native__current_datetime"],
+            ["native__ask_user", "native__calculator", "native__current_datetime"],
             tools.Select(t => t.GetProperty("function").GetProperty("name").GetString()).ToArray());
         Assert.All(tools, tool => Assert.Equal("function", tool.GetProperty("type").GetString()));
     }
@@ -543,23 +543,6 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
         var audit = Assert.Single(await ToolFixtures.AuditRowsAsync(app));
         Assert.Equal("Cancelled", audit.Outcome);
         Assert.Empty(app.Logs.ErrorsAndAbove);
-    }
-
-    [Fact] // PR 2 only: confirmation arrives with PR 3, until then a confirm tool never runs
-    public async Task AToolThatNeedsConfirmationIsRefusedWithoutRunning()
-    {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
-        await ToolFixtures.AddProbeAsync(app, ToolPolicy.Confirm);
-        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Probe("danger")), ChatScript.Reply("Understood."));
-        var id = await ChatApi.CreateConversationAsync(client);
-
-        var events = await ChatApi.SendAsync(client, id, "Go");
-
-        Assert.Empty(app.Probe.Calls);
-        Assert.Equal("denied", Assert.Single(events, e => e.Type == "tool_result").Data.GetProperty("status").GetString());
-        Assert.False(Assert.Single(events, e => e.Type == "tool_call").Data.GetProperty("requiresConfirmation").GetBoolean());
-        Assert.Equal("Denied", Assert.Single(await ToolFixtures.AuditRowsAsync(app)).Outcome);
     }
 
     [Fact] // AC-29

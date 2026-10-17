@@ -22,7 +22,7 @@ public sealed class NativeToolProvisioningTests(PostgresFixture postgres)
         var tools = await ToolsApi.ListToolsAsync(client);
         var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
 
-        Assert.Equal(["calculator", "current_datetime"], tools.Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["ask_user", "calculator", "current_datetime"], tools.Select(t => t.Name).Order().ToArray());
         Assert.All(tools, tool =>
         {
             Assert.Equal("Native", tool.Origin);
@@ -31,7 +31,7 @@ public sealed class NativeToolProvisioningTests(PostgresFixture postgres)
             Assert.Equal("Auto", tool.Policy);
             Assert.False(string.IsNullOrWhiteSpace(tool.Description));
         });
-        Assert.Equal(["native__calculator", "native__current_datetime"], pool.Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["native__ask_user", "native__calculator", "native__current_datetime"], pool.Select(t => t.Name).Order().ToArray());
         Assert.All(pool, tool => Assert.True(tool.Active));
     }
 
@@ -51,8 +51,8 @@ public sealed class NativeToolProvisioningTests(PostgresFixture postgres)
         var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
         var settings = await client.GetFromJsonAsync<ToolsApi.ToolSettingsBody>(ToolsApi.ToolSettings, Ct);
 
-        Assert.Equal(2, tools.Count);
-        Assert.Equal(2, pool.Count);
+        Assert.Equal(3, tools.Count);
+        Assert.Equal(3, pool.Count);
         Assert.All(pool, tool => Assert.False(tool.Active));
         Assert.Equal(new ToolsApi.ToolSettingsBody(8, 300, 30, 300, 20_000, 90), settings);
     }
@@ -73,7 +73,7 @@ public sealed class NativeToolProvisioningTests(PostgresFixture postgres)
 
         var tools = await ToolsApi.ListToolsAsync(client);
 
-        Assert.Equal(2, tools.Count);
+        Assert.Equal(3, tools.Count);
         var kept = tools.Single(t => t.Name == "calculator");
         Assert.Equal(calculator.Id, kept.Id);
         Assert.Equal("Disabled", kept.State);
@@ -93,11 +93,11 @@ public sealed class NativeToolProvisioningTests(PostgresFixture postgres)
 
         var visible = await ToolsApi.ListToolsAsync(client);
 
-        Assert.Equal(2, visible.Count);
+        Assert.Equal(3, visible.Count);
         await using var verification = new NpgsqlConnection(app.ConnectionString);
         await verification.OpenAsync(Ct);
         await using var count = new NpgsqlCommand("SELECT count(*) FROM agents.tools", verification);
-        Assert.Equal(4L, await count.ExecuteScalarAsync(Ct));
+        Assert.Equal(6L, await count.ExecuteScalarAsync(Ct));
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)

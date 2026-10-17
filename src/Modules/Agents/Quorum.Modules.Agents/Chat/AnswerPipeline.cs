@@ -31,7 +31,12 @@ internal sealed record AnswerRequest(
 /// reasoning, tool calls and results) to one channel, so a tool call reaches the client even while the invoker waits for something.
 /// Rounds, total time and context are bounded; reaching a bound fails the answer with a readable error and keeps the text already streamed.
 /// </summary>
-internal sealed partial class AnswerPipeline(IHttpClientFactory httpClientFactory, ToolCallInvoker invoker, TimeProvider clock, ILogger<AnswerPipeline> logger)
+internal sealed partial class AnswerPipeline(
+    IHttpClientFactory httpClientFactory,
+    ToolCallInvoker invoker,
+    PendingInteractions interactions,
+    TimeProvider clock,
+    ILogger<AnswerPipeline> logger)
 {
     public async IAsyncEnumerable<AnswerChunk> RunAsync(AnswerRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -54,6 +59,9 @@ internal sealed partial class AnswerPipeline(IHttpClientFactory httpClientFactor
             // The producer is done before the answer is, so that what it records (a cancelled tool call) is recorded when the caller goes on.
             await stop.CancelAsync();
             await producer;
+
+            // No one waits for the user any more; a reply that comes now is for an answer that is over.
+            interactions.CloseConversation(request.Context.ConversationId);
         }
     }
 

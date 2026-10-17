@@ -42,6 +42,30 @@ internal static class ToolFixtures
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Sets the tool-calling limits of the tenant; the values are the defaults unless a test needs another.</summary>
+    public static async Task SetLimitsAsync(
+        HttpClient client,
+        int maxRounds = 8,
+        int totalSeconds = 300,
+        int callSeconds = 30,
+        int confirmationSeconds = 300,
+        int maxResult = 20_000)
+    {
+        using var response = await client.PutAsJsonAsync(
+            ToolsApi.ToolSettings,
+            new
+            {
+                maxRounds,
+                totalTimeoutSeconds = totalSeconds,
+                callTimeoutSeconds = callSeconds,
+                confirmationTimeoutSeconds = confirmationSeconds,
+                maxResultCharacters = maxResult,
+                auditRetentionDays = 90,
+            },
+            Ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     public static async Task<T> ScalarAsync<T>(QuorumApp app, string sql)
     {
         await using var connection = new NpgsqlConnection(app.ConnectionString);
