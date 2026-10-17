@@ -21,6 +21,7 @@ public static class AgentsModule
         services.AddModuleDbContext<AgentsDbContext>(AgentsDbContext.Schema);
         // After the migrations (registered by the line above): initializers run in registration order.
         services.AddSingleton<IDatabaseInitializer, NativeToolsInitializer>();
+        services.AddHostedService<AuditRetentionService>();
 
         services.AddHttpClient(ModelEndpointProbe.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
         // The timeout bounds the wait for the model's first byte (small local models can take minutes to load);
@@ -37,6 +38,7 @@ public static class AgentsModule
         services.AddScoped<ToolCallInvoker>();
         services.AddScoped<ToolAccess>();
         services.AddSingleton<PendingInteractions>();
+        services.AddScoped<AuditRetention>();
         services.AddScoped<IToolInteractions, ToolInteractions>();
         services.AddSingleton<INativeTool, CalculatorTool>();
         services.AddSingleton<INativeTool, CurrentDateTimeTool>();
