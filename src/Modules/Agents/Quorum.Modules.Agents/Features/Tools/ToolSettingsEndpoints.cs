@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Shared.Endpoints;
+using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
 
 namespace Quorum.Modules.Agents.Features.Tools;
@@ -30,16 +31,36 @@ internal sealed class ToolSettingsEndpoints : IEndpointGroup
         return TypedResults.Ok(ToolSettingsDto.From(settings));
     }
 
-    private static async Task<Results<NoContent, ValidationProblem>> UpdateAsync(
+    /// <param name="confirmDeletion">
+    /// A retention shorter than the age of some entries deletes them for good at the next purge, so it is refused (409, with their
+    /// count) unless the caller confirms it knows.
+    /// </param>
+    private static async Task<Results<NoContent, ValidationProblem, ProblemHttpResult>> UpdateAsync(
         ToolSettingsDto request,
         AgentsDbContext db,
         ITenantContext tenant,
-        CancellationToken cancellationToken)
+        TimeProvider clock,
+        CancellationToken cancellationToken,
+        bool confirmDeletion = false)
     {
         var errors = Validate(request);
         if (errors.Count > 0)
         {
             return TypedResults.ValidationProblem(errors);
+        }
+
+        if (!confirmDeletion)
+        {
+            // The purge keeps an entry exactly at the limit and deletes older ones: count the same.
+            var cutoff = clock.GetUtcNow().AddDays(-request.AuditRetentionDays);
+            var wouldDelete = await db.ToolAuditEntries.CountAsync(e => e.StartedAt < cutoff, cancellationToken);
+            if (wouldDelete > 0)
+            {
+                return Error.Conflict(
+                    "tool.retention_would_delete",
+                    $"A retention of {request.AuditRetentionDays} days would delete {wouldDelete} audit entries for good at the next purge. " +
+                    "Repeat the request with confirmDeletion=true to go ahead.").ToProblem();
+            }
         }
 
         var settings = await db.ToolSettings.SingleOrDefaultAsync(cancellationToken);
