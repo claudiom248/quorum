@@ -84,4 +84,39 @@ public sealed class ContextBreakdownTests
         Assert.Equal("2.1k of 3.3k tokens", breakdown.Summary);
         Assert.Equal("1.2k left", breakdown.Margin);
     }
+
+    [Fact] // AC-50
+    public void ToolDefinitionsAreASegmentOfTheirOwnAfterTheSystemPrompt()
+    {
+        var context = new ConversationContext(1000, 1000, SystemPromptTokens: 100, AttachmentsTokens: 0, MessagesTokens: 100, RemainingTokens: 700, ToolsTokens: 100);
+
+        var breakdown = ContextBreakdown.From(context, []);
+
+        Assert.Equal(
+            [SegmentKind.SystemPrompt, SegmentKind.Tools, SegmentKind.Attachments, SegmentKind.Messages, SegmentKind.Free],
+            breakdown.Segments.Select(s => s.Kind));
+        Assert.Equal([100, 100, 0, 100, 700], breakdown.Segments.Select(s => s.Tokens));
+        Assert.Equal("Tool definitions", breakdown.Segments.Single(s => s.Kind == SegmentKind.Tools).Label);
+        Assert.Equal(100.0, breakdown.Segments.Sum(s => s.Percent), precision: 6);
+        Assert.Equal(30.0, breakdown.Percent, precision: 6);
+    }
+
+    [Fact] // AC-50
+    public void WithoutToolsThereIsNoToolsSegment()
+    {
+        var breakdown = ContextBreakdown.From(Context(usable: 1000, system: 100, attachments: 0, messages: 100), []);
+
+        Assert.DoesNotContain(breakdown.Segments, s => s.Kind == SegmentKind.Tools);
+    }
+
+    [Fact] // AC-50
+    public void ToolDefinitionsCountTowardsOverflowingTheContext()
+    {
+        var context = new ConversationContext(1000, 1000, 100, 0, 100, RemainingTokens: -50, ToolsTokens: 850);
+
+        var breakdown = ContextBreakdown.From(context, []);
+
+        Assert.True(breakdown.IsOver);
+        Assert.Equal(100.0, breakdown.Segments.Sum(s => s.Percent), precision: 6);
+    }
 }

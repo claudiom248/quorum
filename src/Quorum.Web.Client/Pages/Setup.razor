@@ -45,7 +45,7 @@ else if (_status is not null)
                 }
                 @if (_testResult is { Models.Count: > 0 })
                 {
-                    <MudSelect T="string" @bind-Value="_modelName" Label="Model" Variant="Variant.Outlined" Required="true">
+                    <MudSelect T="string" @bind-Value="_modelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
                         @foreach (var model in _testResult.Models)
                         {
                             <MudSelectItem Value="@model">@model</MudSelectItem>
@@ -56,6 +56,9 @@ else if (_status is not null)
                 {
                     <MudTextField @bind-Value="_modelName" Label="Model" Variant="Variant.Outlined" Required="true" />
                 }
+                <MudSwitch T="bool" @bind-Value="_supportsTools" Color="Color.Primary" Label="The model supports tools"
+                           aria-describedby="tools-support-hint" />
+                <MudText id="tools-support-hint" Typo="Typo.caption">@ToolSupportHint</MudText>
                 <MudNumericField T="int" @bind-Value="_contextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined"
                                  Min="256" Max="1000000"
                                  HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
@@ -109,6 +112,17 @@ else
     private string _email = string.Empty;
     private string _password = string.Empty;
     private string _systemPrompt = string.Empty;
+    private bool _supportsTools = true;
+    private bool? _detectedToolSupport;
+
+    private string ToolSupportHint => _testResult is null
+        ? "Use \"Test connection\" to let Quorum check it, or set it by hand."
+        : _detectedToolSupport switch
+        {
+            true => "The server reports that this model supports tools.",
+            false => "The server reports that this model does not support tools.",
+            null => "The server does not say whether this model supports tools; it is on by default.",
+        };
 
     protected override async Task OnInitializedAsync()
     {
@@ -153,7 +167,7 @@ else
         _busy = true;
         _problem = null;
         _testResult = null;
-        var result = await Api.TestSetupModelAsync(_token.Trim(), _baseUrl, EmptyToNull(_apiKey));
+        var result = await Api.TestSetupModelAsync(_token.Trim(), _baseUrl, EmptyToNull(_apiKey), EmptyToNull(_modelName));
         _busy = false;
 
         if (result.IsSuccess)
@@ -162,11 +176,37 @@ else
             if (string.IsNullOrWhiteSpace(_modelName) && result.Value.Models.Count > 0)
             {
                 _modelName = result.Value.Models[0];
+
+                // The first model was only just picked: ask about it, the test could not know it.
+                await DetectToolSupportAsync();
+                return;
             }
+
+            ApplyToolSupport(result.Value.SupportsTools);
         }
         else
         {
             _problem = result.Problem;
+        }
+    }
+
+    /// <summary>The chosen model may differ from the one tested: ask again, so the flag follows the model.</summary>
+    private async Task DetectToolSupportAsync()
+    {
+        var result = await Api.TestSetupModelAsync(_token.Trim(), _baseUrl, EmptyToNull(_apiKey), EmptyToNull(_modelName));
+        if (result.IsSuccess)
+        {
+            ApplyToolSupport(result.Value.SupportsTools);
+        }
+    }
+
+    // What the server reports pre-fills the flag; when it does not say, the value stays (on, as the server defaults it, until the admin changes it).
+    private void ApplyToolSupport(bool? reported)
+    {
+        _detectedToolSupport = reported;
+        if (reported is { } value)
+        {
+            _supportsTools = value;
         }
     }
 
@@ -184,7 +224,7 @@ else
 
         var request = new CompleteSetupRequest(
             new AdminAccount(_email.Trim(), _displayName.Trim(), _password),
-            new ModelEndpointSettings(_baseUrl.Trim(), _modelName.Trim(), EmptyToNull(_apiKey), _contextTokenBudget),
+            new ModelEndpointSettings(_baseUrl.Trim(), _modelName.Trim(), EmptyToNull(_apiKey), _contextTokenBudget, _supportsTools),
             _systemPrompt);
         var result = await Api.CompleteSetupAsync(_token.Trim(), request);
         _busy = false;

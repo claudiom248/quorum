@@ -41,7 +41,7 @@
 
                 @if (_models is { Count: > 0 })
                 {
-                    <MudSelect T="string" @bind-Value="_form.ModelName" Label="Model" Variant="Variant.Outlined" Required="true">
+                    <MudSelect T="string" @bind-Value="_form.ModelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
                         @foreach (var model in _models)
                         {
                             <MudSelectItem Value="@model">@model</MudSelectItem>
@@ -52,6 +52,10 @@
                 {
                     <MudTextField @bind-Value="_form.ModelName" Label="Model" Variant="Variant.Outlined" Required="true" />
                 }
+
+                <MudSwitch T="bool" @bind-Value="_form.SupportsTools" Color="Color.Primary" Label="The model supports tools"
+                           aria-describedby="tools-support-hint" />
+                <MudText id="tools-support-hint" Typo="Typo.caption" Class="tools-support-hint">@ToolSupportHint</MudText>
 
                 <MudNumericField T="int" @bind-Value="_form.ContextTokenBudget" Label="Context budget (tokens)"
                                  Variant="Variant.Outlined" Min="256" Max="1000000"
@@ -71,6 +75,46 @@
                 </MudStack>
             </MudStack>
         </form>
+
+        @if (_pool is { Count: > 0 })
+        {
+            <MudDivider Class="my-6" />
+            <form @onsubmit="SaveToolsAsync">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle1">Tools</MudText>
+                    <MudText Typo="Typo.body2" Class="tools-support-hint">
+                        The tools the assistant may call. Each one runs under its own policy; those that need confirmation ask the person chatting before they run.
+                    </MudText>
+
+                    @if (!_form.SupportsTools)
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                            The model is marked as not supporting tools, so none of these are offered to it.
+                        </MudAlert>
+                    }
+
+                    @foreach (var tool in _pool)
+                    {
+                        <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
+                    }
+
+                    @foreach (var warning in _warnings)
+                    {
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@warning.Message</MudAlert>
+                    }
+
+                    <ProblemMessage Problem="_toolsProblem" />
+                    @if (_toolsSaved)
+                    {
+                        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Tools saved.</MudAlert>
+                    }
+
+                    <MudStack Row="true" Justify="Justify.FlexEnd">
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save tools</MudButton>
+                    </MudStack>
+                </MudStack>
+            </form>
+        }
     }
     else
     {
@@ -88,9 +132,25 @@
     private bool _loading = true;
     private bool _busy;
     private bool _saved;
+    private bool? _detectedToolSupport;
+    private bool _toolSupportChecked;
+    private Guid? _assistantId;
+    private List<PoolEntry>? _pool;
+    private IReadOnlyList<ToolWarning> _warnings = [];
+    private ApiProblem? _toolsProblem;
+    private bool _toolsSaved;
 
     [SupplyParameterFromQuery]
     public string? Unverified { get; set; }
+
+    private string ToolSupportHint => !_toolSupportChecked
+        ? "Use \"Test connection\" to let Quorum check it, or set it by hand."
+        : _detectedToolSupport switch
+        {
+            true => "The server reports that this model supports tools.",
+            false => "The server reports that this model does not support tools.",
+            null => "The server does not say whether this model supports tools; the setting is yours to make.",
+        };
 
     protected override async Task OnInitializedAsync()
     {
@@ -111,7 +171,30 @@
             ModelName = s.ModelName,
             ContextTokenBudget = s.ContextTokenBudget,
             SystemPrompt = s.SystemPrompt,
+            SupportsTools = s.SupportsTools,
         };
+
+        await LoadToolsAsync();
+    }
+
+    private async Task LoadToolsAsync()
+    {
+        var assistants = await Api.ListAssistantsAsync();
+        if (!assistants.IsSuccess || assistants.Value.Count == 0)
+        {
+            return;
+        }
+
+        _assistantId = assistants.Value[0].Id;
+        var tools = await Api.GetAssistantToolsAsync(_assistantId.Value);
+        if (!tools.IsSuccess)
+        {
+            // Not everyone who may change the model may manage tools: the section is simply absent.
+            return;
+        }
+
+        _pool = tools.Value.Pool.Select(t => new PoolEntry(t.ToolId, ToolCallView.DisplayNameOf(t.Name)) { Active = t.Active }).ToList();
+        _warnings = tools.Value.Warnings;
     }
 
     private async Task TestAsync()
@@ -121,16 +204,67 @@
         _models = null;
 
         // A null key makes the server test with the stored one.
-        var result = await Api.TestAssistantModelAsync(_form!.BaseUrl.Trim(), KeyToSend());
+        var result = await Api.TestAssistantModelAsync(_form!.BaseUrl.Trim(), KeyToSend(), ModelToCheck());
         _busy = false;
 
         if (result.IsSuccess)
         {
             _models = result.Value.Models;
+            ApplyToolSupport(result.Value.SupportsTools);
         }
         else
         {
             _problem = result.Problem;
+        }
+    }
+
+    /// <summary>The chosen model may differ from the one tested: ask again, so the flag follows the model.</summary>
+    private async Task DetectToolSupportAsync()
+    {
+        var result = await Api.TestAssistantModelAsync(_form!.BaseUrl.Trim(), KeyToSend(), ModelToCheck());
+        if (result.IsSuccess)
+        {
+            ApplyToolSupport(result.Value.SupportsTools);
+        }
+    }
+
+    // What the server reports pre-fills the flag; when it does not say, the admin's value stays.
+    private void ApplyToolSupport(bool? reported)
+    {
+        _toolSupportChecked = true;
+        _detectedToolSupport = reported;
+        if (reported is { } value)
+        {
+            _form!.SupportsTools = value;
+        }
+    }
+
+    private string? ModelToCheck() => string.IsNullOrWhiteSpace(_form!.ModelName) ? null : _form.ModelName.Trim();
+
+    private async Task SaveToolsAsync()
+    {
+        if (_assistantId is not { } assistantId || _pool is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _toolsProblem = null;
+        _toolsSaved = false;
+        var result = await Api.SetAssistantToolsAsync(assistantId, _pool.Where(t => t.Active).Select(t => t.ToolId).ToList());
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            _toolsProblem = result.Problem;
+            return;
+        }
+
+        _toolsSaved = true;
+        var tools = await Api.GetAssistantToolsAsync(assistantId);
+        if (tools.IsSuccess)
+        {
+            _warnings = tools.Value.Warnings;
         }
     }
 
@@ -145,7 +279,8 @@
             _form.ModelName.Trim(),
             _removeKey ? string.Empty : KeyToSend(),
             _form.ContextTokenBudget,
-            _form.SystemPrompt);
+            _form.SystemPrompt,
+            _form.SupportsTools);
         var result = await Api.UpdateAssistantSettingsAsync(request);
         _busy = false;
 
@@ -185,5 +320,12 @@
         public int ContextTokenBudget { get; set; }
 
         public string SystemPrompt { get; set; } = string.Empty;
+
+        public bool SupportsTools { get; set; }
+    }
+
+    private sealed record PoolEntry(Guid ToolId, string Label)
+    {
+        public bool Active { get; set; }
     }
 }

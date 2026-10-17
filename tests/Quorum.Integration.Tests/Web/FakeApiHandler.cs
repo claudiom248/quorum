@@ -8,6 +8,7 @@ namespace Quorum.Integration.Tests.Web;
 internal sealed class FakeApiHandler : HttpMessageHandler
 {
     private readonly List<(HttpMethod Method, string Path)> _requests = [];
+    private readonly List<(HttpMethod Method, string Path, string Body)> _bodies = [];
 
     /// <summary>The requests received, oldest first.</summary>
     public IReadOnlyList<(HttpMethod Method, string Path)> Requests
@@ -22,6 +23,15 @@ internal sealed class FakeApiHandler : HttpMessageHandler
     }
 
     public Func<HttpMethod, string, HttpResponseMessage> Respond { get; set; } = (_, _) => new HttpResponseMessage(HttpStatusCode.NotFound);
+
+    /// <summary>The body of the last request that matched, or <see langword="null"/> when there was none.</summary>
+    public string? LastBody(HttpMethod method, string pathContains)
+    {
+        lock (_requests)
+        {
+            return _bodies.LastOrDefault(r => r.Method == method && r.Path.Contains(pathContains, StringComparison.Ordinal)).Body;
+        }
+    }
 
     public HttpClient CreateClient() => new(this) { BaseAddress = new Uri("http://quorum.test/") };
 
@@ -40,14 +50,16 @@ internal sealed class FakeApiHandler : HttpMessageHandler
             "text/event-stream"),
     };
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var path = request.RequestUri!.AbsolutePath;
+        var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
         lock (_requests)
         {
             _requests.Add((request.Method, path));
+            _bodies.Add((request.Method, path, body));
         }
 
-        return Task.FromResult(Respond(request.Method, path));
+        return Respond(request.Method, path);
     }
 }

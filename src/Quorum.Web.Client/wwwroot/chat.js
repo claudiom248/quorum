@@ -20,6 +20,38 @@ window.quorumChat = {
         }
     },
 
+    // A modal dialog: focus goes to the safe button and Tab cycles inside it, so the page behind cannot be reached by keyboard.
+    focusDialog: (dialog) => {
+        if (!dialog) {
+            return;
+        }
+
+        const buttons = () => [...dialog.querySelectorAll("button:not([disabled])")];
+        (dialog.querySelector("button[data-initial-focus]") ?? buttons()[0] ?? dialog).focus();
+
+        dialog.addEventListener("keydown", (event) => {
+            if (event.key !== "Tab") {
+                return;
+            }
+
+            const items = buttons();
+            if (items.length === 0) {
+                event.preventDefault();
+                return;
+            }
+
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    },
+
     pin: (element) => {
         if (element) {
             element.dataset.pinned = "1";
