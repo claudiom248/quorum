@@ -1,6 +1,7 @@
 using System.Net;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Shared.Networking;
 
 namespace Quorum.Integration.Tests.Tools;
 
@@ -125,5 +126,5 @@ public sealed class McpRulesTests
     [InlineData("::ffff:10.0.0.1", false)]
     [InlineData("64:ff9b::5db8:d822", false)]
     public void OnlyMetadataAndLinkLocalAddressesAreBlocked(string address, bool blocked) =>
-        Assert.Equal(blocked, McpUrlGuard.IsBlocked(IPAddress.Parse(address)));
+        Assert.Equal(blocked, OutboundUrlGuard.IsBlocked(IPAddress.Parse(address)));
 }

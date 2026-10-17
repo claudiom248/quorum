@@ -12,6 +12,7 @@ using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Endpoints;
+using Quorum.Shared.Networking;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
@@ -113,7 +114,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         AgentsDbContext db,
         ITenantContext tenant,
         McpServerClient client,
-        McpUrlGuard guard,
+        OutboundUrlGuard guard,
         McpHeadersProtector protector,
         TimeProvider clock,
         ILogger<McpServerEndpoints> logger,
@@ -184,7 +185,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         Guid id,
         ServerRequest request,
         AgentsDbContext db,
-        McpUrlGuard guard,
+        OutboundUrlGuard guard,
         McpHeadersProtector protector,
         TimeProvider clock,
         CancellationToken cancellationToken)
@@ -333,7 +334,7 @@ internal sealed record ServerInput(
             : null;
     }
 
-    public static async Task<ServerInput> ValidateAsync(ServerRequest request, AgentsDbContext db, McpUrlGuard guard, CancellationToken cancellationToken)
+    public static async Task<ServerInput> ValidateAsync(ServerRequest request, AgentsDbContext db, OutboundUrlGuard guard, CancellationToken cancellationToken)
     {
         var failed = (Error error) => new ServerInput(error, null, null, null, ToolScopeKind.Tenant, [], []);
 

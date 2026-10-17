@@ -17,6 +17,10 @@ public sealed class FakeModelServer : HttpMessageHandler
     private readonly ConcurrentDictionary<string, string[]> _capabilities = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<JsonElement> _chatRequests = new();
     private readonly ConcurrentQueue<ChatScript> _rounds = new();
+    private readonly ConcurrentDictionary<string, Func<string, float[]>> _embedders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, int> _embeddingFailures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentQueue<EmbeddingRequest> _embeddingRequests = new();
+    private readonly ConcurrentDictionary<string, bool> _withoutEmbeddingsApi = new(StringComparer.OrdinalIgnoreCase);
 
     public string? LastAuthorization { get; private set; }
 
@@ -38,7 +42,22 @@ public sealed class FakeModelServer : HttpMessageHandler
         }
     }
 
+    /// <summary>Makes the base URL behave as unreachable again.</summary>
+    public void Stop(string baseUrl) => _endpoints.TryRemove(baseUrl.TrimEnd('/'), out _);
+
+    /// <summary>The embedding requests received, oldest first.</summary>
+    public IReadOnlyList<EmbeddingRequest> EmbeddingRequests => _embeddingRequests.ToList();
+
     public void Serve(string baseUrl, params string[] models) => _endpoints[baseUrl.TrimEnd('/')] = models;
+
+    /// <summary>Makes <c>POST {baseUrl}/embeddings</c> serve <paramref name="model"/> with <paramref name="embed"/>; any other model is "not found", as in Ollama.</summary>
+    public void ServeEmbeddings(string baseUrl, string model, Func<string, float[]> embed) => _embedders[$"{baseUrl.TrimEnd('/')}|{model}"] = embed;
+
+    /// <summary>Makes the endpoint answer 404 for the <c>/embeddings</c> route itself, as a server without that API does.</summary>
+    public void RemoveEmbeddingsApi(string baseUrl) => _withoutEmbeddingsApi[baseUrl.TrimEnd('/')] = true;
+
+    /// <summary>Makes the embeddings route answer with the given HTTP status.</summary>
+    public void FailEmbeddings(string baseUrl, int status) => _embeddingFailures[baseUrl.TrimEnd('/')] = status;
 
     /// <summary>
     /// Makes the server describe a model the way Ollama's <c>POST /api/show</c> does. Models without a description answer 404,
@@ -68,6 +87,11 @@ public sealed class FakeModelServer : HttpMessageHandler
             {
                 var body = new { @object = "list", data = models.Select(id => new { id, @object = "model" }) };
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(body) };
+            }
+
+            if (url.Equals($"{baseUrl}/embeddings", StringComparison.OrdinalIgnoreCase))
+            {
+                return await EmbedAsync(baseUrl, request, cancellationToken);
             }
 
             if (url.Equals($"{baseUrl}/chat/completions", StringComparison.OrdinalIgnoreCase))
@@ -102,6 +126,47 @@ public sealed class FakeModelServer : HttpMessageHandler
 
         throw new HttpRequestException($"Connection refused ({request.RequestUri!.Authority})");
     }
+
+    private async Task<HttpResponseMessage> EmbedAsync(string baseUrl, HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (_withoutEmbeddingsApi.ContainsKey(baseUrl))
+        {
+            return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("404 page not found") };
+        }
+
+        var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement;
+        var model = body.GetProperty("model").GetString()!;
+        // OpenAI clients send the input as a list of texts; a plain string is accepted too.
+        var inputElement = body.GetProperty("input");
+        var input = (inputElement.ValueKind == JsonValueKind.Array ? inputElement[0] : inputElement).GetString()!;
+        _embeddingRequests.Enqueue(new EmbeddingRequest(
+            model,
+            input,
+            request.Headers.Authorization?.ToString(),
+            body.TryGetProperty("encoding_format", out var format) ? format.GetString() : null));
+
+        if (_embeddingFailures.TryGetValue(baseUrl, out var status))
+        {
+            return new HttpResponseMessage((HttpStatusCode)status)
+            {
+                Content = new StringContent("{\"error\":{\"message\":\"embedding backend overloaded\"}}", Encoding.UTF8, "application/json"),
+            };
+        }
+
+        if (!_embedders.TryGetValue($"{baseUrl}|{model}", out var embed))
+        {
+            return new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent($"{{\"error\":{{\"message\":\"model \\\"{model}\\\" not found, try pulling it first\"}}}}", Encoding.UTF8, "application/json"),
+            };
+        }
+
+        var answer = new { @object = "list", model, data = new[] { new { @object = "embedding", index = 0, embedding = embed(input) } } };
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(answer) };
+    }
+
+    /// <summary>An embedding request as the endpoint received it.</summary>
+    public sealed record EmbeddingRequest(string Model, string Input, string? Authorization, string? EncodingFormat);
 
     /// <summary>What the fake model streams back: chunks, an optional delay before each, an optional failure.</summary>
     public sealed record ChatScript(IReadOnlyList<string> Chunks, TimeSpan DelayPerChunk, int? FailAfterChunks)

@@ -1,15 +1,16 @@
 using System.Collections.Concurrent;
 using System.Net;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Shared.Networking;
 
 namespace Quorum.Integration.Tests.Fixtures;
 
 /// <summary>
-/// Resolves host names for the MCP client. A name a test scripted gets the scripted answers in order (the last one repeats),
+/// Resolves host names for the guarded clients (MCP servers, Qdrant). A name a test scripted gets the scripted answers in order (the last one repeats),
 /// so a test can make a name change its address between the registration's check and the connection (DNS rebinding);
 /// any other name resolves normally.
 /// </summary>
-public sealed class TestHostResolver : IMcpHostResolver
+public sealed class TestHostResolver : IHostResolver
 {
     private readonly ConcurrentDictionary<string, Queue<IPAddress[]>> _scripted = new(StringComparer.OrdinalIgnoreCase);
 
@@ -27,6 +28,6 @@ public sealed class TestHostResolver : IMcpHostResolver
         }
 
         // Anything not scripted resolves as in production.
-        return await new DnsMcpHostResolver().ResolveAsync(host, cancellationToken);
+        return await new DnsHostResolver().ResolveAsync(host, cancellationToken);
     }
 }

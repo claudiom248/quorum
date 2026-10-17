@@ -9,12 +9,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Quorum.Modules.Agents.Chat;
+using Quorum.Modules.Agents.Embeddings;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
+using Quorum.Shared.Networking;
 using Serilog;
 
 namespace Quorum.Integration.Tests.Fixtures;
@@ -42,7 +44,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     public FakeModelServer ModelServer { get; } = new();
 
-    /// <summary>Script host names for MCP servers (a name that resolves to a blocked address, or changes address).</summary>
+    /// <summary>Script host names for the servers an administrator registers (MCP, Qdrant): a name that resolves to a blocked address, or changes address.</summary>
     public TestHostResolver McpHosts { get; } = new();
 
     public string ConnectionString => _connectionString;
@@ -185,8 +187,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
                 preserveStaticLogger: true);
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddHttpClient(OpenAiEmbeddings.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddSingleton<IBuiltinTool>(Probe);
-            services.AddSingleton<IMcpHostResolver>(McpHosts);
+            services.AddSingleton<IHostResolver>(McpHosts);
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);

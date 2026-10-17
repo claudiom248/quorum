@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
+using Quorum.Modules.Agents.Embeddings;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Provisioning;
@@ -9,6 +10,7 @@ using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Builtin;
+using Quorum.Shared.Networking;
 using Quorum.Shared.Persistence;
 
 namespace Quorum.Modules.Agents;
@@ -29,6 +31,10 @@ public static class AgentsModule
         // once the answer streams, it runs for as long as the model needs.
         services.AddHttpClient(OpenAiChatClient.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
+        // Embedding a query waits for the model to load like a first chat byte does; callers bound the call with their own token.
+        services.AddHttpClient(OpenAiEmbeddings.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2));
+
+        services.AddScoped<IEmbeddings, OpenAiEmbeddings>();
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();
@@ -46,21 +52,10 @@ public static class AgentsModule
         services.AddSingleton<ApiKeyProtector>();
         services.AddSingleton<McpHeadersProtector>();
 
-        services.AddSingleton<IMcpHostResolver, DnsMcpHostResolver>();
-        services.AddSingleton<McpUrlGuard>();
         services.AddSingleton<McpServerClient>();
-        // Every connection to an MCP server goes through this client (D-18): no redirects (a 3xx is a failed call), no system
-        // proxy (it would connect on the guard's behalf, to an address the guard never saw), and the guard checks the address
-        // the socket is really opened to. The timeouts are the caller's: calls are cancelled through their own tokens.
-        // The factory's request logging is removed: it writes the full URL, and a server's URL may carry a secret.
-        services.AddHttpClient(McpServerClient.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .RemoveAllLoggers()
-            .ConfigurePrimaryHttpMessageHandler(provider => new SocketsHttpHandler
-            {
-                AllowAutoRedirect = false,
-                UseProxy = false,
-                ConnectCallback = provider.GetRequiredService<McpUrlGuard>().ConnectAsync,
-            });
+
+        // Every connection to an MCP server goes through this client (D-18); see AddGuardedHttpClient for what that guarantees.
+        services.AddGuardedHttpClient(McpServerClient.HttpClientName);
 
         return services;
     }
