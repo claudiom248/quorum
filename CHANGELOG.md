@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/claudiom248/quorum/compare/v0.7.0...v0.8.0) (2026-10-17)
+
+
+### Features
+
+* admin page for MCP servers and tools (spec 004) ([#40](https://github.com/claudiom248/quorum/issues/40)) ([8d91590](https://github.com/claudiom248/quorum/commit/8d91590bbbecf35d4b1224cc9327f45f245dd720))
+* audit log API and retention purge (spec 004) ([#37](https://github.com/claudiom248/quorum/issues/37)) ([cd18270](https://github.com/claudiom248/quorum/commit/cd1827032e94fce51bf7c6e8bb212923857a80a5))
+* confirmation of tool calls and ask_user (spec 004) ([#34](https://github.com/claudiom248/quorum/issues/34)) ([045ffc8](https://github.com/claudiom248/quorum/commit/045ffc818192f21249cebf7a291883d1b2d86180))
+* MCP servers registry with discovery, review and scopes (spec 004) ([#38](https://github.com/claudiom248/quorum/issues/38)) ([2750d49](https://github.com/claudiom248/quorum/commit/2750d49309785835499a538fdeadc15262e6ca81))
+* run tools of MCP servers in answers (spec 004) ([#39](https://github.com/claudiom248/quorum/issues/39)) ([b56cd7e](https://github.com/claudiom248/quorum/commit/b56cd7eee294cd985c501099b76979b5cc4232be))
+* tool calls, confirmation and questions in the chat UI (spec 004) ([#35](https://github.com/claudiom248/quorum/issues/35)) ([6ffb7eb](https://github.com/claudiom248/quorum/commit/6ffb7ebacc8e40c60620ac22344cf2078f29eca2))
+* tool foundations with permissions, native tools and activation (spec 004) ([#28](https://github.com/claudiom248/quorum/issues/28)) ([d2cffe8](https://github.com/claudiom248/quorum/commit/d2cffe8f8643aba3ce9339ddab39d7b680e2650d))
+* tool-calling loop with native tools (spec 004) ([#31](https://github.com/claudiom248/quorum/issues/31)) ([948497e](https://github.com/claudiom248/quorum/commit/948497ee88fdd8e6d5cb34d5964445e972d5dec1))
+
 ## [0.7.0](https://github.com/claudiom248/quorum/compare/v0.6.1...v0.7.0) (2026-10-16)
 
 
