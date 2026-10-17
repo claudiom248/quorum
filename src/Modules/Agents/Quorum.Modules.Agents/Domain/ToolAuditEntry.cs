@@ -67,4 +67,44 @@ internal sealed class ToolAuditEntry
     public DateTimeOffset StartedAt { get; private set; }
 
     public DateTimeOffset? CompletedAt { get; private set; }
+
+    /// <summary>The entry of a call that is about to run (or to be refused): <see cref="ToolOutcome.Started"/> until it is completed.</summary>
+    public static ToolAuditEntry Start(
+        Guid tenantId,
+        Guid userId,
+        Guid assistantId,
+        Guid conversationId,
+        Guid callId,
+        string? serverName,
+        string toolName,
+        ToolDecision? decision,
+        string arguments,
+        bool argumentsTruncated,
+        DateTimeOffset now) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            UserId = userId,
+            AssistantId = assistantId,
+            ConversationId = conversationId,
+            CallId = callId,
+            ServerName = serverName,
+            ToolName = toolName,
+            Decision = decision,
+            Outcome = ToolOutcome.Started,
+            Arguments = arguments,
+            ArgumentsTruncated = argumentsTruncated,
+            StartedAt = now,
+        };
+
+    /// <summary>Records how the call ended. Only the size of the result is kept, never its content.</summary>
+    public void Complete(ToolOutcome outcome, int? resultCharacters, string? errorCode, DateTimeOffset now, TimeSpan duration, ToolDecision? decision = null)
+    {
+        Outcome = outcome;
+        ResultCharacters = resultCharacters;
+        ErrorCode = errorCode;
+        Decision = decision ?? Decision;
+        CompletedAt = now;
+        DurationMs = (int)Math.Min(int.MaxValue, duration.TotalMilliseconds);
+    }
 }

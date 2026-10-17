@@ -28,6 +28,7 @@ public sealed class AttachmentPromptTests(PostgresFixture postgres)
 
         var started = await chat.StartAnswerAsync(
             assistantId,
+            Guid.NewGuid(),
             [new ChatTurn(ChatTurnRole.User, "Summarize the contract")],
             [new ChatAttachment("contract.pdf", "Clause 1: payment within 30 days.")],
             Ct);
@@ -58,7 +59,7 @@ public sealed class AttachmentPromptTests(PostgresFixture postgres)
             .Select(i => new ChatTurn(i % 2 == 1 ? ChatTurnRole.User : ChatTurnRole.Assistant, $"Turn {i} {new string('x', 90)}"))
             .ToList();
 
-        var started = await chat.StartAnswerAsync(assistantId, history, [new ChatAttachment("a.txt", new string('d', 300))], Ct);
+        var started = await chat.StartAnswerAsync(assistantId, Guid.NewGuid(), history, [new ChatAttachment("a.txt", new string('d', 300))], Ct);
         Assert.True(started.IsSuccess);
         await foreach (var chunk in started.Value.WithCancellation(Ct))
         {

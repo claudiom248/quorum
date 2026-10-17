@@ -160,7 +160,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         {
             var history = Turns(conversation).Append(new ChatTurn(ChatTurnRole.User, content)).ToList();
             var attachments = await AttachmentEndpoints.LoadForChatAsync(db, conversation.Id, lease.Token);
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, attachments, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, conversation.Id, history, attachments, lease.Token);
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();
@@ -210,7 +210,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
             var replaced = conversation.LastAnswer;
             var history = Turns(conversation, except: replaced).ToList();
             var attachments = await AttachmentEndpoints.LoadForChatAsync(db, conversation.Id, lease.Token);
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, history, attachments, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, conversation.Id, history, attachments, lease.Token);
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();

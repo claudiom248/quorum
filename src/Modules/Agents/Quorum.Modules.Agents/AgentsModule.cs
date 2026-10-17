@@ -7,6 +7,7 @@ using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Provisioning;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Native;
 using Quorum.Shared.Persistence;
 
 namespace Quorum.Modules.Agents;
@@ -32,6 +33,11 @@ public static class AgentsModule
         services.AddScoped<IAssistantChat>(provider => provider.GetRequiredService<AssistantChat>());
         services.AddScoped<IAssistantCatalog>(provider => provider.GetRequiredService<AssistantChat>());
         services.AddSingleton<OpenAiChatStream>();
+        services.AddScoped<ToolLoop>();
+        services.AddScoped<ToolExecutor>();
+        services.AddScoped<ToolAccess>();
+        services.AddSingleton<INativeTool, CalculatorTool>();
+        services.AddSingleton<INativeTool, CurrentDateTimeTool>();
         services.AddSingleton<ApiKeyProtector>();
 
         return services;

@@ -16,6 +16,7 @@ public sealed class FakeModelServer : HttpMessageHandler
     private readonly ConcurrentDictionary<string, string[]> _endpoints = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string[]> _capabilities = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<JsonElement> _chatRequests = new();
+    private readonly ConcurrentQueue<ChatScript> _rounds = new();
 
     public string? LastAuthorization { get; private set; }
 
@@ -23,6 +24,19 @@ public sealed class FakeModelServer : HttpMessageHandler
 
     /// <summary>The JSON bodies of the chat completion requests received, oldest first.</summary>
     public IReadOnlyList<JsonElement> ChatRequests => _chatRequests.ToList();
+
+    /// <summary>
+    /// Scripts for the next chat requests, one per request in order (the rounds of a tool-calling answer).
+    /// When they run out, requests follow <see cref="Chat"/> again.
+    /// </summary>
+    public void EnqueueRounds(params ChatScript[] scripts)
+    {
+        ArgumentNullException.ThrowIfNull(scripts);
+        foreach (var script in scripts)
+        {
+            _rounds.Enqueue(script);
+        }
+    }
 
     public void Serve(string baseUrl, params string[] models) => _endpoints[baseUrl.TrimEnd('/')] = models;
 
@@ -59,8 +73,19 @@ public sealed class FakeModelServer : HttpMessageHandler
             if (url.Equals($"{baseUrl}/chat/completions", StringComparison.OrdinalIgnoreCase))
             {
                 var json = await request.Content!.ReadAsStringAsync(cancellationToken);
-                _chatRequests.Enqueue(JsonDocument.Parse(json).RootElement.Clone());
-                if (Chat.HttpErrorStatus is { } status)
+                var chatRequest = JsonDocument.Parse(json).RootElement.Clone();
+                _chatRequests.Enqueue(chatRequest);
+                var script = _rounds.TryDequeue(out var round) ? round : Chat;
+
+                if (script.RejectsTools && chatRequest.TryGetProperty("tools", out _))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                    {
+                        Content = new StringContent("{\"error\":\"llama3.2 does not support tools\"}", Encoding.UTF8, "application/json"),
+                    };
+                }
+
+                if (script.HttpErrorStatus is { } status)
                 {
                     return new HttpResponseMessage((HttpStatusCode)status)
                     {
@@ -70,7 +95,7 @@ public sealed class FakeModelServer : HttpMessageHandler
 
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StreamContent(new ScriptedSseStream(Chat)) { Headers = { { "Content-Type", "text/event-stream" } } },
+                    Content = new StreamContent(new ScriptedSseStream(script)) { Headers = { { "Content-Type", "text/event-stream" } } },
                 };
             }
         }
@@ -90,12 +115,38 @@ public sealed class FakeModelServer : HttpMessageHandler
         /// <summary><c>reasoning</c> as Ollama sends it, or <c>reasoning_content</c> as LiteLLM does.</summary>
         public string ReasoningField { get; init; } = "reasoning";
 
+        /// <summary>Tool calls streamed after the text, in the shape named by <see cref="ToolCallShape"/>.</summary>
+        public IReadOnlyList<FakeToolCall> ToolCalls { get; init; } = [];
+
+        public ToolCallShape ToolCallShape { get; init; } = ToolCallShape.OpenAiFragments;
+
+        /// <summary>When set, a request carrying <c>tools</c> is refused with HTTP 400, as models without tool support do.</summary>
+        public bool RejectsTools { get; init; }
+
         public static ChatScript Reply(params string[] chunks) => new(chunks, TimeSpan.Zero, null);
+
+        /// <summary>A round in which the model asks for tools instead of answering.</summary>
+        public static ChatScript CallTools(params FakeToolCall[] calls) => new([], TimeSpan.Zero, null) { ToolCalls = calls };
 
         public static ChatScript Slow(int chunkCount, TimeSpan delayPerChunk) =>
             new(Enumerable.Range(1, chunkCount).Select(i => $"word{i} ").ToList(), delayPerChunk, null);
 
         public static ChatScript FailAfter(int chunks, params string[] content) => new(content, TimeSpan.Zero, chunks);
+    }
+
+    /// <summary>A call the fake model makes. <paramref name="Arguments"/> is JSON text; a null <paramref name="Id"/> sends no id.</summary>
+    public sealed record FakeToolCall(string Name, string Arguments, string? Id = "call_1");
+
+    public enum ToolCallShape
+    {
+        /// <summary>OpenAI: the name arrives first, the arguments in small string fragments, all keyed by <c>index</c>.</summary>
+        OpenAiFragments,
+
+        /// <summary>Ollama/llama.cpp: each call whole in one chunk, with the arguments as a JSON string.</summary>
+        WholeCallStringArguments,
+
+        /// <summary>Some Ollama builds: each call whole, the arguments as a JSON object and neither <c>index</c> nor <c>id</c> if the call has none.</summary>
+        WholeCallObjectArguments,
     }
 
     /// <summary>OpenAI chat completion chunks as server-sent events, produced lazily so delays and failures happen mid-stream.</summary>
@@ -177,7 +228,12 @@ public sealed class FakeModelServer : HttpMessageHandler
                 }
                 else
                 {
-                    _pending.Enqueue(Event(new { }, finishReason: "stop"));
+                    foreach (var delta in ToolCallDeltas())
+                    {
+                        _pending.Enqueue(Event(delta, finishReason: null));
+                    }
+
+                    _pending.Enqueue(Event(new { }, finishReason: script.ToolCalls.Count > 0 ? "tool_calls" : "stop"));
                     _pending.Enqueue(Encoding.UTF8.GetBytes("data: [DONE]\n\n"));
                     _finished = true;
                 }
@@ -186,6 +242,43 @@ public sealed class FakeModelServer : HttpMessageHandler
             _current = _pending.Dequeue();
             _offset = 0;
             return true;
+        }
+
+        private IEnumerable<object> ToolCallDeltas()
+        {
+            for (var index = 0; index < script.ToolCalls.Count; index++)
+            {
+                var call = script.ToolCalls[index];
+                switch (script.ToolCallShape)
+                {
+                    case ToolCallShape.OpenAiFragments:
+                        yield return new
+                        {
+                            tool_calls = new[] { new { index, id = call.Id, type = "function", function = new { name = call.Name, arguments = string.Empty } } },
+                        };
+                        foreach (var fragment in call.Arguments.Chunk(7))
+                        {
+                            yield return new { tool_calls = new[] { new { index, function = new { arguments = new string(fragment) } } } };
+                        }
+
+                        break;
+
+                    case ToolCallShape.WholeCallStringArguments:
+                        yield return new
+                        {
+                            tool_calls = new[] { new { index, id = call.Id, type = "function", function = new { name = call.Name, arguments = call.Arguments } } },
+                        };
+                        break;
+
+                    default:
+                        var arguments = JsonDocument.Parse(call.Arguments).RootElement.Clone();
+                        yield return new
+                        {
+                            tool_calls = new[] { new { id = call.Id, type = "function", function = new { name = call.Name, arguments } } },
+                        };
+                        break;
+                }
+            }
         }
 
         private static byte[] Event(object delta, string? finishReason)

@@ -57,7 +57,7 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     public async Task TheModelReceivesTheSystemPromptAndTheConversation()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync(systemPrompt: "You are Acme's assistant.");
+        using var client = await app.SetUpAsync(systemPrompt: "You are Acme's assistant.", toolsActive: false);
         var id = await ChatApi.CreateConversationAsync(client);
         await ChatApi.SendAsync(client, id, "First question");
 
@@ -77,7 +77,7 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         // 256 tokens ≈ 1024 characters of context.
-        using var client = await app.SetUpAsync(systemPrompt: "Short.", contextTokenBudget: 256);
+        using var client = await app.SetUpAsync(systemPrompt: "Short.", contextTokenBudget: 256, toolsActive: false);
         app.ModelServer.Chat = FakeModelServer.ChatScript.Reply(new string('a', 150));
         var id = await ChatApi.CreateConversationAsync(client);
 

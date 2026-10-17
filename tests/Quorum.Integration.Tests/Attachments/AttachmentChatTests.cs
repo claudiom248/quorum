@@ -37,7 +37,7 @@ public sealed class AttachmentChatTests(PostgresFixture postgres)
     public async Task OlderMessagesAreDroppedBeforeTheAttachments()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync(systemPrompt: "s", contextTokenBudget: 256);
+        using var client = await app.SetUpAsync(systemPrompt: "s", contextTokenBudget: 256, toolsActive: false);
         var conversation = await ChatApi.CreateConversationAsync(client);
         await AttachmentApi.AttachAsync(client, conversation, "a.txt", new string('d', 300));
         for (var i = 1; i <= 4; i++)
@@ -57,7 +57,7 @@ public sealed class AttachmentChatTests(PostgresFixture postgres)
     public async Task AMessageThatDoesNotFitAfterTheAttachmentsIsRejectedAndNothingIsStored()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync(systemPrompt: "s", contextTokenBudget: 256);
+        using var client = await app.SetUpAsync(systemPrompt: "s", contextTokenBudget: 256, toolsActive: false);
         var conversation = await ChatApi.CreateConversationAsync(client);
         await AttachmentApi.AttachAsync(client, conversation, "a.txt", new string('d', 500));
 
@@ -75,7 +75,7 @@ public sealed class AttachmentChatTests(PostgresFixture postgres)
     public async Task LoweringTheBudgetBelowTheAttachmentsBlocksSendingUntilTheyAreRemoved()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync(systemPrompt: "s", contextTokenBudget: 4096);
+        using var client = await app.SetUpAsync(systemPrompt: "s", contextTokenBudget: 4096, toolsActive: false);
         var conversation = await ChatApi.CreateConversationAsync(client);
         var attachment = await AttachmentApi.AttachAsync(client, conversation, "big.txt", new string('d', 3000));
         using var lowered = await client.PutAsJsonAsync(
