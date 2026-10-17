@@ -80,9 +80,15 @@
                     }
                 }
 
+                @if (!_streaming && _calls.Count > 0)
+                {
+                    <div class="turn assistant">@Calls</div>
+                }
+
                 @if (_streaming)
                 {
                     <div class="turn assistant">
+                        @Calls
                         @if (_reasoning.Length > 0)
                         {
                             <details class="reasoning" open="@(_partial.Length == 0)">
@@ -139,6 +145,7 @@
 
 @code {
     private readonly List<MessageDto> _messages = [];
+    private readonly List<ToolCallView> _calls = [];
     private List<ConversationSummary> _conversations = [];
     private ConversationDetail? _loaded;
     private CancellationTokenSource? _stream;
@@ -163,6 +170,17 @@
 
     private bool CanRegenerate => _messages.Count > 0 && Id is not null;
 
+    // The tool calls of the answer being watched, or of the last one: the server does not store them, so they stay until the next answer.
+    private RenderFragment Calls => @<div class="tool-calls">
+        @foreach (var call in _calls)
+        {
+            var current = call;
+            <ToolCallCard @key="current.CallId" Call="current"
+                          OnDecide="approved => DecideAsync(current, approved)"
+                          OnAnswer="answer => AnswerAsync(current, answer)" />
+        }
+    </div>;
+
     protected override async Task OnParametersSetAsync()
     {
         _renaming = false;
@@ -173,6 +191,7 @@
             return;
         }
 
+        _calls.Clear();
         await RefreshListAsync();
         await LoadConversationAsync();
     }
@@ -326,6 +345,7 @@
         _streaming = true;
         _partial = string.Empty;
         _reasoning = string.Empty;
+        _calls.Clear();
         _stream = new CancellationTokenSource();
         await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
         await RefreshAsync();
@@ -338,6 +358,8 @@
         {
             await foreach (var answerEvent in start(_stream.Token))
             {
+                // A call that waits for the user must be on screen before the next event, which may be minutes away.
+                var urgent = false;
                 switch (answerEvent)
                 {
                     case AnswerReasoning reasoning:
@@ -345,6 +367,18 @@
                         break;
                     case AnswerDelta delta:
                         _partial += delta.Text;
+                        break;
+                    case ToolCallEvent call:
+                        _calls.Add(ToolCallView.From(call));
+                        urgent = true;
+                        break;
+                    case AskUserEvent ask:
+                        _calls.Find(c => c.CallId == ask.CallId)?.Apply(ask);
+                        urgent = true;
+                        break;
+                    case ToolResultEvent result:
+                        _calls.Find(c => c.CallId == result.CallId)?.Apply(result);
+                        urgent = true;
                         break;
                     case AnswerDone:
                         finished = true;
@@ -361,7 +395,7 @@
                 }
 
                 // A render per token would freeze the single-threaded WebAssembly UI on long answers.
-                if (Clock.GetElapsedTime(lastRender) >= RenderInterval)
+                if (urgent || Clock.GetElapsedTime(lastRender) >= RenderInterval)
                 {
                     lastRender = Clock.GetTimestamp();
                     await RefreshAsync();
@@ -423,6 +457,50 @@
     }
 
     private void Stop() => _stream?.Cancel();
+
+    private async Task DecideAsync(ToolCallView call, bool approved)
+    {
+        if (Id is not { } id || call.Busy)
+        {
+            return;
+        }
+
+        call.Busy = true;
+        var result = await Api.DecideToolCallAsync(id, call.CallId, approved);
+        await ReplySentAsync(call, result);
+    }
+
+    private async Task AnswerAsync(ToolCallView call, string answer)
+    {
+        if (Id is not { } id || call.Busy)
+        {
+            return;
+        }
+
+        call.Busy = true;
+        var result = await Api.AnswerQuestionAsync(id, call.CallId, answer);
+        await ReplySentAsync(call, result);
+    }
+
+    private async Task ReplySentAsync(ToolCallView call, ApiResult result)
+    {
+        if (result.IsSuccess)
+        {
+            call.MarkReplied();
+        }
+        else
+        {
+            // 409: the time to reply ran out, and the result is already on its way through the stream.
+            call.Busy = false;
+            _problem = result.Problem;
+            if (result.Problem!.IsUnauthorized)
+            {
+                Expired();
+            }
+        }
+
+        await RefreshAsync();
+    }
 
     private void StartRename()
     {

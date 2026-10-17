@@ -49,6 +49,26 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .reasoning { border: 1px dashed var(--mud-palette-lines-default); border-radius: 10px; padding: .35rem .75rem; font-size: .9rem; opacity: .9; }
 .reasoning summary { cursor: pointer; font-weight: 600; user-select: none; }
 .reasoning .reasoning-text { margin-top: .4rem; white-space: pre-wrap; max-height: 14rem; overflow-y: auto; color: var(--mud-palette-text-secondary); }
+
+.tool-calls { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .5rem; }
+.tool-card { border: 1px solid var(--mud-palette-lines-default); border-radius: 10px; padding: .45rem .75rem; font-size: .9rem; }
+.tool-card.state-waitingforconfirmation, .tool-card.state-waitingforanswer { border-color: var(--mud-palette-warning); }
+.tool-card.state-failed, .tool-card.state-denied, .tool-card.state-timedout { border-color: var(--mud-palette-error); }
+.tool-head { display: flex; align-items: center; gap: .5rem; }
+.tool-name { font-weight: 600; font-family: ui-monospace, monospace; }
+.tool-status { margin-left: auto; color: var(--mud-palette-text-secondary); font-size: .8rem; }
+.tool-detail { margin-top: .35rem; }
+.tool-detail summary { cursor: pointer; color: var(--mud-palette-text-secondary); font-size: .8rem; user-select: none; }
+.tool-pre { margin: .3rem 0 0; padding: .5rem .65rem; background: var(--mud-palette-background-gray); border-radius: 6px; max-height: 14rem; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: .82rem; }
+.tool-hint { margin-top: .4rem; font-size: .8rem; color: var(--mud-palette-text-secondary); }
+.tool-question { margin-top: .5rem; }
+.tool-question-text { font-weight: 600; margin-bottom: .35rem; white-space: pre-wrap; }
+.tool-question-row { display: flex; gap: .5rem; align-items: center; }
+.tool-question-row input { flex: 1; min-width: 0; padding: .4rem .6rem; border: 1px solid var(--mud-palette-lines-inputs); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
+.tool-dialog-backdrop { position: fixed; inset: 0; z-index: 1400; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.tool-dialog { background: var(--mud-palette-surface); color: var(--mud-palette-text-primary); border-radius: 12px; padding: 1.25rem 1.5rem; max-width: 40rem; width: 100%; max-height: 90vh; overflow: auto; box-shadow: var(--mud-elevation-8); }
+.tool-dialog h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
+.tool-dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
 .status-note { font-size: .85rem; color: var(--mud-palette-error); }
 .composer { border-top: 1px solid var(--mud-palette-lines-default); padding: .75rem 1rem; background: var(--mud-palette-background); }
 .composer-inner { max-width: 52rem; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
@@ -111,6 +131,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .context-bar { display: flex; height: .6rem; border-radius: 999px; overflow: hidden; background: var(--mud-palette-lines-default); }
 .seg { display: block; height: 100%; }
 .seg-systemprompt { background: #8b5cf6; }
+.seg-tools { background: #f59e0b; }
 .seg-attachments { background: #3b82f6; }
 .seg-messages { background: #10b981; }
 .seg-free { background: var(--mud-palette-lines-default); }

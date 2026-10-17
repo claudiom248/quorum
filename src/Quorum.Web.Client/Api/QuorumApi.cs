@@ -19,8 +19,9 @@ public sealed class QuorumApi(HttpClient http)
     public Task<ApiResult> VerifySetupTokenAsync(string token, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Post, "api/setup/verify-token", new { token }, setupToken: null, cancellationToken);
 
-    public Task<ApiResult<ModelConnection>> TestSetupModelAsync(string setupToken, string baseUrl, string? apiKey, CancellationToken cancellationToken = default) =>
-        SendAsync<ModelConnection>(HttpMethod.Post, "api/setup/model/test", new { baseUrl, apiKey }, setupToken, cancellationToken);
+    /// <param name="modelName">When given, the server also reports whether that model supports tools.</param>
+    public Task<ApiResult<ModelConnection>> TestSetupModelAsync(string setupToken, string baseUrl, string? apiKey, string? modelName = null, CancellationToken cancellationToken = default) =>
+        SendAsync<ModelConnection>(HttpMethod.Post, "api/setup/model/test", new { baseUrl, apiKey, modelName }, setupToken, cancellationToken);
 
     public Task<ApiResult> CompleteSetupAsync(string setupToken, CompleteSetupRequest request, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Post, "api/setup/complete", request, setupToken, cancellationToken);
@@ -40,8 +41,19 @@ public sealed class QuorumApi(HttpClient http)
     public Task<ApiResult> UpdateAssistantSettingsAsync(UpdateAssistantSettingsRequest request, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, "api/settings/assistant", request, setupToken: null, cancellationToken);
 
-    public Task<ApiResult<ModelConnection>> TestAssistantModelAsync(string baseUrl, string? apiKey, CancellationToken cancellationToken = default) =>
-        SendAsync<ModelConnection>(HttpMethod.Post, "api/settings/assistant/test", new { baseUrl, apiKey }, setupToken: null, cancellationToken);
+    /// <param name="modelName">When given, the server also reports whether that model supports tools.</param>
+    public Task<ApiResult<ModelConnection>> TestAssistantModelAsync(string baseUrl, string? apiKey, string? modelName = null, CancellationToken cancellationToken = default) =>
+        SendAsync<ModelConnection>(HttpMethod.Post, "api/settings/assistant/test", new { baseUrl, apiKey, modelName }, setupToken: null, cancellationToken);
+
+    public Task<ApiResult<List<AssistantSummary>>> ListAssistantsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<AssistantSummary>>("api/assistants", cancellationToken);
+
+    public Task<ApiResult<AssistantTools>> GetAssistantToolsAsync(Guid assistantId, CancellationToken cancellationToken = default) =>
+        GetAsync<AssistantTools>($"api/assistants/{assistantId}/tools", cancellationToken);
+
+    /// <summary>Activates exactly these tools on the assistant.</summary>
+    public Task<ApiResult> SetAssistantToolsAsync(Guid assistantId, IReadOnlyList<Guid> toolIds, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/assistants/{assistantId}/tools", new { toolIds }, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<ConversationSummary>>> ListConversationsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<ConversationSummary>>("api/conversations", cancellationToken);
@@ -111,6 +123,14 @@ public sealed class QuorumApi(HttpClient http)
     public IAsyncEnumerable<AnswerEvent> SendMessageAsync(Guid id, string content, CancellationToken cancellationToken = default) =>
         StreamAnswerAsync($"api/conversations/{id}/messages", new { content }, cancellationToken);
 
+    /// <summary>Approves or denies a tool call the answer waits to run. Fails with 409 when it was decided already or its time passed.</summary>
+    public Task<ApiResult> DecideToolCallAsync(Guid conversationId, Guid callId, bool approved, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, $"api/conversations/{conversationId}/tool-calls/{callId}/decision", new { approved }, setupToken: null, cancellationToken);
+
+    /// <summary>Answers a question the model asked the user.</summary>
+    public Task<ApiResult> AnswerQuestionAsync(Guid conversationId, Guid callId, string answer, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, $"api/conversations/{conversationId}/tool-calls/{callId}/answer", new { answer }, setupToken: null, cancellationToken);
+
     /// <summary>Streams a new answer that replaces the conversation's last one.</summary>
     public IAsyncEnumerable<AnswerEvent> RegenerateAsync(Guid id, CancellationToken cancellationToken = default) =>
         StreamAnswerAsync($"api/conversations/{id}/regenerate", body: null, cancellationToken);
@@ -147,6 +167,11 @@ public sealed class QuorumApi(HttpClient http)
                     "delta" => JsonSerializer.Deserialize<AnswerDelta>(item.Data, Json),
                     "reasoning" => JsonSerializer.Deserialize<AnswerReasoning>(item.Data, Json),
                     "done" => JsonSerializer.Deserialize<AnswerDone>(item.Data, Json),
+                    "tool_call" => JsonSerializer.Deserialize<ToolCallEvent>(item.Data, Json),
+                    "tool_result" => JsonSerializer.Deserialize<ToolResultEvent>(item.Data, Json),
+                    "ask_user" => JsonSerializer.Deserialize<AskUserEvent>(item.Data, Json),
+
+                    // Includes "ping": the server keeps the connection busy while the answer waits.
                     _ => null,
                 };
 

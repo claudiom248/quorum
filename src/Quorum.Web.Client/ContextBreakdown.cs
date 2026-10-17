@@ -6,6 +6,7 @@ namespace Quorum.Web.Client;
 public enum SegmentKind
 {
     SystemPrompt,
+    Tools,
     Attachments,
     Messages,
     Free,
@@ -55,7 +56,7 @@ public sealed record ContextBreakdown(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(attachments);
 
-        var used = context.SystemPromptTokens + context.AttachmentsTokens + context.MessagesTokens;
+        var used = context.SystemPromptTokens + context.ToolsTokens + context.AttachmentsTokens + context.MessagesTokens;
         var free = Math.Max(0, context.RemainingTokens);
 
         // When the context overflows the bar is the whole of what is used; otherwise it is the usable context.
@@ -73,13 +74,19 @@ public sealed record ContextBreakdown(
             : $"{FormatTokens(context.RemainingTokens)} left";
         var summary = $"{FormatTokens(used)} of {FormatTokens(context.UsableTokens)} tokens";
 
+        // The tool definitions are a segment of their own, but only for an assistant that has tools: others keep the bar they had.
+        List<BreakdownSegment> segments = [Segment(SegmentKind.SystemPrompt, "System prompt", context.SystemPromptTokens)];
+        if (context.ToolsTokens > 0)
+        {
+            segments.Add(Segment(SegmentKind.Tools, "Tool definitions", context.ToolsTokens));
+        }
+
+        segments.Add(Segment(SegmentKind.Attachments, "Attachments", context.AttachmentsTokens));
+        segments.Add(Segment(SegmentKind.Messages, "Messages", context.MessagesTokens));
+        segments.Add(Segment(SegmentKind.Free, "Free", free));
+
         return new ContextBreakdown(
-            [
-                Segment(SegmentKind.SystemPrompt, "System prompt", context.SystemPromptTokens),
-                Segment(SegmentKind.Attachments, "Attachments", context.AttachmentsTokens),
-                Segment(SegmentKind.Messages, "Messages", context.MessagesTokens),
-                Segment(SegmentKind.Free, "Free", free),
-            ],
+            segments,
             attachments.Select(a => new AttachmentShare(a.FileName, AttachmentRules.Kind(a.FileName), a.CharacterCount / CharactersPerToken)).ToList(),
             isOver ? $"{summary} · {margin}" : summary,
             margin,
