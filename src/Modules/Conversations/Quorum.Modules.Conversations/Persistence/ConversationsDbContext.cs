@@ -49,7 +49,22 @@ internal sealed class ConversationsDbContext(
             message.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
             message.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             message.HasIndex(m => new { m.ConversationId, m.CreatedAt });
+            message.HasMany(m => m.Sources).WithOne().HasForeignKey(s => s.MessageId).OnDelete(DeleteBehavior.Cascade);
+            message.Navigation(m => m.Sources).UsePropertyAccessMode(PropertyAccessMode.Field);
             message.HasQueryFilter(m => m.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MessageSource>(source =>
+        {
+            source.ToTable("message_sources");
+            source.Property(s => s.Id).ValueGeneratedNever();
+            source.Property(s => s.KnowledgeBase).HasMaxLength(MessageSource.MaxKnowledgeBaseLength);
+            source.Property(s => s.DocumentId).HasMaxLength(MessageSource.MaxReferenceLength);
+            source.Property(s => s.Title).HasMaxLength(MessageSource.MaxReferenceLength);
+            source.Property(s => s.Position).HasMaxLength(MessageSource.MaxReferenceLength);
+            source.Property(s => s.Url).HasMaxLength(MessageSource.MaxUrlLength);
+            source.HasIndex(s => new { s.MessageId, s.N });
+            source.HasQueryFilter(s => s.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Attachment>(attachment =>

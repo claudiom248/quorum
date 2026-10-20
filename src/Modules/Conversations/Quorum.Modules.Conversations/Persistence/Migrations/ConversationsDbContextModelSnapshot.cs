@@ -136,6 +136,48 @@ namespace Quorum.Modules.Conversations.Persistence.Migrations
                     b.ToTable("messages", "conversations");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Conversations.Domain.MessageSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentId")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("KnowledgeBase")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("N")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId", "N");
+
+                    b.ToTable("message_sources", "conversations");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Attachment", b =>
                 {
                     b.HasOne("Quorum.Modules.Conversations.Domain.Conversation", null)
@@ -154,9 +196,23 @@ namespace Quorum.Modules.Conversations.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Conversations.Domain.MessageSource", b =>
+                {
+                    b.HasOne("Quorum.Modules.Conversations.Domain.Message", null)
+                        .WithMany("Sources")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Conversation", b =>
                 {
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Conversations.Domain.Message", b =>
+                {
+                    b.Navigation("Sources");
                 });
 #pragma warning restore 612, 618
         }

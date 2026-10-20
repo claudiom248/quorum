@@ -119,7 +119,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         ConversationsDbContext db,
         CancellationToken cancellationToken)
     {
-        // Messages and attachments are two collections: one joined query would multiply their rows.
+        // Messages, their sources and attachments are separate collections: one joined query would multiply their rows.
         var conversation = await db.Conversations
             .AsNoTracking()
             .AsSplitQuery()
@@ -129,7 +129,16 @@ internal sealed class ConversationEndpoints : IEndpointGroup
                 c.Title,
                 c.Messages
                     .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
-                    .Select(m => new MessageResponse(m.Id, m.Role.ToString(), m.Content, m.Status.ToString(), m.CreatedAt))
+                    .Select(m => new MessageResponse(
+                        m.Id,
+                        m.Role.ToString(),
+                        m.Content,
+                        m.Status.ToString(),
+                        m.CreatedAt,
+                        m.Sources
+                            .OrderBy(s => s.N)
+                            .Select(s => new SourceResponse(s.N, s.KnowledgeBase, s.DocumentId, s.Title, s.Position, s.Url))
+                            .ToList()))
                     .ToList(),
                 db.Attachments
                     .Where(a => a.ConversationId == c.Id)
@@ -319,7 +328,10 @@ internal sealed record ConversationCreated(Guid Id);
 
 internal sealed record ConversationResponse(Guid Id, string? Title, List<MessageResponse> Messages, List<AttachmentResponse> Attachments);
 
-internal sealed record MessageResponse(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt);
+/// <param name="Sources">The sources an assistant message cited, by number; empty for a user message and for an answer that cited none.</param>
+internal sealed record MessageResponse(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt, List<SourceResponse> Sources);
+
+internal sealed record SourceResponse(int N, string KnowledgeBase, string? DocumentId, string? Title, string? Position, string? Url);
 
 internal sealed record RenameConversationRequest(string? Title);
 
