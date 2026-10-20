@@ -185,7 +185,13 @@ internal static class AnswerStream
         IReadOnlyList<AnswerSource> sources,
         TimeProvider clock)
     {
-        var message = conversation.AddAnswer(content, status, sources, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var message = conversation.AddAnswer(content, status, now);
+        foreach (var source in sources)
+        {
+            message.AddSource(source.N, source.KnowledgeBase, source.DocumentId, source.Title, source.Position, source.Url, now);
+        }
+
         // The request may already be aborted; the answer must be stored regardless.
         await db.SaveChangesAsync(CancellationToken.None);
         return message;

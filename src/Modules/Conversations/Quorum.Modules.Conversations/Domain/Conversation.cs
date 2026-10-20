@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Quorum.Modules.Agents.Contracts;
 
 namespace Quorum.Modules.Conversations.Domain;
 
@@ -50,16 +49,8 @@ internal sealed partial class Conversation
         return Add(Message.FromUser(this, content, now), now);
     }
 
-    public Message AddAnswer(string content, MessageStatus status, IEnumerable<AnswerSource> sources, DateTimeOffset now)
-    {
-        var message = Message.FromAssistant(this, content, status, now);
-        foreach (var source in sources)
-        {
-            message.AddSource(source.N, source.KnowledgeBase, source.DocumentId, source.Title, source.Position, source.Url, now);
-        }
-
-        return Add(message, now);
-    }
+    public Message AddAnswer(string content, MessageStatus status, DateTimeOffset now) =>
+        Add(Message.FromAssistant(this, content, status, now), now);
 
     /// <summary>The answer regeneration replaces, if the conversation ends with one.</summary>
     public Message? LastAnswer => _messages.Count > 0 && _messages[^1].Role == MessageRole.Assistant ? _messages[^1] : null;
