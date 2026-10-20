@@ -3,12 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Embeddings;
+using Quorum.Modules.Agents.Features.Tools;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Provisioning;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Modules.Agents.Tools.Rag;
 using Quorum.Modules.Agents.Tools.Builtin;
 using Quorum.Shared.Networking;
 using Quorum.Shared.Persistence;
@@ -35,6 +37,11 @@ public static class AgentsModule
         services.AddHttpClient(OpenAiEmbeddings.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2));
 
         services.AddScoped<IEmbeddings, OpenAiEmbeddings>();
+        services.AddScoped<IRagToolUsage, RagToolUsage>();
+        services.AddScoped<IAssistantDirectory, AssistantDirectory>();
+        services.AddMemoryCache();
+        services.AddScoped<RagToolResolver>();
+        services.AddScoped<RagToolValidation>();
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();

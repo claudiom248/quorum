@@ -350,7 +350,7 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
 
         Assert.True((await SearchApi.RunAsync(setup.App, setup.TenantId, request)).IsSuccess);
 
-        var narrowed = new { kind = "Assistant", assistantIds = new[] { Guid.NewGuid() } };
+        var narrowed = new { kind = "Assistant", assistantIds = new[] { await AssistantFixtures.AddAsync(setup.App) } };
         using var update = await setup.Admin.PutAsJsonAsync(
             KnowledgeBaseApi.One(kb),
             KnowledgeBaseApi.Body(setup.Url, collection, "assistant-only", scope: narrowed),

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
@@ -26,6 +27,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
     OutboundUrlGuard guard,
     StoreProbe probe,
     KnowledgeBaseSecretProtector protector,
+    IAssistantDirectory assistants,
     TimeProvider clock,
     ILogger<KnowledgeBaseRegistrar> logger)
 {
@@ -173,6 +175,12 @@ internal sealed partial class KnowledgeBaseRegistrar(
         }
 
         var (name, description, queryPrefix, scope, scopeTenantIds, scopeAssistantIds, roles, requestedFields, connection, model) = basics.Value;
+
+        // A mistyped id would leave the knowledge base visible to nobody, silently.
+        if (scope == KnowledgeBaseScope.Assistant && (await assistants.MissingAsync(scopeAssistantIds, cancellationToken)).Count > 0)
+        {
+            return Error.Validation("knowledge_base.invalid_scope", "Every assistant in the scope must exist.");
+        }
 
         var ownId = existing?.Id ?? Guid.Empty;
         if (await db.KnowledgeBases.AnyAsync(k => k.Name == name && k.Id != ownId, cancellationToken))

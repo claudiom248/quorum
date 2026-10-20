@@ -18,12 +18,19 @@ internal static class ToolNaming
 {
     public const string BuiltinPrefix = "builtin__";
 
+    public const string RagPrefix = "rag__";
+
+    /// <summary>What the audit log records as the server of a rag tool: the origin prefix, so that <c>rag__name</c> finds its calls like <c>server__tool</c> does.</summary>
+    public const string RagAuditServer = "rag";
+
     /// <summary>The longest name the model APIs accept (D-16).</summary>
     public const int MaxLength = 64;
 
     private const int HashLength = 8;
 
     public static string Builtin(string toolName) => BuiltinPrefix + toolName;
+
+    public static string Rag(string toolName) => RagPrefix + toolName;
 
     /// <summary>
     /// <c>&lt;server&gt;__&lt;tool&gt;</c>. A tool name the model APIs would not accept (characters outside <c>[a-zA-Z0-9_-]</c>, or too

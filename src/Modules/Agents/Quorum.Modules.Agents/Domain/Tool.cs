@@ -4,6 +4,9 @@ internal enum ToolOrigin
 {
     Builtin,
     Mcp,
+
+    /// <summary>Configured by an administrator as a search over knowledge bases; runs in-process (spec 003).</summary>
+    Rag,
 }
 
 internal enum ToolState
@@ -68,6 +71,32 @@ internal sealed class Tool
         State = ToolState.Enabled,
         Policy = ToolPolicy.Auto,
     };
+
+    /// <summary>
+    /// A rag tool. Its description is the administrator's text for the model; the schema is generated from the binding at the start of
+    /// each answer, so none is stored. <paramref name="configurationHash"/> stands for the whole binding (see <c>RagToolHash</c>).
+    /// </summary>
+    public static Tool CreateRag(Guid tenantId, string name, string description, string configurationHash, ToolPolicy policy) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        Origin = ToolOrigin.Rag,
+        Name = name,
+        Description = description,
+        InputSchema = "{}",
+        DefinitionHash = configurationHash,
+        State = ToolState.Enabled,
+        Policy = policy,
+    };
+
+    /// <summary>The administrator changed the binding: a call that waits on the old one finds a different hash and is refused.</summary>
+    public void Reconfigure(string name, string description, string configurationHash, ToolPolicy policy)
+    {
+        Name = name;
+        Description = description;
+        DefinitionHash = configurationHash;
+        Policy = policy;
+    }
 
     /// <summary>A tool a server listed for the first time: not offered to any model until the admin reviews it, and it asks for confirmation.</summary>
     public static Tool CreateMcp(Guid tenantId, Guid serverId, string name, string description, string inputSchema, string definitionHash, string? annotations) => new()

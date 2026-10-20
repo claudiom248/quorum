@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Modules.Agents.Tools.Rag;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -32,6 +33,10 @@ internal abstract class QuorumTool : AIFunction
     /// <returns>The result the model receives.</returns>
     /// <exception cref="ToolFailedException">The call cannot be done; the message goes to the model as the error.</exception>
     public abstract Task<string> RunAsync(JsonElement arguments, CancellationToken cancellationToken);
+
+    /// <summary>As <see cref="RunAsync"/>, for the invoker: a tool that cites sources returns them with its text.</summary>
+    public virtual async Task<ToolOutput> RunWithSourcesAsync(JsonElement arguments, CancellationToken cancellationToken) =>
+        new(await RunAsync(arguments, cancellationToken));
 
     protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
@@ -66,7 +71,7 @@ internal sealed class QuorumToolFactory(IEnumerable<IBuiltinTool> builtinTools, 
     public McpAnswerConnections NewConnections() => new(mcpClient, headersProtector);
 
     /// <summary>A built-in tool without an implementation in this build cannot be called, so it is not offered.</summary>
-    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections? connections)
+    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections? connections, RagRuntime? rag = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -74,6 +79,7 @@ internal sealed class QuorumToolFactory(IEnumerable<IBuiltinTool> builtinTools, 
             .Select(tool => tool.Origin switch
             {
                 Domain.ToolOrigin.Mcp when tool.Server is not null && connections is not null => new McpQuorumTool(tool, connections),
+                Domain.ToolOrigin.Rag when tool.Rag is not null && rag is not null => new RagQuorumTool(tool, rag),
                 Domain.ToolOrigin.Builtin when tool.Name == BuiltinToolCatalog.AskUser => new AskUserQuorumTool(tool),
                 Domain.ToolOrigin.Builtin when _builtinTools.TryGetValue(tool.Name, out var implementation) => new BuiltinQuorumTool(tool, implementation),
                 _ => (QuorumTool?)null,

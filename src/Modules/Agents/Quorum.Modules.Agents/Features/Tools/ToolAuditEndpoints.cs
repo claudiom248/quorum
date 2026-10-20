@@ -205,6 +205,7 @@ internal sealed record ToolAuditItem(
     string Arguments,
     bool ArgumentsTruncated,
     int? ResultCharacters,
+    int? SourceCount,
     int? DurationMs,
     string? ErrorCode)
 {
@@ -223,6 +224,7 @@ internal sealed record ToolAuditItem(
         entry.Arguments,
         entry.ArgumentsTruncated,
         entry.ResultCharacters,
+        entry.SourceCount,
         entry.DurationMs,
         entry.ErrorCode);
 }

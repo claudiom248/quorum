@@ -19,13 +19,14 @@ public sealed class KnowledgeBaseCatalogTests(PostgresFixture postgres, QdrantFi
         }
     }
 
-    private async Task<Setup> StartAsync(object? scope = null)
+    private async Task<Setup> StartAsync(bool assistantScopedToAnother = false)
     {
         var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
+        object? scope = assistantScopedToAnother ? new { kind = "Assistant", assistantIds = new[] { await AssistantFixtures.AddAsync(app) } } : null;
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, scope: scope);
         var fields = (await DictionaryApi.ListAsync(admin)).ToDictionary(f => f.Name, f => f.Id);
         return new Setup(app, admin, await TenantScope.TenantIdAsync(app), await SearchApi.AssistantIdAsync(app), registered.Id, fields);
@@ -79,7 +80,7 @@ public sealed class KnowledgeBaseCatalogTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-44
     public async Task WhatDoesNotExistOrIsNotVisibleIsSimplyAbsent()
     {
-        await using var setup = await StartAsync(new { kind = "Assistant", assistantIds = new[] { Guid.NewGuid() } });
+        await using var setup = await StartAsync(assistantScopedToAnother: true);
 
         var forTheAssistant = await InScopeAsync(
             setup,
@@ -160,7 +161,7 @@ public sealed class KnowledgeBaseCatalogTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task ANarrowScopedKnowledgeBaseIsHiddenFromAWiderScope()
     {
-        await using var setup = await StartAsync(new { kind = "Assistant", assistantIds = new[] { Guid.NewGuid() } });
+        await using var setup = await StartAsync(assistantScopedToAnother: true);
 
         var inTenant = await InScopeAsync(
             setup,
