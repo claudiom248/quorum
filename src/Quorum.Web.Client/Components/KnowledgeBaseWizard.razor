@@ -1,0 +1,467 @@
+@* The guided registration of a knowledge base (spec 003 D-9, D-19): connection → inspection → mapping → scope → save. *@
+@inject QuorumApi Api
+
+<MudPaper Outlined="true" Class="pa-4 mb-3" data-form="knowledge-base">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">@(Draft.IsNew ? "Register a knowledge base" : $"Edit {Draft.Name}")</MudText>
+
+    <ol class="wizard-steps" aria-label="Steps">
+        @foreach (var (step, label) in Steps)
+        {
+            var current = step == _step;
+            <li class="@(current ? "current" : step <= _reached ? "reached" : "pending")" aria-current="@(current ? "step" : null)">
+                <button type="button" disabled="@(step > _reached || _busy)" @onclick="() => GoTo(step)">@((int)step + 1). @label</button>
+            </li>
+        }
+    </ol>
+
+    @switch (_step)
+    {
+        case WizardStep.Connection:
+            <MudStack Spacing="3" data-step="connection">
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    Quorum reads a collection that already holds your documents, prepared by whoever owns the data. It never writes to it.
+                </MudText>
+                <MudTextField @bind-Value="Draft.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
+                              HelperText="Lower-case letters, digits, '-' and '_'. The model sees it when a tool searches several knowledge bases." />
+                <MudTextField @bind-Value="Draft.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="1000"
+                              HelperText="What is in it. The model reads this to choose where to search." />
+                <MudTextField @bind-Value="Draft.Url" Label="Qdrant address (gRPC)" Variant="Variant.Outlined" Required="true"
+                              HelperText="The gRPC port, 6334 by default, e.g. http://qdrant:6334. The REST port, 6333, does not work here." />
+                <MudTextField @bind-Value="Draft.ApiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
+                              HelperText="@ApiKeyHint" />
+                <MudTextField @bind-Value="Draft.Collection" Label="Collection" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="Draft.VectorName" Label="Vector name" Variant="Variant.Outlined"
+                              HelperText="Only when the collection has several vectors; the inspection tells you." />
+                <MudTextField @bind-Value="Draft.EmbeddingModel" Label="Embedding model" Variant="Variant.Outlined" Required="true"
+                              HelperText="The model that embedded the documents, served by the model endpoint of this installation, e.g. nomic-embed-text." />
+                <MudTextField @bind-Value="Draft.QueryPrefix" Label="Query prefix" Variant="Variant.Outlined" MaxLength="200"
+                              HelperText="Added before every question, if the model needs it (e.g. 'search_query: ' for nomic, e5 or bge models). Optional." />
+                @if (Draft.NeedsApiKeyAgain)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                        The address changed: the stored key is only kept for the same address, so type the key again.
+                    </MudAlert>
+                }
+
+                @if (_showProblems && Draft.ConnectionProblems() is { Count: > 0 } connectionProblems)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                        <ul class="problem-list">
+                            @foreach (var message in connectionProblems)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+
+                <ProblemMessage Problem="_problem" />
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Text" OnClick="Cancel" Disabled="_busy">Cancel</MudButton>
+                    @if (!Draft.IsNew && Draft.Mapping is not null)
+                    {
+                        <MudButton Variant="Variant.Outlined" OnClick="SkipInspection" Disabled="_busy">Keep the mapping</MudButton>
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="InspectAsync" Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.Search">@(Draft.IsNew ? "Inspect collection" : "Inspect again")</MudButton>
+                </MudStack>
+                @if (!Draft.IsNew)
+                {
+                    <div class="tool-hint">Inspecting again replaces the mapping with a new draft.</div>
+                }
+            </MudStack>
+            break;
+
+        case WizardStep.Inspection:
+            <MudStack Spacing="3" data-step="inspection">
+                @if (_inspection is { } inspection)
+                {
+                    <ul class="problem-list findings">
+                        @foreach (var finding in KnowledgeAdminView.Findings(inspection))
+                        {
+                            <li>@finding</li>
+                        }
+                    </ul>
+
+                    @foreach (var warning in inspection.Warnings)
+                    {
+                        <MudAlert Severity="@SeverityOf(warning)" Variant="Variant.Outlined" data-warning="@warning.Code">
+                            @warning.Message
+                            @if (!string.IsNullOrEmpty(warning.Path))
+                            {
+                                <span class="tool-hint"> (@warning.Path)</span>
+                            }
+                        </MudAlert>
+                    }
+
+                    @if (inspection.UnindexedFields.Count > 0)
+                    {
+                        <div class="tool-hint" data-unindexed>
+                            Without a payload index, filters on these fields can be slow on a large collection:
+                            @string.Join(", ", inspection.UnindexedFields). Quorum never creates indexes: ask the data owner.
+                        </div>
+                    }
+
+                    @if (inspection.Vectors.Count > 1 || Draft.VectorName.Length > 0)
+                    {
+                        <label class="tool-policy">Vector
+                            <select aria-label="Vector" @bind="Draft.VectorName">
+                                <option value="">Choose…</option>
+                                @foreach (var vector in inspection.Vectors.Where(v => v.Name is not null))
+                                {
+                                    <option value="@vector.Name">@KnowledgeAdminView.DescribeVector(vector)</option>
+                                }
+                            </select>
+                        </label>
+                        @if (Draft.NeedsVectorChoice(inspection))
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                The collection has several vectors: choose which one holds the embeddings, then inspect again to check its size.
+                            </MudAlert>
+                        }
+                    }
+                }
+
+                <MudTextField @bind-Value="Draft.Schema" Label="Payload schema (optional)" Variant="Variant.Outlined" Lines="6" Class="schema-input"
+                              HelperText="Paste a plain JSON Schema of the payload, if the data owner gave you one, instead of sampling points. Up to 100 KB." />
+                @if (Draft.SchemaProblem() is { } schemaProblem)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@schemaProblem</MudAlert>
+                }
+
+                <ProblemMessage Problem="_problem" />
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Connection)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="InspectAsync" Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.Search">@(string.IsNullOrWhiteSpace(Draft.Schema) ? "Inspect again" : "Inspect with this schema")</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToMapping"
+                               Disabled="@(_busy || Draft.Mapping is null || (_inspection is { } found && !KnowledgeAdminView.CanReview(found)))">Review the mapping</MudButton>
+                </MudStack>
+            </MudStack>
+            break;
+
+        case WizardStep.Mapping when Draft.Mapping is { } mapping:
+            <MudStack Spacing="3" data-step="mapping">
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    Say what each payload field means. Nothing is saved until you confirm. Paths use dots for nested objects, e.g. meta.year.
+                </MudText>
+
+                <MudText Typo="Typo.subtitle2">What the model reads and cites</MudText>
+                <MudTextField @bind-Value="mapping.Text" Label="Text (required)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                              HelperText="The payload field with the text of the chunk." />
+                <MudTextField @bind-Value="mapping.DocumentId" Label="Document id" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                <MudTextField @bind-Value="mapping.Title" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                <MudTextField @bind-Value="mapping.Position" Label="Position (page or section)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                <MudTextField @bind-Value="mapping.SourceUrl" Label="Source URL" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Metadata fields</MudText>
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    Each one is bound to a field of the dictionary, which models use to filter. Use an existing field's name to reuse it.
+                </MudText>
+
+                @foreach (var review in mapping.Review(Dictionary))
+                {
+                    var row = review.Row;
+                    <div class="mapping-row @(review.Problems.Count > 0 ? "has-problems" : string.Empty)" data-path="@row.Path">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start" Class="mapping-row-fields">
+                            <MudTextField @bind-Value="row.Path" Label="Payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                            <MudTextField @bind-Value="row.Name" Label="Dictionary field" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="@($"Remove {row.Path}")" OnClick="() => mapping.RemoveRow(row)" />
+                        </MudStack>
+                        <div class="tool-hint">
+                            @if (review.Existing is { } existing)
+                            {
+                                <span>Existing field: @KnowledgeAdminView.TypeLabel(existing.Type), @KnowledgeAdminView.DictionaryScopeLabel(existing.Scope).ToLowerInvariant()</span>
+                            }
+                            else if (row.Name.Trim().Length > 0)
+                            {
+                                <label class="tool-policy">New field of type
+                                    <select aria-label="@($"Type of {row.Name}")" value="@review.EffectiveType" @onchange="e => row.Type = e.Value?.ToString()">
+                                        @foreach (var type in DictionaryFieldTypes.All)
+                                        {
+                                            <option value="@type">@KnowledgeAdminView.TypeLabel(type)</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </div>
+                        @if (review.HasTypeConflict)
+                        {
+                            <MudCheckBox T="bool" @bind-Value="row.AcceptExistingType" Dense="true"
+                                         Label="@($"Use the dictionary's type ({KnowledgeAdminView.TypeLabel(review.Existing!.Type)}): the values fit")" />
+                        }
+
+                        @foreach (var problem in review.Problems)
+                        {
+                            <div class="mapping-problem" role="alert">@problem</div>
+                        }
+                    </div>
+                }
+
+                <div>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => mapping.AddRow()"
+                               StartIcon="@Icons.Material.Filled.Add">Add a field</MudButton>
+                </div>
+
+                @if (mapping.NewFields(Dictionary) is { Count: > 0 } created)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-new-fields>
+                        These fields are not in the dictionary yet: @string.Join(", ", created.Select(f => $"{f.Name} ({KnowledgeAdminView.TypeLabel(f.Type).ToLowerInvariant()})")).
+                        <MudCheckBox T="bool" @bind-Value="mapping.ConfirmCreate" Dense="true" Label="Create them when I save" />
+                    </MudAlert>
+                }
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Inspection)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToScope" Disabled="_busy">Next</MudButton>
+                </MudStack>
+                @if (_showProblems && mapping.Problems(Dictionary) is { Count: > 0 } mappingProblems)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                        <ul class="problem-list">
+                            @foreach (var message in mappingProblems)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+            </MudStack>
+            break;
+
+        case WizardStep.Scope:
+            <MudStack Spacing="3" data-step="scope">
+                <ScopeEditor Form="Draft.Scope" Assistants="Assistants" Subject="knowledge base"
+                             GlobalWarning="Every tenant of this installation will be able to search this knowledge base. It can use only dictionary fields that are visible to every tenant." />
+                @if (Draft.ScopeProblem() is { } scopeProblem)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@scopeProblem</MudAlert>
+                }
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Mapping)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToReview" Disabled="_busy">Next</MudButton>
+                </MudStack>
+            </MudStack>
+            break;
+
+        default:
+            <MudStack Spacing="3" data-step="review">
+                <ul class="problem-list findings">
+                    @foreach (var line in Draft.Summary(Dictionary, Assistants))
+                    {
+                        <li>@line</li>
+                    }
+                </ul>
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    The knowledge base is saved even if it cannot be reached yet; it is then marked unavailable and the reason is shown.
+                </MudText>
+
+                @if (Draft.Problems(Dictionary) is { Count: > 0 } problems)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                        Fix these before saving:
+                        <ul class="problem-list">
+                            @foreach (var message in problems)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+
+                <ProblemMessage Problem="_problem" />
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Scope)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                               Disabled="@(_busy || Draft.Problems(Dictionary).Count > 0)">@(Draft.IsNew ? "Register" : "Save changes")</MudButton>
+                </MudStack>
+            </MudStack>
+            break;
+    }
+</MudPaper>
+
+@code {
+    private enum WizardStep
+    {
+        Connection,
+        Inspection,
+        Mapping,
+        Scope,
+        Review,
+    }
+
+    private static readonly (WizardStep Step, string Label)[] Steps =
+    [
+        (WizardStep.Connection, "Connection"),
+        (WizardStep.Inspection, "Inspection"),
+        (WizardStep.Mapping, "Mapping"),
+        (WizardStep.Scope, "Who can use it"),
+        (WizardStep.Review, "Save"),
+    ];
+
+    private WizardStep _step;
+    private WizardStep _reached;
+    private InspectResult? _inspection;
+    private ApiProblem? _problem;
+    private bool _busy;
+    private bool _showProblems;
+
+    [Parameter, EditorRequired]
+    public KnowledgeBaseDraft Draft { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<DictionaryField> Dictionary { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
+
+    /// <summary>Called after the server saved the knowledge base (even if it is unavailable).</summary>
+    [Parameter]
+    public EventCallback<SavedKnowledgeBase> OnSaved { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string ApiKeyHint => Draft.HadApiKey
+        ? "A key is stored. Leave empty to keep it. It is only kept while the address stays the same."
+        : "Optional. Stored encrypted and never shown again.";
+
+    private static Severity SeverityOf(KnowledgeBaseWarning warning) => KnowledgeAdminView.LevelOf(warning) switch
+    {
+        WarningLevel.Error => Severity.Error,
+        WarningLevel.Warning => Severity.Warning,
+        _ => Severity.Info,
+    };
+
+    private void GoTo(WizardStep step)
+    {
+        _problem = null;
+        _showProblems = false;
+        _step = step;
+    }
+
+    private void Reach(WizardStep step)
+    {
+        _step = step;
+        if (step > _reached)
+        {
+            _reached = step;
+        }
+    }
+
+    private void Cancel() => OnCancel.InvokeAsync();
+
+    private void SkipInspection()
+    {
+        if (Draft.ConnectionProblems() is { Count: > 0 })
+        {
+            _showProblems = true;
+            return;
+        }
+
+        _problem = null;
+        Reach(WizardStep.Mapping);
+    }
+
+    private async Task InspectAsync()
+    {
+        _problem = null;
+        _showProblems = true;
+        if (Draft.ConnectionProblems().Count > 0 || Draft.SchemaProblem() is not null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.InspectKnowledgeBaseAsync(Draft.ToInspectRequest());
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+                return;
+            }
+
+            _inspection = result.Value;
+            if (KnowledgeAdminView.CanReview(result.Value))
+            {
+                Draft.UseInspection(result.Value);
+            }
+
+            _showProblems = false;
+            Reach(WizardStep.Inspection);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ToMapping()
+    {
+        _problem = null;
+        Reach(WizardStep.Mapping);
+    }
+
+    private void ToScope()
+    {
+        if (Draft.Mapping!.Problems(Dictionary).Count > 0)
+        {
+            _showProblems = true;
+            return;
+        }
+
+        _showProblems = false;
+        Reach(WizardStep.Scope);
+    }
+
+    private void ToReview()
+    {
+        if (Draft.ScopeProblem() is not null)
+        {
+            return;
+        }
+
+        Reach(WizardStep.Review);
+    }
+
+    private async Task SaveAsync()
+    {
+        _problem = null;
+        _busy = true;
+        try
+        {
+            var request = Draft.ToRequest(Dictionary);
+            if (Draft.Id is { } id)
+            {
+                var updated = await Api.UpdateKnowledgeBaseAsync(id, request);
+                if (!updated.IsSuccess)
+                {
+                    _problem = updated.Problem;
+                    return;
+                }
+
+                await OnSaved.InvokeAsync(new SavedKnowledgeBase(id, request.Name, updated.Value.Status, updated.Value.Warnings));
+            }
+            else
+            {
+                var created = await Api.CreateKnowledgeBaseAsync(request);
+                if (!created.IsSuccess)
+                {
+                    _problem = created.Problem;
+                    return;
+                }
+
+                await OnSaved.InvokeAsync(new SavedKnowledgeBase(created.Value.Id, request.Name, created.Value.Status, created.Value.Warnings));
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

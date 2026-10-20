@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Http;
 namespace Quorum.Web.Client.Api;
 
 /// <summary>Typed client of the Quorum public API, as used by the web UI (same origin, cookie authentication).</summary>
-public sealed class QuorumApi(HttpClient http)
+public sealed partial class QuorumApi(HttpClient http)
 {
     private const string SetupTokenHeader = "X-Setup-Token";
 
