@@ -97,6 +97,9 @@ public enum AnswerChunkKind
 
     /// <summary>The model asks the user a question and the answer waits for it: <see cref="AnswerChunk.Tool"/> is a <see cref="UserQuestionEvent"/>.</summary>
     UserQuestion,
+
+    /// <summary>A tool returned sources the answer may cite: <see cref="AnswerChunk.Tool"/> is a <see cref="SourcesEvent"/>.</summary>
+    Sources,
 }
 
 /// <summary>
@@ -120,6 +123,17 @@ public sealed record UserQuestionEvent(Guid CallId, string Question, DateTimeOff
 /// <param name="Content">The result, or the error that the model received in its place.</param>
 public sealed record ToolResultEvent(Guid CallId, ToolResultStatus Status, string Content, int SizeCharacters)
     : ToolEvent(CallId);
+
+/// <summary>
+/// A source the model may cite as <c>[n]</c> (spec 003 D-15): where a passage it was given came from. References only, never the
+/// passage itself.
+/// </summary>
+/// <param name="N">The number the model cites it by; it continues across the tool calls of one answer.</param>
+/// <param name="KnowledgeBase">The name of the knowledge base, as it was when the answer was given.</param>
+public sealed record AnswerSource(int N, string KnowledgeBase, string? DocumentId, string? Title, string? Position, string? Url);
+
+/// <summary>The sources a tool call returned, published just before the <see cref="ToolResultEvent"/> of the same call.</summary>
+public sealed record SourcesEvent(Guid CallId, IReadOnlyList<AnswerSource> Sources) : ToolEvent(CallId);
 
 public enum ToolResultStatus
 {
