@@ -21,6 +21,7 @@ public sealed class FakeModelServer : HttpMessageHandler
     private readonly ConcurrentDictionary<string, int> _embeddingFailures = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<EmbeddingRequest> _embeddingRequests = new();
     private readonly ConcurrentDictionary<string, bool> _withoutEmbeddingsApi = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, bool> _stalledEmbeddings = new(StringComparer.OrdinalIgnoreCase);
 
     public string? LastAuthorization { get; private set; }
 
@@ -55,6 +56,12 @@ public sealed class FakeModelServer : HttpMessageHandler
 
     /// <summary>Makes the endpoint answer 404 for the <c>/embeddings</c> route itself, as a server without that API does.</summary>
     public void RemoveEmbeddingsApi(string baseUrl) => _withoutEmbeddingsApi[baseUrl.TrimEnd('/')] = true;
+
+    /// <summary>Makes the embeddings route work again after <see cref="FailEmbeddings"/>.</summary>
+    public void RecoverEmbeddings(string baseUrl) => _embeddingFailures.TryRemove(baseUrl.TrimEnd('/'), out _);
+
+    /// <summary>Makes embedding requests for <paramref name="model"/> hang until the caller gives up, as a model that is loading or overloaded does.</summary>
+    public void StallEmbeddings(string baseUrl, string model) => _stalledEmbeddings[$"{baseUrl.TrimEnd('/')}|{model}"] = true;
 
     /// <summary>Makes the embeddings route answer with the given HTTP status.</summary>
     public void FailEmbeddings(string baseUrl, int status) => _embeddingFailures[baseUrl.TrimEnd('/')] = status;
@@ -144,6 +151,11 @@ public sealed class FakeModelServer : HttpMessageHandler
             input,
             request.Headers.Authorization?.ToString(),
             body.TryGetProperty("encoding_format", out var format) ? format.GetString() : null));
+
+        if (_stalledEmbeddings.ContainsKey($"{baseUrl}|{model}"))
+        {
+            await Task.Delay(global::System.Threading.Timeout.Infinite, cancellationToken);
+        }
 
         if (_embeddingFailures.TryGetValue(baseUrl, out var status))
         {
