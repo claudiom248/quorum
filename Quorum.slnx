@@ -13,9 +13,9 @@
     <Project Path="src/Modules/Conversations/Quorum.Modules.Conversations.Contracts/Quorum.Modules.Conversations.Contracts.csproj" />
     <Project Path="src/Modules/Conversations/Quorum.Modules.Conversations/Quorum.Modules.Conversations.csproj" />
   </Folder>
-  <Folder Name="/src/Modules/KnowledgeBase/">
-    <Project Path="src/Modules/KnowledgeBase/Quorum.Modules.KnowledgeBase.Contracts/Quorum.Modules.KnowledgeBase.Contracts.csproj" />
-    <Project Path="src/Modules/KnowledgeBase/Quorum.Modules.KnowledgeBase/Quorum.Modules.KnowledgeBase.csproj" />
+  <Folder Name="/src/Modules/KnowledgeBases/">
+    <Project Path="src/Modules/KnowledgeBases/Quorum.Modules.KnowledgeBases.Contracts/Quorum.Modules.KnowledgeBases.Contracts.csproj" />
+    <Project Path="src/Modules/KnowledgeBases/Quorum.Modules.KnowledgeBases/Quorum.Modules.KnowledgeBases.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Licensing/">
     <Project Path="src/Modules/Licensing/Quorum.Modules.Licensing/Quorum.Modules.Licensing.csproj" />
