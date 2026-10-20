@@ -80,6 +80,8 @@ Set these in `.env`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `POSTGRES_PASSWORD` | (required) | Password of the bundled PostgreSQL. |
+| `POSTGRES_BIND` | `127.0.0.1` | Address the bundled PostgreSQL is published on, to browse it with a database client. Keep it on loopback unless the network is trusted. |
+| `POSTGRES_PORT` | `5432` | Port the bundled PostgreSQL is published on. The tables are described in [docs/database-schema.md](docs/database-schema.md). |
 | `QUORUM_BIND` | `127.0.0.1` | Address the web UI is published on. Use `0.0.0.0` only behind a TLS reverse proxy. |
 | `QUORUM_PORT` | `8080` | Port the web UI is published on. |
 | `QUORUM_DATABASE` | bundled database | Connection string of your own PostgreSQL, version 15 or later (the dictionary index uses NULLS NOT DISTINCT). Start without the `bundled-db` profile when you set it. |

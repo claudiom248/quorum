@@ -55,6 +55,9 @@ services:
       POSTGRES_USER: quorum
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: quorum
+    ports:
+      # Loopback by default so a client on this machine can browse the data; set POSTGRES_BIND=0.0.0.0 only on a trusted network.
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
