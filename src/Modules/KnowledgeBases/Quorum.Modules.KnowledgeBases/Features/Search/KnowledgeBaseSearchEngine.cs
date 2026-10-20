@@ -95,9 +95,11 @@ internal sealed partial class KnowledgeBaseSearchEngine(
             LogFailed(logger, outcome.Base.Id, outcome.Failure!.Code);
         }
 
+        // Taken before logging: the level may be off, and the argument must not be computed for nothing.
+        var elapsed = clock.GetElapsedTime(started).TotalMilliseconds;
         if (failures.Count == outcomes.Length)
         {
-            LogSearched(logger, bases.Count, 0, failures.Count, skipped.Count, clock.GetElapsedTime(started).TotalMilliseconds);
+            LogSearched(logger, bases.Count, 0, failures.Count, skipped.Count, elapsed);
             return Error.Unprocessable(
                 KnowledgeBaseSearchErrors.Unavailable,
                 failures.Count == 1
@@ -108,7 +110,7 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         var ranked = Interleave(outcomes.Where(o => o.Failure is null).Select(o => o.Chunks).ToList()).Take(input.TopK).ToList();
         var (chunks, firstTooLarge) = ApplyCap(ranked, input.MaxResultCharacters);
 
-        LogSearched(logger, bases.Count, chunks.Count, failures.Count, skipped.Count, clock.GetElapsedTime(started).TotalMilliseconds);
+        LogSearched(logger, bases.Count, chunks.Count, failures.Count, skipped.Count, elapsed);
         return new KnowledgeBaseSearchResponse(chunks, skipped, failures, outcomes.Sum(o => o.Unusable), firstTooLarge);
     }
 
