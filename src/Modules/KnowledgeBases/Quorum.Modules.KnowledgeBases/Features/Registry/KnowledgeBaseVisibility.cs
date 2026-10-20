@@ -20,4 +20,19 @@ internal static class KnowledgeBaseVisibility
                         || k.Scope == KnowledgeBaseScope.Global
                         || (k.Scope == KnowledgeBaseScope.Tenant && k.ScopeTenantIds.Contains(tenantId)));
     }
+
+    /// <summary>
+    /// What one assistant of the current tenant can use: as <see cref="KnowledgeBases"/>, except that a knowledge base with the
+    /// Assistant scope is only for the assistants it lists.
+    /// </summary>
+    public static IQueryable<KnowledgeBase> ForAssistant(KnowledgeBasesDbContext db, Guid assistantId)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+
+        return db.KnowledgeBases.IgnoreQueryFilters()
+            .Where(k => (k.TenantId == tenantId && (k.Scope != KnowledgeBaseScope.Assistant || k.ScopeAssistantIds.Contains(assistantId)))
+                        || k.Scope == KnowledgeBaseScope.Global
+                        || (k.Scope == KnowledgeBaseScope.Tenant && k.ScopeTenantIds.Contains(tenantId)));
+    }
 }

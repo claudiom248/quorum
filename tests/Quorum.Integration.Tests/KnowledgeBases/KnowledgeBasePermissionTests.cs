@@ -57,6 +57,7 @@ public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
             client => client.PutAsJsonAsync(KnowledgeBaseApi.One(id), new { kind = "Qdrant" }, Ct),
             client => client.DeleteAsync(KnowledgeBaseApi.One(id), Ct),
             client => client.PostAsync(KnowledgeBaseApi.Verify(id), content: null, Ct),
+            client => client.PostAsJsonAsync(Search.SearchApi.Search(id), new { query = "leave" }, Ct),
         };
 
         foreach (var send in requests)

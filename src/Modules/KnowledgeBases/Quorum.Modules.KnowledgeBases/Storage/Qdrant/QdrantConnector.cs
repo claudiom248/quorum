@@ -7,6 +7,7 @@ using Grpc.Net.Client;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using Quorum.Shared.Networking;
+using GrpcRange = Qdrant.Client.Grpc.Range;
 
 namespace Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 
@@ -37,6 +38,9 @@ internal enum QdrantFailure
 
     /// <summary>The server answered, but not as Qdrant does.</summary>
     Unexpected,
+
+    /// <summary>The server refused the query itself: a vector of the wrong size or a vector name the collection does not have.</summary>
+    Rejected,
 }
 
 /// <summary>A Qdrant call failed. The message is safe to show: it never carries the key or the address.</summary>
@@ -47,6 +51,10 @@ internal sealed class QdrantException(QdrantFailure failure, string message) : E
 
 /// <param name="Name">The vector's name, or <see langword="null"/> for the collection's single unnamed vector.</param>
 internal sealed record QdrantVector(string? Name, int Size, string Distance);
+
+/// <param name="Score">The store's score; whether higher or lower is better depends on the collection's distance.</param>
+/// <param name="Payload">Only the paths asked for.</param>
+internal sealed record QdrantHit(double Score, JsonObject Payload);
 
 /// <param name="PayloadIndexes">Payload path → Qdrant's data type, for the paths that have an index.</param>
 /// <param name="PointsCount">How many points the collection holds, when the server says.</param>
@@ -125,6 +133,71 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
             (client, token) => client.ScrollAsync(connection.Collection, limit: (uint)limit, payloadSelector: true, vectorsSelector: false, cancellationToken: token),
             cancellationToken);
         return response.Result.Select(point => ToJson(point.Payload)).ToList();
+    }
+
+    /// <summary>
+    /// The points nearest to <paramref name="vector"/> that satisfy all <paramref name="conditions"/>, best first, with the payload
+    /// at <paramref name="payloadPaths"/> and nothing else.
+    /// </summary>
+    /// <param name="scoreThreshold">Passed to the store, which knows whether a higher or a lower score is better for the collection's distance.</param>
+    /// <exception cref="QdrantException">The store cannot be used.</exception>
+    public async Task<IReadOnlyList<QdrantHit>> QueryAsync(
+        QdrantConnection connection,
+        float[] vector,
+        IReadOnlyList<QdrantCondition> conditions,
+        int limit,
+        double? scoreThreshold,
+        IReadOnlyList<string> payloadPaths,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(vector);
+        ArgumentNullException.ThrowIfNull(conditions);
+        ArgumentNullException.ThrowIfNull(payloadPaths);
+
+        var filter = new Filter();
+        filter.Must.AddRange(conditions.Select(ToCondition));
+        var payload = new WithPayloadSelector { Include = new PayloadIncludeSelector { Fields = { payloadPaths } } };
+
+        var points = await RunAsync(
+            connection,
+            (client, token) => client.QueryAsync(
+                connection.Collection,
+                query: vector,
+                usingVector: connection.VectorName,
+                filter: conditions.Count == 0 ? null : filter,
+                scoreThreshold: scoreThreshold is { } threshold ? (float)threshold : null,
+                limit: (ulong)limit,
+                payloadSelector: payload,
+                cancellationToken: token),
+            cancellationToken);
+        return points.Select(point => new QdrantHit(point.Score, ToJson(point.Payload))).ToList();
+    }
+
+    private static Condition ToCondition(QdrantCondition condition) => condition switch
+    {
+        MatchAnyCondition any => Conditions.Match(any.Path, any.Values),
+        MatchBooleanCondition flag => Conditions.Match(flag.Path, flag.Value),
+        NumberRangeCondition range => Conditions.Range(range.Path, ToRange(range)),
+        DateRangeCondition range => Conditions.DatetimeRange(range.Path, gte: range.From, lte: range.To),
+        _ => throw new ArgumentOutOfRangeException(nameof(condition), condition, "Unknown condition."),
+    };
+
+    // The bounds are optional fields of the message: a bound that is not set must stay unset, not become 0.
+    private static GrpcRange ToRange(NumberRangeCondition condition)
+    {
+        var range = new GrpcRange();
+        if (condition.Min is { } min)
+        {
+            range.Gte = min;
+        }
+
+        if (condition.Max is { } max)
+        {
+            range.Lte = max;
+        }
+
+        return range;
     }
 
     private static List<QdrantVector> ReadVectors(VectorsConfig? configuration)
@@ -224,6 +297,9 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
             StatusCode.Unauthenticated or StatusCode.PermissionDenied =>
                 new QdrantException(QdrantFailure.Unauthorized, "The server refused the API key (or needs one)."),
             StatusCode.NotFound => new QdrantException(QdrantFailure.NotFound, "The collection was not found."),
+            StatusCode.InvalidArgument => new QdrantException(
+                QdrantFailure.Rejected,
+                "The server rejected the query. Usually the collection's vectors have a different size than the embedding model's, or the vector name does not exist: ingestion and retrieval must use the same model."),
             StatusCode.DeadlineExceeded =>
                 new QdrantException(QdrantFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds."),
             StatusCode.Unavailable => new QdrantException(
