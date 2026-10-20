@@ -308,15 +308,11 @@ internal sealed record ServerInput(
 {
     private static readonly Error InvalidName = Error.Validation(
         "tool.invalid_name",
-        $"The name must be 1 to {McpServerRules.MaxNameLength} characters: lower-case letters, digits, '-' and '_', starting with a letter or digit, without '__' and not 'builtin'.");
+        $"The name must be 1 to {McpServerRules.MaxNameLength} characters: lower-case letters, digits, '-' and '_', starting with a letter or digit, without '__' and not 'builtin' or 'rag'.");
 
     private static readonly Error InvalidUrl = Error.Validation(
         "tool.invalid_url",
         "The URL must be an absolute http or https address without a user name or password. Put credentials in the headers: the URL is stored unencrypted and shown in the API, only headers are encrypted.");
-
-    private static readonly Error ScopeNotSupported = Error.Validation(
-        "tool.scope_not_supported",
-        "The agent scope is not available yet: agents do not exist. Use global, tenant or assistant.");
 
     private static readonly Error BlockedUrl = Error.Validation(
         "tool.url_blocked",
@@ -348,29 +344,10 @@ internal sealed record ServerInput(
             return failed(connection);
         }
 
-        var scope = request.Scope;
-        if (scope is null || !Enum.TryParse<ToolScopeKind>(scope.Kind, ignoreCase: true, out var kind)
-            || !Enum.IsDefined(kind) || int.TryParse(scope.Kind, out _))
+        var scope = await ToolScopeRules.ValidateAsync(request.Scope, db, cancellationToken);
+        if (!scope.IsSuccess)
         {
-            return failed(Error.Validation("tool.invalid_scope", "The scope kind must be Global, Tenant or Assistant."));
-        }
-
-        if (kind == ToolScopeKind.Agent)
-        {
-            return failed(ScopeNotSupported);
-        }
-
-        var tenantIds = (scope.TenantIds ?? []).Distinct().ToList();
-        var assistantIds = (scope.AssistantIds ?? []).Distinct().ToList();
-        if (ScopeProblem(kind, tenantIds, assistantIds) is { } problem)
-        {
-            return failed(Error.Validation("tool.invalid_scope", problem));
-        }
-
-        if (kind == ToolScopeKind.Assistant
-            && await db.Assistants.CountAsync(a => assistantIds.Contains(a.Id), cancellationToken) != assistantIds.Count)
-        {
-            return failed(Error.Validation("tool.invalid_scope", "Every assistant in the scope must exist."));
+            return failed(scope.Error);
         }
 
         var url = new Uri(request.Url!.Trim());
@@ -379,18 +356,8 @@ internal sealed record ServerInput(
             return failed(BlockedUrl);
         }
 
-        return new ServerInput(null, request.Name, url, request.Headers, kind, tenantIds, assistantIds);
+        return new ServerInput(null, request.Name, url, request.Headers, scope.Value.Kind, scope.Value.TenantIds, scope.Value.AssistantIds);
     }
-
-    private static string? ScopeProblem(ToolScopeKind kind, List<Guid> tenantIds, List<Guid> assistantIds) => kind switch
-    {
-        ToolScopeKind.Global when tenantIds.Count > 0 || assistantIds.Count > 0 => "A global scope has no tenants or assistants.",
-        ToolScopeKind.Tenant when assistantIds.Count > 0 => "A tenant scope lists tenants, not assistants.",
-        ToolScopeKind.Assistant when tenantIds.Count > 0 => "An assistant scope lists assistants, not tenants.",
-        ToolScopeKind.Assistant when assistantIds.Count == 0 => "An assistant scope needs at least one assistant.",
-        _ when tenantIds.Contains(Guid.Empty) || assistantIds.Contains(Guid.Empty) => "An id in the scope is empty.",
-        _ => null,
-    };
 }
 
 internal sealed record ScopeRequest(string? Kind, List<Guid>? TenantIds, List<Guid>? AssistantIds);

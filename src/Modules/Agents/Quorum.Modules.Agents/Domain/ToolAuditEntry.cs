@@ -60,6 +60,9 @@ internal sealed class ToolAuditEntry
 
     public int? ResultCharacters { get; private set; }
 
+    /// <summary>How many sources a rag call returned; null for tools that have none. Only the count is kept, never what they say.</summary>
+    public int? SourceCount { get; private set; }
+
     public int? DurationMs { get; private set; }
 
     public string? ErrorCode { get; private set; }
@@ -98,10 +101,11 @@ internal sealed class ToolAuditEntry
         };
 
     /// <summary>Records how the call ended. Only the size of the result is kept, never its content.</summary>
-    public void Complete(ToolOutcome outcome, int? resultCharacters, string? errorCode, DateTimeOffset now, TimeSpan duration, ToolDecision? decision = null)
+    public void Complete(ToolOutcome outcome, int? resultCharacters, string? errorCode, DateTimeOffset now, TimeSpan duration, ToolDecision? decision = null, int? sourceCount = null)
     {
         Outcome = outcome;
         ResultCharacters = resultCharacters;
+        SourceCount = sourceCount;
         ErrorCode = errorCode;
         Decision = decision ?? Decision;
         CompletedAt = now;

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Quorum.Modules.KnowledgeBases.Contracts;
 
 /// <summary>What the Agents module needs to know about knowledge bases to describe a rag tool and to validate a binding.</summary>
@@ -11,6 +13,9 @@ public interface IKnowledgeBaseCatalog
 
     /// <summary>Which knowledge bases and fields of a binding are not visible to the whole scope it will have (spec 003 "Rule between scopes").</summary>
     Task<ScopeCheck> CheckScopeAsync(ScopeCheckQuery query, CancellationToken cancellationToken);
+
+    /// <summary>Whether the fixed filters of a binding fit the types of the fields they name, with the same rules a model's filters follow, except that none of them may be empty.</summary>
+    Task<FixedFilterCheck> CheckFixedFiltersAsync(FixedFilterQuery query, CancellationToken cancellationToken);
 }
 
 /// <param name="TenantId">The tenant describing; it must be the tenant of the current request.</param>
@@ -53,3 +58,12 @@ public sealed record ScopeCheck(IReadOnlyList<Guid> HiddenKnowledgeBaseIds, IRea
 {
     public bool IsVisible => HiddenKnowledgeBaseIds.Count == 0 && HiddenFieldIds.Count == 0;
 }
+
+/// <param name="TenantId">The tenant of the binding; it must be the tenant of the current request.</param>
+/// <param name="FieldIds">The fields a filter may name: the ones the binding's knowledge bases map.</param>
+/// <param name="Filters">The fixed filters in the shape of the generated tool schema: <c>department</c>, <c>year_min</c>, <c>published_on_to</c>...</param>
+public sealed record FixedFilterQuery(Guid TenantId, IReadOnlyList<Guid> FieldIds, IReadOnlyDictionary<string, JsonElement> Filters);
+
+/// <param name="Problem">What is wrong with the filters, written for the administrator, or <see langword="null"/> when they can be used.</param>
+/// <param name="FieldIds">The fields the filters name.</param>
+public sealed record FixedFilterCheck(string? Problem, IReadOnlyList<Guid> FieldIds);

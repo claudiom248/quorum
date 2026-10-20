@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Shared.Endpoints;
@@ -74,7 +75,7 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, IRagToolUsage ragTools, CancellationToken cancellationToken)
     {
         // The usage is read under the lock a knowledge base takes to save its mapping: one that was saved a moment ago is seen here,
         // and one that comes next finds the field gone. Without it both could succeed, leaving a mapping that names a deleted field.
@@ -87,10 +88,10 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
             return TypedResults.NotFound();
         }
 
-        var (own, others) = (await DictionaryUsage.LoadAsync(db, cancellationToken)).UsersOf(id, db.CurrentTenantId);
-        if (own.Count + others > 0)
+        var (bases, tools, others) = (await DictionaryUsage.LoadAsync(db, ragTools, cancellationToken)).UsersOf(id, db.CurrentTenantId);
+        if (bases.Count + tools.Count + others > 0)
         {
-            return FieldInUse(own, others).ToProblem();
+            return FieldInUse(bases, tools, others).ToProblem();
         }
 
         db.DictionaryFields.Remove(field);
@@ -99,18 +100,29 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
         return TypedResults.NoContent();
     }
 
-    // Other tenants' knowledge bases are counted, never named.
-    private static Error FieldInUse(List<string> own, int others)
+    // What other tenants have is counted, never named.
+    private static Error FieldInUse(List<string> bases, List<string> tools, int others)
     {
-        var users = own.Count > 0 ? $"knowledge bases {string.Join(", ", own)}" : "knowledge bases";
-        var more = own.Count > 0 && others > 0 ? $" and {others} of other tenants" : others > 0 ? $" ({others} of other tenants)" : string.Empty;
-        return Error.Conflict("knowledge_base.field_in_use", $"The field is used by {users}{more}: remove it from their mapping first.");
+        var parts = new List<string>();
+        if (bases.Count > 0)
+        {
+            parts.Add($"knowledge bases {string.Join(", ", bases)}");
+        }
+
+        if (tools.Count > 0)
+        {
+            parts.Add($"rag tools {string.Join(", ", tools)}");
+        }
+
+        var users = parts.Count > 0 ? string.Join(" and ", parts) : "knowledge bases or rag tools";
+        var more = parts.Count > 0 && others > 0 ? $" and {others} of other tenants" : others > 0 ? $" ({others} of other tenants)" : string.Empty;
+        return Error.Conflict("knowledge_base.field_in_use", $"The field is used by {users}{more}: remove it from their mapping or configuration first.");
     }
 
-    private static async Task<Ok<List<DictionaryFieldDto>>> ListAsync(KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Ok<List<DictionaryFieldDto>>> ListAsync(KnowledgeBasesDbContext db, IRagToolUsage ragTools, CancellationToken cancellationToken)
     {
         var fields = await DictionaryVisibility.Fields(db).AsNoTracking().OrderBy(f => f.Name).ToListAsync(cancellationToken);
-        var usage = await DictionaryUsage.LoadAsync(db, cancellationToken);
+        var usage = await DictionaryUsage.LoadAsync(db, ragTools, cancellationToken);
         return TypedResults.Ok(fields.Select(field => DictionaryFieldDto.From(field, usage.CountFor(field.Id))).ToList());
     }
 
@@ -177,7 +189,6 @@ internal sealed record CreatedFieldDto(Guid Id);
 
 internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount)
 {
-    // Rag tools join the count with spec 003's rag tool.
     public static DictionaryFieldDto From(DictionaryField field, int usedByCount) =>
         new(field.Id, field.Name, field.Type.ToString(), field.Description, field.Scope.ToString(), usedByCount);
 }

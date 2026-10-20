@@ -173,6 +173,65 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("model_endpoints", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.RagTool", b =>
+                {
+                    b.Property<Guid>("ToolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.PrimitiveCollection<List<Guid>>("ExposedFieldIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.PrimitiveCollection<List<Guid>>("FixedFilterFieldIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<string>("FixedFilters")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.PrimitiveCollection<List<Guid>>("KnowledgeBaseIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<int>("MaxResultCharacters")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<double?>("ScoreThreshold")
+                        .HasColumnType("double precision");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TopK")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ToolId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("rag_tools", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.Tool", b =>
                 {
                     b.Property<Guid>("Id")
@@ -226,7 +285,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .IsUnique()
                         .HasFilter("\"ServerId\" IS NOT NULL");
 
-                    b.HasIndex("TenantId", "Name")
+                    b.HasIndex("TenantId", "Origin", "Name")
                         .IsUnique()
                         .HasFilter("\"ServerId\" IS NULL");
 
@@ -280,6 +339,9 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<string>("ServerName")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<int?>("SourceCount")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -352,6 +414,15 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.HasOne("Quorum.Modules.Agents.Domain.Tool", null)
                         .WithMany()
                         .HasForeignKey("ToolId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.RagTool", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Tool", null)
+                        .WithOne()
+                        .HasForeignKey("Quorum.Modules.Agents.Domain.RagTool", "ToolId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

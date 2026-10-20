@@ -27,7 +27,7 @@ internal static class ToolDefinitionHash
         return Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));
     }
 
-    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)
+    internal static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)
     {
         switch (element.ValueKind)
         {

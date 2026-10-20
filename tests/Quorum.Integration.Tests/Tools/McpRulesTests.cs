@@ -57,6 +57,7 @@ public sealed class McpRulesTests
     [InlineData("-leading", false)]
     [InlineData("a__b", false)]
     [InlineData("builtin", false)]
+    [InlineData("rag", false)]
     [InlineData("this-name-is-longer-than-thirty-two-characters", false)]
     public void ServerNamesAreRestrictedSoTheModelFacingNameIsValid(string name, bool valid) =>
         Assert.Equal(valid, McpServerRules.IsValidName(name));

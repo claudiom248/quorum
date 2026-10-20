@@ -25,6 +25,8 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<McpServer> McpServers => Set<McpServer>();
 
+    public DbSet<RagTool> RagTools => Set<RagTool>();
+
     /// <summary>
     /// The tenant of the request. Queries that must also see what other tenants share with this one (a server's scope) turn the
     /// tenant filter off and state the rule themselves, with this value.
@@ -61,8 +63,8 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             tool.Property(t => t.State).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.Policy).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.DefinitionHash).HasMaxLength(64);
-            // A built-in tool is unique in its tenant; an MCP tool in its server (two servers may both offer "search").
-            tool.HasIndex(t => new { t.TenantId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NULL");
+            // A built-in or rag tool is unique in its tenant and origin (their exposed names have different prefixes); an MCP tool in its server (two servers may both offer "search").
+            tool.HasIndex(t => new { t.TenantId, t.Origin, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NULL");
             tool.HasIndex(t => new { t.ServerId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NOT NULL");
             tool.HasOne<McpServer>().WithMany().HasForeignKey(t => t.ServerId).OnDelete(DeleteBehavior.Cascade);
             tool.HasQueryFilter(t => t.TenantId == CurrentTenantId);
@@ -78,6 +80,18 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             server.Property(s => s.LastError).HasMaxLength(500);
             server.HasIndex(s => new { s.TenantId, s.Name }).IsUnique();
             server.HasQueryFilter(s => s.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<RagTool>(rag =>
+        {
+            rag.ToTable("rag_tools");
+            rag.HasKey(r => r.ToolId);
+            rag.Property(r => r.ToolId).ValueGeneratedNever();
+            rag.Property(r => r.FixedFilters).HasColumnType("jsonb");
+            rag.Property(r => r.Scope).HasConversion<string>().HasMaxLength(20);
+            rag.HasIndex(r => r.TenantId);
+            rag.HasOne<Tool>().WithOne().HasForeignKey<RagTool>(r => r.ToolId).OnDelete(DeleteBehavior.Cascade);
+            rag.HasQueryFilter(r => r.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AssistantTool>(activation =>

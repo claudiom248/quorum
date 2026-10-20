@@ -7,6 +7,7 @@ using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Rag;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
 
@@ -40,6 +41,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
     private static async Task<Results<Ok<AssistantToolsResponse>, ProblemHttpResult>> GetToolsAsync(
         Guid id,
         AgentsDbContext db,
+        RagToolResolver resolver,
         CancellationToken cancellationToken)
     {
         var budget = await (
@@ -54,9 +56,16 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         }
 
         var pool = await ToolPool.For(db, id).AsNoTracking().ToListAsync(cancellationToken);
+        // A rag tool whose knowledge bases this assistant cannot see is not in its pool: there is nothing it could search.
+        var rag = await resolver.ResolvePoolAsync(pool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
+        pool = [.. pool.Where(t => t.Tool.Origin != ToolOrigin.Rag || rag.ContainsKey(t.Tool.Id))];
         var active = (await db.AssistantTools.Where(a => a.AssistantId == id).Select(a => a.ToolId).ToListAsync(cancellationToken)).ToHashSet();
 
-        var activeDefinitions = pool.Where(t => active.Contains(t.Tool.Id)).Select(t => t.Definition).ToList();
+        // The size a rag tool takes is that of the definition the model gets, not of the stored one.
+        var activeDefinitions = pool
+            .Where(t => active.Contains(t.Tool.Id))
+            .Select(t => rag.TryGetValue(t.Tool.Id, out var resolved) ? new ToolDefinition(t.ExposedName, resolved.Definition.Description, resolved.Definition.InputSchema) : t.Definition)
+            .ToList();
         var warnings = ToolWarnings.Evaluate(
             activeDefinitions.Count,
             ToolDefinitionRenderer.Length(activeDefinitions),
@@ -74,6 +83,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         Guid id,
         SetAssistantToolsRequest request,
         AgentsDbContext db,
+        RagToolResolver resolver,
         CancellationToken cancellationToken)
     {
         if (await db.Assistants.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken) is not { } assistant)
@@ -82,8 +92,15 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         }
 
         var wanted = (request.ToolIds ?? []).Distinct().ToList();
-        var inPool = await ToolPool.For(db, id).Where(t => wanted.Contains(t.Tool.Id)).Select(t => t.Tool.Id).ToListAsync(cancellationToken);
+        var inPool = await ToolPool.For(db, id).AsNoTracking().Where(t => wanted.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
         if (inPool.Count != wanted.Count)
+        {
+            return NotInPool.ToProblem();
+        }
+
+        // A rag tool with no knowledge base this assistant can see is not in its pool (spec 003 AC-23).
+        var rag = await resolver.ResolvePoolAsync(inPool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
+        if (inPool.Any(t => t.Tool.Origin == ToolOrigin.Rag && !rag.ContainsKey(t.Tool.Id)))
         {
             return NotInPool.ToProblem();
         }

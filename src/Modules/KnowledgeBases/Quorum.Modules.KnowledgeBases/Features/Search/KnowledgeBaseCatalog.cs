@@ -63,6 +63,26 @@ internal sealed class KnowledgeBaseCatalog(KnowledgeBasesDbContext db, ITenantCo
             [.. fieldIds.Where(id => !seenFields.Contains(id))]);
     }
 
+    public async Task<FixedFilterCheck> CheckFixedFiltersAsync(FixedFilterQuery query, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        if (tenant.TenantId != query.TenantId || query.TenantId == Guid.Empty)
+        {
+            return new FixedFilterCheck("The filters cannot be checked.", []);
+        }
+
+        var ids = query.FieldIds.Distinct().ToList();
+        var fields = await DictionaryVisibility.Fields(db).AsNoTracking().Where(f => ids.Contains(f.Id)).ToListAsync(cancellationToken);
+        var byName = fields.ToDictionary(f => f.Name, f => new FilterField(f.Id, f.Name, f.Type), StringComparer.Ordinal);
+
+        // A fixed filter that restricts nothing is a mistake that would widen access, so an empty value is refused, not ignored.
+        var parsed = SearchFilterParser.Parse(query.Filters, byName, KnowledgeBaseSearchErrors.InvalidFixedFilter, ignoreEmpty: false);
+        return parsed.IsSuccess
+            ? new FixedFilterCheck(null, [.. parsed.Value.Select(f => f.Field.Id).Distinct()])
+            : new FixedFilterCheck(parsed.Error.Description, []);
+    }
+
     private static FilterFieldType TypeOf(DictionaryFieldType type) => type switch
     {
         DictionaryFieldType.Text => FilterFieldType.Text,

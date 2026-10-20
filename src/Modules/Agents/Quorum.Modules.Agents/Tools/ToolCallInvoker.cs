@@ -276,17 +276,20 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         ToolResultStatus status;
         string content;
         int? resultCharacters = null;
+        int? sourceCount = null;
         string? errorCode = null;
 
         try
         {
             // WaitAsync makes the timeout hold even for a tool that never looks at its token.
-            var output = await tool.RunAsync(arguments.RootElement, linked.Token).WaitAsync(linked.Token);
+            var produced = await tool.RunWithSourcesAsync(arguments.RootElement, linked.Token).WaitAsync(linked.Token);
+            var output = produced.Text;
             if (output.Length > context.Limits.MaxResultCharacters)
             {
                 outcome = ToolOutcome.Failed;
                 status = ToolResultStatus.Failed;
                 errorCode = "tool.result_too_large";
+                produced.Discard?.Invoke();
                 resultCharacters = output.Length;
                 content = $"The result is too large ({output.Length} characters; the limit is {context.Limits.MaxResultCharacters}) so it was not returned. " +
                           "Call the tool again with narrower arguments.";
@@ -297,6 +300,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
                 status = ToolResultStatus.Succeeded;
                 resultCharacters = output.Length;
                 content = output;
+                sourceCount = produced.Sources?.Count;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -331,7 +335,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
             content = "The tool failed unexpectedly.";
         }
 
-        await CompleteAsync(entry, outcome, resultCharacters, errorCode, info);
+        await CompleteAsync(entry, outcome, resultCharacters, errorCode, info, sourceCount);
         return new ToolCallResult(status, content);
     }
 
@@ -385,10 +389,10 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         }
     }
 
-    private async Task CompleteAsync(ToolAuditEntry entry, ToolOutcome outcome, int? resultCharacters, string? errorCode, CallInfo info)
+    private async Task CompleteAsync(ToolAuditEntry entry, ToolOutcome outcome, int? resultCharacters, string? errorCode, CallInfo info, int? sourceCount = null)
     {
         var duration = clock.GetElapsedTime(info.Timestamp);
-        entry.Complete(outcome, resultCharacters, errorCode, clock.GetUtcNow(), duration);
+        entry.Complete(outcome, resultCharacters, errorCode, clock.GetUtcNow(), duration, sourceCount: sourceCount);
 
         try
         {

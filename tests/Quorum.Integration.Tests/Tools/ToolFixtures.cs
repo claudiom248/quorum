@@ -143,7 +143,7 @@ internal static class ToolFixtures
         await using var connection = new NpgsqlConnection(app.ConnectionString);
         await connection.OpenAsync(Ct);
         await using var command = new NpgsqlCommand(
-            "SELECT \"ToolName\", \"ServerName\", \"Decision\", \"Outcome\", \"Arguments\", \"ArgumentsTruncated\", \"ResultCharacters\", \"ErrorCode\", \"UserId\", \"AssistantId\", \"ConversationId\", \"CompletedAt\", \"DurationMs\", \"CallId\" " +
+            "SELECT \"ToolName\", \"ServerName\", \"Decision\", \"Outcome\", \"Arguments\", \"ArgumentsTruncated\", \"ResultCharacters\", \"ErrorCode\", \"UserId\", \"AssistantId\", \"ConversationId\", \"CompletedAt\", \"DurationMs\", \"CallId\", \"SourceCount\" " +
             "FROM agents.tool_audit_entries ORDER BY \"StartedAt\", \"Id\"",
             connection);
         await using var reader = await command.ExecuteReaderAsync(Ct);
@@ -164,7 +164,8 @@ internal static class ToolFixtures
                 reader.GetGuid(10),
                 reader.IsDBNull(11) ? null : reader.GetFieldValue<DateTimeOffset>(11),
                 reader.IsDBNull(12) ? null : reader.GetInt32(12),
-                reader.GetGuid(13)));
+                reader.GetGuid(13),
+                reader.IsDBNull(14) ? null : reader.GetInt32(14)));
         }
 
         return rows;
@@ -184,5 +185,6 @@ internal static class ToolFixtures
         Guid ConversationId,
         DateTimeOffset? CompletedAt,
         int? DurationMs,
-        Guid CallId);
+        Guid CallId,
+        int? SourceCount = null);
 }

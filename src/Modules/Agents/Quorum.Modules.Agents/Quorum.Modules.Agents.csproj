@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Quorum.Shared\Quorum.Shared.csproj" />
     <ProjectReference Include="..\Quorum.Modules.Agents.Contracts\Quorum.Modules.Agents.Contracts.csproj" />
+    <ProjectReference Include="..\..\KnowledgeBases\Quorum.Modules.KnowledgeBases.Contracts\Quorum.Modules.KnowledgeBases.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
