@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="Qdrant.Client" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Quorum.Shared\Quorum.Shared.csproj" />
+    <ProjectReference Include="..\..\Agents\Quorum.Modules.Agents.Contracts\Quorum.Modules.Agents.Contracts.csproj" />
+    <ProjectReference Include="..\Quorum.Modules.KnowledgeBases.Contracts\Quorum.Modules.KnowledgeBases.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quorum.Integration.Tests" />
+  </ItemGroup>
+
+</Project>
