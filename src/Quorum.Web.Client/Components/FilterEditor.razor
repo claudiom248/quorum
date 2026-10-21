@@ -1,0 +1,55 @@
+@* One input per filter parameter, in the shapes of the generated tool schema (spec 003 D-11). The values stay in Values, by parameter name. *@
+<div class="filter-editor">
+    @foreach (var parameter in Parameters)
+    {
+        var name = parameter.Name;
+        @switch (parameter.Kind)
+        {
+            case FilterInputKind.Boolean:
+                <label class="tool-policy">@parameter.Label
+                    <select aria-label="@parameter.Label" value="@Get(name)" @onchange="e => Set(name, e.Value?.ToString())">
+                        <option value="">Any</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </label>
+                break;
+            case FilterInputKind.Date:
+                <label class="tool-policy">@parameter.Label
+                    <input type="date" aria-label="@parameter.Label" value="@Get(name)" @onchange="e => Set(name, e.Value?.ToString())" />
+                </label>
+                break;
+            case FilterInputKind.Number:
+                <MudTextField T="string" Value="@Get(name)" ValueChanged="v => Set(name, v)" Label="@parameter.Label"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Class="filter-input" />
+                break;
+            default:
+                <MudTextField T="string" Value="@Get(name)" ValueChanged="v => Set(name, v)" Label="@parameter.Label"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Class="filter-input"
+                              HelperText="Several values: separate them with commas." />
+                break;
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<FilterParameter> Parameters { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public Dictionary<string, string> Values { get; set; } = null!;
+
+    private string Get(string name) => Values.GetValueOrDefault(name) ?? string.Empty;
+
+    private void Set(string name, string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            Values.Remove(name);
+        }
+        else
+        {
+            Values[name] = value;
+        }
+    }
+}

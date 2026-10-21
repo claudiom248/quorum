@@ -1,0 +1,51 @@
+<label class="tool-policy">Who can use it
+    <select aria-label="Scope" @bind="Form.Kind">
+        <option value="@ScopeKinds.Tenant">This tenant</option>
+        <option value="@ScopeKinds.Assistant">Chosen assistants</option>
+        <option value="@ScopeKinds.Global">Every tenant</option>
+    </select>
+</label>
+@if (Form.Kind == ScopeKinds.Assistant)
+{
+    @foreach (var assistant in Assistants)
+    {
+        <MudCheckBox T="bool" Value="Form.AssistantIds.Contains(assistant.Id)"
+                     ValueChanged="on => Toggle(assistant.Id, on)" Label="@assistant.Name" Dense="true" />
+    }
+}
+else if (Form.Kind == ScopeKinds.Tenant)
+{
+    <MudTextField @bind-Value="Form.TenantsText" Label="Other tenants (ids, optional)" Variant="Variant.Outlined" Lines="2"
+                  HelperText="@($"Tenants that may use the {Subject} besides this one, read-only. Leave empty to keep it to this tenant.")" />
+}
+else
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@GlobalWarning</MudAlert>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ScopeForm Form { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
+
+    /// <summary>What the scope covers, for the helper text: "knowledge base", "tool".</summary>
+    [Parameter]
+    public string Subject { get; set; } = "knowledge base";
+
+    [Parameter]
+    public string GlobalWarning { get; set; } = "Every tenant of this installation will see it.";
+
+    private void Toggle(Guid id, bool on)
+    {
+        if (on)
+        {
+            Form.AssistantIds.Add(id);
+        }
+        else
+        {
+            Form.AssistantIds.Remove(id);
+        }
+    }
+}

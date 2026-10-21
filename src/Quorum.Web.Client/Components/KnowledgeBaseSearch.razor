@@ -1,0 +1,153 @@
+@* The admin's test search on one knowledge base (spec 003 D-22): to see what it finds before a tool exposes it. Not audited. *@
+@inject QuorumApi Api
+
+<MudPaper Outlined="true" Class="pa-3 mt-2" data-form="test-search">
+    <form @onsubmit="SearchAsync">
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.subtitle2">Test search on @Name</MudText>
+            <MudTextField @bind-Value="_query" Label="Question" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" MaxLength="2000" />
+
+            <label class="tool-policy">Results
+                <select aria-label="Number of results" @bind="_limit">
+                    @foreach (var count in new[] { 3, 5, 10, 20 })
+                    {
+                        <option value="@count">@count</option>
+                    }
+                </select>
+            </label>
+
+            @if (_fields.Count > 0)
+            {
+                <details class="tool-detail">
+                    <summary>Filters (@_values.Count)</summary>
+                    @foreach (var field in _fields)
+                    {
+                        <FilterEditor Parameters="FilterInputs.ParametersOf(field.Name, field.Type)" Values="_values" />
+                    }
+                </details>
+            }
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@_error</MudAlert>
+            }
+
+            <ProblemMessage Problem="_problem" />
+
+            <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                <MudButton Variant="Variant.Text" OnClick="Close" Disabled="_busy">Close</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
+                           StartIcon="@Icons.Material.Filled.Search">Search</MudButton>
+            </MudStack>
+        </MudStack>
+    </form>
+
+    @if (_result is { } result)
+    {
+        @foreach (var note in result.Notes)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-2">@note</MudAlert>
+        }
+
+        @if (result.Results.Count == 0)
+        {
+            <div class="tool-hint" data-no-results>Nothing found. Check the filters, or the embedding model and the query prefix.</div>
+        }
+
+        <ol class="search-results">
+            @foreach (var hit in result.Results)
+            {
+                <li class="search-hit">
+                    <div class="tool-row-head">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" title="Score: what the store reports, comparable only within this knowledge base">@hit.Score.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)</MudChip>
+                        <span class="tool-name">@KnowledgeAdminView.DescribeSource(hit.Source)</span>
+                        @if (KnowledgeAdminView.SafeUrl(hit.Source.Url) is { } url)
+                        {
+                            <a href="@url" target="_blank" rel="noopener noreferrer">@url</a>
+                        }
+                    </div>
+                    <div class="tool-row-description">@KnowledgeAdminView.Excerpt(hit.Text)</div>
+                </li>
+            }
+        </ol>
+    }
+</MudPaper>
+
+@code {
+    private readonly Dictionary<string, string> _values = [];
+    private List<(string Name, string Type)> _fields = [];
+    private string _query = string.Empty;
+    private int _limit = 5;
+    private string? _error;
+    private ApiProblem? _problem;
+    private TestSearchResult? _result;
+    private bool _busy;
+
+    [Parameter, EditorRequired]
+    public Guid Id { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>The mapped fields, which the search can filter on.</summary>
+    [Parameter]
+    public KnowledgeBaseDetail? Detail { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<DictionaryField> Dictionary { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _fields =
+        [
+            .. (Detail?.Mapping?.Fields ?? [])
+                .Select(f => Dictionary.FirstOrDefault(d => d.Id == f.DictionaryFieldId))
+                .OfType<DictionaryField>()
+                .Select(d => (d.Name, d.Type))
+                .OrderBy(f => f.Name, StringComparer.Ordinal),
+        ];
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task SearchAsync()
+    {
+        _error = null;
+        _problem = null;
+        if (string.IsNullOrWhiteSpace(_query))
+        {
+            _error = "Type a question.";
+            return;
+        }
+
+        var parameters = _fields.SelectMany(f => FilterInputs.ParametersOf(f.Name, f.Type));
+        var (filters, error) = FilterInputs.Read(_values, parameters);
+        if (error is not null)
+        {
+            _error = error;
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.SearchKnowledgeBaseAsync(Id, new TestSearchRequest(_query.Trim(), filters is { Count: > 0 } ? filters : null, _limit));
+            if (result.IsSuccess)
+            {
+                _result = result.Value;
+            }
+            else
+            {
+                _result = null;
+                _problem = result.Problem;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

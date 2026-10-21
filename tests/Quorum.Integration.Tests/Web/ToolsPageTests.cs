@@ -35,6 +35,12 @@ public sealed class ToolsPageTests : BunitContext
 
         _api.Respond = (method, path) =>
         {
+            // The knowledge base tools section of the page loads its own lists: none here.
+            if (method == HttpMethod.Get && path is "/api/tools/rag" or "/api/knowledge-bases" or "/api/knowledge-bases/dictionary")
+            {
+                return FakeApiHandler.Json(Array.Empty<object>());
+            }
+
             if (path == "/api/tools/servers" && method == HttpMethod.Get)
             {
                 return _serversStatus == HttpStatusCode.OK

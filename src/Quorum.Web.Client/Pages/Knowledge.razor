@@ -1,0 +1,324 @@
+@page "/knowledge"
+@inject QuorumApi Api
+
+<PageTitle>Knowledge · Quorum</PageTitle>
+
+<div class="settings tools-admin">
+    <MudText Typo="Typo.h5" Class="mb-1">Knowledge</MudText>
+    <KnowledgeNav Current="bases" />
+    <MudText Typo="Typo.body2" Class="tools-support-hint mb-4">
+        Register collections that already hold your documents, so assistants can answer from them through a rag tool
+        (configured in Tools). Quorum only reads them: whoever owns the data fills and updates them.
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_loadProblem is not null)
+    {
+        <ProblemMessage Problem="_loadProblem" />
+        <MudButton Variant="Variant.Outlined" OnClick="ReloadAsync">Try again</MudButton>
+    }
+    else
+    {
+        @if (_notice is not null)
+        {
+            <MudAlert Severity="@(_noticeIsWarning ? Severity.Warning : Severity.Success)" Variant="Variant.Outlined" Class="mb-3" role="status">
+                @_notice
+                @foreach (var warning in _noticeWarnings)
+                {
+                    <div data-warning="@warning.Code">@warning.Message</div>
+                }
+            </MudAlert>
+        }
+
+        <ProblemMessage Problem="_problem" />
+
+        @foreach (var knowledgeBase in _bases)
+        {
+            <MudPaper Outlined="true" Class="pa-3 mb-3 knowledge-base" data-kb="@knowledgeBase.Name">
+                <div class="tool-row-head">
+                    <span class="tool-name">@knowledgeBase.Name</span>
+                    @if (knowledgeBase.Status == KnowledgeBaseStatuses.Available)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Available</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">Unavailable</MudChip>
+                    }
+                    @if (knowledgeBase.Shared)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Shared with you</MudChip>
+                    }
+                </div>
+                <div class="tool-row-description">@knowledgeBase.Description</div>
+                @if (!knowledgeBase.Shared)
+                {
+                    <div class="tool-hint">
+                        @knowledgeBase.Kind · @ScopeText(knowledgeBase) ·
+                        @(knowledgeBase.LastVerifiedAt is { } at ? $"verified {at.ToLocalTime():yyyy-MM-dd HH:mm}" : "not verified yet")
+                    </div>
+                }
+
+                @if (knowledgeBase.Status == KnowledgeBaseStatuses.Unavailable)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">
+                        Searches on this knowledge base fail, so a rag tool that uses it gets errors until it is fixed.
+                        @if (!string.IsNullOrWhiteSpace(knowledgeBase.Warning))
+                        {
+                            <span> @knowledgeBase.Warning</span>
+                        }
+                    </MudAlert>
+                }
+
+                @if (_verified is { } verified && verified.Id == knowledgeBase.Id)
+                {
+                    <MudAlert Severity="@(verified.Result.Status == KnowledgeBaseStatuses.Available ? Severity.Success : Severity.Warning)"
+                              Variant="Variant.Outlined" Class="mt-2" role="status">
+                        Verified: @KnowledgeAdminView.StatusLabel(verified.Result.Status).ToLowerInvariant().
+                        @foreach (var warning in verified.Result.Warnings)
+                        {
+                            <div data-warning="@warning.Code">@warning.Message</div>
+                        }
+                    </MudAlert>
+                }
+
+                @if (!knowledgeBase.Shared)
+                {
+                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_busy" OnClick="() => VerifyAsync(knowledgeBase)"
+                                   StartIcon="@Icons.Material.Filled.VerifiedUser">Verify</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_busy" OnClick="() => StartSearchAsync(knowledgeBase)"
+                                   StartIcon="@Icons.Material.Filled.Search">Test search</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_busy" OnClick="() => EditAsync(knowledgeBase)"
+                                   StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Error" Disabled="_busy"
+                                   OnClick="() => _deleting = knowledgeBase.Id" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                    </MudStack>
+                }
+
+                @if (_deleting == knowledgeBase.Id)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mt-2">
+                        Delete the registration of @knowledgeBase.Name? The data in the store is not touched. Rag tools stop using it.
+                        <MudStack Row="true" Spacing="2" Class="mt-2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" Disabled="_busy"
+                                       OnClick="() => DeleteAsync(knowledgeBase)">Delete registration</MudButton>
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _deleting = null">Cancel</MudButton>
+                        </MudStack>
+                    </MudAlert>
+                }
+
+                @if (_searching is { } searching && searching.Id == knowledgeBase.Id)
+                {
+                    <KnowledgeBaseSearch Id="knowledgeBase.Id" Name="@knowledgeBase.Name" Detail="searching.Detail" Dictionary="_dictionary"
+                                         OnClose="() => _searching = null" />
+                }
+            </MudPaper>
+        }
+
+        @if (_bases.Count == 0 && _wizard is null)
+        {
+            <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">No knowledge base is registered yet.</MudText>
+        }
+
+        @if (_wizard is null)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartNew" StartIcon="@Icons.Material.Filled.Add">Register knowledge base</MudButton>
+        }
+        else
+        {
+            <KnowledgeBaseWizard @key="_wizard" Draft="_wizard" Dictionary="_dictionary" Assistants="_assistants" OnSaved="SavedAsync" OnCancel="CancelWizard" />
+        }
+    }
+</div>
+
+@code {
+    private List<KnowledgeBaseListItem> _bases = [];
+    private IReadOnlyList<DictionaryField> _dictionary = [];
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private ApiProblem? _loadProblem;
+    private ApiProblem? _problem;
+    private bool _loading = true;
+    private bool _loaded;
+    private bool _busy;
+    private string? _notice;
+    private bool _noticeIsWarning;
+    private IReadOnlyList<KnowledgeBaseWarning> _noticeWarnings = [];
+    private Guid? _deleting;
+    private (Guid Id, KnowledgeBaseVerification Result)? _verified;
+    private (Guid Id, KnowledgeBaseDetail? Detail)? _searching;
+    private KnowledgeBaseDraft? _wizard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        _loadProblem = null;
+
+        var bases = await Api.ListKnowledgeBasesAsync();
+        if (!bases.IsSuccess)
+        {
+            FailLoad(bases.Problem!);
+            return;
+        }
+
+        var dictionary = await Api.ListDictionaryAsync();
+        if (!dictionary.IsSuccess)
+        {
+            FailLoad(dictionary.Problem!);
+            return;
+        }
+
+        _bases = bases.Value;
+        _dictionary = dictionary.Value;
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        _loaded = true;
+    }
+
+    // Before anything was loaded the problem replaces the page; afterwards the data on screen stays, with the problem next to it.
+    private void FailLoad(ApiProblem problem)
+    {
+        if (_loaded)
+        {
+            _problem = problem;
+        }
+        else
+        {
+            _loadProblem = problem;
+        }
+    }
+
+    private string ScopeText(KnowledgeBaseListItem knowledgeBase) => knowledgeBase.Scope switch
+    {
+        ScopeKinds.Global => "every tenant",
+        ScopeKinds.Assistant => "chosen assistants",
+        _ => "this tenant",
+    };
+
+    private void StartNew()
+    {
+        ClearMessages();
+        _wizard = new KnowledgeBaseDraft();
+    }
+
+    private void CancelWizard() => _wizard = null;
+
+    private async Task EditAsync(KnowledgeBaseListItem knowledgeBase)
+    {
+        await RunAsync(async () =>
+        {
+            var detail = await Api.GetKnowledgeBaseAsync(knowledgeBase.Id);
+            if (!detail.IsSuccess)
+            {
+                _problem = detail.Problem;
+                return;
+            }
+
+            _wizard = KnowledgeBaseDraft.From(detail.Value);
+        });
+    }
+
+    private async Task SavedAsync(SavedKnowledgeBase saved)
+    {
+        _wizard = null;
+        _notice = KnowledgeAdminView.Outcome(saved.Name, saved.Status);
+        _noticeIsWarning = saved.Status != KnowledgeBaseStatuses.Available;
+        _noticeWarnings = saved.Warnings;
+        await LoadAsync();
+    }
+
+    private async Task VerifyAsync(KnowledgeBaseListItem knowledgeBase)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.VerifyKnowledgeBaseAsync(knowledgeBase.Id);
+            if (result.IsSuccess)
+            {
+                _verified = (knowledgeBase.Id, result.Value);
+            }
+            else
+            {
+                _problem = result.Problem;
+            }
+
+            await LoadAsync();
+        });
+    }
+
+    private async Task StartSearchAsync(KnowledgeBaseListItem knowledgeBase)
+    {
+        await RunAsync(async () =>
+        {
+            var detail = await Api.GetKnowledgeBaseAsync(knowledgeBase.Id);
+            if (!detail.IsSuccess)
+            {
+                _problem = detail.Problem;
+                return;
+            }
+
+            _searching = (knowledgeBase.Id, detail.Value);
+        });
+    }
+
+    private async Task DeleteAsync(KnowledgeBaseListItem knowledgeBase)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.DeleteKnowledgeBaseAsync(knowledgeBase.Id);
+            _deleting = null;
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+                return;
+            }
+
+            _notice = $"The registration of {knowledgeBase.Name} was deleted. The data in the store was not touched.";
+            await LoadAsync();
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        ClearMessages(keepWizard: true);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ClearMessages(bool keepWizard = false)
+    {
+        _problem = null;
+        _notice = null;
+        _noticeIsWarning = false;
+        _noticeWarnings = [];
+        _verified = null;
+        _deleting = null;
+        _searching = null;
+        if (!keepWizard)
+        {
+            _wizard = null;
+        }
+    }
+}
