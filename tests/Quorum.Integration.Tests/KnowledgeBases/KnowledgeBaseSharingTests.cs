@@ -108,7 +108,7 @@ public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
         using var admin = await app.SetUpAsync();
         await AddKnowledgeBaseOfAnotherTenantAsync(app, "policies", KnowledgeBaseScope.Tenant);
 
-        using var response = await KnowledgeBaseApi.RegisterAsync(admin, "http://localhost:1", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
+        using var response = await KnowledgeBaseApi.RegisterAsync(admin, "http://[::1]:1", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }

@@ -22,8 +22,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
-        await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
         var url = (await qdrant.GetUrlAsync()).ToString();
 
         using var response = await KnowledgeBaseApi.RegisterAsync(admin, url, collection, queryPrefix: queryPrefix);
@@ -169,8 +168,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Unindexed;
-        await qdrant.SeedAsync([SampleCollections.CreateUnindexed(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateUnindexed);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection);
 
         var found = await SearchApi.SearchOkAsync(
@@ -190,8 +188,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Tags;
-        await qdrant.SeedAsync([SampleCollections.CreateTags(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateTags);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(
             admin,
             (await qdrant.GetUrlAsync()).ToString(),
@@ -211,8 +208,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Nested;
-        await qdrant.SeedAsync([SampleCollections.CreateNested(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateNested);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, mapping: SearchApi.NestedMapping);
 
         var found = await SearchApi.SearchOkAsync(admin, registered.Id, Text(6), JsonDocument.Parse("""{"department": ["finance"], "year_max": 2022}""").RootElement, limit: 20);
@@ -229,8 +225,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.NamedVectors;
-        await qdrant.SeedAsync([SampleCollections.CreateNamedVectors(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateNamedVectors);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, vectorName: SampleCollections.DenseVectorName);
 
         var found = await SearchApi.SearchOkAsync(admin, registered.Id, Text(9), limit: 1);
@@ -244,8 +239,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Empty;
-        await qdrant.SeedAsync([SampleCollections.CreateEmpty(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateEmpty);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
 
         var found = await SearchApi.SearchOkAsync(admin, registered.Id, "anything");
@@ -275,8 +269,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
-        await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
         var url = (await qdrant.GetUrlAsync()).ToString();
         await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, name: "complete");
         var bare = await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, name: "bare", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
@@ -318,7 +311,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, "http://localhost:1", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
+        var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, "http://[::1]:1", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
         Assert.Equal("Unavailable", registered.Status);
 
         using var response = await SearchApi.PostAsync(admin, registered.Id, "leave");
@@ -357,8 +350,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.OtherVectorSize;
-        await qdrant.SeedAsync([SampleCollections.CreateOtherVectorSize(collection)]);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateOtherVectorSize);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
         Assert.Equal("Unavailable", registered.Status);
 
@@ -375,8 +367,7 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
-        await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)], Secret);
+        var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat, Secret);
         var url = (await qdrant.GetUrlAsync(Secret)).ToString();
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, apiKey: Secret);
         var query = Text(5);

@@ -134,11 +134,10 @@ internal static class RagApi
                 (await qdrant.GetUrlAsync()).ToString());
         }
 
-        /// <summary>Seeds a sample collection under a name of its own and registers it as a knowledge base.</summary>
+        /// <summary>Registers a sample collection as a knowledge base. Tests share the seeded collection, so none may change it.</summary>
         public async Task<Guid> RegisterAsync(
             string name,
             Func<string, SampleDataset>? dataset = null,
-            string standardName = SampleCollections.Flat,
             object? mapping = null,
             object[]? createFields = null,
             object? scope = null,
@@ -146,8 +145,7 @@ internal static class RagApi
             string? queryPrefix = null,
             string? url = null)
         {
-            var collection = QdrantFixture.NewPrefix() + standardName;
-            await _qdrant.SeedAsync([(dataset ?? SampleCollections.CreateFlat)(collection)]);
+            var collection = await _qdrant.SeedSharedAsync(dataset ?? SampleCollections.CreateFlat);
             using var response = await KnowledgeBaseApi.RegisterAsync(Admin, url ?? Url, collection, name, description ?? $"Policies about {name}", mapping: mapping, createFields: createFields, scope: scope, queryPrefix: queryPrefix);
             Assert.True(response.StatusCode == HttpStatusCode.Created, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             return (await response.Content.ReadFromJsonAsync<KnowledgeBaseApi.RegisteredBody>(TestContext.Current.CancellationToken))!.Id;
