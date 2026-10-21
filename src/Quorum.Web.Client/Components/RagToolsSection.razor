@@ -1,7 +1,7 @@
 @* The rag tools of the Tools page (spec 003 D-4, D-11, D-19): tools that search knowledge bases, configured here. *@
 @inject QuorumApi Api
 
-<MudText Typo="Typo.subtitle1" Class="mt-2 mb-1">Knowledge base tools</MudText>
+<MudText Typo="Typo.subtitle1" Class="mt-2 mb-1">Rag tools</MudText>
 <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">
     A rag tool lets an assistant search one or more knowledge bases and cite what it finds. Which fields a model can filter on, and
     which filters it can never change, are decided here. Register the knowledge bases in Knowledge; activate a tool on an assistant in Settings.
@@ -78,13 +78,13 @@ else
 
     @if (_tools.Count == 0 && _form is null)
     {
-        <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">No knowledge base tool is configured yet.</MudText>
+        <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">No rag tool is configured yet.</MudText>
     }
 
     @if (_form is null)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartNew" Disabled="_busy"
-                   StartIcon="@Icons.Material.Filled.Add">Add knowledge base tool</MudButton>
+                   StartIcon="@Icons.Material.Filled.Add">Add rag tool</MudButton>
     }
     else
     {
@@ -94,7 +94,7 @@ else
         <MudPaper Outlined="true" Class="pa-4 mb-3" data-form="rag">
             <form @onsubmit="SaveAsync">
                 <MudStack Spacing="3">
-                    <MudText Typo="Typo.subtitle1">@(form.IsNew ? "Add knowledge base tool" : $"Edit rag__{form.OriginalName}")</MudText>
+                    <MudText Typo="Typo.subtitle1">@(form.IsNew ? "Add rag tool" : $"Edit rag__{form.OriginalName}")</MudText>
                     <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
                                   HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as rag__name." />
                     <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="1000"

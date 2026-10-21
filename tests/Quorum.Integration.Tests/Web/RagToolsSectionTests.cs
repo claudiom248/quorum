@@ -246,7 +246,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void ChoosingKnowledgeBasesOffersAndExposesTheirFieldsAndPreviewsTheParameters()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Tick(section, "policies", true);
 
@@ -270,7 +270,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void AKnowledgeBaseSharedWithYouOffersEveryFieldAndSaysWhy()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Tick(section, "handbook (shared with you)", true);
 
@@ -283,7 +283,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void SavingSendsTheBindingTheFixedFiltersAndTheLimitsAndThenShowsTheDefinitionAndItsSize()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -314,7 +314,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void AnExposedFieldCanBeGivenAnAliasThatThePreviewAndTheRequestUse()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -333,7 +333,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void TwoFieldsWithTheSameAliasAreFlaggedBeforeAnythingIsSent()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -350,7 +350,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void TheLimitsAreCheckedBeforeAnythingIsSent()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("Bad Name");
         Tick(section, "policies", true);
 
@@ -365,7 +365,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void NoMoreThanTenKnowledgeBasesCanBeChosen()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Tick(section, "policies", true);
 
@@ -377,7 +377,7 @@ public sealed class RagToolsSectionTests : BunitContext
     {
         _createStatus = HttpStatusCode.BadRequest;
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -413,7 +413,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void AFixedFilterWithoutAValueIsRefusedInTheForm()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -448,7 +448,7 @@ public sealed class RagToolsSectionTests : BunitContext
                 : script(method, path);
         var section = RenderSection();
 
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Assert.Contains("No knowledge base is registered yet", section.Markup, StringComparison.Ordinal);
         Assert.Equal("knowledge", section.Find("[data-form=rag] a[href]").GetAttribute("href"));

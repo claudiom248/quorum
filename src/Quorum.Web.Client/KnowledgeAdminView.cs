@@ -58,7 +58,6 @@ public static class KnowledgeAdminView
     public static string TypeLabel(string type) => type switch
     {
         DictionaryFieldTypes.TextList => "List of texts",
-        DictionaryFieldTypes.Boolean => "Yes/no",
         _ => type,
     };
 

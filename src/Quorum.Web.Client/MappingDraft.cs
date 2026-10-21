@@ -276,7 +276,7 @@ public sealed partial class MappingDraft
         DictionaryFieldTypes.TextList => "a list of texts",
         DictionaryFieldTypes.Text => "text",
         DictionaryFieldTypes.Number => "a number",
-        DictionaryFieldTypes.Boolean => "yes/no",
+        DictionaryFieldTypes.Boolean => "a boolean",
         DictionaryFieldTypes.Date => "a date",
         _ => type,
     };
