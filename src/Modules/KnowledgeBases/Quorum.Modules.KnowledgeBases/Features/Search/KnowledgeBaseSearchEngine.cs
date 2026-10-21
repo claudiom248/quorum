@@ -20,7 +20,8 @@ internal sealed record SearchInput(
     int TopK,
     double? ScoreThreshold,
     int? MaxResultCharacters,
-    IReadOnlyDictionary<string, Guid>? FilterFields = null);
+    IReadOnlyDictionary<string, Guid>? FilterFields = null,
+    IReadOnlyList<Guid>? FixedFilterFieldIds = null);
 
 /// <summary>
 /// The search of spec 003 (D-12 to D-14): checks the filters, embeds the query once per embedding setup, queries every knowledge
@@ -173,8 +174,9 @@ internal sealed partial class KnowledgeBaseSearchEngine(
                 .Where(entry => entry.Field is not null)
                 .ToDictionary(entry => entry.Key, entry => new FilterField(entry.Field!.Id, entry.Key, entry.Field.Type), StringComparer.Ordinal);
 
-            // A fixed filter may also name the other fields the knowledge bases map, by their own name (spec 003 A1-4).
-            var mapped = bases.SelectMany(k => k.Mapping.Fields.Select(f => f.DictionaryFieldId)).ToHashSet();
+            // A fixed filter may also name the other fields it was saved with, by their own name (spec 003 A1-4): the tool's, not the ones of
+            // the knowledge bases this search was narrowed to, or narrowing would turn a filter into an error instead of skipping a knowledge base.
+            var mapped = input.FixedFilterFieldIds?.ToHashSet() ?? bases.SelectMany(k => k.Mapping.Fields.Select(f => f.DictionaryFieldId)).ToHashSet();
             names = FixedFilterNames.Build(
                 named.Where(pair => visible.Any(f => f.Id == pair.Value)).ToDictionary(pair => pair.Key, pair => visible.First(f => f.Id == pair.Value), StringComparer.Ordinal),
                 visible.Where(f => mapped.Contains(f.Id)));

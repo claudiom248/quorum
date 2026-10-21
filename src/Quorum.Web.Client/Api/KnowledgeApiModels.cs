@@ -29,7 +29,8 @@ public static class KnowledgeBaseKinds
 /// <param name="Scope"><c>Global</c> or <c>Tenant</c>.</param>
 /// <param name="UsedByCount">How many knowledge bases and rag tools use the field: a field in use cannot be deleted.</param>
 /// <param name="Cluster">The label that groups the field, or <see langword="null"/>; with the name it identifies the field.</param>
-public sealed record DictionaryField(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null);
+/// <param name="Shared"><see langword="true"/> for a Global field of another tenant: it can be used but not changed or deleted.</param>
+public sealed record DictionaryField(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null, bool Shared = false);
 
 public sealed record DictionaryFieldRequest(string Name, string Type, string? Description, string Scope, string? Cluster = null);
 
@@ -108,7 +109,8 @@ public sealed record KnowledgeBaseListItem(
     DateTimeOffset? LastVerifiedAt,
     string? Warning);
 
-public sealed record MappedFieldInfo(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null);
+/// <param name="FilterName">The name a test search filters this field by: the server decides it, the page only uses it.</param>
+public sealed record MappedFieldInfo(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null);
 
 public sealed record MappingInfo(MappingRoles Roles, IReadOnlyList<MappedFieldInfo> Fields);
 

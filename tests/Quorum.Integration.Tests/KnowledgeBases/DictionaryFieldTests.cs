@@ -132,6 +132,20 @@ public sealed class DictionaryFieldTests(PostgresFixture postgres)
         Assert.Equal("Global", listed.Scope);
     }
 
+    [Fact] // a Global field of another tenant can be used, and says it is not the caller's to change
+    public async Task AGlobalFieldOfAnotherTenantIsListedAsSharedAndAnOwnFieldIsNot()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        var shared = await DictionaryFixtures.AddFieldOfAnotherTenantAsync(app, "year", DictionaryFieldScope.Global);
+        var own = await DictionaryApi.CreateOkAsync(admin, "region");
+
+        var fields = await DictionaryApi.ListAsync(admin);
+
+        Assert.True(fields.Single(f => f.Id == shared).Shared);
+        Assert.False(fields.Single(f => f.Id == own).Shared);
+    }
+
     [Fact] // AC-3: a field private to another tenant is invisible, and so is its name
     public async Task AFieldPrivateToAnotherTenantIsNeitherListedNorInTheWay()
     {

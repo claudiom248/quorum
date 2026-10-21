@@ -185,6 +185,25 @@ public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qd
         Assert.Equal(["query"], Sorted(created.Definition!.Parameters));
     }
 
+    [Fact] // AC-28, D-12
+    public async Task AFixedFilterOnAnUnexposedFieldIsAppliedTheSameWhenTheModelNarrowsToAnotherKnowledgeBase()
+    {
+        var f = await StartAsync();
+        await using var setup = f.Setup;
+        await RagApi.CreateOkAsync(
+            setup.Admin,
+            RagApi.Body(knowledgeBaseIds: [f.HrBase, f.FinanceBase], exposedFields: [new { fieldId = f.HrYear, alias = "year_hr" }], fixedFilters: new { year_min = 1900 }, topK: 20));
+        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+
+        var all = await AskAsync(setup, new { query = "policy" });
+        var narrowed = await AskAsync(setup, new { query = "policy", knowledge_base = "hr_docs" }, "call_2");
+
+        // The filter means finance/year whichever knowledge bases are searched: hr_docs does not map it, so it is skipped, not an error.
+        Assert.Contains("finance_docs ·", ResultOf(all), StringComparison.Ordinal);
+        Assert.Contains("No knowledge base can apply these filters", ResultOf(narrowed), StringComparison.Ordinal);
+        Assert.DoesNotContain("always applies is not valid", ResultOf(narrowed), StringComparison.Ordinal);
+    }
+
     private static async Task<IReadOnlyList<SseEvent>> AskAsync(RagApi.Setup setup, object arguments, string id = "call_1")
     {
         setup.App.ModelServer.EnqueueRounds([ChatScript.CallTools(new FakeToolCall("rag__company", JsonSerializer.Serialize(arguments), id)), ChatScript.Reply("Done.")]);

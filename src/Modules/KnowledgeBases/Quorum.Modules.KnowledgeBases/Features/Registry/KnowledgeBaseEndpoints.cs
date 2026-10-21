@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
@@ -48,8 +49,9 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
         }
 
         var ids = registration.Mapping.Fields.Select(f => f.DictionaryFieldId).ToList();
-        var names = await db.DictionaryFields.IgnoreQueryFilters().Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => (f.Name, f.Cluster), cancellationToken);
-        return TypedResults.Ok(KnowledgeBaseDetail.Owned(registration, names));
+        var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => ids.Contains(f.Id)).ToListAsync(cancellationToken);
+        var names = fields.ToDictionary(f => f.Id, f => (f.Name, f.Cluster));
+        return TypedResults.Ok(KnowledgeBaseDetail.Owned(registration, names, TestSearchNames.ForMapped(fields)));
     }
 
     private static async Task<Results<Created<RegisteredResponse>, ProblemHttpResult>> CreateAsync(

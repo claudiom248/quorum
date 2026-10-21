@@ -52,7 +52,7 @@ Set these in `.env`:
 | `POSTGRES_PASSWORD` | (required) | Password of the bundled PostgreSQL. |
 | `QUORUM_BIND` | `127.0.0.1` | Address the web UI is published on. Use `0.0.0.0` only behind a TLS reverse proxy. |
 | `QUORUM_PORT` | `8080` | Port the web UI is published on. |
-| `QUORUM_DATABASE` | bundled database | Connection string of your own PostgreSQL. Start without the `bundled-db` profile when you set it. |
+| `QUORUM_DATABASE` | bundled database | Connection string of your own PostgreSQL, version 15 or later (the dictionary index uses NULLS NOT DISTINCT). Start without the `bundled-db` profile when you set it. |
 
 ## Development
 
