@@ -69,7 +69,7 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
             // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.
             var exposed = tool.Binding.ExposedFieldIds.Distinct()
                 .Where(id => fieldsById.ContainsKey(id) && visible.Any(k => k.FieldIds.Contains(id)))
-                .Select(id => fieldsById[id] with { Name = tool.Binding.ExposedAliases.GetValueOrDefault(id) ?? fieldsById[id].Name })
+                .Select(id => Offered(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
@@ -168,6 +168,14 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
                     : null).OfType<ActiveTool>(),
         ];
     }
+
+    // The model knows the field by its alias. A field with no description of its own says which cluster it is from, so two fields that
+    // share a name (hr/year, finance/year) are not told apart only by their aliases.
+    private static FilterFieldInfo Offered(FilterFieldInfo field, string? alias) => field with
+    {
+        Name = alias ?? field.Name,
+        Description = field.Description ?? (field.Cluster is null ? null : $"{field.Name} ({field.Cluster})"),
+    };
 
     private static readonly TimeSpan RecentFor = TimeSpan.FromSeconds(30);
 

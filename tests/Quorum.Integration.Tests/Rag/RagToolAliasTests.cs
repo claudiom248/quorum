@@ -72,6 +72,8 @@ public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qd
         Assert.Equal(["knowledge_base", "query", "year_finance_max", "year_finance_min", "year_hr"], Sorted(created.Definition!.Parameters));
         Assert.Equal("array", created.Definition.Parameter("year_hr").GetProperty("type").GetString());
         Assert.Equal("number", created.Definition.Parameter("year_finance_min").GetProperty("type").GetString());
+        Assert.StartsWith("year (hr)", created.Definition.Parameter("year_hr").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("year (finance)", created.Definition.Parameter("year_finance_min").GetProperty("description").GetString(), StringComparison.Ordinal);
 
         var detail = await RagApi.GetAsync(setup.Admin, created.Id);
         Assert.Equal(
