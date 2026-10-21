@@ -28,9 +28,10 @@ public static class KnowledgeBaseKinds
 
 /// <param name="Scope"><c>Global</c> or <c>Tenant</c>.</param>
 /// <param name="UsedByCount">How many knowledge bases and rag tools use the field: a field in use cannot be deleted.</param>
-public sealed record DictionaryField(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount);
+/// <param name="Cluster">The label that groups the field, or <see langword="null"/>; with the name it identifies the field.</param>
+public sealed record DictionaryField(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null);
 
-public sealed record DictionaryFieldRequest(string Name, string Type, string? Description, string Scope);
+public sealed record DictionaryFieldRequest(string Name, string Type, string? Description, string Scope, string? Cluster = null);
 
 public sealed record CreatedId(Guid Id);
 
@@ -50,12 +51,16 @@ public sealed record VectorInfo(string? Name, int Size, string Distance);
 
 /// <param name="DictionaryFieldId">The visible dictionary field of that name, when there is one.</param>
 /// <param name="Issues">Codes that block saving until the admin resolves them (collision, invalid or reserved name, type conflict).</param>
-public sealed record DraftField(string Path, string Name, string Type, Guid? DictionaryFieldId, IReadOnlyList<string> Issues);
+/// <param name="Cluster">The cluster of the preselected field.</param>
+/// <param name="Candidates">Several visible fields have this name in different clusters, so none is preselected: the admin picks one.</param>
+public sealed record DraftField(string Path, string Name, string Type, Guid? DictionaryFieldId, IReadOnlyList<string> Issues, string? Cluster = null, IReadOnlyList<FieldCandidate>? Candidates = null);
+
+public sealed record FieldCandidate(Guid Id, string? Cluster, string Type);
 
 public sealed record DraftMapping(MappingRoles Roles, IReadOnlyList<DraftField> Fields);
 
 /// <summary>A dictionary field the draft needs and that does not exist yet.</summary>
-public sealed record ProposedField(string Name, string Type);
+public sealed record ProposedField(string Name, string Type, string? Cluster = null);
 
 public sealed record KnowledgeBaseWarning(string Code, string Message, string? Path);
 
@@ -71,12 +76,13 @@ public sealed record InspectResult(
     IReadOnlyList<KnowledgeBaseWarning> Warnings);
 
 /// <param name="DictionaryFieldId">The dictionary field, when it exists; otherwise <paramref name="Name"/> finds it or names the one to create.</param>
-public sealed record MappedFieldRequest(string Path, Guid? DictionaryFieldId, string? Name);
+/// <param name="Cluster">With <paramref name="Name"/>: the cluster of the field; none means a field with no cluster.</param>
+public sealed record MappedFieldRequest(string Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null);
 
 public sealed record MappingRequest(MappingRoles Roles, IReadOnlyList<MappedFieldRequest> Fields);
 
 /// <summary>A dictionary field the mapping names that does not exist yet: it is created only when listed here.</summary>
-public sealed record CreateFieldRequest(string Name, string Type, string? Description = null);
+public sealed record CreateFieldRequest(string Name, string Type, string? Description = null, string? Cluster = null);
 
 public sealed record KnowledgeBaseRequest(
     string Name,
@@ -102,7 +108,7 @@ public sealed record KnowledgeBaseListItem(
     DateTimeOffset? LastVerifiedAt,
     string? Warning);
 
-public sealed record MappedFieldInfo(string Path, Guid DictionaryFieldId, string? Name);
+public sealed record MappedFieldInfo(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null);
 
 public sealed record MappingInfo(MappingRoles Roles, IReadOnlyList<MappedFieldInfo> Fields);
 
@@ -152,12 +158,18 @@ public sealed record RagToolListItem(
 /// <summary>The definition the model gets: <c>Name</c> is what it sees (<c>rag__name</c>), <c>EstimatedTokens</c> what it takes of the context.</summary>
 public sealed record RagToolDefinition(string Name, string Description, JsonElement InputSchema, int EstimatedTokens);
 
+/// <param name="Alias">The parameter name the model sees: the alias given to the field, or its own name; <see langword="null"/> when the field is no longer visible.</param>
+public sealed record ExposedFieldInfo(Guid FieldId, string? Alias);
+
+/// <param name="Alias">The parameter name the model sees for the field; the field's own name when left out.</param>
+public sealed record ExposedFieldRequest(Guid FieldId, string? Alias = null);
+
 public sealed record RagToolDetail(
     Guid Id,
     string Name,
     string Description,
     IReadOnlyList<Guid> KnowledgeBaseIds,
-    IReadOnlyList<Guid> ExposedFieldIds,
+    IReadOnlyList<ExposedFieldInfo> ExposedFields,
     JsonElement FixedFilters,
     int TopK,
     double? ScoreThreshold,
@@ -173,7 +185,7 @@ public sealed record RagToolRequest(
     string Name,
     string Description,
     IReadOnlyList<Guid> KnowledgeBaseIds,
-    IReadOnlyList<Guid> ExposedFieldIds,
+    IReadOnlyList<ExposedFieldRequest> ExposedFields,
     IReadOnlyDictionary<string, object>? FixedFilters,
     int? TopK,
     double? ScoreThreshold,

@@ -3,14 +3,36 @@ using Quorum.Web.Client.Api;
 
 namespace Quorum.Web.Client;
 
-/// <summary>One metadata field of a draft mapping: a payload path bound to a dictionary field by name.</summary>
+/// <summary>One metadata field of a draft mapping: a payload path bound to a dictionary field by cluster and name.</summary>
 public sealed class MappingRow
 {
+    private string _name = string.Empty;
+    private string _cluster = string.Empty;
+
     /// <summary>The payload path, in dot notation for nested objects (<c>meta.year</c>).</summary>
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>The dictionary field it is bound to. An existing field is used as it is; a name that does not exist yet is created when the admin confirms.</summary>
-    public string Name { get; set; } = string.Empty;
+    /// <summary>The dictionary field it is bound to, with <see cref="Cluster"/>. An existing field is used as it is; one that does not exist yet is created when the admin confirms.</summary>
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            _name = value;
+            Chosen = true;
+        }
+    }
+
+    /// <summary>The cluster of the field; empty means no cluster.</summary>
+    public string Cluster
+    {
+        get => _cluster;
+        set
+        {
+            _cluster = value;
+            Chosen = true;
+        }
+    }
 
     /// <summary>
     /// The type the payload values suggest, or the one chosen for a new field; <see langword="null"/> when nobody has an opinion (a
@@ -20,9 +42,30 @@ public sealed class MappingRow
 
     /// <summary>The admin accepts that the existing dictionary field has another type than the payload suggested (its values must still fit).</summary>
     public bool AcceptExistingType { get; set; }
+
+    /// <summary>Several visible fields have the row's name, in different clusters, and none was preselected.</summary>
+    public IReadOnlyList<FieldCandidate> Candidates { get; private set; } = [];
+
+    /// <summary><see langword="false"/> while the admin has to pick among <see cref="Candidates"/>; editing the name or the cluster counts as a choice.</summary>
+    public bool Chosen { get; private set; } = true;
+
+    internal void Seed(string name, string cluster, IReadOnlyList<FieldCandidate> candidates)
+    {
+        _name = name;
+        _cluster = cluster;
+        Candidates = candidates;
+        Chosen = candidates.Count == 0;
+    }
+
+    public void Pick(FieldCandidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        _cluster = candidate.Cluster ?? string.Empty;
+        Chosen = true;
+    }
 }
 
-/// <param name="Existing">The dictionary field of that name, when there is one.</param>
+/// <param name="Existing">The dictionary field of that cluster and name, when there is one.</param>
 /// <param name="Problems">What blocks saving this row; empty when it is fine.</param>
 public sealed record MappingRowReview(MappingRow Row, DictionaryField? Existing, IReadOnlyList<string> Problems)
 {
@@ -73,7 +116,13 @@ public sealed partial class MappingDraft
             Position = draft.Roles.Position ?? string.Empty,
             SourceUrl = draft.Roles.SourceUrl ?? string.Empty,
         };
-        result.Rows.AddRange(draft.Fields.Select(f => new MappingRow { Path = f.Path, Name = f.Name, Type = f.Type }));
+        foreach (var field in draft.Fields)
+        {
+            var row = new MappingRow { Path = field.Path, Type = field.Type };
+            row.Seed(field.Name, field.Cluster ?? string.Empty, field.Candidates ?? []);
+            result.Rows.Add(row);
+        }
+
         return result;
     }
 
@@ -90,7 +139,7 @@ public sealed partial class MappingDraft
             Position = mapping.Roles.Position ?? string.Empty,
             SourceUrl = mapping.Roles.SourceUrl ?? string.Empty,
         };
-        result.Rows.AddRange(mapping.Fields.Select(f => new MappingRow { Path = f.Path, Name = f.Name ?? string.Empty }));
+        result.Rows.AddRange(mapping.Fields.Select(f => new MappingRow { Path = f.Path, Name = f.Name ?? string.Empty, Cluster = f.Cluster ?? string.Empty }));
         return result;
     }
 
@@ -108,15 +157,16 @@ public sealed partial class MappingDraft
     {
         ArgumentNullException.ThrowIfNull(dictionary);
 
-        var names = Rows.GroupBy(r => r.Name.Trim(), StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var names = Rows.GroupBy(r => (r.Cluster.Trim(), r.Name.Trim())).ToDictionary(g => g.Key, g => g.Count());
         var paths = Rows.GroupBy(r => r.Path.Trim(), StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         var rolePaths = RolePaths().ToHashSet(StringComparer.Ordinal);
 
         return [.. Rows.Select(row =>
         {
             var name = row.Name.Trim();
+            var cluster = row.Cluster.Trim();
             var path = row.Path.Trim();
-            var existing = dictionary.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.Ordinal));
+            var existing = dictionary.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.Ordinal) && string.Equals(f.Cluster ?? string.Empty, cluster, StringComparison.Ordinal));
             var problems = new List<string>();
 
             if (path.Length == 0)
@@ -132,24 +182,33 @@ public sealed partial class MappingDraft
                 problems.Add($"\"{path}\" is mapped twice: each payload field can have only one meaning.");
             }
 
-            if (name.Length == 0)
+            if (!row.Chosen)
+            {
+                var clusters = string.Join(", ", row.Candidates.Select(c => c.Cluster ?? "no cluster").Order(StringComparer.Ordinal));
+                problems.Add($"Several fields are called \"{row.Name}\" (clusters: {clusters}). Choose one, or give this field another cluster or name.");
+            }
+            else if (name.Length == 0)
             {
                 problems.Add("Give the dictionary field a name.");
             }
             else if (existing is null)
             {
                 problems.AddRange(NameProblems(name));
+                if (cluster.Length > 0 && !ValidName().IsMatch(cluster))
+                {
+                    problems.Add($"\"{cluster}\" is not a valid cluster: 1 to 40 lower-case letters, digits and \"_\", starting with a letter.");
+                }
             }
 
-            if (name.Length > 0 && names[name] > 1)
+            if (row.Chosen && name.Length > 0 && names[(cluster, name)] > 1)
             {
-                problems.Add($"Another payload field also uses the name \"{name}\": give one of them a different name.");
+                problems.Add($"Another payload field also uses \"{Label(cluster, name)}\": give one of them a different name or cluster.");
             }
 
             var review = new MappingRowReview(row, existing, problems);
-            if (review.HasTypeConflict && !row.AcceptExistingType)
+            if (row.Chosen && review.HasTypeConflict && !row.AcceptExistingType)
             {
-                problems.Add($"The dictionary field \"{name}\" is {TypeLabel(existing!.Type)}, but the payload looks like {TypeLabel(row.Type!)}. Rename the field, or accept the dictionary's type if the values fit.");
+                problems.Add($"The dictionary field \"{Label(cluster, name)}\" is {TypeLabel(existing!.Type)}, but the payload looks like {TypeLabel(row.Type!)}. Choose a field of another cluster, give it another name, or accept the dictionary's type if the values fit.");
             }
 
             return review;
@@ -159,9 +218,9 @@ public sealed partial class MappingDraft
     /// <summary>The dictionary fields this mapping needs and that do not exist yet, once each.</summary>
     public IReadOnlyList<ProposedField> NewFields(IReadOnlyList<DictionaryField> dictionary) =>
         [.. Review(dictionary)
-            .Where(r => r.IsNew && r.Row.Name.Trim().Length > 0)
-            .GroupBy(r => r.Row.Name.Trim(), StringComparer.Ordinal)
-            .Select(g => new ProposedField(g.Key, g.First().EffectiveType))];
+            .Where(r => r.IsNew && r.Row.Chosen && r.Row.Name.Trim().Length > 0)
+            .GroupBy(r => (Cluster: r.Row.Cluster.Trim(), Name: r.Row.Name.Trim()))
+            .Select(g => new ProposedField(g.Key.Name, g.First().EffectiveType, g.Key.Cluster.Length > 0 ? g.Key.Cluster : null))];
 
     /// <summary>Everything that blocks saving the mapping, in the order the admin meets it.</summary>
     public IReadOnlyList<string> Problems(IReadOnlyList<DictionaryField> dictionary)
@@ -199,10 +258,14 @@ public sealed partial class MappingDraft
     {
         var roles = new MappingRoles(Clean(Text), Clean(DocumentId), Clean(Title), Clean(Position), Clean(SourceUrl));
         var fields = Review(dictionary)
-            .Select(r => new MappedFieldRequest(r.Row.Path.Trim(), r.Existing?.Id, r.Existing is null ? r.Row.Name.Trim() : null))
+            .Select(r => new MappedFieldRequest(
+                r.Row.Path.Trim(),
+                r.Existing?.Id,
+                r.Existing is null ? r.Row.Name.Trim() : null,
+                r.Existing is null ? Clean(r.Row.Cluster) : null))
             .ToList();
         var create = ConfirmCreate
-            ? NewFields(dictionary).Select(f => new CreateFieldRequest(f.Name, f.Type)).ToList()
+            ? NewFields(dictionary).Select(f => new CreateFieldRequest(f.Name, f.Type, Cluster: f.Cluster)).ToList()
             : [];
         return (new MappingRequest(roles, fields), create);
     }
@@ -217,6 +280,8 @@ public sealed partial class MappingDraft
         DictionaryFieldTypes.Date => "a date",
         _ => type,
     };
+
+    private static string Label(string cluster, string name) => cluster.Length == 0 ? name : $"{cluster}/{name}";
 
     private static IEnumerable<string> NameProblems(string name)
     {

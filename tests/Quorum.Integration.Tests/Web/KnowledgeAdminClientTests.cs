@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.KnowledgeBases;
 using Quorum.Integration.Tests.Rag;
@@ -183,5 +184,81 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
 
         Assert.True((await api.DeleteRagToolAsync(created.Id, Ct)).IsSuccess);
         Assert.Empty((await api.ListRagToolsAsync(Ct)).Value);
+    }
+
+    // The flat sample with `year` written as text: the same field name as the numeric one, another meaning and type.
+    private static SampleDataset TextYear(string name)
+    {
+        var flat = SampleCollections.CreateFlat(name);
+        return flat with
+        {
+            Indexes = [.. flat.Indexes.Where(i => i.Path != "year")],
+            Points = [.. flat.Points.Select(p => p with { Payload = TextYearPayload(p.Payload) })],
+        };
+    }
+
+    private static JsonObject TextYearPayload(JsonObject payload)
+    {
+        var copy = (JsonObject)payload.DeepClone();
+        copy["year"] = copy["year"]!.ToString();
+        return copy;
+    }
+
+    [Fact] // AC-52 to AC-58
+    public async Task TwoCollectionsThatShareAFieldNameWithDifferentTypesAreRegisteredAndExposedUnderAliases()
+    {
+        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var api = new QuorumApi(setup.Admin);
+        var numeric = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
+        var textual = await qdrant.SeedSharedAsync(TextYear);
+
+        // The first collection: `year` is a number, and the admin puts it in a cluster of its own.
+        var finance = new KnowledgeBaseDraft { Name = "finance-docs", Description = "Finance.", Url = setup.Url, Collection = numeric, EmbeddingModel = KnowledgeBaseApi.EmbeddingModel };
+        finance.UseInspection((await api.InspectKnowledgeBaseAsync(finance.ToInspectRequest(), Ct)).Value);
+        finance.Mapping!.Rows.Single(r => r.Name == "year").Cluster = "finance";
+        finance.Mapping.ConfirmCreate = true;
+        var dictionary = (await api.ListDictionaryAsync(Ct)).Value;
+        Assert.Empty(finance.Problems(dictionary));
+        var financeId = (await api.CreateKnowledgeBaseAsync(finance.ToRequest(dictionary), Ct)).Value.Id;
+
+        // The second one: `year` is text. The only field called year is the number, so it is preselected with a type conflict ...
+        var hr = new KnowledgeBaseDraft { Name = "hr-docs", Description = "HR.", Url = setup.Url, Collection = textual, EmbeddingModel = KnowledgeBaseApi.EmbeddingModel };
+        hr.UseInspection((await api.InspectKnowledgeBaseAsync(hr.ToInspectRequest(), Ct)).Value);
+        dictionary = (await api.ListDictionaryAsync(Ct)).Value;
+        var year = hr.Mapping!.Rows.Single(r => r.Name == "year");
+        Assert.Equal("finance", year.Cluster);
+        Assert.Contains(hr.Mapping.Review(dictionary).Single(r => r.Row == year).Problems, p => p.Contains("another cluster", StringComparison.Ordinal));
+
+        // ... and moving it to a cluster of its own makes it a new field of its own type.
+        year.Cluster = "hr";
+        hr.Mapping.ConfirmCreate = true;
+        Assert.Empty(hr.Problems(dictionary));
+        var hrId = (await api.CreateKnowledgeBaseAsync(hr.ToRequest(dictionary), Ct)).Value.Id;
+        dictionary = (await api.ListDictionaryAsync(Ct)).Value;
+        Assert.Equal(["finance/year", "hr/year"], dictionary.Where(f => f.Name == "year").Select(f => $"{f.Cluster}/{f.Name}").Order());
+
+        // A rag tool over both: the two years collide until one gets an alias, then the definition has the parameters of both.
+        var details = new Dictionary<Guid, KnowledgeBaseDetail>
+        {
+            [financeId] = (await api.GetKnowledgeBaseAsync(financeId, Ct)).Value,
+            [hrId] = (await api.GetKnowledgeBaseAsync(hrId, Ct)).Value,
+        };
+        var form = new RagToolForm { Name = "company", Description = "Searches the company documents." };
+        form.KnowledgeBaseIds.AddRange([financeId, hrId]);
+        var choices = RagToolView.Candidates(form.KnowledgeBaseIds, details, dictionary);
+        form.ApplyCandidates(choices.Fields, exposeNew: true);
+        Assert.Contains(form.Problems(dictionary), p => p.Contains("both be called \"year\"", StringComparison.Ordinal));
+
+        form.SetAlias(dictionary.Single(f => f is { Name: "year", Cluster: "hr" }), "year_hr");
+        Assert.Empty(form.Problems(dictionary));
+        var created = (await api.CreateRagToolAsync(form.ToRequest(dictionary), Ct)).Value;
+
+        var parameters = created.Definition!.InputSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToList();
+        Assert.Contains("year_hr", parameters);
+        Assert.Contains("year_min", parameters);
+        Assert.Contains("year_max", parameters);
+        var saved = (await api.GetRagToolAsync(created.Id, Ct)).Value;
+        var reloaded = RagToolForm.From(saved, dictionary, choices.Fields);
+        Assert.Equal("year_hr", Assert.Single(reloaded.Aliases).Value);
     }
 }

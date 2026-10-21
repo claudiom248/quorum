@@ -168,12 +168,13 @@
                         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start" Class="mapping-row-fields">
                             <MudTextField @bind-Value="row.Path" Label="Payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudTextField @bind-Value="row.Name" Label="Dictionary field" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                            <MudTextField @bind-Value="row.Cluster" Label="Cluster (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="@($"Remove {row.Path}")" OnClick="() => mapping.RemoveRow(row)" />
                         </MudStack>
                         <div class="tool-hint">
                             @if (review.Existing is { } existing)
                             {
-                                <span>Existing field: @KnowledgeAdminView.TypeLabel(existing.Type), @KnowledgeAdminView.DictionaryScopeLabel(existing.Scope).ToLowerInvariant()</span>
+                                <span>Existing field@(existing.Cluster is null ? string.Empty : $" in cluster {existing.Cluster}"): @KnowledgeAdminView.TypeLabel(existing.Type), @KnowledgeAdminView.DictionaryScopeLabel(existing.Scope).ToLowerInvariant()</span>
                             }
                             else if (row.Name.Trim().Length > 0)
                             {
@@ -187,6 +188,17 @@
                                 </label>
                             }
                         </div>
+                        @if (!row.Chosen)
+                        {
+                            <div class="tool-hint" data-candidates>
+                                Several fields are called "@row.Name". Choose one:
+                                @foreach (var candidate in row.Candidates)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="() => row.Pick(candidate)">@(candidate.Cluster ?? "no cluster") · @KnowledgeAdminView.TypeLabel(candidate.Type)</MudChip>
+                                }
+                                or type another cluster to create a new field.
+                            </div>
+                        }
                         @if (review.HasTypeConflict)
                         {
                             <MudCheckBox T="bool" @bind-Value="row.AcceptExistingType" Dense="true"
@@ -208,7 +220,7 @@
                 @if (mapping.NewFields(Dictionary) is { Count: > 0 } created)
                 {
                     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-new-fields>
-                        These fields are not in the dictionary yet: @string.Join(", ", created.Select(f => $"{f.Name} ({KnowledgeAdminView.TypeLabel(f.Type).ToLowerInvariant()})")).
+                        These fields are not in the dictionary yet: @string.Join(", ", created.Select(f => $"{(f.Cluster is null ? f.Name : f.Cluster + "/" + f.Name)} ({KnowledgeAdminView.TypeLabel(f.Type).ToLowerInvariant()})")).
                         <MudCheckBox T="bool" @bind-Value="mapping.ConfirmCreate" Dense="true" Label="Create them when I save" />
                     </MudAlert>
                 }

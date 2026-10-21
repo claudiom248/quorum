@@ -61,6 +61,25 @@ public static class RagToolView
         return names;
     }
 
+    /// <summary>The same with the aliases the exposed fields were given, by field id.</summary>
+    public static IReadOnlyList<string> ParameterNames(IEnumerable<DictionaryField> exposed, IReadOnlyDictionary<Guid, string> aliases, int knowledgeBaseCount)
+    {
+        ArgumentNullException.ThrowIfNull(exposed);
+        ArgumentNullException.ThrowIfNull(aliases);
+
+        List<string> names = ["query"];
+        if (knowledgeBaseCount > 1)
+        {
+            names.Add("knowledge_base");
+        }
+
+        names.AddRange(exposed
+            .Select(f => (Field: f, Name: aliases.GetValueOrDefault(f.Id) ?? f.Name))
+            .OrderBy(e => e.Name, StringComparer.Ordinal)
+            .SelectMany(e => FilterInputs.ParametersOf(e.Name, e.Field.Type).Select(p => p.Name)));
+        return names;
+    }
+
     /// <summary>The size of a definition in words.</summary>
     public static string SizeText(int estimatedTokens) =>
         estimatedTokens >= 1_000
@@ -94,6 +113,9 @@ public sealed partial class RagToolForm
 
     public HashSet<Guid> ExposedFieldIds { get; } = [];
 
+    /// <summary>The alias given to an exposed field, by field id: the parameter name the model sees. A field without one is known by its name.</summary>
+    public Dictionary<Guid, string> Aliases { get; } = [];
+
     /// <summary>Fields with a fixed filter, in the order they were added.</summary>
     public List<Guid> FixedFilterFieldIds { get; } = [];
 
@@ -113,7 +135,8 @@ public sealed partial class RagToolForm
 
     public bool IsNew => Id is null;
 
-    public static RagToolForm From(RagToolDetail detail, IReadOnlyList<DictionaryField> dictionary)
+    /// <param name="mapped">The fields the tool's knowledge bases map, which its fixed filters may name; every dictionary field when not given.</param>
+    public static RagToolForm From(RagToolDetail detail, IReadOnlyList<DictionaryField> dictionary, IReadOnlyList<DictionaryField>? mapped = null)
     {
         ArgumentNullException.ThrowIfNull(detail);
         ArgumentNullException.ThrowIfNull(dictionary);
@@ -131,12 +154,20 @@ public sealed partial class RagToolForm
             Scope = ScopeForm.From(detail.Scope),
         };
         form.KnowledgeBaseIds.AddRange(detail.KnowledgeBaseIds);
-        form.ExposedFieldIds.UnionWith(detail.ExposedFieldIds);
+        form.ExposedFieldIds.UnionWith(detail.ExposedFields.Select(e => e.FieldId));
+        foreach (var exposed in detail.ExposedFields)
+        {
+            // The detail gives the name the model sees; an alias is kept only when it is not the field's own name.
+            if (exposed.Alias is { Length: > 0 } alias && dictionary.FirstOrDefault(f => f.Id == exposed.FieldId) is { } field && alias != field.Name)
+            {
+                form.Aliases[exposed.FieldId] = alias;
+            }
+        }
 
         var stored = FilterInputs.Show(detail.FixedFilters);
-        foreach (var field in dictionary)
+        foreach (var field in mapped ?? dictionary)
         {
-            var parameters = FilterInputs.ParametersOf(field.Name, field.Type);
+            var parameters = form.ParametersOf(field);
             if (parameters.Any(p => stored.ContainsKey(p.Name)))
             {
                 form.FixedFilterFieldIds.Add(field.Id);
@@ -148,7 +179,7 @@ public sealed partial class RagToolForm
         }
 
         var shown = form.FixedFilterFieldIds
-            .SelectMany(id => FilterInputs.ParametersOf(dictionary.First(f => f.Id == id).Name, dictionary.First(f => f.Id == id).Type))
+            .SelectMany(id => form.ParametersOf(dictionary.First(f => f.Id == id)))
             .Select(p => p.Name)
             .ToHashSet(StringComparer.Ordinal);
         form.UnshownFilters.AddRange(stored.Keys.Where(k => !shown.Contains(k)));
@@ -165,6 +196,11 @@ public sealed partial class RagToolForm
 
         var offered = candidates.Select(f => f.Id).ToHashSet();
         ExposedFieldIds.RemoveWhere(id => !offered.Contains(id));
+        foreach (var gone in Aliases.Keys.Where(id => !offered.Contains(id)).ToList())
+        {
+            Aliases.Remove(gone);
+        }
+
         foreach (var removed in FixedFilterFieldIds.Where(id => !offered.Contains(id)).ToList())
         {
             RemoveFixedFilter(removed, candidates);
@@ -191,6 +227,45 @@ public sealed partial class RagToolForm
         _knownCandidates.UnionWith(candidates.Select(f => f.Id));
     }
 
+    /// <summary>The name a filter on the field uses: its alias when the field is exposed, otherwise its own name.</summary>
+    public string FilterNameOf(DictionaryField field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        return ExposedFieldIds.Contains(field.Id) ? Aliases.GetValueOrDefault(field.Id) ?? field.Name : field.Name;
+    }
+
+    /// <summary>The parameters of a filter on the field, under the name the model (or the fixed filter) uses for it.</summary>
+    public IReadOnlyList<FilterParameter> ParametersOf(DictionaryField field) => FilterInputs.ParametersOf(FilterNameOf(field), field.Type);
+
+    /// <summary>Gives an exposed field an alias, or takes it back with an empty one. What was typed for a fixed filter on the field follows its new name.</summary>
+    public void SetAlias(DictionaryField field, string? alias)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+
+        var before = ParametersOf(field);
+        var clean = alias?.Trim();
+        if (string.IsNullOrEmpty(clean) || clean == field.Name)
+        {
+            Aliases.Remove(field.Id);
+        }
+        else
+        {
+            Aliases[field.Id] = clean;
+        }
+
+        var after = ParametersOf(field);
+        for (var i = 0; i < before.Count; i++)
+        {
+            if (FilterValues.Remove(before[i].Name, out var value))
+            {
+                FilterValues[after[i].Name] = value;
+            }
+        }
+    }
+
+    private string? AliasToSend(Guid id, IReadOnlyList<DictionaryField> dictionary) =>
+        Aliases.TryGetValue(id, out var alias) && alias.Trim() is { Length: > 0 } clean && dictionary.FirstOrDefault(f => f.Id == id)?.Name != clean ? clean : null;
+
     public void AddFixedFilter(Guid fieldId)
     {
         if (!FixedFilterFieldIds.Contains(fieldId))
@@ -204,7 +279,7 @@ public sealed partial class RagToolForm
         FixedFilterFieldIds.Remove(fieldId);
         if (dictionary.FirstOrDefault(f => f.Id == fieldId) is { } field)
         {
-            foreach (var parameter in FilterInputs.ParametersOf(field.Name, field.Type))
+            foreach (var parameter in ParametersOf(field))
             {
                 FilterValues.Remove(parameter.Name);
             }
@@ -254,6 +329,8 @@ public sealed partial class RagToolForm
             problems.Add("The score threshold is a number, or empty for none.");
         }
 
+        problems.AddRange(AliasProblems(dictionary));
+
         if (Scope.Build().Error is { } scope)
         {
             problems.Add(scope);
@@ -276,7 +353,7 @@ public sealed partial class RagToolForm
             Name.Trim(),
             Description.Trim(),
             [.. KnowledgeBaseIds],
-            [.. ExposedFieldIds],
+            [.. ExposedFieldIds.Select(id => new ExposedFieldRequest(id, AliasToSend(id, dictionary)))],
             filters is { Count: > 0 } ? filters : null,
             TopK,
             ParseThreshold(),
@@ -284,6 +361,48 @@ public sealed partial class RagToolForm
             Scope.Build().Scope!,
             Policy);
     }
+
+    private static readonly string[] ReservedAliasSuffixes = ["_min", "_max", "_from", "_to"];
+
+    // The parameters of a tool must all be distinct (spec 003 A1-3): the server checks the same, this says it before saving.
+    private List<string> AliasProblems(IReadOnlyList<DictionaryField> dictionary)
+    {
+        var problems = new List<string>();
+        var parameters = new HashSet<string>(StringComparer.Ordinal) { "query" };
+        if (KnowledgeBaseIds.Count > 1)
+        {
+            parameters.Add("knowledge_base");
+        }
+
+        var aliases = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in dictionary.Where(f => ExposedFieldIds.Contains(f.Id)).OrderBy(f => f.Name, StringComparer.Ordinal))
+        {
+            var alias = FilterNameOf(field);
+            if (Aliases.ContainsKey(field.Id) && !AliasPattern().IsMatch(alias))
+            {
+                problems.Add($"The alias \"{alias}\" is not allowed: 1 to 40 lower-case letters, digits and \"_\", starting with a letter.");
+                continue;
+            }
+
+            if (Aliases.ContainsKey(field.Id) && (alias is "query" or "knowledge_base" || ReservedAliasSuffixes.Any(s => alias.EndsWith(s, StringComparison.Ordinal))))
+            {
+                problems.Add($"The alias \"{alias}\" is reserved: tools use \"query\", \"knowledge_base\" and the endings \"_min\", \"_max\", \"_from\", \"_to\".");
+                continue;
+            }
+
+            var generated = FilterInputs.ParametersOf(alias, field.Type).Select(p => p.Name).ToList();
+            if (!aliases.Add(alias) || generated.Any(name => !parameters.Add(name)))
+            {
+                problems.Add($"Two exposed fields would both be called \"{alias}\" for the model. Give one of them an alias.");
+                continue;
+            }
+        }
+
+        return problems;
+    }
+
+    [GeneratedRegex(@"^[a-z][a-z0-9_]{0,39}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex AliasPattern();
 
     private double? ParseThreshold() =>
         double.TryParse(ScoreThreshold, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : null;
@@ -299,7 +418,7 @@ public sealed partial class RagToolForm
                 continue;
             }
 
-            var (filters, error) = FilterInputs.Read(FilterValues, FilterInputs.ParametersOf(field.Name, field.Type));
+            var (filters, error) = FilterInputs.Read(FilterValues, ParametersOf(field));
             if (error is not null)
             {
                 return (null, error);

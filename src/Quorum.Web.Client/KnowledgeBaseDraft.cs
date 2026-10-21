@@ -197,7 +197,7 @@ public sealed partial class KnowledgeBaseDraft
             lines.Add($"Text from {mapping.Text.Trim()}; {mapping.Rows.Count} metadata field(s) mapped");
             if (created.Count > 0)
             {
-                lines.Add($"New dictionary field(s): {string.Join(", ", created.Select(f => f.Name))}");
+                lines.Add($"New dictionary field(s): {string.Join(", ", created.Select(f => f.Cluster is null ? f.Name : $"{f.Cluster}/{f.Name}"))}");
             }
         }
 
