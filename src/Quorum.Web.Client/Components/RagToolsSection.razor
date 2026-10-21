@@ -1,7 +1,7 @@
 @* The rag tools of the Tools page (spec 003 D-4, D-11, D-19): tools that search knowledge bases, configured here. *@
 @inject QuorumApi Api
 
-<MudText Typo="Typo.subtitle1" Class="mt-2 mb-1">Knowledge base tools</MudText>
+<MudText Typo="Typo.subtitle1" Class="mt-2 mb-1">Rag tools</MudText>
 <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">
     A rag tool lets an assistant search one or more knowledge bases and cite what it finds. Which fields a model can filter on, and
     which filters it can never change, are decided here. Register the knowledge bases in Knowledge; activate a tool on an assistant in Settings.
@@ -78,13 +78,13 @@ else
 
     @if (_tools.Count == 0 && _form is null)
     {
-        <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">No knowledge base tool is configured yet.</MudText>
+        <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">No rag tool is configured yet.</MudText>
     }
 
     @if (_form is null)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartNew" Disabled="_busy"
-                   StartIcon="@Icons.Material.Filled.Add">Add knowledge base tool</MudButton>
+                   StartIcon="@Icons.Material.Filled.Add">Add rag tool</MudButton>
     }
     else
     {
@@ -94,7 +94,7 @@ else
         <MudPaper Outlined="true" Class="pa-4 mb-3" data-form="rag">
             <form @onsubmit="SaveAsync">
                 <MudStack Spacing="3">
-                    <MudText Typo="Typo.subtitle1">@(form.IsNew ? "Add knowledge base tool" : $"Edit rag__{form.OriginalName}")</MudText>
+                    <MudText Typo="Typo.subtitle1">@(form.IsNew ? "Add rag tool" : $"Edit rag__{form.OriginalName}")</MudText>
                     <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
                                   HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as rag__name." />
                     <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="1000"
@@ -132,12 +132,29 @@ else
                             <div class="tool-hint">These knowledge bases map no metadata field: the model can only send a question.</div>
                         }
 
-                        @foreach (var field in choices.Fields)
+                        @foreach (var (cluster, group) in KnowledgeAdminView.GroupByCluster(choices.Fields))
                         {
-                            var on = form.ExposedFieldIds.Contains(field.Id);
-                            <MudCheckBox T="bool" Value="on" ValueChanged="value => ToggleExposed(field, value)" Dense="true"
-                                         Disabled="@(!on && form.ExposedFieldIds.Count >= RagToolLimits.MaxExposedFields)"
-                                         Label="@($"{field.Name} ({KnowledgeAdminView.TypeLabel(field.Type).ToLowerInvariant()})")" />
+                            @if (cluster is not null)
+                            {
+                                <div class="tool-hint cluster-heading" data-cluster="@cluster">@cluster</div>
+                            }
+
+                            @foreach (var field in group)
+                            {
+                                var on = form.ExposedFieldIds.Contains(field.Id);
+                                var label = KnowledgeAdminView.FieldLabel(field, choices.Fields);
+                                <div class="exposed-field">
+                                    <MudCheckBox T="bool" Value="on" ValueChanged="value => ToggleExposed(field, value)" Dense="true"
+                                                 Disabled="@(!on && form.ExposedFieldIds.Count >= RagToolLimits.MaxExposedFields)"
+                                                 Label="@($"{label} ({KnowledgeAdminView.TypeLabel(field.Type).ToLowerInvariant()})")" />
+                                    @if (on)
+                                    {
+                                        <MudTextField T="string" Value="@(form.Aliases.GetValueOrDefault(field.Id) ?? string.Empty)" ValueChanged="alias => form.SetAlias(field, alias)"
+                                                      Label="@($"Alias of {label}")" Placeholder="@field.Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                      Immediate="true" Class="alias-input" HelperText="The name the model sees. Leave empty to use the field's name." />
+                                    }
+                                </div>
+                            }
                         }
 
                         <MudText Typo="Typo.subtitle2">Fixed filters</MudText>
@@ -151,11 +168,11 @@ else
                             {
                                 <div class="fixed-filter" data-filter="@filterField.Name">
                                     <div class="tool-row-head">
-                                        <span class="tool-name">@filterField.Name</span>
+                                        <span class="tool-name">@KnowledgeAdminView.FieldLabel(filterField, _dictionary)</span>
                                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" aria-label="@($"Remove the filter on {filterField.Name}")"
                                                        OnClick="() => form.RemoveFixedFilter(id, _dictionary)" />
                                     </div>
-                                    <FilterEditor Parameters="FilterInputs.ParametersOf(filterField.Name, filterField.Type)" Values="form.FilterValues" />
+                                    <FilterEditor Parameters="form.ParametersOf(filterField)" Values="form.FilterValues" />
                                 </div>
                             }
                         }
@@ -206,7 +223,7 @@ else
                     @if (form.KnowledgeBaseIds.Count > 0)
                     {
                         <div class="tool-hint" data-parameters>
-                            Parameters the model will get: <span class="tool-name">@string.Join(", ", RagToolView.ParameterNames(exposed, form.KnowledgeBaseIds.Count))</span>
+                            Parameters the model will get: <span class="tool-name">@string.Join(", ", RagToolView.ParameterNames(exposed, form.Aliases, form.KnowledgeBaseIds.Count))</span>
                             (the saved definition below is the real one).
                         </div>
                     }
@@ -404,8 +421,9 @@ else
             await LoadDetailAsync(knowledgeBase);
         }
 
-        var form = RagToolForm.From(detail, _dictionary);
-        form.KnowCandidates(RagToolView.Candidates(form.KnowledgeBaseIds, _details, _dictionary).Fields);
+        var mapped = RagToolView.Candidates(detail.KnowledgeBaseIds, _details, _dictionary);
+        var form = RagToolForm.From(detail, _dictionary, mapped.Fields);
+        form.KnowCandidates(mapped.Fields);
         _form = form;
         _definition = detail.Definition;
         _formProblems = [];

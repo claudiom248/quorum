@@ -37,7 +37,7 @@ internal sealed class KnowledgeBaseCatalog(KnowledgeBasesDbContext db, ITenantCo
                 k.Name,
                 k.Description,
                 [.. k.Mapping.Fields.Select(f => f.DictionaryFieldId).Where(visibleFieldIds.Contains).Distinct()]))],
-            [.. fields.Select(f => new FilterFieldInfo(f.Id, f.Name, TypeOf(f.Type), f.Description))]);
+            [.. fields.Select(f => new FilterFieldInfo(f.Id, f.Name, TypeOf(f.Type), f.Description, f.Cluster))]);
     }
 
     public async Task<ScopeCheck> CheckScopeAsync(ScopeCheckQuery query, CancellationToken cancellationToken)
@@ -72,9 +72,18 @@ internal sealed class KnowledgeBaseCatalog(KnowledgeBasesDbContext db, ITenantCo
             return new FixedFilterCheck("The filters cannot be checked.", []);
         }
 
-        var ids = query.FieldIds.Distinct().ToList();
+        var aliases = query.Aliases ?? new Dictionary<string, Guid>();
+        var ids = query.FieldIds.Concat(aliases.Values).Distinct().ToList();
         var fields = await DictionaryVisibility.Fields(db).AsNoTracking().Where(f => ids.Contains(f.Id)).ToListAsync(cancellationToken);
-        var byName = fields.ToDictionary(f => f.Name, f => new FilterField(f.Id, f.Name, f.Type), StringComparer.Ordinal);
+        var names = FixedFilterNames.Build(
+            aliases.Where(pair => fields.Any(f => f.Id == pair.Value)).ToDictionary(pair => pair.Key, pair => fields.First(f => f.Id == pair.Value), StringComparer.Ordinal),
+            fields.Where(f => query.FieldIds.Contains(f.Id)));
+        if (names.AmbiguityProblem(query.Filters.Keys) is { } ambiguous)
+        {
+            return new FixedFilterCheck(ambiguous, []);
+        }
+
+        var byName = names.Fields;
 
         // A fixed filter that restricts nothing is a mistake that would widen access, so an empty value is refused, not ignored.
         var parsed = SearchFilterParser.Parse(query.Filters, byName, KnowledgeBaseSearchErrors.InvalidFixedFilter, ignoreEmpty: false);

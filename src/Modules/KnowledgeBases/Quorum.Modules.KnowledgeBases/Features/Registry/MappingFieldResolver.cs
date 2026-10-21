@@ -38,7 +38,7 @@ internal static class MappingFieldResolver
             var path = request.Path!.Trim();
             var field = request.DictionaryFieldId is { } id
                 ? visible.FirstOrDefault(f => f.Id == id)
-                : result.Created.FirstOrDefault(f => f.Name == request.Name?.Trim()) ?? visible.FirstOrDefault(f => f.Name == request.Name?.Trim());
+                : result.Created.FirstOrDefault(f => Matches(f, request)) ?? visible.FirstOrDefault(f => Matches(f, request));
 
             if (request.DictionaryFieldId is not null && field is null)
             {
@@ -47,7 +47,7 @@ internal static class MappingFieldResolver
 
             if (field is null)
             {
-                var created = await CreateAsync(db, tenantId, fieldScope, request.Name?.Trim(), proposed, clock, cancellationToken);
+                var created = await CreateAsync(db, tenantId, fieldScope, DictionaryFieldRules.NormalizeCluster(request.Cluster), request.Name?.Trim(), proposed, clock, cancellationToken);
                 if (!created.IsSuccess)
                 {
                     return created.Error;
@@ -57,7 +57,7 @@ internal static class MappingFieldResolver
                 result.Created.Add(field);
             }
             else if (request.DictionaryFieldId is null
-                && proposed.FirstOrDefault(p => p.Name?.Trim() == field.Name) is { } proposal
+                && proposed.FirstOrDefault(p => p.Name?.Trim() == field.Name && DictionaryFieldRules.NormalizeCluster(p.Cluster) == field.Cluster) is { } proposal
                 && DictionaryFieldRules.TryParseMember<DictionaryFieldType>(proposal.Type, out var proposedType)
                 && proposedType != field.Type)
             {
@@ -83,25 +83,37 @@ internal static class MappingFieldResolver
         return result;
     }
 
+    // A field is named by its cluster and its name: a request without a cluster means a field with none.
+    private static bool Matches(DictionaryField field, MappedFieldRequest request) =>
+        field.Name == request.Name?.Trim() && field.Cluster == DictionaryFieldRules.NormalizeCluster(request.Cluster);
+
+    private static string Qualified(string? cluster, string? name) => cluster is null ? name ?? string.Empty : $"{cluster}/{name}";
+
     private static async Task<Result<DictionaryField>> CreateAsync(
         KnowledgeBasesDbContext db,
         Guid tenantId,
         DictionaryFieldScope scope,
+        string? cluster,
         string? name,
         IReadOnlyList<CreateFieldRequest> proposed,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        var proposal = proposed.FirstOrDefault(p => p.Name?.Trim() == name);
+        var proposal = proposed.FirstOrDefault(p => p.Name?.Trim() == name && DictionaryFieldRules.NormalizeCluster(p.Cluster) == cluster);
         if (name is null || proposal is null)
         {
             return MappingValidation.InvalidMapping(
-                $"The dictionary field '{name}' does not exist. Confirm its creation (createFields) or map the payload field to an existing field.");
+                $"The dictionary field '{Qualified(cluster, name)}' does not exist. Confirm its creation (createFields) or map the payload field to an existing field.");
         }
 
         if (!DictionaryFieldRules.IsValidName(name))
         {
             return Error.Validation("knowledge_base.invalid_field_name", "A dictionary field name is 1 to 40 characters: lower-case letters, digits and '_', starting with a letter.");
+        }
+
+        if (!DictionaryFieldRules.IsValidCluster(cluster))
+        {
+            return Error.Validation("knowledge_base.invalid_field_cluster", "A cluster is 1 to 40 characters: lower-case letters, digits and '_', starting with a letter.");
         }
 
         if (DictionaryFieldRules.IsReservedName(name))
@@ -120,11 +132,11 @@ internal static class MappingFieldResolver
         }
 
         // Another tenant's private field with this name does not show here, but a Global field is seen by everyone.
-        if (await DictionaryVisibility.NameIsTakenAsync(db, name, scope, cancellationToken))
+        if (await DictionaryVisibility.NameIsTakenAsync(db, cluster, name, scope, cancellationToken))
         {
             return Error.Conflict("knowledge_base.field_name_taken", "A field with this name already exists where this field would be visible.");
         }
 
-        return DictionaryField.Create(tenantId, name, type, proposal.Description, scope, clock.GetUtcNow());
+        return DictionaryField.Create(tenantId, name, type, proposal.Description, scope, clock.GetUtcNow(), cluster);
     }
 }

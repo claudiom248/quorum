@@ -16,6 +16,8 @@ public sealed class KnowledgePagesTests : BunitContext
 {
     private static readonly Guid DepartmentId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3001");
     private static readonly Guid YearId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3002");
+    private static readonly Guid LegalDepartmentId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3003");
+    private static readonly Guid FinanceYearId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3004");
     private static readonly Guid OwnId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3011");
     private static readonly Guid BrokenId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3012");
     private static readonly Guid SharedId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b3013");
@@ -23,6 +25,8 @@ public sealed class KnowledgePagesTests : BunitContext
 
     private readonly FakeApiHandler _api = new();
     private bool _inspectReachable = true;
+    private bool _clustered;
+    private bool _candidates;
     private HttpStatusCode _deleteFieldStatus = HttpStatusCode.NoContent;
     private string _savedStatus = "Available";
 
@@ -36,6 +40,17 @@ public sealed class KnowledgePagesTests : BunitContext
         {
             if (method == HttpMethod.Get && path == "/api/knowledge-bases/dictionary")
             {
+                if (_clustered)
+                {
+                    return FakeApiHandler.Json(new object[]
+                    {
+                        new { id = DepartmentId, name = "department", type = "Text", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"hr" },
+                        new { id = LegalDepartmentId, name = "department", type = "Text", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"legal" },
+                        new { id = YearId, name = "year", type = "Text", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"hr" },
+                        new { id = FinanceYearId, name = "year", type = "Number", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"finance" },
+                    });
+                }
+
                 return FakeApiHandler.Json(new object[]
                 {
                     new { id = DepartmentId, name = "department", type = "Text", description = "The owning department.", scope = "Tenant", usedByCount = 1 },
@@ -161,7 +176,18 @@ public sealed class KnowledgePagesTests : BunitContext
             roles = new { text = "chunk_text", documentId = "doc_id", title = "file_name", position = "page", sourceUrl = "source_url" },
             fields = new object[]
             {
-                new { path = "department", name = "department", type = "Text", dictionaryFieldId = (Guid?)DepartmentId, issues = Array.Empty<string>() },
+                _candidates
+                    ? new
+                    {
+                        path = "department",
+                        name = "department",
+                        type = "Text",
+                        dictionaryFieldId = (Guid?)null,
+                        issues = Array.Empty<string>(),
+                        cluster = (string?)null,
+                        candidates = new[] { new { id = DepartmentId, cluster = (string?)"hr", type = "Text" }, new { id = LegalDepartmentId, cluster = (string?)"legal", type = "Text" } },
+                    }
+                    : (object)new { path = "department", name = "department", type = "Text", dictionaryFieldId = (Guid?)DepartmentId, issues = Array.Empty<string>() },
                 new { path = "meta.reviewed", name = "reviewed", type = "Boolean", dictionaryFieldId = (Guid?)null, issues = Array.Empty<string>() },
             },
         },
@@ -474,11 +500,11 @@ public sealed class KnowledgePagesTests : BunitContext
         var names = path.QuerySelectorAll("input[type=text]");
         names[1].Input("department");
 
-        page.WaitForAssertion(() => Assert.Contains("also uses the name", page.Markup, StringComparison.Ordinal));
+        page.WaitForAssertion(() => Assert.Contains("also uses", page.Markup, StringComparison.Ordinal));
 
         page.Find("[data-path='meta.reviewed']").QuerySelectorAll("input[type=text]")[1].Input("reviewed");
 
-        page.WaitForAssertion(() => Assert.DoesNotContain("also uses the name", page.Markup, StringComparison.Ordinal));
+        page.WaitForAssertion(() => Assert.DoesNotContain("also uses", page.Markup, StringComparison.Ordinal));
     }
 
     [Fact] // AC-49
@@ -533,6 +559,55 @@ public sealed class KnowledgePagesTests : BunitContext
 
         page.WaitForAssertion(() => Assert.Contains("tickets was saved but is unavailable", page.Markup, StringComparison.Ordinal));
         Assert.Contains("The server could not be reached.", page.Markup, StringComparison.Ordinal);
+    }
+
+    // --- Clusters (spec 003 Amendment 1, AC-58) ---
+
+    [Fact] // AC-58
+    public void TheDictionaryGroupsFieldsByClusterAndWritesTheClusterOnlyWhereTheNameIsAmbiguous()
+    {
+        _clustered = true;
+
+        var page = RenderPage<DictionaryPage>();
+
+        Assert.Equal(["finance", "hr", "legal"], page.FindAll("[data-cluster]").Select(h => h.GetAttribute("data-cluster")).ToArray());
+        Assert.Equal(
+            ["finance/year", "hr/department", "hr/year", "legal/department"],
+            page.FindAll(".dictionary-field .tool-name").Select(n => n.TextContent).Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact] // AC-58
+    public void AddingAFieldInAClusterSendsTheClusterAndTheExistingOnesCanBePicked()
+    {
+        _clustered = true;
+        var page = RenderPage<DictionaryPage>();
+        page.FindAll("button").First(b => b.TextContent.Contains("Add field", StringComparison.Ordinal)).Click();
+
+        Input(page, "Name").Change("region");
+        page.FindAll("[data-form=field] .mud-chip").First(c => c.TextContent.Trim() == "legal").Click();
+        page.Find("[data-form=field] form").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/knowledge-bases/dictionary")));
+        var body = Body(_api, HttpMethod.Post, "/api/knowledge-bases/dictionary");
+        Assert.Equal(("region", "legal"), (body.GetProperty("name").GetString(), body.GetProperty("cluster").GetString()));
+    }
+
+    [Fact] // AC-53, AC-58
+    public void AnAmbiguousPayloadNameOffersTheCandidatesAndTheStepWaitsForAChoice()
+    {
+        _clustered = true;
+        _candidates = true;
+        var page = RenderPage<KnowledgePage>();
+        InspectAndReview(page);
+
+        var row = page.Find("[data-path=department]");
+        Assert.Contains("Several fields are called", row.TextContent, StringComparison.Ordinal);
+        Assert.Equal(["hr · Text", "legal · Text"], row.QuerySelectorAll("[data-candidates] .mud-chip").Select(c => c.TextContent.Trim()).ToArray());
+
+        row.QuerySelectorAll("[data-candidates] .mud-chip").First(c => c.TextContent.Contains("legal", StringComparison.Ordinal)).Click();
+
+        page.WaitForAssertion(() => Assert.Empty(page.FindAll("[data-candidates]")));
+        Assert.Contains("Existing field in cluster legal", page.Find("[data-path=department]").TextContent, StringComparison.Ordinal);
     }
 
     [Fact]

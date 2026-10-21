@@ -90,7 +90,7 @@ public sealed class KnowledgeAdminViewTests
         draft.ConfirmCreate = true;
 
         var reviews = draft.Review(Dictionary);
-        Assert.All(reviews, r => Assert.Contains(r.Problems, p => p.Contains("also uses the name", StringComparison.Ordinal)));
+        Assert.All(reviews, r => Assert.Contains(r.Problems, p => p.Contains("also uses", StringComparison.Ordinal)));
         Assert.NotEmpty(draft.Problems(Dictionary));
 
         draft.Rows[1].Name = "b_topic";
@@ -124,7 +124,7 @@ public sealed class KnowledgeAdminViewTests
 
         var review = draft.Review(Dictionary).Single();
         Assert.True(review.HasTypeConflict);
-        Assert.Contains("Rename the field", Assert.Single(review.Problems), StringComparison.Ordinal);
+        Assert.Contains("another cluster", Assert.Single(review.Problems), StringComparison.Ordinal);
 
         draft.Rows[0].AcceptExistingType = true;
 
@@ -597,7 +597,7 @@ public sealed class KnowledgeAdminViewTests
             "company",
             "Searches.",
             [KnowledgeBaseId],
-            [DepartmentId],
+            [new ExposedFieldInfo(DepartmentId, "department")],
             Json("""{"department":["hr"],"gone_min":3}"""),
             7,
             0.25,

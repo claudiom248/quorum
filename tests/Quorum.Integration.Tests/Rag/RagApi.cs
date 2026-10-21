@@ -22,6 +22,7 @@ internal static class RagApi
         string description = "Searches the company policies.",
         IEnumerable<Guid>? knowledgeBaseIds = null,
         IEnumerable<Guid>? exposedFieldIds = null,
+        object[]? exposedFields = null,
         object? fixedFilters = null,
         int? topK = null,
         double? scoreThreshold = null,
@@ -32,7 +33,7 @@ internal static class RagApi
             name,
             description,
             knowledgeBaseIds = knowledgeBaseIds?.ToArray() ?? [],
-            exposedFieldIds = exposedFieldIds?.ToArray() ?? [],
+            exposedFields = exposedFields ?? [.. (exposedFieldIds ?? []).Select(id => (object)new { fieldId = id })],
             fixedFilters,
             topK,
             scoreThreshold,
@@ -79,12 +80,14 @@ internal static class RagApi
 
     public sealed record ListItemBody(Guid Id, string Name, List<KnowledgeBaseBody> KnowledgeBases, ScopeBody Scope, string State, string Policy, bool Shared, List<WarningBody> Warnings);
 
+    public sealed record ExposedFieldBody(Guid FieldId, string? Alias);
+
     public sealed record DetailBody(
         Guid Id,
         string Name,
         string Description,
         List<Guid> KnowledgeBaseIds,
-        List<Guid> ExposedFieldIds,
+        List<ExposedFieldBody> ExposedFields,
         JsonElement FixedFilters,
         int TopK,
         double? ScoreThreshold,
@@ -93,7 +96,10 @@ internal static class RagApi
         string State,
         string Policy,
         PreviewBody? Definition,
-        List<WarningBody> Warnings);
+        List<WarningBody> Warnings)
+    {
+        public List<Guid> ExposedFieldIds => [.. ExposedFields.Select(f => f.FieldId)];
+    }
 
     /// <summary>An application with a tenant, an administrator, the fake embedding model and a Qdrant to register collections from.</summary>
     public sealed class Setup : IAsyncDisposable

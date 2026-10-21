@@ -74,7 +74,7 @@ internal sealed partial class KnowledgeBaseInspector(
         var visible = await DictionaryVisibility.Fields(db).AsNoTracking().ToListAsync(cancellationToken);
         var fields = draft.Fields.Select(field => Resolve(field, visible)).ToList();
         var proposed = fields
-            .Where(f => f.DictionaryFieldId is null && f.Issues.Count == 0)
+            .Where(f => f.DictionaryFieldId is null && f.Issues.Count == 0 && f.Candidates is not { Count: > 0 })
             .DistinctBy(f => f.Name, StringComparer.Ordinal)
             .Select(f => new ProposedFieldDto(f.Name, f.Type))
             .ToList();
@@ -119,16 +119,26 @@ internal sealed partial class KnowledgeBaseInspector(
         { } element => element.GetRawText(),
     };
 
+    // An existing field is preselected only when exactly one visible field has the name; several (different clusters) are offered as
+    // candidates for the administrator to choose from (spec 003 A1-5).
     private static DraftFieldDto Resolve(DraftField field, List<DictionaryField> visible)
     {
-        var existing = visible.FirstOrDefault(f => f.Name == field.Name);
+        var matches = visible.Where(f => f.Name == field.Name).OrderBy(f => f.Cluster ?? string.Empty, StringComparer.Ordinal).ToList();
         var issues = field.Issues.ToList();
+        var existing = matches.Count == 1 ? matches[0] : null;
         if (existing is not null && existing.Type != field.Type)
         {
             issues.Add("knowledge_base.field_type_conflict");
         }
 
-        return new DraftFieldDto(field.Path, field.Name, field.Type.ToString(), existing?.Id, issues);
+        return new DraftFieldDto(
+            field.Path,
+            field.Name,
+            field.Type.ToString(),
+            existing?.Id,
+            issues,
+            existing?.Cluster,
+            [.. (matches.Count > 1 ? matches : []).Select(m => new FieldCandidateDto(m.Id, m.Cluster, m.Type.ToString()))]);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Inspected a knowledge base store: reachable {Reachable}, collection found {CollectionExists}, {FieldCount} fields, {WarningCount} warnings, {ElapsedMilliseconds} ms")]

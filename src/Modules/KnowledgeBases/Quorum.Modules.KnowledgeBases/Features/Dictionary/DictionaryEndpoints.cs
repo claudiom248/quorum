@@ -20,6 +20,10 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
         "knowledge_base.invalid_field_name",
         $"The name must be 1 to {DictionaryField.MaxNameLength} characters: lower-case letters, digits and '_', starting with a letter.");
 
+    private static readonly Error InvalidCluster = Error.Validation(
+        "knowledge_base.invalid_field_cluster",
+        $"The cluster is optional; when given it is 1 to {DictionaryField.MaxClusterLength} characters: lower-case letters, digits and '_', starting with a letter.");
+
     private static readonly Error ReservedName = Error.Validation(
         "knowledge_base.reserved_field_name",
         "The name is reserved: it cannot be 'query' or 'knowledge_base' nor end with '_min', '_max', '_from' or '_to', because tools use them for their own parameters.");
@@ -121,7 +125,7 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
 
     private static async Task<Ok<List<DictionaryFieldDto>>> ListAsync(KnowledgeBasesDbContext db, IRagToolUsage ragTools, CancellationToken cancellationToken)
     {
-        var fields = await DictionaryVisibility.Fields(db).AsNoTracking().OrderBy(f => f.Name).ToListAsync(cancellationToken);
+        var fields = await DictionaryVisibility.Fields(db).AsNoTracking().OrderBy(f => f.Cluster != null).ThenBy(f => f.Cluster).ThenBy(f => f.Name).ToListAsync(cancellationToken);
         var usage = await DictionaryUsage.LoadAsync(db, ragTools, cancellationToken);
         return TypedResults.Ok(fields.Select(field => DictionaryFieldDto.From(field, usage.CountFor(field.Id))).ToList());
     }
@@ -143,6 +147,12 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
             return ReservedName.ToProblem();
         }
 
+        var cluster = DictionaryFieldRules.NormalizeCluster(request.Cluster);
+        if (!DictionaryFieldRules.IsValidCluster(cluster))
+        {
+            return InvalidCluster.ToProblem();
+        }
+
         if (!DictionaryFieldRules.TryParseMember<DictionaryFieldType>(request.Type, out var type))
         {
             return InvalidType.ToProblem();
@@ -158,12 +168,12 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
             return InvalidDescription.ToProblem();
         }
 
-        if (await DictionaryVisibility.NameIsTakenAsync(db, request.Name!, scope, cancellationToken))
+        if (await DictionaryVisibility.NameIsTakenAsync(db, cluster, request.Name!, scope, cancellationToken))
         {
             return NameTaken.ToProblem();
         }
 
-        var field = DictionaryField.Create(tenant.TenantId!.Value, request.Name!, type, request.Description, scope, clock.GetUtcNow());
+        var field = DictionaryField.Create(tenant.TenantId!.Value, request.Name!, type, request.Description, scope, clock.GetUtcNow(), cluster);
         db.DictionaryFields.Add(field);
         try
         {
@@ -180,15 +190,16 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
     }
 }
 
-internal sealed record DictionaryFieldRequest(string? Name, string? Type, string? Description, string? Scope);
+/// <param name="Cluster">Optional: a label that groups related fields. With the name it identifies the field.</param>
+internal sealed record DictionaryFieldRequest(string? Name, string? Type, string? Description, string? Scope, string? Cluster = null);
 
 /// <summary>Only the description is editable: name, type and scope are what knowledge bases and tools were built on.</summary>
 internal sealed record DictionaryFieldUpdateRequest(string? Description);
 
 internal sealed record CreatedFieldDto(Guid Id);
 
-internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount)
+internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null)
 {
     public static DictionaryFieldDto From(DictionaryField field, int usedByCount) =>
-        new(field.Id, field.Name, field.Type.ToString(), field.Description, field.Scope.ToString(), usedByCount);
+        new(field.Id, field.Name, field.Type.ToString(), field.Description, field.Scope.ToString(), usedByCount, field.Cluster);
 }

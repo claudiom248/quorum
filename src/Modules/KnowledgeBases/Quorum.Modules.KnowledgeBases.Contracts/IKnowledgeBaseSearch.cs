@@ -33,6 +33,12 @@ public sealed record KnowledgeBaseSearchRequest
     /// <summary>The binding's filters, in the same shape. They always apply and are never visible to the model.</summary>
     public IReadOnlyDictionary<string, JsonElement> FixedFilters { get; init; } = new Dictionary<string, JsonElement>();
 
+    /// <summary>
+    /// The filter parameters of the request by name, each with the dictionary field it stands for: the aliases a rag tool exposes and
+    /// the names of the fields only its fixed filters use. Without it the parameters are the names of the fields the knowledge bases map.
+    /// </summary>
+    public IReadOnlyDictionary<string, Guid>? FilterFields { get; init; }
+
     /// <summary>Chunks to return, 1 to 20.</summary>
     public int TopK { get; init; } = 5;
 

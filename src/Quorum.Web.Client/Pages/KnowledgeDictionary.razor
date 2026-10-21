@@ -34,11 +34,18 @@
             <MudText Typo="Typo.body2" Class="tools-support-hint mb-3">The dictionary is empty. Fields are added here, or while registering a knowledge base.</MudText>
         }
 
-        @foreach (var field in _fields)
+        @foreach (var (cluster, group) in KnowledgeAdminView.GroupByCluster(_fields))
+        {
+            @if (cluster is not null)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1" data-cluster="@cluster">@cluster</MudText>
+            }
+
+            @foreach (var field in group)
         {
             <MudPaper Outlined="true" Class="pa-3 mb-3 dictionary-field" data-field="@field.Name">
                 <div class="tool-row-head">
-                    <span class="tool-name">@field.Name</span>
+                    <span class="tool-name">@KnowledgeAdminView.FieldLabel(field, _fields)</span>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@KnowledgeAdminView.TypeLabel(field.Type)</MudChip>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@KnowledgeAdminView.DictionaryScopeLabel(field.Scope)</MudChip>
                     <span class="tool-hint">Used by @field.UsedByCount</span>
@@ -79,6 +86,7 @@
                 }
             </MudPaper>
         }
+        }
 
         @if (_form is null)
         {
@@ -92,6 +100,18 @@
                         <MudText Typo="Typo.subtitle1">Add field</MudText>
                         <MudTextField @bind-Value="_form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
                                       HelperText="Lower-case letters, digits and '_', starting with a letter. Not 'query' or 'knowledge_base', and not ending in _min, _max, _from or _to." />
+                        <MudTextField @bind-Value="_form.Cluster" Label="Cluster" Variant="Variant.Outlined" MaxLength="40"
+                                      HelperText="Optional. Groups related fields, such as hr or finance; with the name it identifies the field. Leave it empty for none." />
+                        @if (ExistingClusters.Count > 0)
+                        {
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <span class="tool-hint">Existing:</span>
+                                @foreach (var existing in ExistingClusters)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="() => _form.Cluster = existing">@existing</MudChip>
+                                }
+                            </MudStack>
+                        }
                         <label class="tool-policy">Type
                             <select aria-label="Type" @bind="_form.Type">
                                 @foreach (var type in DictionaryFieldTypes.All)
@@ -133,6 +153,8 @@
     private Guid? _deleting;
     private string _description = string.Empty;
     private NewField? _form;
+
+    private List<string> ExistingClusters => [.. _fields.Select(f => f.Cluster).OfType<string>().Distinct().Order(StringComparer.Ordinal)];
 
     protected override async Task OnInitializedAsync()
     {
@@ -194,7 +216,8 @@
                 form.Name.Trim(),
                 form.Type,
                 string.IsNullOrWhiteSpace(form.Description) ? null : form.Description.Trim(),
-                form.Scope));
+                form.Scope,
+                string.IsNullOrWhiteSpace(form.Cluster) ? null : form.Cluster.Trim()));
             if (!result.IsSuccess)
             {
                 _formProblem = result.Problem;
@@ -271,6 +294,8 @@
     private sealed class NewField
     {
         public string Name { get; set; } = string.Empty;
+
+        public string Cluster { get; set; } = string.Empty;
 
         public string Type { get; set; } = DictionaryFieldTypes.Text;
 

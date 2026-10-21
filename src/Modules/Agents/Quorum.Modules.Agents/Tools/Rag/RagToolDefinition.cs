@@ -81,6 +81,14 @@ internal static class RagToolDefinition
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
+    /// <summary>The parameters a field generates under the name the model sees: a range for a number or a date, one parameter for the rest.</summary>
+    public static IReadOnlyList<string> ParameterNames(string name, FilterFieldType type) => type switch
+    {
+        FilterFieldType.Number => [name + "_min", name + "_max"],
+        FilterFieldType.Date => [name + "_from", name + "_to"],
+        _ => [name],
+    };
+
     private static void WriteFilter(Utf8JsonWriter writer, FilterFieldInfo field)
     {
         var about = string.IsNullOrWhiteSpace(field.Description) ? field.Name : field.Description.Trim();

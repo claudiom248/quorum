@@ -23,6 +23,18 @@ internal static class RagToolHash
             writer.WriteString("description", description);
             WriteIds(writer, "knowledgeBases", configuration.KnowledgeBaseIds);
             WriteIds(writer, "exposedFields", configuration.ExposedFieldIds);
+            if (configuration.ExposedAliases is { Count: > 0 } aliases)
+            {
+                // Only when there are some, so a tool without aliases keeps the fingerprint it had before they existed.
+                writer.WriteStartObject("exposedAliases");
+                foreach (var (id, alias) in aliases.OrderBy(a => a.Key))
+                {
+                    writer.WriteString(id.ToString(), alias);
+                }
+
+                writer.WriteEndObject();
+            }
+
             writer.WritePropertyName("fixedFilters");
             using (var filters = JsonDocument.Parse(configuration.FixedFilters))
             {

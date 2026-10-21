@@ -41,7 +41,7 @@ internal sealed class KnowledgeBaseSearch(KnowledgeBasesDbContext db, ITenantCon
 
         return await engine.SearchAsync(
             bases,
-            new SearchInput(request.Query.Trim(), request.Filters, request.FixedFilters, request.TopK, request.ScoreThreshold, request.MaxResultCharacters),
+            new SearchInput(request.Query.Trim(), request.Filters, request.FixedFilters, request.TopK, request.ScoreThreshold, request.MaxResultCharacters, request.FilterFields),
             cancellationToken);
     }
 }

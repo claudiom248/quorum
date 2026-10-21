@@ -11,6 +11,11 @@ internal static partial class DictionaryFieldRules
 
     public static bool IsValidName(string? name) => name is not null && ValidName().IsMatch(name);
 
+    /// <summary>A cluster follows the rules of a name; none (null) is valid and is what an empty value means.</summary>
+    public static bool IsValidCluster(string? cluster) => cluster is null || ValidName().IsMatch(cluster);
+
+    public static string? NormalizeCluster(string? cluster) => string.IsNullOrWhiteSpace(cluster) ? null : cluster.Trim();
+
     public static bool IsReservedName(string name) =>
         ReservedNames.Contains(name, StringComparer.Ordinal)
         || ReservedSuffixes.Any(suffix => name.EndsWith(suffix, StringComparison.Ordinal));

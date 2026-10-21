@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Quorum.Modules.Agents.Domain;
 
 /// <summary>
@@ -45,6 +47,9 @@ internal sealed class RagTool
     /// <summary>The dictionary fields the model may filter on.</summary>
     public List<Guid> ExposedFieldIds { get; private set; } = [];
 
+    /// <summary>The alias an exposed field was given, as a JSON object by field id; a field without one is known by its name (spec 003 A1-3).</summary>
+    public string ExposedAliases { get; private set; } = "{}";
+
     /// <summary>The filters the model never sees and cannot override, as a JSON object in the shape of the tool's parameters (<c>department</c>, <c>year_min</c>...).</summary>
     public string FixedFilters { get; private set; } = "{}";
 
@@ -82,6 +87,7 @@ internal sealed class RagTool
 
         KnowledgeBaseIds = [.. configuration.KnowledgeBaseIds];
         ExposedFieldIds = [.. configuration.ExposedFieldIds];
+        ExposedAliases = JsonSerializer.Serialize(configuration.ExposedAliases ?? new Dictionary<Guid, string>());
         FixedFilters = configuration.FixedFilters;
         FixedFilterFieldIds = [.. configuration.FixedFilterFieldIds];
         TopK = configuration.TopK;
@@ -105,4 +111,5 @@ internal sealed record RagConfiguration(
     int MaxResultCharacters,
     ToolScopeKind Scope,
     IReadOnlyList<Guid> ScopeTenantIds,
-    IReadOnlyList<Guid> ScopeAssistantIds);
+    IReadOnlyList<Guid> ScopeAssistantIds,
+    IReadOnlyDictionary<Guid, string>? ExposedAliases = null);

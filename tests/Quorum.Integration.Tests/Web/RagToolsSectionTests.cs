@@ -173,7 +173,7 @@ public sealed class RagToolsSectionTests : BunitContext
         name,
         description = "Searches the company policies.",
         knowledgeBaseIds = bases,
-        exposedFieldIds = exposed,
+        exposedFields = exposed.Select(id => new { fieldId = id, alias = (string?)null }).ToArray(),
         fixedFilters,
         topK = 7,
         scoreThreshold = (double?)0.25,
@@ -246,7 +246,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void ChoosingKnowledgeBasesOffersAndExposesTheirFieldsAndPreviewsTheParameters()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Tick(section, "policies", true);
 
@@ -270,7 +270,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void AKnowledgeBaseSharedWithYouOffersEveryFieldAndSaysWhy()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Tick(section, "handbook (shared with you)", true);
 
@@ -283,7 +283,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void SavingSendsTheBindingTheFixedFiltersAndTheLimitsAndThenShowsTheDefinitionAndItsSize()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -298,7 +298,7 @@ public sealed class RagToolsSectionTests : BunitContext
         var body = Body(_api, HttpMethod.Post, "/api/tools/rag");
         Assert.Equal(("support", "Confirm", 5, 6000), (body.GetProperty("name").GetString(), body.GetProperty("policy").GetString(), body.GetProperty("topK").GetInt32(), body.GetProperty("maxResultCharacters").GetInt32()));
         Assert.Equal([OwnBase, OtherBase], body.GetProperty("knowledgeBaseIds").EnumerateArray().Select(v => v.GetGuid()));
-        Assert.Equal([DepartmentId, YearId], body.GetProperty("exposedFieldIds").EnumerateArray().Select(v => v.GetGuid()).Order());
+        Assert.Equal([DepartmentId, YearId], body.GetProperty("exposedFields").EnumerateArray().Select(v => v.GetProperty("fieldId").GetGuid()).Order());
         Assert.Equal(["support", "billing"], body.GetProperty("fixedFilters").GetProperty("department").EnumerateArray().Select(v => v.GetString()));
         Assert.Equal("Tenant", body.GetProperty("scope").GetProperty("kind").GetString());
 
@@ -310,11 +310,47 @@ public sealed class RagToolsSectionTests : BunitContext
         Assert.Contains("rag__support was saved", section.Markup, StringComparison.Ordinal);
     }
 
+    [Fact] // AC-55, AC-58
+    public void AnExposedFieldCanBeGivenAnAliasThatThePreviewAndTheRequestUse()
+    {
+        var section = RenderSection();
+        Click(section, "Add rag tool");
+        Input(section, "Name").Change("support");
+        Input(section, "Description").Change("Searches the support knowledge.");
+        Tick(section, "policies", true);
+
+        Input(section, "Alias of department").Input("dept");
+
+        section.WaitForAssertion(() => Assert.Equal("query, dept", section.Find("[data-parameters] .tool-name").TextContent));
+        section.Find("[data-form=rag] form").Submit();
+
+        section.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/tools/rag")));
+        var exposed = Body(_api, HttpMethod.Post, "/api/tools/rag").GetProperty("exposedFields")[0];
+        Assert.Equal((DepartmentId, "dept"), (exposed.GetProperty("fieldId").GetGuid(), exposed.GetProperty("alias").GetString()));
+    }
+
+    [Fact] // AC-55, AC-58
+    public void TwoFieldsWithTheSameAliasAreFlaggedBeforeAnythingIsSent()
+    {
+        var section = RenderSection();
+        Click(section, "Add rag tool");
+        Input(section, "Name").Change("support");
+        Input(section, "Description").Change("Searches the support knowledge.");
+        Tick(section, "policies", true);
+        Tick(section, "manuals", true);
+
+        Input(section, "Alias of year").Input("department");
+        section.Find("[data-form=rag] form").Submit();
+
+        Assert.Contains("would both be called \"department\"", section.Markup, StringComparison.Ordinal);
+        Assert.Equal(0, _api.Count(HttpMethod.Post, "/api/tools/rag"));
+    }
+
     [Fact] // AC-21
     public void TheLimitsAreCheckedBeforeAnythingIsSent()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("Bad Name");
         Tick(section, "policies", true);
 
@@ -329,7 +365,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void NoMoreThanTenKnowledgeBasesCanBeChosen()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Tick(section, "policies", true);
 
@@ -341,7 +377,7 @@ public sealed class RagToolsSectionTests : BunitContext
     {
         _createStatus = HttpStatusCode.BadRequest;
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -377,7 +413,7 @@ public sealed class RagToolsSectionTests : BunitContext
     public void AFixedFilterWithoutAValueIsRefusedInTheForm()
     {
         var section = RenderSection();
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
         Input(section, "Name").Change("support");
         Input(section, "Description").Change("Searches the support knowledge.");
         Tick(section, "policies", true);
@@ -412,7 +448,7 @@ public sealed class RagToolsSectionTests : BunitContext
                 : script(method, path);
         var section = RenderSection();
 
-        Click(section, "Add knowledge base tool");
+        Click(section, "Add rag tool");
 
         Assert.Contains("No knowledge base is registered yet", section.Markup, StringComparison.Ordinal);
         Assert.Equal("knowledge", section.Find("[data-form=rag] a[href]").GetAttribute("href"));

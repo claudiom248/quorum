@@ -78,7 +78,9 @@ internal static class InspectApi
 
     public sealed record RolesBody(string? Text, string? DocumentId, string? Title, string? Position, string? SourceUrl);
 
-    public sealed record FieldBody(string Path, string Name, string Type, Guid? DictionaryFieldId, List<string> Issues);
+    public sealed record FieldBody(string Path, string Name, string Type, Guid? DictionaryFieldId, List<string> Issues, string? Cluster = null, List<CandidateBody>? Candidates = null);
+
+    public sealed record CandidateBody(Guid Id, string? Cluster, string Type);
 
     public sealed record ProposedBody(string Name, string Type);
 

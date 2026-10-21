@@ -38,7 +38,8 @@ public enum FilterFieldType
     TextList,
 }
 
-public sealed record FilterFieldInfo(Guid Id, string Name, FilterFieldType Type, string? Description);
+/// <param name="Cluster">The label that groups the field, or <see langword="null"/>; with the name it identifies the field.</param>
+public sealed record FilterFieldInfo(Guid Id, string Name, FilterFieldType Type, string? Description, string? Cluster = null);
 
 public enum BindingScopeKind
 {
@@ -62,7 +63,8 @@ public sealed record ScopeCheck(IReadOnlyList<Guid> HiddenKnowledgeBaseIds, IRea
 /// <param name="TenantId">The tenant of the binding; it must be the tenant of the current request.</param>
 /// <param name="FieldIds">The fields a filter may name: the ones the binding's knowledge bases map.</param>
 /// <param name="Filters">The fixed filters in the shape of the generated tool schema: <c>department</c>, <c>year_min</c>, <c>published_on_to</c>...</param>
-public sealed record FixedFilterQuery(Guid TenantId, IReadOnlyList<Guid> FieldIds, IReadOnlyDictionary<string, JsonElement> Filters);
+/// <param name="Aliases">The parameter names the model sees for the exposed fields: alias to field id. A filter name is resolved among them first, then among the names of the other fields (spec 003 A1-4).</param>
+public sealed record FixedFilterQuery(Guid TenantId, IReadOnlyList<Guid> FieldIds, IReadOnlyDictionary<string, JsonElement> Filters, IReadOnlyDictionary<string, Guid>? Aliases = null);
 
 /// <param name="Problem">What is wrong with the filters, written for the administrator, or <see langword="null"/> when they can be used.</param>
 /// <param name="FieldIds">The fields the filters name.</param>

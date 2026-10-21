@@ -48,7 +48,7 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
         }
 
         var ids = registration.Mapping.Fields.Select(f => f.DictionaryFieldId).ToList();
-        var names = await db.DictionaryFields.IgnoreQueryFilters().Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => f.Name, cancellationToken);
+        var names = await db.DictionaryFields.IgnoreQueryFilters().Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => (f.Name, f.Cluster), cancellationToken);
         return TypedResults.Ok(KnowledgeBaseDetail.Owned(registration, names));
     }
 
