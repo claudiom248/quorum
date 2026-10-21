@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Tools.Rag;
 using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Shared.Results;
 
@@ -76,10 +77,35 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
             return TooManyKnowledgeBases;
         }
 
-        var exposedFieldIds = (request.ExposedFieldIds ?? []).Distinct().ToList();
+        var exposedRequests = request.ExposedFields ?? [];
+        if (exposedRequests.Any(e => e.FieldId is null || e.FieldId == Guid.Empty))
+        {
+            return Error.Validation("rag.invalid_filter", "Every exposed field needs the id of a dictionary field.");
+        }
+
+        if (exposedRequests.GroupBy(e => e.FieldId).Any(g => g.Count() > 1))
+        {
+            return AliasConflict("A field can be exposed only once.");
+        }
+
+        var exposedFieldIds = exposedRequests.Select(e => e.FieldId!.Value).ToList();
         if (exposedFieldIds.Count > RagTool.MaxExposedFields)
         {
             return Error.Validation("rag.limit_exceeded", $"A rag tool can expose up to {RagTool.MaxExposedFields} fields to the model.");
+        }
+
+        var aliases = new Dictionary<Guid, string>();
+        foreach (var exposed in exposedRequests.Where(e => !string.IsNullOrWhiteSpace(e.Alias)))
+        {
+            var alias = exposed.Alias!.Trim();
+            if (!ValidAliasPattern().IsMatch(alias) || IsReservedAlias(alias))
+            {
+                return Error.Validation(
+                    "rag.invalid_alias",
+                    $"The alias '{(alias.Length <= 40 ? alias : alias[..40])}' is not allowed: 1 to 40 lower-case letters, digits and '_', starting with a letter, and not 'query', 'knowledge_base' or ending in _min, _max, _from or _to.");
+            }
+
+            aliases[exposed.FieldId!.Value] = alias;
         }
 
         var limits = Limits(request);
@@ -116,7 +142,34 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
             return Error.Validation("rag.invalid_filter", "A field exposed to the model must be one that the knowledge bases of the tool map.");
         }
 
-        var fixedFilters = await FixedFiltersAsync(request.FixedFilters, tenantId, [.. mapped], cancellationToken);
+        // Every parameter the tool generates must be distinct: `query`, `knowledge_base` and one group per field under its alias (A1-3).
+        var fieldsById = seen.Fields.ToDictionary(f => f.Id);
+        var parameters = new HashSet<string>(StringComparer.Ordinal) { RagToolDefinition.QueryParameter };
+        if (knowledgeBaseIds.Count > 1)
+        {
+            parameters.Add(RagToolDefinition.KnowledgeBaseParameter);
+        }
+
+        var aliasByParameter = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var id in exposedFieldIds)
+        {
+            var field = fieldsById[id];
+            var alias = aliases.GetValueOrDefault(id) ?? field.Name;
+            foreach (var parameter in RagToolDefinition.ParameterNames(alias, field.Type))
+            {
+                if (!parameters.Add(parameter))
+                {
+                    return AliasConflict($"The parameter '{parameter}' would be generated twice. Give one of the fields a different alias.");
+                }
+            }
+
+            if (!aliasByParameter.TryAdd(alias, id))
+            {
+                return AliasConflict($"The alias '{alias}' is given to two fields. Give each exposed field its own.");
+            }
+        }
+
+        var fixedFilters = await FixedFiltersAsync(request.FixedFilters, tenantId, [.. mapped], aliasByParameter, cancellationToken);
         if (!fixedFilters.IsSuccess)
         {
             return fixedFilters.Error;
@@ -150,7 +203,8 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
                 limits.Value.MaxResultCharacters,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
-                scope.Value.AssistantIds));
+                scope.Value.AssistantIds,
+                aliases));
     }
 
     private static Result<(int TopK, double? ScoreThreshold, int MaxResultCharacters)> Limits(RagToolRequest request)
@@ -181,6 +235,7 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
         JsonElement? filters,
         Guid tenantId,
         List<Guid> mappedFieldIds,
+        IReadOnlyDictionary<string, Guid> aliases,
         CancellationToken cancellationToken)
     {
         if (filters is not { } value || value.ValueKind == JsonValueKind.Null)
@@ -199,7 +254,7 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
             return ("{}", []);
         }
 
-        var check = await catalog.CheckFixedFiltersAsync(new FixedFilterQuery(tenantId, mappedFieldIds, parameters), cancellationToken);
+        var check = await catalog.CheckFixedFiltersAsync(new FixedFilterQuery(tenantId, mappedFieldIds, parameters, aliases), cancellationToken);
         return check.Problem is null
             ? (JsonSerializer.Serialize(parameters), check.FieldIds.ToList())
             : Error.Validation("rag.invalid_filter", check.Problem);
@@ -213,6 +268,16 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Only Global, Tenant and Assistant scopes are validated."),
     };
 
+    private static Error AliasConflict(string message) => Error.Validation("rag.alias_conflict", message);
+
+    private static bool IsReservedAlias(string alias) =>
+        alias is RagToolDefinition.QueryParameter or RagToolDefinition.KnowledgeBaseParameter
+        || alias.EndsWith("_min", StringComparison.Ordinal) || alias.EndsWith("_max", StringComparison.Ordinal)
+        || alias.EndsWith("_from", StringComparison.Ordinal) || alias.EndsWith("_to", StringComparison.Ordinal);
+
+    [GeneratedRegex(@"^[a-z][a-z0-9_]{0,39}$")]
+    private static partial Regex ValidAliasPattern();
+
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,39}$")]
     private static partial Regex ValidNamePattern();
 }
@@ -222,10 +287,13 @@ internal sealed record RagToolRequest(
     string? Name,
     string? Description,
     List<Guid>? KnowledgeBaseIds,
-    List<Guid>? ExposedFieldIds,
+    List<ExposedFieldRequest>? ExposedFields,
     JsonElement? FixedFilters,
     int? TopK,
     double? ScoreThreshold,
     int? MaxResultCharacters,
     ScopeRequest? Scope,
     string? Policy);
+
+/// <param name="Alias">The parameter name the model sees for the field; the field's own name when left out.</param>
+internal sealed record ExposedFieldRequest(Guid? FieldId, string? Alias = null);

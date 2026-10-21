@@ -11,13 +11,13 @@ internal static class DictionaryApi
 
     public static Uri Field(Guid id) => new($"/api/knowledge-bases/dictionary/{id}", UriKind.Relative);
 
-    public static Task<HttpResponseMessage> CreateAsync(HttpClient client, string name, string type = "Text", string? description = null, string scope = "Tenant") =>
-        client.PostAsJsonAsync(Dictionary, new { name, type, description, scope }, TestContext.Current.CancellationToken);
+    public static Task<HttpResponseMessage> CreateAsync(HttpClient client, string name, string type = "Text", string? description = null, string scope = "Tenant", string? cluster = null) =>
+        client.PostAsJsonAsync(Dictionary, new { name, type, description, scope, cluster }, TestContext.Current.CancellationToken);
 
     /// <summary>Creates a field that must be accepted and returns its id.</summary>
-    public static async Task<Guid> CreateOkAsync(HttpClient client, string name, string type = "Text", string? description = null, string scope = "Tenant")
+    public static async Task<Guid> CreateOkAsync(HttpClient client, string name, string type = "Text", string? description = null, string scope = "Tenant", string? cluster = null)
     {
-        using var response = await CreateAsync(client, name, type, description, scope);
+        using var response = await CreateAsync(client, name, type, description, scope, cluster);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<CreatedBody>(TestContext.Current.CancellationToken))!.Id;
     }
@@ -34,5 +34,5 @@ internal static class DictionaryApi
 
     public sealed record CreatedBody(Guid Id);
 
-    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount);
+    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null);
 }

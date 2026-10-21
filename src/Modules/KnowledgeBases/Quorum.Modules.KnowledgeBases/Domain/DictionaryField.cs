@@ -21,6 +21,8 @@ internal sealed class DictionaryField
 {
     public const int MaxNameLength = 40;
 
+    public const int MaxClusterLength = 40;
+
     /// <summary>The description reaches the model in tool definitions, so it stays short.</summary>
     public const int MaxDescriptionLength = 500;
 
@@ -32,6 +34,9 @@ internal sealed class DictionaryField
 
     /// <summary>The owner: the only tenant that can change or delete the field, whatever its scope.</summary>
     public Guid TenantId { get; private set; }
+
+    /// <summary>An optional label that groups related fields (hr, finance); with the name it identifies the field. Fixed once created.</summary>
+    public string? Cluster { get; private set; }
 
     public string Name { get; private set; } = null!;
 
@@ -51,10 +56,12 @@ internal sealed class DictionaryField
         DictionaryFieldType type,
         string? description,
         DictionaryFieldScope scope,
-        DateTimeOffset now) => new()
+        DateTimeOffset now,
+        string? cluster = null) => new()
         {
             Id = Guid.CreateVersion7(now),
             TenantId = tenantId,
+            Cluster = cluster,
             Name = name,
             Type = type,
             Description = description,

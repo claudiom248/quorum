@@ -103,7 +103,8 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
             view.Tool,
             view.Binding,
             await PreviewAsync(resolver, tenantId, view.Tool, view.Binding, cancellationToken),
-            RagToolWarnings.Evaluate(view.Binding, seen)));
+            RagToolWarnings.Evaluate(view.Binding, seen),
+            seen));
     }
 
     private static async Task<Results<CreatedAtRoute<CreatedRagTool>, ProblemHttpResult>> CreateAsync(
@@ -289,7 +290,7 @@ internal sealed record RagToolDetail(
     string Name,
     string Description,
     IReadOnlyList<Guid> KnowledgeBaseIds,
-    IReadOnlyList<Guid> ExposedFieldIds,
+    IReadOnlyList<ExposedFieldDetail> ExposedFields,
     JsonElement FixedFilters,
     int TopK,
     double? ScoreThreshold,
@@ -300,7 +301,7 @@ internal sealed record RagToolDetail(
     RagToolDefinitionPreview? Definition,
     IReadOnlyList<ToolWarning> Warnings)
 {
-    public static RagToolDetail From(Tool tool, RagTool binding, RagToolDefinitionPreview? definition, IReadOnlyList<ToolWarning> warnings)
+    public static RagToolDetail From(Tool tool, RagTool binding, RagToolDefinitionPreview? definition, IReadOnlyList<ToolWarning> warnings, BindingDescription seen)
     {
         using var filters = JsonDocument.Parse(binding.FixedFilters);
         return new RagToolDetail(
@@ -308,7 +309,7 @@ internal sealed record RagToolDetail(
             tool.Name,
             tool.Description,
             binding.KnowledgeBaseIds,
-            binding.ExposedFieldIds,
+            ExposedFieldDetail.ListOf(binding, seen),
             filters.RootElement.Clone(),
             binding.TopK,
             binding.ScoreThreshold,
@@ -318,5 +319,20 @@ internal sealed record RagToolDetail(
             tool.Policy.ToString(),
             definition,
             warnings);
+    }
+}
+
+/// <param name="Alias">The parameter name the model sees: the alias given to the field, or its own name; <see langword="null"/> when the field is no longer visible.</param>
+internal sealed record ExposedFieldDetail(Guid FieldId, string? Alias)
+{
+    public static List<ExposedFieldDetail> ListOf(RagTool binding, BindingDescription seen)
+    {
+        var aliases = RagBinding.From(binding).ExposedAliases;
+        return
+        [
+            .. binding.ExposedFieldIds.Select(id => new ExposedFieldDetail(
+                id,
+                aliases.GetValueOrDefault(id) ?? seen.Fields.FirstOrDefault(f => f.Id == id)?.Name)),
+        ];
     }
 }

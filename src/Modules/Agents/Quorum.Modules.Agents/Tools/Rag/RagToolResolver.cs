@@ -12,7 +12,8 @@ internal sealed record RagToolToDescribe(Guid ToolId, string Description, RagBin
 
 /// <summary>A rag tool as the model is offered it now.</summary>
 /// <param name="KnowledgeBases">The knowledge bases the tenant can see, by name.</param>
-internal sealed record ResolvedRagTool(GeneratedRagDefinition Definition, IReadOnlyDictionary<string, Guid> KnowledgeBases);
+/// <param name="FilterFields">The filter parameters the model was offered (the aliases of the exposed fields), with the field each stands for.</param>
+internal sealed record ResolvedRagTool(GeneratedRagDefinition Definition, IReadOnlyDictionary<string, Guid> KnowledgeBases, IReadOnlyDictionary<string, Guid> FilterFields);
 
 /// <summary>
 /// Builds the definition of rag tools from the live catalog (spec 003 D-11): at the start of each answer and not when the tool is
@@ -68,13 +69,14 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
             // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.
             var exposed = tool.Binding.ExposedFieldIds.Distinct()
                 .Where(id => fieldsById.ContainsKey(id) && visible.Any(k => k.FieldIds.Contains(id)))
-                .Select(id => fieldsById[id])
+                .Select(id => fieldsById[id] with { Name = tool.Binding.ExposedAliases.GetValueOrDefault(id) ?? fieldsById[id].Name })
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
             resolved[tool.ToolId] = new ResolvedRagTool(
                 RagToolDefinition.Build(tool.Description, visible, exposed),
-                visible.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal));
+                visible.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
+                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal));
         }
 
         return resolved;
@@ -161,7 +163,7 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
                     {
                         Description = definition.Definition.Description,
                         InputSchema = definition.Definition.InputSchema,
-                        Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases },
+                        Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields },
                     }
                     : null).OfType<ActiveTool>(),
         ];

@@ -181,6 +181,12 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExposedAliases")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}");
+
                     b.PrimitiveCollection<List<Guid>>("ExposedFieldIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");

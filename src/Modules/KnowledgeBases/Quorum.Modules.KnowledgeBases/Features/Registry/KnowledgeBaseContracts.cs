@@ -20,9 +20,10 @@ internal sealed record KnowledgeBaseRequest(
 internal sealed record MappingRequest(RolesDto? Roles, List<MappedFieldRequest>? Fields);
 
 /// <param name="DictionaryFieldId">The dictionary field, when the client knows it; otherwise <paramref name="Name"/> finds it, or names the one to create.</param>
-internal sealed record MappedFieldRequest(string? Path, Guid? DictionaryFieldId, string? Name);
+/// <param name="Cluster">With <paramref name="Name"/>: the cluster of the field; none means a field with no cluster.</param>
+internal sealed record MappedFieldRequest(string? Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null);
 
-internal sealed record CreateFieldRequest(string? Name, string? Type, string? Description);
+internal sealed record CreateFieldRequest(string? Name, string? Type, string? Description, string? Cluster = null);
 
 internal sealed record ScopeRequest(string? Kind, List<Guid>? TenantIds, List<Guid>? AssistantIds);
 
@@ -60,7 +61,7 @@ internal sealed record KnowledgeBaseListItem(
 /// <param name="HasApiKey">Whether a key is stored. The key itself is never returned.</param>
 internal sealed record ConnectionResponse(string Url, string Collection, string? VectorName, bool HasApiKey);
 
-internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name);
+internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null);
 
 internal sealed record MappingResponse(RolesDto Roles, IReadOnlyList<MappedFieldResponse> Fields);
 
@@ -85,7 +86,7 @@ internal sealed record KnowledgeBaseDetail(
     public static KnowledgeBaseDetail Shareable(KnowledgeBase registration) =>
         new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, null, null, null, null, null, null, null);
 
-    public static KnowledgeBaseDetail Owned(KnowledgeBase registration, IReadOnlyDictionary<Guid, string> fieldNames) => new(
+    public static KnowledgeBaseDetail Owned(KnowledgeBase registration, IReadOnlyDictionary<Guid, (string Name, string? Cluster)> fieldNames) => new(
         registration.Id,
         registration.Name,
         registration.Description,
@@ -97,7 +98,7 @@ internal sealed record KnowledgeBaseDetail(
         registration.QueryPrefix,
         new MappingResponse(
             new RolesDto(registration.Mapping.Roles.Text, registration.Mapping.Roles.DocumentId, registration.Mapping.Roles.Title, registration.Mapping.Roles.Position, registration.Mapping.Roles.SourceUrl),
-            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.GetValueOrDefault(f.DictionaryFieldId)))]),
+            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null))]),
         new ScopeResponse(registration.Scope.ToString(), registration.ScopeTenantIds, registration.ScopeAssistantIds),
         registration.LastError,
         registration.LastVerifiedAt);

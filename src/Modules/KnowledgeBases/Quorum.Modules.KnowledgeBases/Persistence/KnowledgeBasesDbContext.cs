@@ -27,11 +27,13 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
         modelBuilder.Entity<DictionaryField>(field =>
         {
             field.ToTable("dictionary_fields");
+            field.Property(f => f.Cluster).HasMaxLength(DictionaryField.MaxClusterLength);
             field.Property(f => f.Name).HasMaxLength(DictionaryField.MaxNameLength);
             field.Property(f => f.Description).HasMaxLength(DictionaryField.MaxDescriptionLength);
             field.Property(f => f.Type).HasConversion<string>().HasMaxLength(20);
             field.Property(f => f.Scope).HasConversion<string>().HasMaxLength(20);
-            field.HasIndex(f => new { f.TenantId, f.Name }).IsUnique();
+            // No cluster counts as one value, so a field with none is unique by name like before the clusters.
+            field.HasIndex(f => new { f.TenantId, f.Cluster, f.Name }).IsUnique().AreNullsDistinct(false);
             field.HasQueryFilter(f => f.TenantId == CurrentTenantId);
         });
 

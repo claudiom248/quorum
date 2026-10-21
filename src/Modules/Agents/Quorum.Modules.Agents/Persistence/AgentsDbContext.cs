@@ -88,6 +88,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             rag.HasKey(r => r.ToolId);
             rag.Property(r => r.ToolId).ValueGeneratedNever();
             rag.Property(r => r.FixedFilters).HasColumnType("jsonb");
+            rag.Property(r => r.ExposedAliases).HasColumnType("jsonb").HasDefaultValue("{}");
             rag.Property(r => r.Scope).HasConversion<string>().HasMaxLength(20);
             rag.HasIndex(r => r.TenantId);
             rag.HasOne<Tool>().WithOne().HasForeignKey<RagTool>(r => r.ToolId).OnDelete(DeleteBehavior.Cascade);

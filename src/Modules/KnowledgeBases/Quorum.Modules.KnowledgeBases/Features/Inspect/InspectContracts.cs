@@ -27,7 +27,11 @@ internal sealed record RolesDto(string? Text, string? DocumentId, string? Title,
 
 /// <param name="DictionaryFieldId">The visible dictionary field of that name, when there is one.</param>
 /// <param name="Issues">Codes that block saving until resolved (collision, invalid or reserved name, type conflict with the dictionary).</param>
-internal sealed record DraftFieldDto(string Path, string Name, string Type, Guid? DictionaryFieldId, IReadOnlyList<string> Issues);
+/// <param name="Cluster">The cluster of the preselected field.</param>
+/// <param name="Candidates">Several visible fields have this name, in different clusters, so none is preselected: the administrator picks one.</param>
+internal sealed record DraftFieldDto(string Path, string Name, string Type, Guid? DictionaryFieldId, IReadOnlyList<string> Issues, string? Cluster = null, IReadOnlyList<FieldCandidateDto>? Candidates = null);
+
+internal sealed record FieldCandidateDto(Guid Id, string? Cluster, string Type);
 
 /// <summary>A dictionary field the draft needs and that does not exist yet; saving creates it only when the administrator confirms.</summary>
 internal sealed record ProposedFieldDto(string Name, string Type);

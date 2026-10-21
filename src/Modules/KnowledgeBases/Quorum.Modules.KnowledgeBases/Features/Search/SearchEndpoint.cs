@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Quorum.Modules.KnowledgeBases.Domain;
+using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
@@ -56,9 +58,12 @@ internal sealed class SearchEndpoint : IEndpointGroup
             return Error.NotFound("knowledge_base.not_found", "The knowledge base does not exist.").ToProblem();
         }
 
+        var mappedIds = registration.Mapping.Fields.Select(f => f.DictionaryFieldId).ToList();
+        var visible = await DictionaryVisibility.Fields(db).AsNoTracking().ToListAsync(cancellationToken);
+
         var result = await engine.SearchAsync(
             [registration],
-            new SearchInput(request.Query!.Trim(), request.Filters ?? [], FixedFilters: new Dictionary<string, JsonElement>(), limit, ScoreThreshold: null, MaxResultCharacters: null),
+            new SearchInput(request.Query!.Trim(), request.Filters ?? [], FixedFilters: new Dictionary<string, JsonElement>(), limit, ScoreThreshold: null, MaxResultCharacters: null, TestSearchNames.For(visible, mappedIds)),
             cancellationToken);
         if (!result.IsSuccess)
         {
@@ -75,5 +80,37 @@ internal sealed class SearchEndpoint : IEndpointGroup
         return TypedResults.Ok(new TestSearchResponse(
             [.. found.Chunks.Select(c => new TestSearchHit(c.Score, c.Text, new TestSearchSource(c.KnowledgeBase, c.DocumentId, c.Title, c.Position, c.Url)))],
             notes));
+    }
+}
+
+/// <summary>
+/// The filter names of a test search on one knowledge base: the field name, or, when two of the fields it maps share a name in
+/// different clusters, the cluster and the name joined by an underscore (a field with no cluster keeps its name).
+/// </summary>
+internal static class TestSearchNames
+{
+    public static Dictionary<string, Guid> For(IReadOnlyList<DictionaryField> visible, IReadOnlyCollection<Guid> mappedIds)
+    {
+        ArgumentNullException.ThrowIfNull(visible);
+        ArgumentNullException.ThrowIfNull(mappedIds);
+
+        var mapped = visible.Where(f => mappedIds.Contains(f.Id)).ToList();
+        var names = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var group in mapped.GroupBy(f => f.Name, StringComparer.Ordinal))
+        {
+            foreach (var field in group)
+            {
+                var name = group.Count() > 1 && field.Cluster is not null ? $"{field.Cluster}_{field.Name}" : field.Name;
+                names.TryAdd(name, field.Id);
+            }
+        }
+
+        // A filter on a field the knowledge base did not map is still a valid filter: the knowledge base is skipped for it (D-12).
+        foreach (var field in visible.Where(f => !mappedIds.Contains(f.Id)).OrderBy(f => f.Cluster ?? string.Empty, StringComparer.Ordinal))
+        {
+            names.TryAdd(field.Name, field.Id);
+        }
+
+        return names;
     }
 }

@@ -19,7 +19,8 @@ internal sealed record SearchInput(
     IReadOnlyDictionary<string, JsonElement> FixedFilters,
     int TopK,
     double? ScoreThreshold,
-    int? MaxResultCharacters);
+    int? MaxResultCharacters,
+    IReadOnlyDictionary<string, Guid>? FilterFields = null);
 
 /// <summary>
 /// The search of spec 003 (D-12 to D-14): checks the filters, embeds the query once per embedding setup, queries every knowledge
@@ -46,7 +47,7 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         ArgumentNullException.ThrowIfNull(input);
 
         var started = clock.GetTimestamp();
-        var filters = await ParseFiltersAsync(input, cancellationToken);
+        var filters = await ParseFiltersAsync(input, bases, cancellationToken);
         if (!filters.IsSuccess)
         {
             return filters.Error;
@@ -157,13 +158,40 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         return (kept, kept.Count == 0 && chunks.Count > 0);
     }
 
-    private async Task<Result<IReadOnlyList<FieldFilter>>> ParseFiltersAsync(SearchInput input, CancellationToken cancellationToken)
+    private async Task<Result<IReadOnlyList<FieldFilter>>> ParseFiltersAsync(SearchInput input, IReadOnlyList<KnowledgeBase> bases, CancellationToken cancellationToken)
     {
-        var fields = (await DictionaryVisibility.Fields(db).AsNoTracking().ToListAsync(cancellationToken))
-            .GroupBy(f => f.Name, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => new FilterField(g.First().Id, g.Key, g.First().Type), StringComparer.Ordinal);
+        var visible = await DictionaryVisibility.Fields(db).AsNoTracking().ToListAsync(cancellationToken);
 
-        var fixedFilters = SearchFilterParser.Parse(input.FixedFilters, fields, KnowledgeBaseSearchErrors.InvalidFixedFilter, ignoreEmpty: false);
+        // The model's filters use the parameters the caller named (a rag tool's aliases); without them, the names of the fields themselves.
+        IReadOnlyDictionary<string, FilterField> fields;
+        IReadOnlyDictionary<string, FilterField> fixedFields;
+        FixedFilterNames? names = null;
+        if (input.FilterFields is { } named)
+        {
+            fields = named
+                .Select(pair => (pair.Key, Field: visible.FirstOrDefault(f => f.Id == pair.Value)))
+                .Where(entry => entry.Field is not null)
+                .ToDictionary(entry => entry.Key, entry => new FilterField(entry.Field!.Id, entry.Key, entry.Field.Type), StringComparer.Ordinal);
+
+            // A fixed filter may also name the other fields the knowledge bases map, by their own name (spec 003 A1-4).
+            var mapped = bases.SelectMany(k => k.Mapping.Fields.Select(f => f.DictionaryFieldId)).ToHashSet();
+            names = FixedFilterNames.Build(
+                named.Where(pair => visible.Any(f => f.Id == pair.Value)).ToDictionary(pair => pair.Key, pair => visible.First(f => f.Id == pair.Value), StringComparer.Ordinal),
+                visible.Where(f => mapped.Contains(f.Id)));
+            fixedFields = names.Fields;
+        }
+        else
+        {
+            fields = visible
+                .OrderBy(f => f.Cluster ?? string.Empty, StringComparer.Ordinal)
+                .GroupBy(f => f.Name, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => new FilterField(g.First().Id, g.Key, g.First().Type), StringComparer.Ordinal);
+            fixedFields = fields;
+        }
+
+        var fixedFilters = names?.AmbiguityProblem(input.FixedFilters.Keys) is not null
+            ? Result<IReadOnlyList<FieldFilter>>.Failure(Error.Validation(KnowledgeBaseSearchErrors.InvalidFixedFilter, "ambiguous"))
+            : SearchFilterParser.Parse(input.FixedFilters, fixedFields, KnowledgeBaseSearchErrors.InvalidFixedFilter, ignoreEmpty: false);
         if (!fixedFilters.IsSuccess)
         {
             // The fixed filters are never shown to the model, so what is wrong with them is not said either.

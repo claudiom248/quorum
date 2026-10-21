@@ -60,6 +60,7 @@ internal sealed class RagQuorumTool(ActiveTool descriptor, RagRuntime runtime) :
                 Query = query ?? string.Empty,
                 Filters = filters,
                 FixedFilters = fixedFilters.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone(), StringComparer.Ordinal),
+                FilterFields = binding.FilterFields,
                 TopK = binding.TopK,
                 ScoreThreshold = binding.ScoreThreshold,
                 MaxResultCharacters = RagTool.FitResultSize(binding.MaxResultCharacters, binding.TopK, runtime.ResultLimit),
