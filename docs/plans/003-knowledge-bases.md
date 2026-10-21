@@ -118,6 +118,14 @@ Decisions taken while building PR 7 (details the spec leaves open):
 - **State and policy** of a rag tool are changed in the list like those of any tool (`PUT /tools/{id}`, the same row component); the editor also sets the policy when saving.
 - **Test search** offers a filter input for each mapped field; a result link is rendered only for `http` and `https`, with `rel="noopener noreferrer"`.
 
+### PR 7b - Clusters and aliases (`feat/003-clusters`)
+Implements Amendment 1 of the spec (proposed 2026-10-21, approved before any code). Stacked on PR 7 and merged before PR 8, which does not touch the field model.
+C1. KnowledgeBases: `Cluster` on `DictionaryField` (nullable), reversible migration with the unique index on (tenant, cluster, name) treating no cluster as one value, `DictionaryVisibility` and the name check by the pair, the endpoints (`cluster` in the list and the create request, `knowledge_base.invalid_field_cluster`), usage unchanged. AC-52, and AC-2/AC-3 per cluster.
+C2. Mapping: `MappingFieldResolver` binds by id or by cluster and name, `createFields` carries the cluster, the inspection preselects an existing field only when exactly one visible field has the name and otherwise lists `candidates`; the type conflict of the draft is resolved by picking or creating, not by renaming. AC-53.
+C3. Agents: `RagTool.ExposedFields` (`{ fieldId, alias? }`, reversible migration from the ids with no alias), alias rules and conflicts in `RagToolValidation` (`rag.invalid_alias`, `rag.alias_conflict`), `RagToolDefinition` and the filter translation through aliases, fixed filters resolved by alias and then by name with the ambiguity refused, `IKnowledgeBaseCatalog` fields with their cluster. AC-54, AC-55, AC-56, AC-57.
+C4. Web client: models, the dictionary page and every field picker grouped by cluster with no label for none, a cluster chosen or typed when a field is created, candidates in the mapping review, the alias per exposed field in the rag editor with its conflict shown before saving; the view classes and their tests follow. AC-58.
+C5. Tests for each acceptance criterion; the end-to-end client test of PR 7 is extended with two collections that share a field name with different types.
+
 ### PR 8 - Sources in the chat (`feat/003-ui-chat`)
 26. `SourcesList` under the answer, `[n]` markers matching, cited sources first and the others collapsed, links only for `http` and `https` with `rel="noopener noreferrer"`, text never as HTML; sources come back when the conversation is reopened. AC-40, AC-50.
 
