@@ -192,7 +192,7 @@ else
                                     <option value="">Choose a field…</option>
                                     @foreach (var field in available)
                                     {
-                                        <option value="@field.Id">@field.Name</option>
+                                        <option value="@field.Id">@KnowledgeAdminView.FieldLabel(field, choices.Fields)</option>
                                     }
                                 </select>
                             </label>
