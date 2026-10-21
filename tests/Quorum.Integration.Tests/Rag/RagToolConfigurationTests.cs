@@ -57,7 +57,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         var flat = await setup.RegisterAsync("flat");
-        var tags = await setup.RegisterAsync("tagged", SampleCollections.CreateTags, SampleCollections.Tags, SearchApi.TagsMapping, SearchApi.TagsCreateFields);
+        var tags = await setup.RegisterAsync("tagged", SampleCollections.CreateTags, SearchApi.TagsMapping, SearchApi.TagsCreateFields);
         var fields = await setup.FieldsAsync();
 
         var created = await RagApi.CreateOkAsync(

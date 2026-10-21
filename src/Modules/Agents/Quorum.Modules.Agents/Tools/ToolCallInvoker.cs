@@ -11,7 +11,7 @@ using Quorum.Modules.Agents.Persistence;
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>What the model receives for a call, and how the user is told it went.</summary>
-internal sealed record ToolCallResult(ToolResultStatus Status, string Content);
+internal sealed record ToolCallResult(ToolResultStatus Status, string Content, IReadOnlyList<ToolSource>? Sources = null);
 
 /// <summary>
 /// The <see cref="FunctionInvokingChatClient.FunctionInvoker"/> of an answer: runs one tool call the model asked for. It checks at
@@ -128,6 +128,17 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
                 { Approved: false } => await RecordAsync(run.Context, info, Denied),
                 _ => await RunApprovedAsync(run, tool!, call, raw, info, cancellationToken),
             };
+        }
+
+        // The sources go first: a client that shows the result can already match the numbers in it.
+        if (result.Sources is { Count: > 0 } sources)
+        {
+            await run.PublishAsync(
+                new AnswerChunk(
+                    AnswerChunkKind.Sources,
+                    string.Empty,
+                    new SourcesEvent(callId, [.. sources.Select(s => new AnswerSource(s.N, s.KnowledgeBase, s.DocumentId, s.Title, s.Position, s.Url))])),
+                cancellationToken);
         }
 
         await run.PublishAsync(
@@ -277,6 +288,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         string content;
         int? resultCharacters = null;
         int? sourceCount = null;
+        IReadOnlyList<ToolSource>? sources = null;
         string? errorCode = null;
 
         try
@@ -300,7 +312,8 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
                 status = ToolResultStatus.Succeeded;
                 resultCharacters = output.Length;
                 content = output;
-                sourceCount = produced.Sources?.Count;
+                sources = produced.Sources;
+                sourceCount = sources?.Count;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -336,7 +349,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         }
 
         await CompleteAsync(entry, outcome, resultCharacters, errorCode, info, sourceCount);
-        return new ToolCallResult(status, content);
+        return new ToolCallResult(status, content, sources);
     }
 
     /// <summary>

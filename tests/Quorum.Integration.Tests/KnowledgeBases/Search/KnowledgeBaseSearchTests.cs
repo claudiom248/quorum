@@ -40,29 +40,25 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
         return new Setup(app, admin, await TenantScope.TenantIdAsync(app), await SearchApi.AssistantIdAsync(app), (await qdrant.GetUrlAsync()).ToString());
     }
 
-    private async Task<string> SeedAsync(Func<string, SampleDataset> dataset, string standardName)
-    {
-        var name = QdrantFixture.NewPrefix() + standardName;
-        await qdrant.SeedAsync([dataset(name)]);
-        return name;
-    }
+    // The collection is shared by every test of the run: none of them may change it.
+    private Task<string> SeedAsync(Func<string, SampleDataset> dataset) => qdrant.SeedSharedAsync(dataset);
 
     private async Task<Guid> RegisterFlatAsync(Setup setup, string name, string? collection = null)
     {
-        collection ??= await SeedAsync(SampleCollections.CreateFlat, SampleCollections.Flat);
+        collection ??= await SeedAsync(SampleCollections.CreateFlat);
         return (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, setup.Url, collection, name)).Id;
     }
 
     private async Task<Guid> RegisterNestedAsync(Setup setup, string name)
     {
-        var collection = await SeedAsync(SampleCollections.CreateNested, SampleCollections.Nested);
+        var collection = await SeedAsync(SampleCollections.CreateNested);
         return (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, setup.Url, collection, name, mapping: SearchApi.NestedMapping)).Id;
     }
 
     /// <summary>A knowledge base with no mapped metadata field at all.</summary>
     private async Task<Guid> RegisterBareAsync(Setup setup, string name)
     {
-        var collection = await SeedAsync(SampleCollections.CreateFlat, SampleCollections.Flat);
+        var collection = await SeedAsync(SampleCollections.CreateFlat);
         return (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, setup.Url, collection, name, mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
     }
 
@@ -263,7 +259,7 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
     {
         await using var setup = await StartAsync();
         var good = await RegisterFlatAsync(setup, "good");
-        var dead = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, "http://localhost:1", "hidden_collection", "dead", mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
+        var dead = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, "http://[::1]:1", "hidden_collection", "dead", mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
 
         var result = await SearchApi.RunAsync(setup.App, setup.TenantId, SearchApi.Request(setup.TenantId, setup.AssistantId, Text(2), [dead, good]));
 
@@ -280,8 +276,8 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
     public async Task WhenEveryKnowledgeBaseFailsTheResultIsAnErrorThatNamesThem()
     {
         await using var setup = await StartAsync();
-        var first = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, "http://localhost:1", "docs", "first", mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
-        var second = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, "http://localhost:2", "docs", "second", mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
+        var first = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, "http://[::1]:1", "docs", "first", mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
+        var second = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, "http://[::1]:2", "docs", "second", mapping: KnowledgeBaseApi.TextOnly(), createFields: [])).Id;
 
         var result = await SearchApi.RunAsync(setup.App, setup.TenantId, SearchApi.Request(setup.TenantId, setup.AssistantId, "leave", [first, second]));
 
@@ -343,7 +339,7 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
     public async Task AnAssistantScopedKnowledgeBaseIsSearchedOnlyForTheAssistantsItListsEvenAfterTheScopeIsNarrowed()
     {
         await using var setup = await StartAsync();
-        var collection = await SeedAsync(SampleCollections.CreateFlat, SampleCollections.Flat);
+        var collection = await SeedAsync(SampleCollections.CreateFlat);
         var scope = new { kind = "Assistant", assistantIds = new[] { setup.AssistantId } };
         var kb = (await KnowledgeBaseApi.RegisterOkAsync(setup.Admin, setup.Url, collection, "assistant-only", scope: scope)).Id;
         var request = SearchApi.Request(setup.TenantId, setup.AssistantId, Text(1), [kb]);
@@ -384,7 +380,7 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
     public async Task AKnowledgeBaseOfAnotherTenantIsSearchedOnlyWhenItsScopeReachesTheTenant()
     {
         await using var setup = await StartAsync();
-        var collection = await SeedAsync(SampleCollections.CreateFlat, SampleCollections.Flat);
+        var collection = await SeedAsync(SampleCollections.CreateFlat);
 
         var global = await AddForeignKnowledgeBaseAsync(setup, "global", collection, KnowledgeBaseScope.Global);
         var listed = await AddForeignKnowledgeBaseAsync(setup, "listed", collection, KnowledgeBaseScope.Tenant, setup.TenantId);
@@ -406,7 +402,7 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
     public async Task ASearchOfAnotherTenantsKnowledgeBaseNeverChangesItsStatus()
     {
         await using var setup = await StartAsync();
-        var foreign = await AddForeignKnowledgeBaseAsync(setup, "shared", "unused", KnowledgeBaseScope.Global, url: "http://localhost:1");
+        var foreign = await AddForeignKnowledgeBaseAsync(setup, "shared", "unused", KnowledgeBaseScope.Global, url: "http://[::1]:1");
 
         var result = await SearchApi.RunAsync(setup.App, setup.TenantId, SearchApi.Request(setup.TenantId, setup.AssistantId, "leave", [foreign]));
 

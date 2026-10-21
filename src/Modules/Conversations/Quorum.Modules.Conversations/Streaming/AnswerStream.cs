@@ -8,7 +8,7 @@ using Quorum.Modules.Conversations.Persistence;
 namespace Quorum.Modules.Conversations.Streaming;
 
 /// <summary>
-/// Relays the assistant's answer as server-sent events (<c>reasoning</c>, <c>delta</c>, <c>tool_call</c>, <c>ask_user</c> and <c>tool_result</c> events,
+/// Relays the assistant's answer as server-sent events (<c>reasoning</c>, <c>delta</c>, <c>tool_call</c>, <c>ask_user</c>, <c>sources</c> and <c>tool_result</c> events,
 /// <c>ping</c> events while it is silent, then one <c>done</c> event) and stores it
 /// when it ends: <see cref="MessageStatus.Completed"/>, <see cref="MessageStatus.Failed"/> with the partial text when the
 /// model breaks, or <see cref="MessageStatus.Interrupted"/> when the client goes away or the answer is stopped.
@@ -26,6 +26,7 @@ internal static class AnswerStream
         TimeProvider clock)
     {
         var content = new StringBuilder();
+        var sources = new List<AnswerSource>();
         Message? stored = null;
 
         try
@@ -79,6 +80,14 @@ internal static class AnswerStream
 
                         if (chunk.Tool is { } tool)
                         {
+                            if (tool is SourcesEvent cited)
+                            {
+                                // The one part of a tool call that is stored with the message (spec 003 D-15), as references.
+                                sources.AddRange(cited.Sources);
+                                yield return new SseItem<object>(new SourcesEventData([.. cited.Sources.Select(SourceData.From)]), "sources");
+                                continue;
+                            }
+
                             // Tool calls are shown live and, like the reasoning, never stored (D-4).
                             yield return tool switch
                             {
@@ -118,13 +127,13 @@ internal static class AnswerStream
                 }
             }
 
-            stored = await StoreAsync(db, conversation, content.ToString(), status, clock);
+            stored = await StoreAsync(db, conversation, content.ToString(), status, sources, clock);
             yield return new SseItem<object>(new AnswerDone(stored.Id, status.ToString(), error), "done");
         }
         finally
         {
             // The client went away while an event was being written: keep what it had received.
-            stored ??= await StoreAsync(db, conversation, content.ToString(), MessageStatus.Interrupted, clock);
+            stored ??= await StoreAsync(db, conversation, content.ToString(), MessageStatus.Interrupted, sources, clock);
             lease.Dispose();
         }
     }
@@ -173,9 +182,16 @@ internal static class AnswerStream
         Conversation conversation,
         string content,
         MessageStatus status,
+        IReadOnlyList<AnswerSource> sources,
         TimeProvider clock)
     {
-        var message = conversation.AddAnswer(content, status, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var message = conversation.AddAnswer(content, status, now);
+        foreach (var source in sources)
+        {
+            message.AddSource(source.N, source.KnowledgeBase, source.DocumentId, source.Title, source.Position, source.Url, now);
+        }
+
         // The request may already be aborted; the answer must be stored regardless.
         await db.SaveChangesAsync(CancellationToken.None);
         return message;
@@ -189,6 +205,14 @@ internal sealed record AnswerReasoning(string Text);
 internal sealed record ToolCallEventData(Guid CallId, string Tool, object Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt);
 
 internal sealed record ToolResultEventData(Guid CallId, string Status, string Content, int SizeCharacters);
+
+internal sealed record SourcesEventData(List<SourceData> Sources);
+
+internal sealed record SourceData(int N, string KnowledgeBase, string? DocumentId, string? Title, string? Position, string? Url)
+{
+    public static SourceData From(AnswerSource source) =>
+        new(source.N, source.KnowledgeBase, source.DocumentId, source.Title, source.Position, source.Url);
+}
 
 internal sealed record AskUserEventData(Guid CallId, string Question, DateTimeOffset ExpiresAt);
 
