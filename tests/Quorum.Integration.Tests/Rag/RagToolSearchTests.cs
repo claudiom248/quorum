@@ -166,7 +166,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
     public async Task SeveralKnowledgeBasesAreInterleavedAndNamedAndOneCanBeChosen()
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
-        var beta = await setup.RegisterAsync("beta", SampleCollections.CreateNested, SampleCollections.Nested, SearchApi.NestedMapping);
+        var beta = await setup.RegisterAsync("beta", SampleCollections.CreateNested, SearchApi.NestedMapping);
         var alpha = await setup.RegisterAsync("alpha");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [beta, alpha], topK: 6));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");
@@ -257,7 +257,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
     public async Task AnUnreachableStoreGivesTheModelAnErrorWithoutInternalDetailAndTheAnswerContinues()
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
-        var down = await setup.RegisterAsync("down", mapping: KnowledgeBaseApi.TextOnly(), createFields: [], url: "http://127.0.0.1:1");
+        var down = await setup.RegisterAsync("down", mapping: KnowledgeBaseApi.TextOnly(), createFields: [], url: "http://[::1]:1");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [down]));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");
 
@@ -291,7 +291,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         var good = await setup.RegisterAsync("good");
-        var down = await setup.RegisterAsync("down", mapping: KnowledgeBaseApi.TextOnly(), createFields: [], url: "http://127.0.0.1:1");
+        var down = await setup.RegisterAsync("down", mapping: KnowledgeBaseApi.TextOnly(), createFields: [], url: "http://[::1]:1");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [good, down]));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");
 

@@ -147,7 +147,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Select(t => t.Name).Where(n => !n.StartsWith("builtin__", StringComparison.Ordinal)).ToArray();
         var detail = await ToolsApi.GetServerAsync(client, global.ServerId);
         using var hidden = await client.GetAsync(ToolsApi.Server(Guid.Parse(await ServerIdAsync(app, "tenant-private"))), Ct);
-        using var edit = await client.PutAsJsonAsync(ToolsApi.Server(global.ServerId), new { name = "mine-now", url = "http://127.0.0.1:1/mcp", scope = ToolsApi.TenantScope }, Ct);
+        using var edit = await client.PutAsJsonAsync(ToolsApi.Server(global.ServerId), new { name = "mine-now", url = "http://[::1]:1/mcp", scope = ToolsApi.TenantScope }, Ct);
         using var delete = await client.DeleteAsync(ToolsApi.Server(global.ServerId), Ct);
         using var refresh = await client.PostAsync(ToolsApi.ServerRefresh(global.ServerId), content: null, Ct);
         using var changeTool = await client.PutAsJsonAsync(ToolsApi.Tool(global.ToolId), new { state = "Disabled", policy = "Auto" }, Ct);
@@ -197,7 +197,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         await using var scopeFactory = app.Services.CreateAsyncScope();
         var db = scopeFactory.ServiceProvider.GetRequiredService<AgentsDbContext>();
         var now = DateTimeOffset.UtcNow;
-        var server = McpServer.Create(owner, name, "http://127.0.0.1:1/mcp", protectedHeaders: null, scope, tenantIds ?? [], assistantIds ?? [], now);
+        var server = McpServer.Create(owner, name, "http://[::1]:1/mcp", protectedHeaders: null, scope, tenantIds ?? [], assistantIds ?? [], now);
         if (status == McpServerStatus.Available)
         {
             server.MarkAvailable(now);

@@ -38,7 +38,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
 
-        var created = await ToolsApi.RegisterServerOkAsync(client, "gone", $"http://127.0.0.1:{UnusedPort()}/mcp");
+        var created = await ToolsApi.RegisterServerOkAsync(client, "gone", $"http://[::1]:{UnusedPort()}/mcp");
         var server = await ToolsApi.GetServerAsync(client, created.Id);
 
         Assert.Equal("Unavailable", created.Status);
@@ -92,7 +92,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
 
-        using var response = await client.PostAsJsonAsync(ToolsApi.ServerTest, new { url = $"http://127.0.0.1:{UnusedPort()}/mcp" }, Ct);
+        using var response = await client.PostAsJsonAsync(ToolsApi.ServerTest, new { url = $"http://[::1]:{UnusedPort()}/mcp" }, Ct);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal("tool.server_unreachable", await ToolsApi.ProblemCodeAsync(response));
@@ -294,11 +294,11 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
         var id = Guid.NewGuid();
-        var body = new { name = "files", url = "http://127.0.0.1:1/mcp", scope = ToolsApi.TenantScope };
+        var body = new { name = "files", url = "http://[::1]:1/mcp", scope = ToolsApi.TenantScope };
 
         var requests = new List<Func<HttpClient, Task<HttpResponseMessage>>>
         {
-            client => client.PostAsJsonAsync(ToolsApi.ServerTest, new { url = "http://127.0.0.1:1/mcp" }, Ct),
+            client => client.PostAsJsonAsync(ToolsApi.ServerTest, new { url = "http://[::1]:1/mcp" }, Ct),
             client => client.GetAsync(ToolsApi.Servers, Ct),
             client => client.PostAsJsonAsync(ToolsApi.Servers, body, Ct),
             client => client.GetAsync(ToolsApi.Server(id), Ct),
@@ -325,7 +325,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         var id = Guid.NewGuid();
 
         using var get = await client.GetAsync(ToolsApi.Server(id), Ct);
-        using var put = await client.PutAsJsonAsync(ToolsApi.Server(id), new { name = "files", url = "http://127.0.0.1:1/mcp", scope = ToolsApi.TenantScope }, Ct);
+        using var put = await client.PutAsJsonAsync(ToolsApi.Server(id), new { name = "files", url = "http://[::1]:1/mcp", scope = ToolsApi.TenantScope }, Ct);
         using var delete = await client.DeleteAsync(ToolsApi.Server(id), Ct);
         using var refresh = await client.PostAsync(ToolsApi.ServerRefresh(id), content: null, Ct);
 
@@ -485,10 +485,10 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         Assert.DoesNotContain(app.Logs.Messages, m => m.Contains("log-me-not", StringComparison.Ordinal) || m.Contains(mcp.Url, StringComparison.Ordinal));
     }
 
-    /// <summary>A loopback port nothing listens on.</summary>
+    /// <summary>A loopback port nothing listens on. IPv6: a refused connection to the IPv4 loopback takes two seconds on Windows.</summary>
     internal static int UnusedPort()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        using var listener = new TcpListener(IPAddress.IPv6Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }

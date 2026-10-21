@@ -162,7 +162,7 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, apiKey: Secret, mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
 
         using var elsewhere = await admin.PutAsJsonAsync(KnowledgeBaseApi.One(registered.Id), UpdateBody("http://attacker.example:6334", collection), Ct);
-        using var withKey = await admin.PutAsJsonAsync(KnowledgeBaseApi.One(registered.Id), UpdateBody("http://localhost:1", collection, apiKey: "typed-again"), Ct);
+        using var withKey = await admin.PutAsJsonAsync(KnowledgeBaseApi.One(registered.Id), UpdateBody("http://[::1]:1", collection, apiKey: "typed-again"), Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, elsewhere.StatusCode);
         Assert.Equal("knowledge_base.api_key_required", await KnowledgeBaseApi.ProblemCodeAsync(elsewhere));

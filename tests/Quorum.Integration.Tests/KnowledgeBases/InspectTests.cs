@@ -135,7 +135,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
         using var admin = await app.SetUpAsync();
         var schema = "{\"type\":\"object\",\"description\":\"" + new string('x', 101 * 1024) + "\",\"properties\":{\"a\":{\"type\":\"string\"}}}";
 
-        using var response = await InspectApi.PostAsync(admin, "http://127.0.0.1:1", "any", schema: schema);
+        using var response = await InspectApi.PostAsync(admin, "http://[::1]:1", "any", schema: schema);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("knowledge_base.invalid_schema", await InspectApi.ProblemCodeAsync(response));
@@ -284,7 +284,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
         using var admin = await app.SetUpAsync();
         InspectApi.ServeEmbeddings(app);
 
-        var report = await InspectApi.InspectOkAsync(admin, new Uri("http://127.0.0.1:1"), "anything");
+        var report = await InspectApi.InspectOkAsync(admin, new Uri("http://[::1]:1"), "anything");
 
         Assert.False(report.Reachable);
         Assert.False(report.CollectionExists);
@@ -323,7 +323,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
 
-        using var response = await InspectApi.PostAsync(admin, "http://127.0.0.1:1", "docs", apiKey: "key-with-é-in-it");
+        using var response = await InspectApi.PostAsync(admin, "http://[::1]:1", "docs", apiKey: "key-with-é-in-it");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("knowledge_base.invalid_connection", await InspectApi.ProblemCodeAsync(response));

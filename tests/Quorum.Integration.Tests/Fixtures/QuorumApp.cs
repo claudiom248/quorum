@@ -188,6 +188,8 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiEmbeddings.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            // Hundreds of tests sign in or create a user: the production iteration count would dominate their time.
+            services.Configure<PasswordHasherOptions>(options => options.IterationCount = 1_000);
             services.AddSingleton<IBuiltinTool>(Probe);
             services.AddSingleton<IHostResolver>(McpHosts);
             if (Clock is not null)

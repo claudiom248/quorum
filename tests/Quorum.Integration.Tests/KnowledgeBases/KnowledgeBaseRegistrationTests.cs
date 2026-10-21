@@ -98,7 +98,7 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
 
         var (url, collection, apiKey) = situation switch
         {
-            "unreachable" => ("http://localhost:1", "docs", (string?)null),
+            "unreachable" => ("http://[::1]:1", "docs", (string?)null),
             "missing-collection" => ((await qdrant.GetUrlAsync()).ToString(), prefix + "not_there", null),
             "other-vector-size" => ((await qdrant.GetUrlAsync()).ToString(), prefix + SampleCollections.OtherVectorSize, null),
             _ => ((await qdrant.GetUrlAsync(Secret)).ToString(), prefix + SampleCollections.Flat, "not-the-key"),
