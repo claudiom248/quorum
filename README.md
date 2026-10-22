@@ -4,7 +4,7 @@ The AI assistant a small company installs on its own server, runs with its own l
 
 Quorum is a self-hosted platform for AI assistants and, later, multi-agent orchestration. One installation serves several tenants; it is licensed per user and hosted by the customer.
 
-> **Status: early.** Quorum is under active development (current release: see [CHANGELOG.md](CHANGELOG.md)). The first-run wizard, sign-in, streaming chat and conversation attachments work today; multi-agent topologies, RAG on company documents and the graph editor are on the roadmap.
+> **Status: early.** Quorum is under active development (current release: see [CHANGELOG.md](CHANGELOG.md)). The first-run wizard, sign-in, streaming chat, conversation attachments, MCP tools and answers from your documents (knowledge bases) work today; multi-agent topologies and the graph editor are on the roadmap.
 
 ## What it does today
 
@@ -12,6 +12,8 @@ Quorum is a self-hosted platform for AI assistants and, later, multi-agent orche
 - **Any OpenAI-compatible model endpoint**: Ollama, vLLM, llama.cpp, LM Studio or a cloud provider. The API key is optional and encrypted at rest.
 - **Streaming chat** with stop and regenerate, the model's reasoning shown live (never stored), and conversations you can rename, continue and delete.
 - **Attachments** in a conversation: TXT, Markdown, CSV, PDF (with a text layer) and DOCX, up to 5 MB each. Their text goes into the model's context, and the composer shows how much of the context budget is used.
+- **Tools**: built-in tools and MCP servers over HTTP, with per-assistant activation, human confirmation and an audit log ([guide](docs/mcp-tools.md)).
+- **Knowledge bases**: assistants answer from Qdrant collections that already hold your documents, with metadata filters and numbered sources under the answer. Quorum only reads them ([guide for data owners](docs/knowledge-bases.md)).
 - **No outbound telemetry.** The only traffic leaving the server is the traffic to the model endpoint you configure.
 
 ## Quick start
@@ -45,7 +47,7 @@ Quorum runs in a container, so `localhost` there is the container itself. To rea
 
 ### A vector store for knowledge bases
 
-Knowledge bases are collections that already hold your documents; Quorum only reads them. If you have no Qdrant yet, the compose file can run one next to Quorum with the `qdrant` profile (profiles combine):
+Knowledge bases are collections that already hold your documents; Quorum only reads them. What a collection has to look like (payload fields, indexes, the embedding model) is in [docs/knowledge-bases.md](docs/knowledge-bases.md), which also shows how to try it with the sample collections of `tools/Quorum.SampleKnowledgeBase`. If you have no Qdrant yet, the compose file can run one next to Quorum with the `qdrant` profile (profiles combine):
 
 ```bash
 docker compose --profile bundled-db --profile qdrant up --build -d
@@ -88,8 +90,11 @@ src/
   Modules/
     Tenancy/              # Tenants, users, sign-in, first-run setup
     Licensing/            # Ed25519-signed license keys, verified offline (planned)
-    Agents/               # Assistants, model endpoints, chat with the model
-    Conversations/        # Conversations, messages, attachments
+    Agents/               # Assistants, model endpoints, chat with the model, tools
+    Conversations/        # Conversations, messages, attachments, sources
+    KnowledgeBases/       # Metadata dictionary, registered Qdrant collections, search
+tools/
+  Quorum.SampleKnowledgeBase/  # Sample collections for trying knowledge bases (not part of the product)
 tests/
   Quorum.Integration.Tests/
 ```
@@ -113,8 +118,7 @@ See [docs/release-process.md](docs/release-process.md) for the full flow.
 ## Roadmap
 
 - Multi-agent topologies defined in declarative config, then a visual graph editor on the same schema.
-- Answers grounded in company documents (RAG) with a pluggable vector store (Qdrant, pgvector).
-- MCP-compliant tools with per-agent permissions, human confirmation for destructive actions and an audit log.
+- More knowledge base kinds beyond Qdrant (pgvector, raw documents), and ingestion for customers without their own pipeline.
 - An OpenAI-compatible API and per-application keys, so other tools can talk to Quorum's assistants.
 
 ## License

@@ -13,6 +13,14 @@ if (options.ContainsKey("help"))
           --api-key <key>    Qdrant API key, if the server needs one
           --prefix <text>    prepended to every collection name
           --schema <name>    prints the pasteable JSON Schema of 'flat' or 'nested' and exits
+
+        By default the vectors are the deterministic 64-dimension fake of the tests. To query the collections from a real
+        Quorum, embed them with the model the knowledge base will be registered with:
+
+          --embedding-url <url>      OpenAI-compatible base address, e.g. http://localhost:4000/v1
+          --embedding-model <name>   the model, e.g. nomic-embed-text
+          --embedding-key <key>      API key of that endpoint, if it needs one
+          --document-prefix <text>   prepended to every chunk before embedding, e.g. "search_document: "
         """);
     return 0;
 }
@@ -48,8 +56,29 @@ http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("appli
 
 try
 {
-    var seeder = new QdrantSeeder(http);
-    foreach (var collection in SampleCollections.All(options.GetValueOrDefault("prefix", string.Empty)))
+    ModelEmbedder? embedder = null;
+    var datasets = SampleCollections.All(options.GetValueOrDefault("prefix", string.Empty));
+    if (options.TryGetValue("embedding-url", out var embeddingUrl))
+    {
+        if (!options.TryGetValue("embedding-model", out var embeddingModel) || embeddingModel.Length == 0)
+        {
+            Console.Error.WriteLine("--embedding-url needs --embedding-model.");
+            return 1;
+        }
+
+        embedder = ModelEmbedder.Create(
+            services.GetRequiredService<IHttpClientFactory>().CreateClient(),
+            new Uri(embeddingUrl),
+            embeddingModel,
+            options.GetValueOrDefault("document-prefix", string.Empty),
+            options.GetValueOrDefault("embedding-key"));
+        var dimensions = await embedder.ProbeDimensionsAsync(CancellationToken.None);
+        Console.WriteLine($"Embedding with {embeddingModel}: {dimensions} dimensions.");
+        datasets = datasets.Select(dataset => dataset.UsingModel(dimensions)).ToList();
+    }
+
+    var seeder = new QdrantSeeder(http, embedder);
+    foreach (var collection in datasets)
     {
         await seeder.SeedAsync(collection, CancellationToken.None);
         Console.WriteLine($"{collection.Name}: {collection.Points.Count} points. {collection.Description}");
@@ -57,7 +86,7 @@ try
 
     return 0;
 }
-catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
+catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException or UriFormatException)
 {
     Console.Error.WriteLine($"Cannot seed {url}: {exception.Message}");
     return 1;
