@@ -7,6 +7,7 @@ using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Modules.KnowledgeBases.Storage;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Shared.Results;
 
@@ -248,7 +249,7 @@ internal sealed partial class KnowledgeBaseSearchEngine(
             var unusable = 0;
             foreach (var hit in hits)
             {
-                if (ChunkReader.Read(knowledgeBase.Name, knowledgeBase.Mapping.Roles, hit.Score, hit.Payload) is { } chunk)
+                if (ChunkReader.Read(knowledgeBase.Name, knowledgeBase.Mapping.Roles, hit.Score, hit.Row) is { } chunk)
                 {
                     chunks.Add(chunk);
                 }
@@ -260,7 +261,7 @@ internal sealed partial class KnowledgeBaseSearchEngine(
 
             return new Outcome(knowledgeBase, chunks, unusable, Failure: null);
         }
-        catch (QdrantException exception)
+        catch (StoreException exception)
         {
             return Outcome.Failed(knowledgeBase, CodeOf(exception.Failure), exception.Message);
         }
@@ -270,12 +271,12 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         }
     }
 
-    private static string CodeOf(QdrantFailure failure) => failure switch
+    private static string CodeOf(StoreFailure failure) => failure switch
     {
-        QdrantFailure.Unreachable => WarningCodes.QdrantUnreachable,
-        QdrantFailure.Unauthorized => WarningCodes.QdrantUnauthorized,
-        QdrantFailure.NotFound => WarningCodes.CollectionNotFound,
-        QdrantFailure.Rejected => WarningCodes.DimensionMismatch,
+        StoreFailure.Unreachable => WarningCodes.QdrantUnreachable,
+        StoreFailure.Unauthorized => WarningCodes.QdrantUnauthorized,
+        StoreFailure.NotFound => WarningCodes.CollectionNotFound,
+        StoreFailure.Rejected => WarningCodes.DimensionMismatch,
         _ => WarningCodes.QdrantUnexpected,
     };
 

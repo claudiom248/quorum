@@ -1,11 +1,11 @@
 using Quorum.Modules.KnowledgeBases.Domain;
-using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
+using Quorum.Modules.KnowledgeBases.Storage;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Search;
 
 /// <param name="Conditions">One per filter, empty when a field is missing: a knowledge base is never searched without a filter it cannot apply.</param>
 /// <param name="MissingFields">The dictionary fields the knowledge base did not map.</param>
-internal sealed record FilterTranslation(IReadOnlyList<QdrantCondition> Conditions, IReadOnlyList<string> MissingFields);
+internal sealed record FilterTranslation(IReadOnlyList<FilterCondition> Conditions, IReadOnlyList<string> MissingFields);
 
 /// <summary>Puts the filters of a search on the payload paths one knowledge base mapped for each dictionary field (spec 003 D-12).</summary>
 internal static class FilterTranslator
@@ -16,7 +16,7 @@ internal static class FilterTranslator
         ArgumentNullException.ThrowIfNull(mapping);
 
         var paths = mapping.Fields.GroupBy(f => f.DictionaryFieldId).ToDictionary(g => g.Key, g => g.First().Path);
-        var conditions = new List<QdrantCondition>(filters.Count);
+        var conditions = new List<FilterCondition>(filters.Count);
         var missing = new List<string>();
 
         foreach (var filter in filters)

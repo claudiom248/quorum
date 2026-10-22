@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
 using Quorum.Modules.KnowledgeBases.Mapping;
+using Quorum.Modules.KnowledgeBases.Storage;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Shared.Results;
 
@@ -140,7 +141,7 @@ internal static class MappingValidation
     };
 
     /// <summary>The vector the mapping will search must exist: required when the collection has several, and it must be one of them.</summary>
-    public static Error? Vector(QdrantCollectionInfo? info, string? vectorName)
+    public static Error? Vector(SourceInfo? info, string? vectorName)
     {
         if (info is null || info.Vectors.Count == 0)
         {
@@ -161,5 +162,5 @@ internal static class MappingValidation
             : Error.Validation(WarningCodes.VectorNotFound, $"The collection has no vector named '{vectorName}'. Its vectors are: {Names(info)}.");
     }
 
-    private static string Names(QdrantCollectionInfo info) => string.Join(", ", info.Vectors.Select(v => v.Name is null ? "(unnamed)" : $"'{v.Name}'"));
+    private static string Names(SourceInfo info) => string.Join(", ", info.Vectors.Select(v => v.Name is null ? "(unnamed)" : $"'{v.Name}'"));
 }

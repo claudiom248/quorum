@@ -40,7 +40,7 @@ internal sealed partial class KnowledgeBaseInspector(
 
         var found = await probe.RunAsync(connection, embeddingModel, sample: schemaDiscovery is null, cancellationToken);
         var warnings = found.Warnings.ToList();
-        if (found.Info is { PointsCount: 0 })
+        if (found.Info is { RecordCount: 0 })
         {
             warnings.Add(new InspectWarning(
                 WarningCodes.EmptyCollection,
@@ -64,7 +64,7 @@ internal sealed partial class KnowledgeBaseInspector(
         var unindexed = new List<string>();
         if (found.Info is { } info)
         {
-            foreach (var field in fields.Where(f => !info.PayloadIndexes.ContainsKey(f.Path)))
+            foreach (var field in fields.Where(f => !info.IndexedPaths.ContainsKey(f.Path)))
             {
                 unindexed.Add(field.Path);
                 warnings.Add(new InspectWarning(

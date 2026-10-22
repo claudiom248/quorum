@@ -1,7 +1,7 @@
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Mapping;
-using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
+using Quorum.Modules.KnowledgeBases.Storage;
 
 namespace Quorum.Integration.Tests.KnowledgeBases.Search;
 

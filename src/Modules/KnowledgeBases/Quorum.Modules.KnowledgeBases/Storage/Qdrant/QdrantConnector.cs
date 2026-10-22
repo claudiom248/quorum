@@ -21,41 +21,6 @@ internal sealed record QdrantConnection(Uri Url, string Collection, string? ApiK
     }
 }
 
-internal enum QdrantFailure
-{
-    /// <summary>No connection, or no answer in time.</summary>
-    Unreachable,
-
-    /// <summary>The server refused the API key (or the lack of one).</summary>
-    Unauthorized,
-
-    /// <summary>The collection does not exist.</summary>
-    NotFound,
-
-    /// <summary>The server answered, but not as Qdrant does.</summary>
-    Unexpected,
-
-    /// <summary>The server refused the query itself: a vector of the wrong size or a vector name the collection does not have.</summary>
-    Rejected,
-}
-
-/// <summary>A Qdrant call failed. The message is safe to show: it never carries the key or the address.</summary>
-internal sealed class QdrantException(QdrantFailure failure, string message) : Exception(message)
-{
-    public QdrantFailure Failure { get; } = failure;
-}
-
-/// <param name="Name">The vector's name, or <see langword="null"/> for the collection's single unnamed vector.</param>
-internal sealed record QdrantVector(string? Name, int Size, string Distance);
-
-/// <param name="Score">The store's score; whether higher or lower is better depends on the collection's distance.</param>
-/// <param name="Payload">Only the paths asked for.</param>
-internal sealed record QdrantHit(double Score, JsonObject Payload);
-
-/// <param name="PayloadIndexes">Payload path → Qdrant's data type, for the paths that have an index.</param>
-/// <param name="PointsCount">How many points the collection holds, when the server says.</param>
-internal sealed record QdrantCollectionInfo(IReadOnlyList<QdrantVector> Vectors, IReadOnlyDictionary<string, string> PayloadIndexes, long? PointsCount);
-
 /// <summary>
 /// Quorum's access to Qdrant: the official client (gRPC) over a channel that goes through the named HTTP client (no redirects).
 /// What is ours is the edge: the API key header, mapping failures to a few outcomes with messages
@@ -66,7 +31,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
     public const string HttpClientName = "knowledge-base-qdrant";
 
     /// <summary>The longest one call may take while inspecting or verifying (non-functional requirements); searching has its own limit.</summary>
-    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan RequestTimeout = StoreLimits.RequestTimeout;
 
     /// <summary>The first version with the query API, which search uses.</summary>
     public static readonly Version MinimumVersion = new(1, 10);
@@ -92,15 +57,15 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
             var reply = await RunAsync(connection, (client, token) => client.HealthAsync(token), cancellationToken);
             return Version.TryParse(reply.Version.Split('-', '+')[0], out var version) ? version : null;
         }
-        catch (QdrantException)
+        catch (StoreException)
         {
             return null;
         }
     }
 
     /// <summary>The collection's vectors and payload indexes, or <see langword="null"/> when it does not exist.</summary>
-    /// <exception cref="QdrantException">The store cannot be used.</exception>
-    public async Task<QdrantCollectionInfo?> GetCollectionAsync(QdrantConnection connection, CancellationToken cancellationToken)
+    /// <exception cref="StoreException">The store cannot be used.</exception>
+    public async Task<SourceInfo?> GetCollectionAsync(QdrantConnection connection, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection);
 
@@ -109,16 +74,16 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
             var info = await RunAsync(connection, (client, token) => client.GetCollectionInfoAsync(connection.Collection, token), cancellationToken);
             var vectors = ReadVectors(info.Config?.Params?.VectorsConfig);
             var indexes = info.PayloadSchema.ToDictionary(entry => entry.Key, entry => entry.Value.DataType.ToString().ToLowerInvariant(), StringComparer.Ordinal);
-            return new QdrantCollectionInfo(vectors, indexes, info.HasPointsCount ? (long)info.PointsCount : null);
+            return new SourceInfo(vectors, indexes, info.HasPointsCount ? (long)info.PointsCount : null);
         }
-        catch (QdrantException exception) when (exception.Failure == QdrantFailure.NotFound)
+        catch (StoreException exception) when (exception.Failure == StoreFailure.NotFound)
         {
             return null;
         }
     }
 
     /// <summary>The payloads of the first <paramref name="limit"/> points, without vectors.</summary>
-    /// <exception cref="QdrantException">The store cannot be used.</exception>
+    /// <exception cref="StoreException">The store cannot be used.</exception>
     public async Task<IReadOnlyList<JsonObject>> ScrollAsync(QdrantConnection connection, int limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -135,11 +100,11 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
     /// at <paramref name="payloadPaths"/> and nothing else.
     /// </summary>
     /// <param name="scoreThreshold">Passed to the store, which knows whether a higher or a lower score is better for the collection's distance.</param>
-    /// <exception cref="QdrantException">The store cannot be used.</exception>
-    public async Task<IReadOnlyList<QdrantHit>> QueryAsync(
+    /// <exception cref="StoreException">The store cannot be used.</exception>
+    public async Task<IReadOnlyList<StoreHit>> QueryAsync(
         QdrantConnection connection,
         float[] vector,
-        IReadOnlyList<QdrantCondition> conditions,
+        IReadOnlyList<FilterCondition> conditions,
         int limit,
         double? scoreThreshold,
         IReadOnlyList<string> payloadPaths,
@@ -166,10 +131,10 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
                 payloadSelector: payload,
                 cancellationToken: token),
             cancellationToken);
-        return points.Select(point => new QdrantHit(point.Score, ToJson(point.Payload))).ToList();
+        return points.Select(point => new StoreHit(point.Score, ToJson(point.Payload))).ToList();
     }
 
-    private static Condition ToCondition(QdrantCondition condition) => condition switch
+    private static Condition ToCondition(FilterCondition condition) => condition switch
     {
         MatchAnyCondition any => Conditions.Match(any.Path, any.Values),
         MatchBooleanCondition flag => Conditions.Match(flag.Path, flag.Value),
@@ -195,7 +160,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         return range;
     }
 
-    private static List<QdrantVector> ReadVectors(VectorsConfig? configuration)
+    private static List<VectorInfo> ReadVectors(VectorsConfig? configuration)
     {
         if (configuration is null)
         {
@@ -204,9 +169,9 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
 
         return configuration.ConfigCase switch
         {
-            VectorsConfig.ConfigOneofCase.Params => [new QdrantVector(null, (int)configuration.Params.Size, configuration.Params.Distance.ToString())],
+            VectorsConfig.ConfigOneofCase.Params => [new VectorInfo(null, (int)configuration.Params.Size, configuration.Params.Distance.ToString())],
             VectorsConfig.ConfigOneofCase.ParamsMap => configuration.ParamsMap.Map
-                .Select(entry => new QdrantVector(entry.Key, (int)entry.Value.Size, entry.Value.Distance.ToString()))
+                .Select(entry => new VectorInfo(entry.Key, (int)entry.Value.Size, entry.Value.Distance.ToString()))
                 .ToList(),
             _ => throw Unexpected(),
         };
@@ -257,7 +222,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new QdrantException(QdrantFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds.");
+            throw new StoreException(StoreFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds.");
         }
         catch (RpcException exception) when (exception.StatusCode == StatusCode.Cancelled && cancellationToken.IsCancellationRequested)
         {
@@ -266,7 +231,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         }
         catch (RpcException exception) when (exception.StatusCode == StatusCode.Cancelled && timeout.IsCancellationRequested)
         {
-            throw new QdrantException(QdrantFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds.");
+            throw new StoreException(StoreFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds.");
         }
         catch (RpcException exception)
         {
@@ -274,26 +239,26 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         }
     }
 
-    private static QdrantException Translate(RpcException exception)
+    private static StoreException Translate(RpcException exception)
     {
         return exception.StatusCode switch
         {
             StatusCode.Unauthenticated or StatusCode.PermissionDenied =>
-                new QdrantException(QdrantFailure.Unauthorized, "The server refused the API key (or needs one)."),
-            StatusCode.NotFound => new QdrantException(QdrantFailure.NotFound, "The collection was not found."),
-            StatusCode.InvalidArgument => new QdrantException(
-                QdrantFailure.Rejected,
+                new StoreException(StoreFailure.Unauthorized, "The server refused the API key (or needs one)."),
+            StatusCode.NotFound => new StoreException(StoreFailure.NotFound, "The collection was not found."),
+            StatusCode.InvalidArgument => new StoreException(
+                StoreFailure.Rejected,
                 "The server rejected the query. Usually the collection's vectors have a different size than the embedding model's, or the vector name does not exist: ingestion and retrieval must use the same model."),
             StatusCode.DeadlineExceeded =>
-                new QdrantException(QdrantFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds."),
-            StatusCode.Unavailable => new QdrantException(
-                QdrantFailure.Unreachable,
+                new StoreException(StoreFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds."),
+            StatusCode.Unavailable => new StoreException(
+                StoreFailure.Unreachable,
                 "The server could not be reached over gRPC. Check the address: Qdrant's gRPC port is 6334 by default, not the REST port 6333."),
             _ => Unexpected(),
         };
     }
 
-    private static QdrantException Unexpected() => new(QdrantFailure.Unexpected, "The server answered, but not as the Qdrant gRPC API does. Check that the address is Qdrant's gRPC port (6334 by default).");
+    private static StoreException Unexpected() => new(StoreFailure.Unexpected, "The server answered, but not as the Qdrant gRPC API does. Check that the address is Qdrant's gRPC port (6334 by default).");
 
     /// <summary>Adds the API key to every call: the official client has no hook to give it with a channel of our own.</summary>
     private sealed class ApiKeyInterceptor(string apiKey) : Interceptor

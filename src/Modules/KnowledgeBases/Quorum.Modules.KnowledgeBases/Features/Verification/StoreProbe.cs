@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Mapping;
+using Quorum.Modules.KnowledgeBases.Storage;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Shared.Results;
 
@@ -12,7 +13,7 @@ namespace Quorum.Modules.KnowledgeBases.Features.Verification;
 /// <param name="DimensionMatch"><see langword="null"/> when it cannot be told yet (no collection, no embedding, no vector chosen).</param>
 internal sealed record StoreProbeResult(
     bool Reachable,
-    QdrantCollectionInfo? Info,
+    SourceInfo? Info,
     IReadOnlyList<JsonObject> Sample,
     int? EmbeddingSize,
     bool? DimensionMatch,
@@ -30,7 +31,7 @@ internal sealed class StoreProbe(QdrantConnector qdrant, IEmbeddings embeddings)
         ArgumentNullException.ThrowIfNull(connection);
 
         var warnings = new List<InspectWarning>();
-        QdrantCollectionInfo? info = null;
+        SourceInfo? info = null;
         Version? version = null;
         var reachable = false;
         IReadOnlyList<JsonObject> payloads = [];
@@ -48,12 +49,12 @@ internal sealed class StoreProbe(QdrantConnector qdrant, IEmbeddings embeddings)
                     "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created.",
                     Path: null));
             }
-            else if (sample && info.PointsCount != 0)
+            else if (sample && info.RecordCount != 0)
             {
                 payloads = await qdrant.ScrollAsync(connection, PayloadSampler.SampleSize, cancellationToken);
             }
         }
-        catch (QdrantException exception)
+        catch (StoreException exception)
         {
             warnings.Add(StoreWarning(exception));
         }
@@ -71,13 +72,13 @@ internal sealed class StoreProbe(QdrantConnector qdrant, IEmbeddings embeddings)
         return new StoreProbeResult(reachable, info, payloads, embeddingSize, dimensionMatch, warnings);
     }
 
-    private static InspectWarning StoreWarning(QdrantException exception) => exception.Failure switch
+    private static InspectWarning StoreWarning(StoreException exception) => exception.Failure switch
     {
-        QdrantFailure.Unauthorized => new InspectWarning(
+        StoreFailure.Unauthorized => new InspectWarning(
             WarningCodes.QdrantUnauthorized,
             "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail.",
             Path: null),
-        QdrantFailure.Unreachable => new InspectWarning(
+        StoreFailure.Unreachable => new InspectWarning(
             WarningCodes.QdrantUnreachable,
             $"{exception.Message} Until the server is reachable, RAG on this collection will fail.",
             Path: null),
@@ -116,14 +117,14 @@ internal sealed class StoreProbe(QdrantConnector qdrant, IEmbeddings embeddings)
     }
 
     /// <summary>Whether the vector that will be searched has the size of the model's embeddings; <see langword="null"/> when that cannot be told yet.</summary>
-    private static bool? CheckDimensions(QdrantCollectionInfo? info, string? vectorName, int? embeddingSize, List<InspectWarning> warnings)
+    private static bool? CheckDimensions(SourceInfo? info, string? vectorName, int? embeddingSize, List<InspectWarning> warnings)
     {
         if (info is null || info.Vectors.Count == 0)
         {
             return null;
         }
 
-        QdrantVector chosen;
+        VectorInfo chosen;
         if (vectorName is not null)
         {
             var named = info.Vectors.FirstOrDefault(v => v.Name == vectorName);
