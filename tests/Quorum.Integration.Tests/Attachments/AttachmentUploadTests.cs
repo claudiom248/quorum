@@ -212,7 +212,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     public async Task TheBudgetCountsTheAttachmentsAlreadyThere()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync(contextTokenBudget: 256);
+        using var client = await app.SetUpAsync(contextTokenBudget: 320);
         var conversation = await ChatApi.CreateConversationAsync(client);
         await AttachmentApi.AttachAsync(client, conversation, "first.txt", new string('a', 300));
 

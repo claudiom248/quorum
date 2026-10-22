@@ -31,6 +31,11 @@ internal sealed class AssistantChat(
         "\n\nWhen you use what a knowledge base search returned, cite its sources with the numbers in square brackets that the results give them, like [1] or [2][3]. " +
         "Cite only numbers the results contain, and do not make up sources.";
 
+    // Added after ToolDataNotice when ask_user is offered: a tool description alone did not stop models from asking in plain text.
+    internal const string AskUserNotice =
+        "\n\nWhen you need something from the user to answer, such as a value you do not have, a missing detail or a choice, " +
+        "call the ask_user tool. Do not write the question in your reply and do not answer without the information.";
+
     private static readonly Error AssistantNotFound = Error.NotFound("assistant.not_found", "The assistant does not exist.");
 
     public async Task<Guid?> GetDefaultAssistantIdAsync(CancellationToken cancellationToken) =>
@@ -159,7 +164,9 @@ internal sealed class AssistantChat(
 
         return new PreparedAssistant(
             configuration,
-            configuration.SystemPrompt + ToolDataNotice + (tools.Any(tool => tool is RagQuorumTool) ? RagCitationNotice : string.Empty),
+            configuration.SystemPrompt + ToolDataNotice
+                + (tools.Any(tool => tool is AskUserQuorumTool) ? AskUserNotice : string.Empty)
+                + (tools.Any(tool => tool is RagQuorumTool) ? RagCitationNotice : string.Empty),
             caller,
             tools,
             ToolDefinitionRenderer.Length(tools.Select(ToolDefinition.From).ToList()),
