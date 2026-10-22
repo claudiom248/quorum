@@ -1,0 +1,115 @@
+# Plan 007: Metadata Lookups
+
+**Spec:** `docs/specs/007-metadata-lookups.md` (Approved 2026-10-22)
+**Architecture:** Modular Monolith; Vertical Slice inside each module.
+**Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
+**Status:** Approved (2026-10-22)
+**Depends on:** the first PR of spec 008 (Qdrant moved behind the per-kind contract of 008 D-1, no change of behaviour; 008 A1-5). PRs that need it are marked **[waits 008]**; the others do not touch the Qdrant connector and can start now. The plan of spec 008 numbers that PR; this plan only calls it "008 PR 1".
+
+## Decisions
+| Topic | Choice |
+|---|---|
+| Ownership | **KnowledgeBases** owns lookups, slices, values, the cache, the refresh service and the Qdrant operations (a new `Features/Lookups` and `Lookups` folder). **Agents** owns the lookup tool (origin `Lookup`, `lookup__<name>`) and the `allowDocumentIds` switch of the rag tool. Nobody reads another module's tables. |
+| Contracts | `KnowledgeBases.Contracts` gains `IKnowledgeBaseLookups`: read a page of a lookup for a tenant and slice, list the lookups a tenant can see (for the tool editor), declare the slices a tool needs and release them, and (PR 7) run the live operations. `KnowledgeBaseSearchRequest` gains `DocumentIds` (additive). `Agents.Contracts` gains `ILookupToolUsage` (which tools use a manual lookup, for `lookup.in_use`), like `IRagToolUsage`. No Microsoft.Extensions.* type crosses a Contracts project. |
+| Storage | Tables `lookups`, `lookup_slices`, `lookup_values` in schema `knowledge_base` (spec D-9), `lookup_tools` in `agents`, a column on `agents.rag_tools`. New members of the mapping (`CountedPoint`, `EntityName`, `Listable` on a mapped field) are **additive in the stored JSON**: mappings saved before read as "not set". `MappingRoles` and `MappedField` (`Domain/KnowledgeBase.cs`, `Mapping/MappingConventions.cs`) are extended, never changed in shape. |
+| Generation swap | A computation writes its values as `Generation = current + 1` in batches, then one transaction sets `CurrentGeneration`, `ComputedAt`, `Status` and deletes the previous generation. Readers filter on `CurrentGeneration`, so they never see a mix. A failed computation deletes its own half-written generation in the same `finally`; a crash leaves rows of a generation nobody reads, which the next computation of the slice removes first. |
+| Order and paging | `Position` is the rank by count then value, written with the values. A page by count reads a range of `Position`; a page by name reads the `(SliceId, Generation, Value)` index. `search` is a case-insensitive substring match (`ILIKE` with escaped `%`, `_`) over one slice, which holds at most the ceiling of values. The opaque `cursor` carries the generation and the last position; a cursor of an older generation restarts the list and the result says so. |
+| Cache | **`Microsoft.Extensions.Caching.Hybrid`**, pinned in `Directory.Packages.props` (the latest 10.x stable at the time of the PR; 10.11.0 at the time of writing, to be re-checked), with **no `IDistributedCache` registered**, so it is memory only. An entry is the whole ordered list of one slice generation as a compact array, keyed by slice and generation, tagged by KB and lookup; the tag is removed when a generation becomes current. `MaximumPayloadBytes` is raised (the default 1 MB would keep a list of tens of thousands of values out of the cache); a list that still does not fit is read from the table. HybridCache gives single-flight reads and tag invalidation; as far as its documented API goes it has **no refresh-ahead and no serve-stale-while-recomputing**, so the refresh service writes the new generation and removes the tag itself. PR 3 starts with a spike that checks exactly this against the pinned version before anything is built on it. The existing `IMemoryCache` of the rag tool resolver is unrelated and stays. |
+| Refresh service | `LookupRefreshService : BackgroundService` in KnowledgeBases, registered like `AuditRetentionService`. It runs outside a request, so there is no tenant: it reads slices with `IgnoreQueryFilters()` as `AuditRetention` does. Each minute (`TimeProvider`) it takes the due slices (`NextRefreshAt <= now`) with `FOR UPDATE SKIP LOCKED` inside a transaction, so only one instance computes a slice; a `SemaphoreSlim(2)` bounds the installation and one slice per KB at a time is checked in the query. A separate startup task warms the cache from the tables without blocking `StartAsync` and without computing anything. `Quorum:Lookups:ComputationTimeoutMinutes` (default 10) and `Quorum:Lookups:MaxValuesPerLookup` (default 5,000, maximum 50,000) are bound to an options class validated at startup. |
+| Computation | `LookupComputer` asks the KB's store through the per-kind contract (the *lookups* capability, defined in PR 5), never the Qdrant connector directly. Qdrant: `FacetAsync` with `exact: true` on the listable field and a filter made of the slice's conditions plus the counted point; without a counted point but with `documentId`, a payload scroll (document id and field only) deduplicated in memory up to 5,000,000 points; otherwise chunks. The existing `Qdrant.Client` 1.12.0 already exposes `FacetAsync` (the benchmark of the investigation used it), and the compose file already pins `qdrant/qdrant:v1.12.0`, so **no bump is needed**; the minimum for lookups is a separate constant next to `QdrantConnector.MinimumVersion`. |
+| Slices | `LookupSliceKey` canonicalises the fixed filters of a binding (dictionary field ids, values normalised and sorted) into a hash. A tool declares its slices to `IKnowledgeBaseLookups` when it is saved and releases them when it changes or is deleted; a slice is removed when no tool references it (a `lookup_slice_users` list of tool ids on the slice row, not a foreign key across schemas). The 50-slice limit is checked there. |
+| Lookup tool | Same shape as the rag tool: a `Tool` row of origin `Lookup` plus a `LookupTool` row of configuration, `LookupToolDefinition` generated at the start of each answer from the live catalog, a `LookupToolResolver`, `LookupQuorumTool` and a `LookupToolHash` (the call-time check of spec 004 refuses a call after the binding changed). The origin value fits the existing `varchar(20)` column, so adding it needs no migration of `agents.tools`. The shared parts of the rag tool (exposed fields, aliases, fixed-filter validation and the filter half of the generated schema in `RagToolDefinition`, `RagToolValidation`, `RagBinding`) are **extracted first** into internal helpers both tools use, with the rag tool's tests as the safety net. |
+| `document_ids` | Optional per rag tool (`AllowDocumentIds`). The switch is part of `RagToolHash` **only when on**, so a tool saved before this spec keeps its hash, its definition and its state. New tools default to on. |
+| Test infrastructure | `QdrantFixture` already exists. `tools/Quorum.SampleKnowledgeBase` gains collections with suppliers, departments, nationalities, audiences, `is_first_chunk`, `chunk_index`, and a collection of entities (PR 5 and 6), with the deterministic embedding; integration tests build on it. The cost evidence of the spec stays in its appendix; the throwaway benchmark tool is **not** added to the repository. Time-dependent tests use `TimeProvider` (`FakeTimeProvider`). |
+| UI | Existing MudBlazor components, logic in plain classes covered by bUnit, as in plan 003: a step in `KnowledgeBaseWizard.razor`, a `Knowledge` area page and nav entry (`KnowledgeNav.razor`), a `LookupToolsSection.razor` beside `RagToolsSection.razor`, `LookupToolForm.cs` beside `RagToolForm.cs`, the calls in `QuorumApi.Knowledge.cs` and the models in `KnowledgeApiModels.cs`. |
+
+## Steps
+
+### PR 1 - Storage and mapping members (`feat/007-lookup-storage`)
+1. Entities `Lookup`, `LookupSlice`, `LookupValue` (`Domain/`), enums `LookupKind`, `LookupStatus`, `LookupUnit`; configuration in `KnowledgeBasesDbContext` with the tenant filter and the indexes of the spec; migration `AddLookups`, reversible. **Rebase on the migration of 008 first if it is in main**: the model snapshot is the conflict point.
+2. `KnowledgeBase.LookupRefreshHours` (default 24, 1 to 168) and the mapping members `CountedPoint { Path, Value }`, `EntityName`, `Listable` on `MappedField`; request and detail DTOs of `POST` and `PUT /knowledge-bases` carry them; `MappingValidation` checks them. AC-2.
+3. `LookupSliceKey` (the canonical hash of a slice's filters, D-6), with unit tests; it has no dependency on the store or on 008.
+
+### PR 2 - Manual lookups (`feat/007-manual-lookups`)
+4. `ManualLookupEndpoints` (`GET/POST/PUT/DELETE /knowledge-bases/manual-lookups`), values with label and synonyms, the 5,000 limit, name rules, scope `Global` / `Tenant` and a visibility query like `DictionaryVisibility`. AC-11, AC-40 (the `/knowledge-bases` half).
+5. `LookupReader` (paging, `search`, `sort`, cursor) over the tables and `GET /knowledge-bases/lookups/{lookupId}/values`, which every kind of lookup will use. AC-10 (the admin view; the model's view is PR 4).
+
+### PR 3 - Generations, cache and refresh (`feat/007-lookup-refresh`)
+6. Spike (a test project or test class, not shipped): HybridCache memory-only, tag removal, entry size limit and behaviour on a throwing factory against the pinned version; the findings go in this plan before step 7.
+7. `LookupStore` (write a generation, swap, delete the previous, clean a half-written one), `LookupCache` over HybridCache (key, tags, payload limit, fall back to the table on a miss or an error). AC-13, AC-18.
+8. `LookupRefreshService` (due slices, row lock, semaphore, time budget, `Stale` on failure with the last good generation kept, retry at the next trigger) behind an `ILookupComputer` that tests replace with a fake; the startup warm-up task. AC-14, AC-17.
+9. `POST /knowledge-bases/{id}/lookups/refresh` and `/lookups/{lookupId}/refresh` (202, 409 `lookup.refresh_running`), `GET /knowledge-bases/{id}/lookups`, the interval from `LookupRefreshHours` (400 outside 1 to 168 hours). Deleting a KB removes its lookups, slices and values. AC-15, AC-16, AC-20, AC-41, AC-42 (logs).
+
+### PR 4 - The lookup tool, `values` over stored lookups (`feat/007-lookup-tool`)
+10. Extract the shared parts of the rag tool (see Decisions) into internal helpers; the rag tool tests stay green with no change.
+11. `ToolOrigin.Lookup`, `ToolNaming.Lookup` (`lookup__`) and its audit server name, `Tool.CreateLookup`, the places that switch on the origin (`ToolPool.cs`, `ActiveTools.cs`, `QuorumTool.cs`, `AssistantToolsEndpoints.cs`); `LookupTool` entity and migration `AddLookupTools` in Agents.
+12. `IKnowledgeBaseLookups` (read a page, list visible lookups, declare and release slices) implemented in KnowledgeBases; Agents side: `LookupToolValidation`, `LookupToolEndpoints` (`/tools/lookup`), `lookup.in_use` through `ILookupToolUsage`, the slice limit (`lookup_tool.too_many_slices`), alias conflicts. AC-12, AC-21, AC-24, AC-25.
+13. `LookupToolDefinition` (`operation` is `values` only for now, `lookup`, `search`, `sort`, `limit`, `cursor`), `LookupToolResolver`, `LookupQuorumTool` with the result format of D-13 (header with unit, count, `as of`, flags; rows; delimiters as rag), the "being prepared" and `Failed` results, the audit entry. AC-10 (model view), AC-19, AC-26, AC-27 (values part), AC-28, AC-33, AC-34, AC-35, AC-40.
+
+### PR 5 - Qdrant lookups **[waits 008]** (`feat/007-qdrant-lookups`)
+14. The *lookups* capability on the per-kind contract (operations: distinct values, list documents, count, scan), declared by the Qdrant kind and not by others; the "not supported" outcome. Qdrant implementation: `FacetAsync`, scroll with filter, `CountAsync(exact: true)`; the version constant (1.12) and the warning at registration and verification. AC-3, AC-8.
+15. `LookupComputer` for `Computed` lookups: units (counted point, distinct document ids, chunks), the ceiling and `truncated`, the point cap, the index requirement and its `Failed` message naming the field. Slice filters are the translated fixed filters (`FilterTranslator`); a KB that does not map a field has no slice. AC-1, AC-4, AC-5, AC-6, AC-7, AC-22, AC-23.
+16. `MappingConventions` proposes the counted point (`is_first_chunk`, `first_chunk`, `is_primary`, `chunk_index` = 0); the inspection warns about unindexed listable, counted-point and `documentId` fields. Sample collections for suppliers, departments, nationalities, audiences, `is_first_chunk`, `chunk_index` in `tools/Quorum.SampleKnowledgeBase`.
+
+### PR 6 - Entity lookups **[waits PR 5]** (`feat/007-entity-lookups`)
+17. `EntityName` role in the mapping and its draft; `LookupComputer` for `Entity` lookups through the scan operation: name, up to 10 attributes, sort by a number or date attribute (`order_by` needs a range index; same `Failed` message otherwise). Sample collection of entities. AC-9.
+
+### PR 7 - Live operations **[waits PR 5]** (`feat/007-live-operations`)
+18. `IKnowledgeBaseLookups` gains `documents`, `count` and `values` with filters (exact, 15 s timeout, fixed filters in AND, filters by alias); the tool definition offers `documents` and `count` only when the binding has KBs, and exposes the fields of the binding (up to 10, aliases); cursor for `documents`; de-duplication by document id within a page when there is no counted point, bounded at 1,000 points per call. The editor warns about filters on unindexed fields. AC-27, AC-29, AC-30, AC-31, AC-32.
+
+### PR 8 - `document_ids` on rag tools **[waits 008]** (`feat/007-document-ids`)
+19. `KnowledgeBaseSearchRequest.DocumentIds`; the condition on the `documentId` role in the search path (Qdrant side here; the PgVector side is 008 A1-2); a KB without `documentId` is skipped and named; the cap of 50; `RagTool.AllowDocumentIds` and migration `AddRagToolDocumentIds` (existing rows false); `RagToolDefinition` adds `document_ids` when on; `RagToolHash` includes it only when on; `rag.document_ids_not_supported`; the warning for an unindexed `documentId`. AC-36, AC-37, AC-38, AC-39.
+
+### PR 9a - Admin UI: lookups (`feat/007-ui-lookups`)
+20. Registration wizard: a step after Mapping for listable fields, counted point, entity name and refresh interval (`KnowledgeBaseWizard.razor`, `KnowledgeBaseDraft.cs`, `MappingDraft.cs`); a Lookups page with status, unit, values, last computation, error, Refresh now; manual lookups with paste and CSV import; the nav entry. AC-43 (part).
+
+### PR 9b - Admin UI: lookup tool and rag switch (`feat/007-ui-lookup-tool`)
+21. `LookupToolsSection.razor` and `LookupToolForm.cs` (bound lookups with aliases, KBs, exposed fields, fixed filters, warnings, preview of the generated definition with its size); the `allowDocumentIds` switch in `RagToolsSection.razor`. AC-43.
+
+### PR 10 - Documentation and verification (`docs/007-closing`)
+22. The section for data owners in `docs/knowledge-bases.md` (indexes, counted point, entity collection), `docs/deferred.md`, `docs/database-schema.md` (see Details to confirm), the README of the sample project. AC-44.
+23. End-to-end check with the sample collections and a real model through the LiteLLM proxy (project memory), covering "list the suppliers", "suppliers with the most contracts", "policies for managers", "Italian teams" and a `documents` then `rag` with `document_ids` sequence; record what the model got wrong.
+
+## Acceptance criteria by PR
+| PR | Acceptance criteria |
+|---|---|
+| 1 | AC-2 |
+| 2 | AC-10 (admin view), AC-11, AC-40 (`/knowledge-bases`) |
+| 3 | AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-20, AC-41, AC-42 |
+| 4 | AC-10 (model view), AC-12, AC-19, AC-21, AC-24, AC-25, AC-26, AC-27 (values), AC-28, AC-33, AC-34, AC-35, AC-40 (`/tools/lookup`) |
+| 5 | AC-1, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-22, AC-23 |
+| 6 | AC-9 |
+| 7 | AC-27 (live), AC-29, AC-30, AC-31, AC-32 |
+| 8 | AC-36, AC-37, AC-38, AC-39 |
+| 9a, 9b | AC-43 |
+| 10 | AC-44 |
+
+Every AC from AC-1 to AC-44 appears once as a main owner.
+
+## Order and parallel work
+- Start now, in this order of merge: PR 1, PR 2, PR 3, PR 4 (each rebased on `main`; the migrations of PR 1 and PR 4 wait for the migration of 008 if it lands first).
+- After 008 PR 1: PR 5, then PR 6 and PR 7 in parallel (disjoint files except `IKnowledgeBaseLookups`); PR 8 can run beside PR 5.
+- UI PRs follow the backend PR they need; PR 10 is last.
+
+## Risks
+- **008 sequencing.** Its first PR may slip. Mitigation: PRs 1 to 4 do not touch the connector; the capability seam in PR 5 is small; if 008 stays late, PR 5 is the only thing that blocks the visible result.
+- **Migration conflicts** in the `knowledge_base` context between 008 and PR 1. Mitigation: merge order, rebase the migration (delete and re-add, never edit a merged one), keep each reversible.
+- **HybridCache semantics.** If a behaviour the plan relies on is missing, the spike in step 6 says so before the build; the fallback is the plain `IMemoryCache` with the same keys and tags emulated by a version counter, which the design allows because the tables are the source of truth.
+- **Cost of the distinct-document fallback** (a payload scan, up to 5 million points, several seconds to minutes). Mitigation: only in the background, under the time budget and the point cap, and `truncated` when it stops.
+- **Missing payload indexes** are the main cause of `Failed` lookups. Mitigation: the inspection warnings of step 16, the message naming the field, the documentation of PR 10.
+- **Large generations** (tens of thousands of rows) written and swapped in one transaction. Mitigation: batches while writing, one short transaction for the swap, the ceiling in configuration, a test at the maximum.
+- **Row-lock scheduling** across several instances is only exercised against one database in tests. Mitigation: a test with two services over one database.
+- **Context budget.** `lookup__` definitions count in the tools segment; one tool per binding, an enum of lookup names and a 6,000 character result keep it small; the preview shows the size (spec 004 D-27).
+- **Values are customer data in the platform database** and in its backups (D-9). Mitigation: only listable fields, never chunk text or titles, deletion with the KB, the data-owner guide says it.
+- **Prompt injection through values** (a value that reads like an instruction). Mitigation: delimiters with a per-request token as rag, the data label, policies of other tools unchanged.
+- **Behaviour on small models.** A model may call `documents` for what `values` answers, or ignore `truncated`. Mitigation: a short description of each operation, the unit and `as of` in every result, observed in step 23.
+
+## Details beyond the spec to confirm
+- The lookup tool binds lookups as `lookups: [{ lookupId, alias? }]` instead of the plain `lookupIds[]` of the spec's API table, so two bound lookups with the same name (a computed `nationality` and a manual one) can be told apart; a name collision without an alias is refused with `lookup_tool.alias_conflict`. This follows 003 A1-3 and the spec's D-1.
+- `countedPoint` is validated at save as a scalar (`true`, a number or a text); when its path is a mapped field the value must fit that field's type, otherwise it is checked against the type the inspection found. A value that fits no field gives `knowledge_base.invalid_counted_point`.
+- `docs/database-schema.md` is **not tracked in `main`**: it is an untracked file in the author's checkout. Spec 007 and 008 both say to update it. Either it is committed on its own before PR 3, or PR 10 adds it with the lookup tables; in the meantime PRs 1 to 9 describe their tables in the PR description.
+- The refresh service ticks every minute; a due slice can start up to a minute late. A computation started by the *Refresh now* button runs on the same service, not inline.
+- `search` on a lookup is a substring match, case-insensitive, without accent folding.
+- A `documents` page when there is no counted point may hold fewer documents than the limit (spec edge case); the cursor still advances.
+- The ceiling and the time budget are read from configuration at startup; changing them needs a restart.
+- `Microsoft.Extensions.Caching.Hybrid` is a new dependency of the KnowledgeBases project only; its exact version is chosen in PR 3 after the spike.
