@@ -1,6 +1,6 @@
 # Spec 009: Pinecone Knowledge Bases
 
-**Status:** Approved (2026-10-22)
+**Status:** Approved (2026-10-22). Amendment 1 (ready for lookups, spec 007) approved 2026-10-22.
 **Date:** 2026-10-22
 
 ## Problem
@@ -48,6 +48,24 @@ Decisions of spec 003 and of spec 008 not listed here stand for this kind too: d
 | D-14 | **UI** in separate PRs after the backend, as 003 D-19 and 008 D-17: the wizard shows the Pinecone fields, lists indexes and namespaces, reviews the mapping with the unit of each date, verifies and runs a test search. The other kinds do not change. |
 | D-15 | **Development and tests.** Pinecone Local, the official emulator, **reached end of life on 2026-10-07**; the replacement (a Prism mock of the OpenAPI specs) returns fixed example responses and stores nothing, so it cannot test ranking or filters. For the data plane the plan evaluates the official **`pinecone-index`** image (the single-index emulator that Pinecone Local used to start; no control plane of its own, so a small in-process stub serves the two control-plane calls); it must be pinned by digest, because `latest` belongs to a product that no longer evolves, and verified to support the calls of D-9 and `describe_index_stats` and to accept the pinned API version. If it does not, an emulator of our own in the repo (a small ASP.NET server with exact in-memory search) takes its place; this is a decision of the plan, with that fallback. The sample project seeds sample indexes with the deterministic embeddings of spec 003 (flat metadata, a list of tags, a date as a Unix timestamp in seconds and another in milliseconds, a numeric key and a string that look alike, a different dimension, an empty namespace, several namespaces, a pasteable schema). A **contract suite** that runs only by hand against a real Pinecone project (API key from an environment variable, never in CI) checks that the emulator and the real service agree on scores, filters and errors. |
 | D-16 | **Unchanged:** permissions (`knowledge_base.manage`), scopes and the rule between scopes, tenant isolation (a tenant never sees the connection of another tenant's KB), audit of rag calls, logs with ids, counts, durations and codes only (never the API key, the queries or the chunks), lifecycle (deleting a KB deletes the registration only), and the test search. |
+
+## Amendment 1: ready for lookups (spec 007)
+**Status:** Approved (2026-10-22). Spec 007 (metadata lookups, approved 2026-10-22) extends the per-kind contract of spec 008 with an optional capability (007 D-15), adds a condition on the `documentId` role to the search (007 D-14) and new members to the mapping (007 D-2, D-3, D-4). Amendment 1 of spec 008 defines the contract side (capabilities, the condition, the order of work); this one says how the Pinecone kind receives them. D-9 and D-11 gain the points below; everything else stands.
+
+| # | Decision |
+|---|---|
+| A1-1 | **No optional capability.** Pinecone declares no optional capability of the contract (008 A1-1), so a Pinecone KB reports lookups as not supported. The reason is the service itself: it has no facet or aggregation, and listing the distinct values of a key would mean listing and fetching every record of a serverless namespace (and pods cannot list). A design for that belongs to its own amendment, if a customer needs it. |
+| A1-2 | **Condition on `documentId`.** The search of D-9 accepts the **"document id is any of these"** condition (008 A1-2; the `document_ids` of 007 D-14: strings, at most 50), combined in AND with the other clauses. It applies to the metadata key mapped to the `documentId` role. Pinecone's `$in` is typed and the mapping does not record whether the key holds strings or numbers, so the clause matches both: the ids as strings, and, for each id that is an integer or a decimal number, the same id as a number, in an `$or` of two `$in`. A record whose key has any other type, or a value that is not in the list, does not match; an id that matches no form matches nothing and is not an error. The 50 ids are far below the 10,000 values an `$in` accepts. A KB that has not mapped `documentId` is skipped by the caller (003 D-12), never searched without the condition. |
+| A1-3 | **Verification warning.** The warning of D-11 about keys that a pod-based index does not filter on (`metadata_config`) also covers the key mapped to `documentId`, even though it is a role and not a dictionary field: a search with `document_ids` on it would fail or be slow. Serverless indexes filter on every key and give no warning. |
+| A1-4 | **Mapping members of spec 007.** The roles `countedPoint` and `entityName` and the flag `listable` are **refused** for a Pinecone KB (400 `knowledge_base.lookups_not_supported`, 007 AC-3) while it has no lookups capability. They are additive in the stored mapping, alongside the `epochUnit` that D-7 adds to a mapped field, so mappings saved before are unaffected. |
+| A1-5 | **Order.** This spec follows spec 008: the contract and its capabilities exist before the Pinecone connector is written. |
+
+**Acceptance criteria** (added to the list of this spec):
+- **AC-35** Given a consumer that asks a Pinecone KB for the lookups capability, Then it gets a "not supported" outcome and no call is made to Pinecone.
+- **AC-36** Given a rag tool with `document_ids` over a Pinecone KB whose `documentId` key holds strings in some records and numbers in others, When it is called, Then the query matches the records of those documents of both kinds, in AND with the other clauses.
+- **AC-37** Given an id that is not a number and a `documentId` key that holds numbers, When searching, Then that id matches nothing and the search succeeds; given a KB without `documentId` mapped, Then it is skipped and named.
+- **AC-38** Given a mapping of a Pinecone KB that marks a field `listable` or sets `countedPoint` or `entityName`, When saving, Then it returns 400 `knowledge_base.lookups_not_supported`; given a mapping without them, Then it saves as before.
+- **AC-39** Given a pod-based index whose `metadata_config` leaves out the key mapped to `documentId`, When verifying, Then a warning says so and the status is unchanged; given a serverless index, Then there is none.
 
 ## Domain Model
 Only the KB's kind-specific settings and one attribute of the mapping change; the platform database gets no new table.
@@ -159,6 +177,7 @@ Unchanged from specs 003 and 008: `knowledge_base.manage` for every `/knowledge-
 | Whether the official `pinecone-index` image is enough for the data plane of the tests | Verified by a spike in the plan; if not, an emulator of our own in the repo (D-15) | The spike in the plan |
 | Moving to a newer API version | `2026-07` pinned (D-12) | Pinecone announces the retirement of 2026-07 (supported at least 12 months), or a feature we need |
 | An official or maintained .NET SDK for the current API | Our thin REST client (D-12) | Pinecone ships a maintained SDK with the current API |
+| Lookups (spec 007) for Pinecone: distinct values with counts, list documents, count | Not supported; the mapping members of 007 are refused (A1-4). There is no facet, so counts and values would need a full list and fetch of a serverless namespace | A customer on Pinecone that needs lists and counts; a decision of its own amendment |
 
 ## Open Questions
 _None._

@@ -1,6 +1,6 @@
 # Spec 008: pgvector Knowledge Bases
 
-**Status:** Approved (2026-10-22)
+**Status:** Approved (2026-10-22). Amendment 1 (ready for lookups, spec 007) approved 2026-10-22.
 **Date:** 2026-10-22
 
 ## Problem
@@ -55,6 +55,24 @@ Decisions of spec 003 not listed here stand for this kind too: dictionary, mappi
 | D-18 | **Development and tests.** `tools/Quorum.SampleKnowledgeBase` also creates sample relations in a separate database of the dev compose's PostgreSQL (the image already ships pgvector), covering: flat columns; a LangChain-style table with `jsonb` metadata; `text[]` tags; a filtered column without index; two vector columns; `halfvec`; a column with unspecified dimensions; a different dimension; an empty table; a view; HNSW with cosine, IVFFlat with L2 and a table with no vector index; names with capitals and spaces; a column whose name has a dot; and a pasteable schema. Integration tests reuse the generator with the deterministic fake embeddings of spec 003, on a Testcontainers PostgreSQL with pgvector (same image as the dev compose). |
 | D-19 | **Unchanged from spec 003:** permissions (`knowledge_base.manage`), scopes and the rule between scopes, tenant isolation (a tenant never sees the connection of another tenant's KB), audit of rag calls, logs with ids, counts, durations and codes only (never the connection string, the password, SQL text, queries or chunks), lifecycle (deleting a KB deletes the registration only), and the test search. |
 | D-20 | **Compose profile.** The base `docker-compose.yml` gets an optional profile `pgvector` with a PostgreSQL that has the extension (`pgvector/pgvector` image, pinned like the Qdrant one), **separate from the platform's database** and not started by default; it is a convenient default target for data owners and Quorum only reads from it. Inside the compose network a KB registers it by service name. Its published port stays on loopback (as Qdrant's) and its credentials are set from `.env`, never fixed in the file. The profile combines with `bundled-db` and `qdrant`; the platform database is never reused for knowledge bases (003 D-6). The integration tests read the image version from the compose file, as they do for Qdrant, and the header comment of the file lists the profile. |
+
+## Amendment 1: ready for lookups (spec 007)
+**Status:** Approved (2026-10-22). Spec 007 (metadata lookups, approved 2026-10-22) builds on the per-kind contract of D-1: it adds an optional capability to it (007 D-15), a condition on the `documentId` role to the search (007 D-14) and new members to the mapping (007 D-2, D-3, D-4). This amendment makes the PgVector kind receive them and implements the part of 007 that applies to every kind. D-1 is changed as below; D-11 and D-13 gain the points below; everything else stands.
+
+| # | Decision |
+|---|---|
+| A1-1 | **Contract by capabilities.** The contract of D-1 is a **required core** (inspect, search, and listing the sources for the kinds that can) plus **optional capabilities** that a kind declares and that consumers ask for, never assume. A consumer that needs a capability the KB's kind does not declare gets a clear "not supported" outcome, not an exception. The first optional capability is **lookups** (007 D-15: distinct values, list documents, count, scan); its operations are defined by spec 007, not here. PgVector declares **no** optional capability in this spec, so a PgVector KB reports lookups as not supported. |
+| A1-2 | **Condition on `documentId`.** The search of D-11 accepts, besides the conditions on mapped fields, a **"document id is any of these"** condition (the `document_ids` of 007 D-14: strings, at most 50), always combined in AND with the others. It applies to the column or key mapped to the `documentId` role and follows **the type of that column**: text types → equality to any of the strings; integer types, `numeric` and `uuid` → the ids are converted to that type and compared with it; a `json`/`jsonb` key → compared as text. An id that cannot be converted to the column's type **matches nothing** and is not an error. The column is never cast to text, so an index on it can be used. A KB that has not mapped `documentId` is skipped by the caller (003 D-12), never searched without the condition. |
+| A1-3 | **Verification warning.** D-13 adds one warning that never changes the status: the column mapped to `documentId` has no index, so a search with `document_ids` can be slow (007 D-14 asks for it). |
+| A1-4 | **Mapping members of spec 007.** The mapping gains the roles `countedPoint` and `entityName` and the flag `listable` on a mapped field. For a PgVector KB they are **refused** while the kind has no lookups capability: a mapping that sets any of them returns 400 `knowledge_base.lookups_not_supported` (007 AC-3). They are additive in the stored mapping, so mappings saved before are unaffected. |
+| A1-5 | **Order.** Spec 007 depends on the first step of this spec: Qdrant moved behind the contract with no change of behaviour (D-1, AC-1). The plan makes that its first PR and lands it before the lookups backend of spec 007; the PgVector connector can then proceed in parallel with it. |
+
+**Acceptance criteria** (added to the list of this spec):
+- **AC-39** Given a consumer that asks a KB's kind for the lookups capability, When the kind does not declare it (PgVector), Then it gets a "not supported" outcome and nothing is sent to the database.
+- **AC-40** Given a rag tool with `document_ids` over a PgVector KB whose `documentId` is a text column, an integer column, a `uuid` column or a `jsonb` key, When it is called, Then only rows of those documents are searched, in AND with the filters, and the comparison uses the column's own type.
+- **AC-41** Given an id that cannot be converted to the type of the `documentId` column (for example `abc` for an integer column), When searching, Then it matches nothing and the search succeeds; given a KB without `documentId` mapped, Then it is skipped and named.
+- **AC-42** Given a mapping of a PgVector KB that marks a field `listable` or sets `countedPoint` or `entityName`, When saving, Then it returns 400 `knowledge_base.lookups_not_supported`; given a mapping without them, Then it saves as before.
+- **AC-43** Given a `documentId` column with no index, When verifying, Then a warning says so and the status is unchanged.
 
 ## Domain Model
 Only the KB's kind-specific settings change; every other entity of spec 003 stands. The platform database gets no new table.
@@ -179,6 +197,7 @@ Unchanged from spec 003: `knowledge_base.manage` for every `/knowledge-bases` ro
 | Foreign tables and other relation kinds in the list | Not listed (a view over them works) | A concrete need |
 | Tuning the index search (`ef_search`, `probes`, scan limits) per KB | Server defaults plus iterative scan (D-12) | Recall or latency problems on large tables |
 | Writing a sampling strategy better than physical order (random sample) | First 100 rows (D-10) | Tables ordered so that the first rows are not representative |
+| Lookups (spec 007) for PgVector: distinct values with counts (a `GROUP BY`), list documents, count, scan | Not supported; the mapping members of 007 are refused (A1-4) | A customer on PgVector that needs lists and counts; a decision of its own amendment |
 
 ## Open Questions
 _None._ The one question raised while drafting (an optional pgvector profile in the base compose file) was answered in review on 2026-10-22: yes, in this spec (D-20, AC-38).
