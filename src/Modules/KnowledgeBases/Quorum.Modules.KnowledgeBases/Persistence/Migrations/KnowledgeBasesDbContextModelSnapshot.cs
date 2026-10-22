@@ -213,6 +213,9 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ComputedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("ComputingSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("CurrentGeneration")
                         .HasColumnType("integer");
 

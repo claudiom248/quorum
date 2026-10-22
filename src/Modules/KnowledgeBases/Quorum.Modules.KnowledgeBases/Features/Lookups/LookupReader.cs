@@ -1,7 +1,4 @@
-using System.Buffers.Text;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Persistence;
@@ -28,7 +25,8 @@ internal sealed record LookupPageValue(string Value, string? Label, IReadOnlyLis
 internal sealed record LookupPage(IReadOnlyList<LookupPageValue> Values, string? Cursor, bool CursorRestarted);
 
 /// <summary>
-/// Reads a page of the current generation of one slice from the tables (spec 007 D-12). It is the one reader of every kind of lookup.
+/// Reads a page of the current generation of one slice from the tables (spec 007 D-12). It is the one reader of every kind of lookup
+/// when the cache cannot answer, and the source the cache is filled from.
 /// The caller has already decided that the tenant may see the slice's lookup, so the tenant filter is off here: a manual lookup
 /// another tenant shares is read through the owner's rows.
 /// </summary>
@@ -40,8 +38,6 @@ internal static class LookupReader
 
     private const string EscapeCharacter = "\\";
 
-    private static readonly Error InvalidCursor = Error.Validation("lookup.invalid_cursor", "The cursor was not returned by this lookup in this order.");
-
     public static async Task<Result<LookupPage>> ReadAsync(KnowledgeBasesDbContext db, LookupSlice slice, LookupPageRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -49,23 +45,16 @@ internal static class LookupReader
         ArgumentNullException.ThrowIfNull(request);
 
         var limit = Math.Clamp(request.Limit, 1, MaxLimit);
-        var cursor = Cursor.Parse(request.Cursor);
-        var unreadable = cursor is null && !string.IsNullOrEmpty(request.Cursor);
-        if (unreadable || (cursor is not null && cursor.Sort != request.Sort))
+        var resolved = LookupCursor.Resolve(request, slice);
+        if (!resolved.IsSuccess)
         {
-            return InvalidCursor;
+            return resolved.Error;
         }
 
-        // No generation yet: nothing to read, and a cursor cannot have come from here.
+        var (cursor, restarted) = (resolved.Value.After, resolved.Value.Restarted);
         if (slice.CurrentGeneration == 0)
         {
-            return new LookupPage([], null, cursor is not null);
-        }
-
-        var restarted = cursor is not null && cursor.Generation != slice.CurrentGeneration;
-        if (restarted)
-        {
-            cursor = null;
+            return new LookupPage([], null, restarted);
         }
 
         var generation = slice.CurrentGeneration;
@@ -82,7 +71,7 @@ internal static class LookupReader
         // One more than the page tells whether there is a next one without counting.
         var rows = await Order(values, request.Sort, cursor).Take(limit + 1).ToListAsync(cancellationToken);
         var page = rows.Take(limit).ToList();
-        var next = rows.Count > limit ? Cursor.Encode(generation, request.Sort, page[^1]) : null;
+        var next = rows.Count > limit ? LookupCursor.Encode(generation, request.Sort, page[^1].Position, page[^1].Value) : null;
 
         return new LookupPage(
             [.. page.Select(v => new LookupPageValue(v.Value, v.Label, v.Synonyms, v.DocumentCount, v.Attributes))],
@@ -91,7 +80,7 @@ internal static class LookupReader
     }
 
     [SuppressMessage("Globalization", "CA1309:Use ordinal string comparison", Justification = "Translated to SQL: the comparison uses the collation of the column, as the ORDER BY next to it does.")]
-    private static IQueryable<LookupValue> Order(IQueryable<LookupValue> values, LookupSort sort, Cursor? after)
+    private static IQueryable<LookupValue> Order(IQueryable<LookupValue> values, LookupSort sort, LookupCursor? after)
     {
         if (sort == LookupSort.Count)
         {
@@ -116,38 +105,4 @@ internal static class LookupReader
         .Replace(EscapeCharacter, EscapeCharacter + EscapeCharacter, StringComparison.Ordinal)
         .Replace("%", EscapeCharacter + "%", StringComparison.Ordinal)
         .Replace("_", EscapeCharacter + "_", StringComparison.Ordinal);
-
-    /// <summary>Opaque to the client: the generation it was issued for, the order and the last row it reached.</summary>
-    private sealed record Cursor(
-        [property: JsonPropertyName("g")] int Generation,
-        [property: JsonPropertyName("s")] LookupSort Sort,
-        [property: JsonPropertyName("p")] int? Position,
-        [property: JsonPropertyName("v")] string? Value)
-    {
-        private static readonly JsonSerializerOptions Options = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
-
-        public static string Encode(int generation, LookupSort sort, LookupValue last) =>
-            Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(
-                new Cursor(generation, sort, last.Position, sort == LookupSort.Name ? last.Value : null),
-                Options));
-
-        /// <summary>The cursor in <paramref name="text"/>, or <see langword="null"/> when there is none or it cannot be one of ours.</summary>
-        public static Cursor? Parse(string? text)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return null;
-            }
-
-            try
-            {
-                var cursor = JsonSerializer.Deserialize<Cursor>(Base64Url.DecodeFromChars(text), Options);
-                return cursor is { Generation: > 0, Position: not null } && (cursor.Sort == LookupSort.Count || cursor.Value is not null) ? cursor : null;
-            }
-            catch (Exception exception) when (exception is JsonException or FormatException or ArgumentException)
-            {
-                return null;
-            }
-        }
-    }
 }

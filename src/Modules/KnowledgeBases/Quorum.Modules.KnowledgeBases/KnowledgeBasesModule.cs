@@ -1,7 +1,9 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.KnowledgeBases.Features.Registry;
 using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
@@ -30,6 +32,17 @@ public static class KnowledgeBasesModule
         services.AddScoped<IKnowledgeBaseSearch, KnowledgeBaseSearch>();
         services.AddScoped<IKnowledgeBaseCatalog, KnowledgeBaseCatalog>();
         services.AddSingleton<KnowledgeBaseSecretProtector>();
+
+        services.AddHybridCache();
+        services.AddOptions<LookupOptions>().BindConfiguration(LookupOptions.SectionName).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<LookupOptions>, LookupOptionsValidator>();
+        services.AddSingleton<LookupCache>();
+        services.AddSingleton<LookupRefreshSignal>();
+        services.AddSingleton<LookupRefresher>();
+        services.AddScoped<LookupStore>();
+        services.AddSingleton<ILookupComputer, UnavailableLookupComputer>();
+        services.AddHostedService<LookupRefreshService>();
+        services.AddHostedService<LookupCacheWarmup>();
 
         return services;
     }

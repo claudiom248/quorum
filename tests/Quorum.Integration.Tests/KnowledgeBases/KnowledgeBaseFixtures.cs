@@ -14,7 +14,8 @@ internal static class KnowledgeBaseFixtures
         string collection,
         KnowledgeBaseScope scope,
         IEnumerable<Guid> scopeTenantIds,
-        IEnumerable<Guid>? mappedFieldIds = null)
+        IEnumerable<Guid>? mappedFieldIds = null,
+        int lookupRefreshHours = KnowledgeBase.DefaultLookupRefreshHours)
     {
         var now = DateTimeOffset.UtcNow;
         var registration = KnowledgeBase.Create(
@@ -29,7 +30,8 @@ internal static class KnowledgeBaseFixtures
             scope,
             scopeTenantIds,
             scopeAssistantIds: [],
-            now);
+            now,
+            lookupRefreshHours);
         registration.MarkAvailable(now);
         return registration;
     }

@@ -13,6 +13,7 @@ using Quorum.Modules.Agents.Embeddings;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
@@ -56,6 +57,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     /// <summary>A built-in tool that tests script: register its row with <see cref="ToolFixtures"/> and set <see cref="ProbeTool.Handler"/>.</summary>
     public ProbeTool Probe { get; } = new();
+
+    /// <summary>Computes the lookups of the app: tests script <see cref="FakeLookupComputer.Handler"/>.</summary>
+    internal FakeLookupComputer LookupComputer { get; } = new();
 
     public static QuorumApp Start(string connectionString, string? dataProtectionKeysPath = null, FakeTimeProvider? clock = null)
     {
@@ -187,6 +191,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             // Hundreds of tests sign in or create a user: the production iteration count would dominate their time.
             services.Configure<PasswordHasherOptions>(options => options.IterationCount = 1_000);
             services.AddSingleton<IBuiltinTool>(Probe);
+            services.AddSingleton<ILookupComputer>(LookupComputer);
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);

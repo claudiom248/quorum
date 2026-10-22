@@ -29,6 +29,7 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
     private static async Task<Results<Ok<LookupValuesDto>, NotFound, ProblemHttpResult>> ReadAsync(
         Guid lookupId,
         KnowledgeBasesDbContext db,
+        LookupCache cache,
         string? slice,
         string? search,
         string? sort,
@@ -55,7 +56,7 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
             return TypedResults.NotFound();
         }
 
-        var page = await LookupReader.ReadAsync(db, found, new LookupPageRequest(search, order, limit ?? LookupReader.DefaultLimit, cursor), cancellationToken);
+        var page = await cache.ReadAsync(db, lookup, found, new LookupPageRequest(search, order, limit ?? LookupReader.DefaultLimit, cursor), cancellationToken);
         return page.IsSuccess
             ? TypedResults.Ok(LookupValuesDto.From(lookup, found, page.Value))
             : page.Error.ToProblem();
