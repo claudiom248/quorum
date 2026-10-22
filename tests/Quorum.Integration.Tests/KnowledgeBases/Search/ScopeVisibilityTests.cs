@@ -1,6 +1,7 @@
 using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Search;
+using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Modules.KnowledgeBases.Mapping;
 
 namespace Quorum.Integration.Tests.KnowledgeBases.Search;
@@ -26,7 +27,8 @@ public sealed class ScopeVisibilityTests
             owner,
             "kb",
             "A knowledge base.",
-            new QdrantConnectionSettings("http://qdrant.test:6334", "docs", null, null),
+            KnowledgeBaseKind.Qdrant,
+            ConnectionSettings.From(new QdrantConnectionSettings("http://qdrant.test:6334", "docs", null, null)),
             "model",
             null,
             new KnowledgeBaseMapping(new MappingRoles("text", null, null, null, null), []),

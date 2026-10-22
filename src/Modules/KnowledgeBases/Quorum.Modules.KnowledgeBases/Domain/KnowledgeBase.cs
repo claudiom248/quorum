@@ -18,8 +18,6 @@ internal enum KnowledgeBaseScope
     Assistant,
 }
 
-/// <summary>Where a Qdrant knowledge base lives. The key is the encrypted one: the plain key never reaches the database.</summary>
-internal sealed record QdrantConnectionSettings(string Url, string Collection, string? VectorName, string? ProtectedApiKey);
 
 /// <summary>A metadata field of the payload bound to a dictionary field.</summary>
 internal sealed record MappedField(string Path, Guid DictionaryFieldId);
@@ -73,7 +71,7 @@ internal sealed class KnowledgeBase
 
     public KnowledgeBaseKind Kind { get; private set; }
 
-    public QdrantConnectionSettings Connection { get; private set; } = null!;
+    public ConnectionSettings Connection { get; private set; } = null!;
 
     public string EmbeddingModel { get; private set; } = null!;
 
@@ -104,7 +102,8 @@ internal sealed class KnowledgeBase
         Guid tenantId,
         string name,
         string description,
-        QdrantConnectionSettings connection,
+        KnowledgeBaseKind kind,
+        ConnectionSettings connection,
         string embeddingModel,
         string? queryPrefix,
         KnowledgeBaseMapping mapping,
@@ -117,7 +116,7 @@ internal sealed class KnowledgeBase
             TenantId = tenantId,
             Name = name,
             Description = description,
-            Kind = KnowledgeBaseKind.Qdrant,
+            Kind = kind,
             Connection = connection,
             EmbeddingModel = embeddingModel,
             QueryPrefix = queryPrefix,
@@ -133,7 +132,8 @@ internal sealed class KnowledgeBase
     public void Edit(
         string name,
         string description,
-        QdrantConnectionSettings connection,
+        KnowledgeBaseKind kind,
+        ConnectionSettings connection,
         string embeddingModel,
         string? queryPrefix,
         KnowledgeBaseMapping mapping,
@@ -144,6 +144,7 @@ internal sealed class KnowledgeBase
     {
         Name = name;
         Description = description;
+        Kind = kind;
         Connection = connection;
         EmbeddingModel = embeddingModel;
         QueryPrefix = queryPrefix;

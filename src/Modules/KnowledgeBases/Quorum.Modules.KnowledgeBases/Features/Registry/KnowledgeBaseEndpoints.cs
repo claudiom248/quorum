@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Modules.KnowledgeBases.Storage;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
 
@@ -35,7 +36,7 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
         return TypedResults.Ok(registrations.Select(k => KnowledgeBaseListItem.From(k, db.CurrentTenantId)).ToList());
     }
 
-    private static async Task<Results<Ok<KnowledgeBaseDetail>, ProblemHttpResult>> GetAsync(Guid id, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<KnowledgeBaseDetail>, ProblemHttpResult>> GetAsync(Guid id, KnowledgeBasesDbContext db, StoreAdapters adapters, CancellationToken cancellationToken)
     {
         if (await KnowledgeBaseVisibility.KnowledgeBases(db).AsNoTracking().SingleOrDefaultAsync(k => k.Id == id, cancellationToken) is not { } registration)
         {
@@ -51,7 +52,7 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
         var ids = registration.Mapping.Fields.Select(f => f.DictionaryFieldId).ToList();
         var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => ids.Contains(f.Id)).ToListAsync(cancellationToken);
         var names = fields.ToDictionary(f => f.Id, f => (f.Name, f.Cluster));
-        return TypedResults.Ok(KnowledgeBaseDetail.Owned(registration, names, TestSearchNames.ForMapped(fields)));
+        return TypedResults.Ok(KnowledgeBaseDetail.Owned(registration, adapters.For(registration.Kind).Describe(registration.Connection), names, TestSearchNames.ForMapped(fields)));
     }
 
     private static async Task<Results<Created<RegisteredResponse>, ProblemHttpResult>> CreateAsync(

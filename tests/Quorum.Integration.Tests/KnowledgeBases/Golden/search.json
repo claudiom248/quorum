@@ -1,0 +1,905 @@
+{
+  "test-search": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "score": 1,
+          "text": "Passwords must have at least fourteen characters and are changed only when compromised. Multi factor authentication is mandatory for every system that holds company data.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "security",
+            "title": "Password and access policy",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/security"
+          }
+        },
+        {
+          "score": 0.353,
+          "text": "The office is open from seven to nineteen on working days. Visitors must be registered at the reception and wear a badge.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "office",
+            "title": "Office access",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/office"
+          }
+        },
+        {
+          "score": 0.26,
+          "text": "Travel expenses are reimbursed within thirty days with receipts attached. Flights must be booked in economy class for journeys shorter than six hours.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "travel",
+            "title": "Travel expense rules",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/travel"
+          }
+        }
+      ],
+      "notes": []
+    }
+  },
+  "test-search-default-limit": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "leave",
+            "title": "Annual leave policy",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/leave"
+          }
+        },
+        {
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "leave",
+            "title": "Annual leave policy",
+            "position": "2",
+            "url": "https://intranet.example.test/policies/leave"
+          }
+        },
+        {
+          "score": 0.3208,
+          "text": "Employees may work remotely up to three days per week after agreement with the manager. Remote workers must be reachable during core hours.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "remote",
+            "title": "Remote work guidelines",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/remote"
+          }
+        },
+        {
+          "score": 0.2703,
+          "text": "New employees receive a laptop, badge and accounts on their first day. The buddy introduces the team and the tools during the first week.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "onboarding",
+            "title": "Onboarding checklist",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/onboarding"
+          }
+        },
+        {
+          "score": 0.2166,
+          "text": "Confidential information may not be shared outside the company without written approval. The obligation continues for five years after the end of employment.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "nda",
+            "title": "Confidentiality agreement",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/nda"
+          }
+        }
+      ],
+      "notes": []
+    }
+  },
+  "test-search-text-filter": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "leave",
+            "title": "Annual leave policy",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/leave"
+          }
+        },
+        {
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "leave",
+            "title": "Annual leave policy",
+            "position": "2",
+            "url": "https://intranet.example.test/policies/leave"
+          }
+        },
+        {
+          "score": 0.3208,
+          "text": "Employees may work remotely up to three days per week after agreement with the manager. Remote workers must be reachable during core hours.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "remote",
+            "title": "Remote work guidelines",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/remote"
+          }
+        },
+        {
+          "score": 0.2703,
+          "text": "New employees receive a laptop, badge and accounts on their first day. The buddy introduces the team and the tools during the first week.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "onboarding",
+            "title": "Onboarding checklist",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/onboarding"
+          }
+        },
+        {
+          "score": 0.2166,
+          "text": "Confidential information may not be shared outside the company without written approval. The obligation continues for five years after the end of employment.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "nda",
+            "title": "Confidentiality agreement",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/nda"
+          }
+        }
+      ],
+      "notes": []
+    }
+  },
+  "test-search-ranges": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "leave",
+            "title": "Annual leave policy",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/leave"
+          }
+        },
+        {
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "leave",
+            "title": "Annual leave policy",
+            "position": "2",
+            "url": "https://intranet.example.test/policies/leave"
+          }
+        },
+        {
+          "score": 0.0654,
+          "text": "Lost or stolen devices must be reported to the security desk within one hour. The device is wiped remotely and access tokens are revoked.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "security",
+            "title": "Password and access policy",
+            "position": "2",
+            "url": "https://intranet.example.test/policies/security"
+          }
+        },
+        {
+          "score": -0.0667,
+          "text": "Passwords must have at least fourteen characters and are changed only when compromised. Multi factor authentication is mandatory for every system that holds company data.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "security",
+            "title": "Password and access policy",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/security"
+          }
+        }
+      ],
+      "notes": []
+    }
+  },
+  "test-search-boolean": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "score": 0.2166,
+          "text": "Confidential information may not be shared outside the company without written approval. The obligation continues for five years after the end of employment.",
+          "source": {
+            "knowledgeBase": "flat",
+            "documentId": "nda",
+            "title": "Confidentiality agreement",
+            "position": "1",
+            "url": "https://intranet.example.test/policies/nda"
+          }
+        }
+      ],
+      "notes": []
+    }
+  },
+  "test-search-invalid-filter": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "\u0027year_min\u0027 must be a number.",
+      "code": "knowledge_base.invalid_filter"
+    }
+  },
+  "test-search-unknown-filter": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "\u0027nothing\u0027 is not a filter.",
+      "code": "knowledge_base.invalid_filter"
+    }
+  },
+  "test-search-no-query": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The query is required.",
+      "code": "knowledge_base.invalid_search"
+    }
+  },
+  "test-search-limit-out-of-range": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The number of results must be between 1 and 20.",
+      "code": "knowledge_base.invalid_search"
+    }
+  },
+  "test-search-unknown-knowledge-base": {
+    "status": 404,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+      "title": "Not Found",
+      "status": 404,
+      "detail": "The knowledge base does not exist.",
+      "code": "knowledge_base.not_found"
+    }
+  },
+  "test-search-empty-collection": {
+    "status": 200,
+    "body": {
+      "results": [],
+      "notes": []
+    }
+  },
+  "test-search-collection-dropped": {
+    "status": 422,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc4918#section-11.2",
+      "title": "Unprocessable Entity",
+      "status": 422,
+      "detail": "The collection was not found.",
+      "code": "knowledge_base.unavailable"
+    }
+  },
+  "test-search-dimension-mismatch": {
+    "status": 422,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc4918#section-11.2",
+      "title": "Unprocessable Entity",
+      "status": 422,
+      "detail": "The server rejected the query. Usually the collection\u0027s vectors have a different size than the embedding model\u0027s, or the vector name does not exist: ingestion and retrieval must use the same model.",
+      "code": "knowledge_base.unavailable"
+    }
+  },
+  "test-search-unreachable": {
+    "status": 422,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc4918#section-11.2",
+      "title": "Unprocessable Entity",
+      "status": 422,
+      "detail": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333.",
+      "code": "knowledge_base.unavailable"
+    }
+  },
+  "test-search-wrong-key": {
+    "status": 422,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc4918#section-11.2",
+      "title": "Unprocessable Entity",
+      "status": 422,
+      "detail": "The server refused the API key (or needs one).",
+      "code": "knowledge_base.unavailable"
+    }
+  },
+  "test-search-with-key": {
+    "status": 200,
+    "body": {
+      "results": [
+        {
+          "score": 1,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "source": {
+            "knowledgeBase": "keyed",
+            "documentId": null,
+            "title": null,
+            "position": null,
+            "url": null
+          }
+        },
+        {
+          "score": 0.5604,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "source": {
+            "knowledgeBase": "keyed",
+            "documentId": null,
+            "title": null,
+            "position": null,
+            "url": null
+          }
+        }
+      ],
+      "notes": []
+    }
+  },
+  "test-search-key-unreadable": {
+    "status": 422,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc4918#section-11.2",
+      "title": "Unprocessable Entity",
+      "status": 422,
+      "detail": "The knowledge base\u0027s API key cannot be read. An administrator has to enter it again.",
+      "code": "knowledge_base.unavailable"
+    }
+  },
+  "rag-one": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Meals during business travel are reimbursed up to forty euros per day. Alcohol is never reimbursed.",
+          "documentId": "travel",
+          "title": "Travel expense rules",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/travel"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.3012,
+          "text": "Employees may work remotely up to three days per week after agreement with the manager. Remote workers must be reachable during core hours.",
+          "documentId": "remote",
+          "title": "Remote work guidelines",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/remote"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.2631,
+          "text": "Lost or stolen devices must be reported to the security desk within one hour. The device is wiped remotely and access tokens are revoked.",
+          "documentId": "security",
+          "title": "Password and access policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/security"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.1789,
+          "text": "Passwords must have at least fourteen characters and are changed only when compromised. Multi factor authentication is mandatory for every system that holds company data.",
+          "documentId": "security",
+          "title": "Password and access policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/security"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.1316,
+          "text": "The office is open from seven to nineteen on working days. Visitors must be registered at the reception and wear a badge.",
+          "documentId": "office",
+          "title": "Office access",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/office"
+        }
+      ],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-interleaved": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "nested",
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "nested",
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.3208,
+          "text": "Employees may work remotely up to three days per week after agreement with the manager. Remote workers must be reachable during core hours.",
+          "documentId": "remote",
+          "title": "Remote work guidelines",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/remote"
+        },
+        {
+          "knowledgeBase": "nested",
+          "score": 0.3208,
+          "text": "Employees may work remotely up to three days per week after agreement with the manager. Remote workers must be reachable during core hours.",
+          "documentId": "remote",
+          "title": "Remote work guidelines",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/remote"
+        }
+      ],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-threshold": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Passwords must have at least fourteen characters and are changed only when compromised. Multi factor authentication is mandatory for every system that holds company data.",
+          "documentId": "security",
+          "title": "Password and access policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/security"
+        }
+      ],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-cap": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Passwords must have at least fourteen characters and are changed only when compromised. Multi factor authentication is mandatory for every system that holds company data.",
+          "documentId": "security",
+          "title": "Password and access policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/security"
+        }
+      ],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-cap-too-small": {
+    "status": 200,
+    "body": {
+      "chunks": [],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": true
+    }
+  },
+  "rag-filters": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "nested",
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "nested",
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.2703,
+          "text": "New employees receive a laptop, badge and accounts on their first day. The buddy introduces the team and the tools during the first week.",
+          "documentId": "onboarding",
+          "title": "Onboarding checklist",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/onboarding"
+        },
+        {
+          "knowledgeBase": "nested",
+          "score": 0.2703,
+          "text": "New employees receive a laptop, badge and accounts on their first day. The buddy introduces the team and the tools during the first week.",
+          "documentId": "onboarding",
+          "title": "Onboarding checklist",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/onboarding"
+        }
+      ],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-fixed-filter": {
+    "status": 200,
+    "body": {
+      "chunks": [],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-skipped-for-a-filter": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.2703,
+          "text": "New employees receive a laptop, badge and accounts on their first day. The buddy introduces the team and the tools during the first week.",
+          "documentId": "onboarding",
+          "title": "Onboarding checklist",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/onboarding"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.0654,
+          "text": "Lost or stolen devices must be reported to the security desk within one hour. The device is wiped remotely and access tokens are revoked.",
+          "documentId": "security",
+          "title": "Password and access policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/security"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": -0.0667,
+          "text": "Passwords must have at least fourteen characters and are changed only when compromised. Multi factor authentication is mandatory for every system that holds company data.",
+          "documentId": "security",
+          "title": "Password and access policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/security"
+        }
+      ],
+      "skippedKnowledgeBases": [
+        "keyed"
+      ],
+      "failedKnowledgeBases": [],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-partial-failure": {
+    "status": 200,
+    "body": {
+      "chunks": [
+        {
+          "knowledgeBase": "flat",
+          "score": 1,
+          "text": "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.5604,
+          "text": "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.",
+          "documentId": "leave",
+          "title": "Annual leave policy",
+          "position": "2",
+          "url": "https://intranet.example.test/policies/leave"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.3208,
+          "text": "Employees may work remotely up to three days per week after agreement with the manager. Remote workers must be reachable during core hours.",
+          "documentId": "remote",
+          "title": "Remote work guidelines",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/remote"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.2703,
+          "text": "New employees receive a laptop, badge and accounts on their first day. The buddy introduces the team and the tools during the first week.",
+          "documentId": "onboarding",
+          "title": "Onboarding checklist",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/onboarding"
+        },
+        {
+          "knowledgeBase": "flat",
+          "score": 0.2166,
+          "text": "Confidential information may not be shared outside the company without written approval. The obligation continues for five years after the end of employment.",
+          "documentId": "nda",
+          "title": "Confidentiality agreement",
+          "position": "1",
+          "url": "https://intranet.example.test/policies/nda"
+        }
+      ],
+      "skippedKnowledgeBases": [],
+      "failedKnowledgeBases": [
+        {
+          "name": "unreachable",
+          "code": "knowledge_base.qdrant_unreachable",
+          "message": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333."
+        }
+      ],
+      "unusableChunks": 0,
+      "firstChunkExceededCap": false
+    }
+  },
+  "rag-all-fail-one": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.unavailable",
+      "description": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333.",
+      "type": "Unprocessable"
+    }
+  },
+  "rag-all-fail-several": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.unavailable",
+      "description": "dropped: The collection was not found. other-size: The server rejected the query. Usually the collection\u0027s vectors have a different size than the embedding model\u0027s, or the vector name does not exist: ingestion and retrieval must use the same model. unreachable: The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. wrong-key: The server refused the API key (or needs one).",
+      "type": "Unprocessable"
+    }
+  },
+  "rag-key-unreadable": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.unavailable",
+      "description": "The knowledge base\u0027s API key cannot be read. An administrator has to enter it again.",
+      "type": "Unprocessable"
+    }
+  },
+  "rag-invalid-filter": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.invalid_filter",
+      "description": "\u0027year_min\u0027 must be a number.",
+      "type": "Validation"
+    }
+  },
+  "rag-invalid-fixed-filter": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.invalid_fixed_filter",
+      "description": "A filter that the tool always applies is not valid for the knowledge bases. An administrator has to correct the tool.",
+      "type": "Validation"
+    }
+  },
+  "rag-no-filter-fits": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.filter_unsupported",
+      "description": "No knowledge base can apply these filters: they did not map the fields. Search again without the filters that are not needed.",
+      "type": "Unprocessable"
+    }
+  },
+  "rag-unknown-knowledge-base": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.not_found",
+      "description": "None of the knowledge bases can be searched.",
+      "type": "NotFound"
+    }
+  },
+  "rag-empty-query": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.invalid_search",
+      "description": "The query is required.",
+      "type": "Validation"
+    }
+  },
+  "rag-top-k-out-of-range": {
+    "status": 422,
+    "body": {
+      "code": "knowledge_base.invalid_search",
+      "description": "The number of results must be between 1 and 20.",
+      "type": "Validation"
+    }
+  },
+  "list-after-the-failures": {
+    "status": 200,
+    "body": [
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "dropped",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The collection was not found."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "empty",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "flat",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "keyed",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The knowledge base\u0027s API key cannot be read. An administrator has to enter it again."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "nested",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "other-size",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The server rejected the query. Usually the collection\u0027s vectors have a different size than the embedding model\u0027s, or the vector name does not exist: ingestion and retrieval must use the same model."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "unreachable",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "wrong-key",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The server refused the API key (or needs one)."
+      }
+    ]
+  }
+}

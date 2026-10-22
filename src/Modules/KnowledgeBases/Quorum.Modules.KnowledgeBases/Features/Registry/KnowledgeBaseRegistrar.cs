@@ -8,7 +8,7 @@ using Quorum.Modules.KnowledgeBases.Features.Inspect;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
-using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
+using Quorum.Modules.KnowledgeBases.Storage;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
@@ -24,7 +24,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
     KnowledgeBasesDbContext db,
     ITenantContext tenant,
     StoreProbe probe,
-    KnowledgeBaseSecretProtector protector,
+    StoreAdapters adapters,
     IAssistantDirectory assistants,
     TimeProvider clock,
     ILogger<KnowledgeBaseRegistrar> logger)
@@ -33,17 +33,9 @@ internal sealed partial class KnowledgeBaseRegistrar(
 
     private static readonly Error NotFound = Error.NotFound("knowledge_base.not_found", "The knowledge base does not exist.");
 
-    private static readonly Error ApiKeyRequired = Error.Validation(
-        "knowledge_base.api_key_required",
-        "The stored API key cannot be used here: enter the API key again. It is only reused for the server it was saved for, and it cannot be read if the installation's keys were replaced.");
-
     private static readonly Error FieldRemoved = Error.Conflict(
         "knowledge_base.field_removed",
         "A dictionary field of the mapping was deleted while the knowledge base was being saved. Review the mapping and try again.");
-
-    private static bool SameServer(string storedUrl, Uri url) =>
-        Uri.TryCreate(storedUrl, UriKind.Absolute, out var stored)
-        && string.Equals(stored.GetLeftPart(UriPartial.Authority), url.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
 
     public async Task<Result<RegisteredResponse>> CreateAsync(KnowledgeBaseRequest request, CancellationToken cancellationToken)
     {
@@ -62,6 +54,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
             tenantId,
             input.Name,
             input.Description,
+            input.Kind,
             input.Settings,
             input.EmbeddingModel,
             input.QueryPrefix,
@@ -103,6 +96,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
         registration.Edit(
             input.Name,
             input.Description,
+            input.Kind,
             input.Settings,
             input.EmbeddingModel,
             input.QueryPrefix,
@@ -130,18 +124,17 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return NotFound;
         }
 
-        var settings = registration.Connection;
+        var adapter = adapters.For(registration.Kind);
         var now = clock.GetUtcNow();
-        if (!protector.TryUnprotect(settings.ProtectedApiKey, out var apiKey))
+        if (!adapter.TryOpen(registration.Connection, out var connection))
         {
-            registration.MarkUnavailable(ApiKeyRequired.Description, now);
+            var required = adapter.SecretRequired;
+            registration.MarkUnavailable(required.Description, now);
             await db.SaveChangesAsync(cancellationToken);
-            return new VerificationResponse(registration.Status.ToString(), [new WarningDto(ApiKeyRequired.Code, ApiKeyRequired.Description, null)]);
+            return new VerificationResponse(registration.Status.ToString(), [new WarningDto(required.Code, required.Description, null)]);
         }
 
-        var connection = new QdrantConnection(new Uri(settings.Url), settings.Collection, apiKey, settings.VectorName);
-
-        var found = await probe.RunAsync(connection, registration.EmbeddingModel, sample: true, cancellationToken);
+        var found = await probe.RunAsync(adapter, connection, registration.EmbeddingModel, sample: true, cancellationToken);
         var verdict = Evaluate(found, registration.Mapping);
         Apply(registration, verdict, now);
         await db.SaveChangesAsync(cancellationToken);
@@ -158,7 +151,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return basics.Error;
         }
 
-        var (name, description, queryPrefix, scope, scopeTenantIds, scopeAssistantIds, roles, requestedFields, connection, model) = basics.Value;
+        var (name, description, queryPrefix, scope, scopeTenantIds, scopeAssistantIds, roles, requestedFields, adapter, requested, model) = basics.Value;
 
         // A mistyped id would leave the knowledge base visible to nobody, silently.
         if (scope == KnowledgeBaseScope.Assistant && (await assistants.MissingAsync(scopeAssistantIds, cancellationToken)).Count > 0)
@@ -178,19 +171,17 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return resolved.Error;
         }
 
-        // An omitted key keeps the stored one, so a form can be saved without the administrator retyping a secret. The key is
-        // write-only, so it is only reused for the server it was given for: sent to another address it could be read there.
-        var plainKey = connection.ApiKey;
-        if (plainKey is null && existing?.Connection.ProtectedApiKey is { } stored
-            && (!SameServer(existing.Connection.Url, connection.Url) || !protector.TryUnprotect(stored, out plainKey)))
+        // An omitted secret keeps the stored one, so a form can be saved without the administrator retyping it. What is stored
+        // belongs to the kind it was saved for: another kind starts from nothing.
+        var kept = adapter.KeepSecrets(requested, existing is not null && existing.Kind == adapter.Kind ? existing.Connection : null);
+        if (!kept.IsSuccess)
         {
-            return ApiKeyRequired;
+            return kept.Error;
         }
 
-        connection = connection with { ApiKey = plainKey };
-
-        var found = await probe.RunAsync(connection, model, sample: true, cancellationToken);
-        if (MappingValidation.Vector(found.Info, connection.VectorName) is { } vector)
+        var connection = kept.Value;
+        var found = await probe.RunAsync(adapter, connection, model, sample: true, cancellationToken);
+        if (adapter.ValidateVector(found.Info, connection) is { } vector)
         {
             return vector;
         }
@@ -201,10 +192,11 @@ internal sealed partial class KnowledgeBaseRegistrar(
         }
 
         var mapping = new KnowledgeBaseMapping(roles, resolved.Value.Fields);
-        var settings = new QdrantConnectionSettings(connection.Url.AbsoluteUri, connection.Collection, connection.VectorName, protector.Protect(plainKey));
+        var settings = adapter.ToSettings(connection);
         return new PreparedInput(
             name,
             description,
+            adapter.Kind,
             queryPrefix,
             scope,
             scopeTenantIds,
@@ -216,7 +208,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
             Evaluate(found, mapping));
     }
 
-    private static Result<BasicInput> ValidateBasics(KnowledgeBaseRequest request)
+    private Result<BasicInput> ValidateBasics(KnowledgeBaseRequest request)
     {
         var name = request.Name?.Trim();
         if (name is null || !ValidName().IsMatch(name))
@@ -234,7 +226,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
                 $"The description is required, up to {KnowledgeBase.MaxDescriptionLength} characters: the model reads it to choose where to search.");
         }
 
-        var validated = ConnectionRules.Validate(request.Kind, request.Connection, request.EmbeddingModel);
+        var validated = ConnectionRules.Validate(adapters, request.Kind, request.Connection, request.EmbeddingModel);
         if (!validated.IsSuccess)
         {
             return validated.Error;
@@ -264,7 +256,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
         }
 
         var (kind, tenantIds, assistantIds) = scope.Value;
-        var (connection, model) = validated.Value;
+        var (adapter, connection, model) = validated.Value;
         return new BasicInput(
             name,
             description,
@@ -274,6 +266,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
             assistantIds,
             roles.Value,
             fields,
+            adapter,
             connection,
             model);
     }
@@ -395,18 +388,20 @@ internal sealed partial class KnowledgeBaseRegistrar(
         List<Guid> ScopeAssistantIds,
         MappingRoles Roles,
         IReadOnlyList<MappedFieldRequest> Fields,
-        QdrantConnection Connection,
+        IStoreAdapter Adapter,
+        IStoreConnection Connection,
         string EmbeddingModel);
 
     private sealed record PreparedInput(
         string Name,
         string Description,
+        KnowledgeBaseKind Kind,
         string? QueryPrefix,
         KnowledgeBaseScope Scope,
         List<Guid> ScopeTenantIds,
         List<Guid> ScopeAssistantIds,
         string EmbeddingModel,
-        QdrantConnectionSettings Settings,
+        ConnectionSettings Settings,
         KnowledgeBaseMapping Mapping,
         List<DictionaryField> NewFields,
         Verdict Verdict);

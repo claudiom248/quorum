@@ -1,5 +1,6 @@
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Mapping;
+using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
@@ -20,7 +21,8 @@ internal static class KnowledgeBaseFixtures
             tenantId,
             name,
             $"Another tenant's {name}.",
-            new QdrantConnectionSettings(url, collection, VectorName: null, ProtectedApiKey: "protected-s3cret"),
+            KnowledgeBaseKind.Qdrant,
+            ConnectionSettings.From(new QdrantConnectionSettings(url, collection, VectorName: null, ProtectedApiKey: "protected-s3cret")),
             "nomic-embed-text",
             queryPrefix: null,
             new KnowledgeBaseMapping(new MappingRoles("text", null, null, null, null), [.. (mappedFieldIds ?? []).Select((id, index) => new MappedField($"field{index}", id))]),

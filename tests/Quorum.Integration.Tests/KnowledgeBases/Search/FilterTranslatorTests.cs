@@ -1,7 +1,7 @@
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Mapping;
-using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
+using Quorum.Modules.KnowledgeBases.Storage;
 
 namespace Quorum.Integration.Tests.KnowledgeBases.Search;
 
@@ -74,5 +74,37 @@ public sealed class FilterTranslatorTests
         var translation = FilterTranslator.Translate(filters, Mapping(("department", Department)));
 
         Assert.Equal(2, translation.Conditions.Count);
+    }
+
+    [Fact] // 008 A1-2
+    public void DocumentIdsBecomeAConditionOnThePathOfTheDocumentIdRoleBesideTheFilters()
+    {
+        var mapping = new KnowledgeBaseMapping(new MappingRoles("text", "meta.doc", null, null, null), [new MappedField("department", Department.Id)]);
+
+        var translation = FilterTranslator.Translate([new AnyOf(Department, ["hr"])], mapping, ["a", "b"]);
+
+        Assert.Empty(translation.MissingFields);
+        Assert.Equal(2, translation.Conditions.Count);
+        Assert.Contains(translation.Conditions, c => c is DocumentIdsCondition { Path: "meta.doc" } d && d.Ids.SequenceEqual(["a", "b"]));
+    }
+
+    [Fact] // 008 A1-2
+    public void AKnowledgeBaseWithoutADocumentIdRoleCannotApplyTheDocumentIdsAndIsNotSearchedWithoutThem()
+    {
+        var translation = FilterTranslator.Translate([new AnyOf(Department, ["hr"])], Mapping(("department", Department)), ["a"]);
+
+        Assert.Equal(["documentId"], translation.MissingFields);
+        Assert.Empty(translation.Conditions);
+    }
+
+    [Theory] // 008 A1-2
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoDocumentIdsIsNoCondition(bool emptyList)
+    {
+        var translation = FilterTranslator.Translate([], Mapping(), emptyList ? [] : null);
+
+        Assert.Empty(translation.Conditions);
+        Assert.Empty(translation.MissingFields);
     }
 }

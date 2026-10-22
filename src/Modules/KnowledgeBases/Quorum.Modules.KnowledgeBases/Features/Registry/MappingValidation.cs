@@ -3,7 +3,6 @@ using System.Text.Json.Nodes;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
 using Quorum.Modules.KnowledgeBases.Mapping;
-using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Registry;
@@ -138,28 +137,4 @@ internal static class MappingValidation
         DictionaryFieldType.Date => "date (ISO 8601)",
         _ => type.ToString().ToLowerInvariant(),
     };
-
-    /// <summary>The vector the mapping will search must exist: required when the collection has several, and it must be one of them.</summary>
-    public static Error? Vector(QdrantCollectionInfo? info, string? vectorName)
-    {
-        if (info is null || info.Vectors.Count == 0)
-        {
-            return null;
-        }
-
-        if (vectorName is null)
-        {
-            return info.Vectors.Count > 1
-                ? Error.Validation(
-                    WarningCodes.VectorNameRequired,
-                    $"The collection has several vectors ({Names(info)}): choose the one to search.")
-                : null;
-        }
-
-        return info.Vectors.Any(v => v.Name == vectorName)
-            ? null
-            : Error.Validation(WarningCodes.VectorNotFound, $"The collection has no vector named '{vectorName}'. Its vectors are: {Names(info)}.");
-    }
-
-    private static string Names(QdrantCollectionInfo info) => string.Join(", ", info.Vectors.Select(v => v.Name is null ? "(unnamed)" : $"'{v.Name}'"));
 }

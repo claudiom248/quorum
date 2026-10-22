@@ -7,6 +7,7 @@ using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Modules.KnowledgeBases.Storage;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Inspect;
@@ -18,6 +19,7 @@ namespace Quorum.Modules.KnowledgeBases.Features.Inspect;
 internal sealed partial class KnowledgeBaseInspector(
     KnowledgeBasesDbContext db,
     StoreProbe probe,
+    StoreAdapters adapters,
     ILogger<KnowledgeBaseInspector> logger)
 {
     public async Task<Result<InspectResponse>> InspectAsync(InspectRequest request, CancellationToken cancellationToken)
@@ -25,27 +27,24 @@ internal sealed partial class KnowledgeBaseInspector(
         ArgumentNullException.ThrowIfNull(request);
 
         var started = Stopwatch.GetTimestamp();
-        var validated = ConnectionRules.Validate(request.Kind, request.Connection, request.EmbeddingModel);
+        var validated = ConnectionRules.Validate(adapters, request.Kind, request.Connection, request.EmbeddingModel);
         if (!validated.IsSuccess)
         {
             return validated.Error;
         }
 
-        var (connection, embeddingModel) = validated.Value;
+        var (adapter, connection, embeddingModel) = validated.Value;
         var schemaDiscovery = SchemaText(request.Schema) is { } schema ? JsonSchemaReader.Read(schema) : null;
         if (schemaDiscovery is { IsSuccess: false })
         {
             return schemaDiscovery.Error;
         }
 
-        var found = await probe.RunAsync(connection, embeddingModel, sample: schemaDiscovery is null, cancellationToken);
+        var found = await probe.RunAsync(adapter, connection, embeddingModel, sample: schemaDiscovery is null, cancellationToken);
         var warnings = found.Warnings.ToList();
-        if (found.Info is { PointsCount: 0 })
+        if (found.Info is { RecordCount: 0 })
         {
-            warnings.Add(new InspectWarning(
-                WarningCodes.EmptyCollection,
-                "The collection has no points yet, so there is nothing to sample: write the mapping by hand or paste the payload's JSON Schema.",
-                Path: null));
+            warnings.Add(adapter.EmptySourceWarning());
         }
 
         var discovery = schemaDiscovery is { IsSuccess: true } ? schemaDiscovery.Value : PayloadSampler.Sample(found.Sample);
@@ -64,13 +63,10 @@ internal sealed partial class KnowledgeBaseInspector(
         var unindexed = new List<string>();
         if (found.Info is { } info)
         {
-            foreach (var field in fields.Where(f => !info.PayloadIndexes.ContainsKey(f.Path)))
+            foreach (var field in fields.Where(f => !info.IndexedPaths.ContainsKey(f.Path)))
             {
                 unindexed.Add(field.Path);
-                warnings.Add(new InspectWarning(
-                    WarningCodes.FieldUnindexed,
-                    $"'{field.Path}' has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
-                    field.Path));
+                warnings.Add(adapter.UnindexedPathWarning(field.Path));
             }
         }
 

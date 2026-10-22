@@ -11,9 +11,6 @@ namespace Quorum.Modules.KnowledgeBases.Mapping;
 /// </summary>
 internal static class PayloadSampler
 {
-    /// <summary>How many points discovery reads: enough to see the usual shape, few enough to be quick on any collection.</summary>
-    public const int SampleSize = 20;
-
     private const int MaxDepth = 8;
 
     // A hostile or just very wide payload must not turn the review screen into thousands of rows.

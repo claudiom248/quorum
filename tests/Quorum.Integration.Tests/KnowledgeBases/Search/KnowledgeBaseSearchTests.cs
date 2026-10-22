@@ -8,6 +8,7 @@ using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.SampleKnowledgeBase;
 
 namespace Quorum.Integration.Tests.KnowledgeBases.Search;
@@ -474,7 +475,8 @@ public sealed class KnowledgeBaseSearchTests(PostgresFixture postgres, QdrantFix
             Guid.NewGuid(),
             name,
             $"{name} of another tenant.",
-            new QdrantConnectionSettings(url ?? setup.Url, collection, VectorName: null, ProtectedApiKey: null),
+            KnowledgeBaseKind.Qdrant,
+            ConnectionSettings.From(new QdrantConnectionSettings(url ?? setup.Url, collection, VectorName: null, ProtectedApiKey: null)),
             KnowledgeBaseApi.EmbeddingModel,
             queryPrefix: null,
             new KnowledgeBaseMapping(new MappingRoles("text", "document_id", "title", "page", "source_url"), []),
