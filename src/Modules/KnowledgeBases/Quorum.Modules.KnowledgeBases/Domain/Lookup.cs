@@ -37,6 +37,9 @@ internal sealed class Lookup
 
     public const int MaxDescriptionLength = 500;
 
+    /// <summary>The values of a manual lookup (D-5, D-9).</summary>
+    public const int MaxManualValues = 5000;
+
     private Lookup()
     {
     }
@@ -68,6 +71,15 @@ internal sealed class Lookup
     public LookupUnit? Unit { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    /// <summary>Changes what the administrator can edit of a manual lookup. The tenant that owns it never changes.</summary>
+    public void Revise(string name, string? description, LookupScope scope, IEnumerable<Guid> scopeTenantIds)
+    {
+        Name = name;
+        Description = description;
+        Scope = scope;
+        ScopeTenantIds = [.. scopeTenantIds];
+    }
 
     public static Lookup Computed(Guid tenantId, Guid knowledgeBaseId, Guid dictionaryFieldId, LookupUnit unit, DateTimeOffset now) => new()
     {

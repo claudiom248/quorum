@@ -63,6 +63,21 @@ internal sealed class LookupSlice
     /// <summary>The tools that use the slice, by id: they live in another schema, so there is no foreign key. A slice no tool uses is removed.</summary>
     public List<Guid> ToolIds { get; private set; } = [];
 
+    /// <summary>Makes a generation the one readers see: the status is Ready, the last error is cleared and the list is no longer stale.</summary>
+    /// <param name="nextRefreshAt"><see langword="null"/> when nothing recomputes the slice, as with a manual lookup.</param>
+    public void Publish(int generation, int valueCount, DateTimeOffset now, DateTimeOffset? nextRefreshAt, int skippedValueCount = 0, bool truncated = false)
+    {
+        CurrentGeneration = generation;
+        ValueCount = valueCount;
+        SkippedValueCount = skippedValueCount;
+        Truncated = truncated;
+        Status = LookupStatus.Ready;
+        Stale = false;
+        LastError = null;
+        ComputedAt = now;
+        NextRefreshAt = nextRefreshAt;
+    }
+
     public static LookupSlice Create(Guid tenantId, Guid lookupId, string filterHash, string filters, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(now),

@@ -73,6 +73,37 @@ public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
         }
     }
 
+    [Fact] // AC-40 (the /knowledge-bases half)
+    public async Task ManagingLookupsNeedsThePermissionAndAnonymousCallersAreRejected()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        using var member = await app.CreateMemberClientAsync();
+        using var anonymous = app.CreateUiClient();
+        var id = await Lookups.LookupApi.CreateManualOkAsync(admin);
+
+        var requests = new List<Func<HttpClient, Task<HttpResponseMessage>>>
+        {
+            client => client.GetAsync(Lookups.LookupApi.ManualLookups, Ct),
+            client => client.PostAsJsonAsync(Lookups.LookupApi.ManualLookups, Lookups.LookupApi.ManualBody($"created_{Guid.NewGuid():N}"[..20]), Ct),
+            client => client.PutAsJsonAsync(Lookups.LookupApi.ManualLookup(id), Lookups.LookupApi.ManualBody(), Ct),
+            client => client.GetAsync(Lookups.LookupApi.Values(id), Ct),
+            // Last: the administrator's call removes the lookup.
+            client => client.DeleteAsync(Lookups.LookupApi.ManualLookup(id), Ct),
+        };
+
+        foreach (var send in requests)
+        {
+            using var asMember = await send(member);
+            using var asAnonymous = await send(anonymous);
+            using var asAdmin = await send(admin);
+
+            Assert.Equal(HttpStatusCode.Forbidden, asMember.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, asAnonymous.StatusCode);
+            Assert.True(asAdmin.IsSuccessStatusCode, $"The administrator was refused: {(int)asAdmin.StatusCode}");
+        }
+    }
+
     [Fact] // AC-42 (the /knowledge-bases half)
     public async Task InspectingNeedsThePermissionAndAnonymousCallersAreRejected()
     {
