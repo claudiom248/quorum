@@ -1,0 +1,1240 @@
+{
+  "flat": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [],
+      "warnings": []
+    }
+  },
+  "nested": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "chunk_text",
+          "documentId": "doc_id",
+          "title": "file_name",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "meta.department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "meta.published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "meta.year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "meta.published_on"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027meta.published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "meta.published_on"
+        }
+      ]
+    }
+  },
+  "tags": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "content",
+          "documentId": null,
+          "title": "title",
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": [
+          {
+            "path": "tags",
+            "name": "tags",
+            "type": "TextList",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "tags",
+          "type": "TextList"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "year"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027year\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "year"
+        }
+      ]
+    }
+  },
+  "unindexed": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "confidential",
+        "department",
+        "published_on",
+        "year"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027confidential\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "confidential"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027department\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "department"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "published_on"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027year\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "year"
+        }
+      ]
+    }
+  },
+  "named-vectors-none-chosen": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": "dense",
+          "size": 64,
+          "distance": "Cosine"
+        },
+        {
+          "name": "summary",
+          "size": 32,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": null,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "confidential",
+        "published_on"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.vector_name_required",
+          "message": "The collection has several vectors (\u0027dense\u0027, \u0027summary\u0027): choose the one to search before saving.",
+          "path": null
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027confidential\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "confidential"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "published_on"
+        }
+      ]
+    }
+  },
+  "named-vectors-chosen": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": "dense",
+          "size": 64,
+          "distance": "Cosine"
+        },
+        {
+          "name": "summary",
+          "size": 32,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "confidential",
+        "published_on"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027confidential\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "confidential"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "published_on"
+        }
+      ]
+    }
+  },
+  "named-vectors-unknown": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": "dense",
+          "size": 64,
+          "distance": "Cosine"
+        },
+        {
+          "name": "summary",
+          "size": 32,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": null,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "confidential",
+        "published_on"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.vector_not_found",
+          "message": "The collection has no vector named \u0027nope\u0027. Its vectors are: \u0027dense\u0027, \u0027summary\u0027.",
+          "path": null
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027confidential\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "confidential"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "published_on"
+        }
+      ]
+    }
+  },
+  "other-vector-size": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 128,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": false,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [
+        "confidential",
+        "published_on",
+        "year"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.dimension_mismatch",
+          "message": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model.",
+          "path": null
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027confidential\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "confidential"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "published_on"
+        },
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027year\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "year"
+        }
+      ]
+    }
+  },
+  "empty": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": null,
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "proposedFields": [],
+      "unindexedFields": [],
+      "warnings": [
+        {
+          "code": "knowledge_base.empty_collection",
+          "message": "The collection has no points yet, so there is nothing to sample: write the mapping by hand or paste the payload\u0027s JSON Schema.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "missing-collection": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": false,
+      "vectors": [],
+      "embeddingSize": 64,
+      "dimensionMatch": null,
+      "draftMapping": {
+        "roles": {
+          "text": null,
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "proposedFields": [],
+      "unindexedFields": [],
+      "warnings": [
+        {
+          "code": "knowledge_base.collection_not_found",
+          "message": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "model-not-served": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": null,
+      "dimensionMatch": null,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [],
+      "warnings": [
+        {
+          "code": "knowledge_base.embedding_failed",
+          "message": "The model endpoint does not serve the embedding model (model \u0022not-served\u0022 not found, try pulling it first). Without it the dimensions cannot be checked and RAG searches will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "pasted-schema": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": [
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "tags",
+            "name": "tags",
+            "type": "TextList",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "year",
+          "type": "Number"
+        },
+        {
+          "name": "tags",
+          "type": "TextList"
+        }
+      ],
+      "unindexedFields": [
+        "tags"
+      ],
+      "warnings": [
+        {
+          "code": "knowledge_base.field_unindexed",
+          "message": "\u0027tags\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+          "path": "tags"
+        }
+      ]
+    }
+  },
+  "invalid-schema": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The schema is not valid JSON.",
+      "code": "knowledge_base.invalid_schema"
+    }
+  },
+  "unreachable": {
+    "status": 200,
+    "body": {
+      "reachable": false,
+      "collectionExists": false,
+      "vectors": [],
+      "embeddingSize": 64,
+      "dimensionMatch": null,
+      "draftMapping": {
+        "roles": {
+          "text": null,
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "proposedFields": [],
+      "unindexedFields": [],
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unreachable",
+          "message": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "wrong-key": {
+    "status": 200,
+    "body": {
+      "reachable": false,
+      "collectionExists": false,
+      "vectors": [],
+      "embeddingSize": 64,
+      "dimensionMatch": null,
+      "draftMapping": {
+        "roles": {
+          "text": null,
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "proposedFields": [],
+      "unindexedFields": [],
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unauthorized",
+          "message": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "right-key": {
+    "status": 200,
+    "body": {
+      "reachable": true,
+      "collectionExists": true,
+      "vectors": [
+        {
+          "name": null,
+          "size": 64,
+          "distance": "Cosine"
+        }
+      ],
+      "embeddingSize": 64,
+      "dimensionMatch": true,
+      "draftMapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "confidential",
+            "name": "confidential",
+            "type": "Boolean",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "department",
+            "name": "department",
+            "type": "Text",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "published_on",
+            "name": "published_on",
+            "type": "Date",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          },
+          {
+            "path": "year",
+            "name": "year",
+            "type": "Number",
+            "dictionaryFieldId": null,
+            "issues": [],
+            "cluster": null,
+            "candidates": []
+          }
+        ]
+      },
+      "proposedFields": [
+        {
+          "name": "confidential",
+          "type": "Boolean"
+        },
+        {
+          "name": "department",
+          "type": "Text"
+        },
+        {
+          "name": "published_on",
+          "type": "Date"
+        },
+        {
+          "name": "year",
+          "type": "Number"
+        }
+      ],
+      "unindexedFields": [],
+      "warnings": []
+    }
+  },
+  "unsupported-kind": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The kind must be Qdrant: it is the only storage kind supported.",
+      "code": "knowledge_base.unsupported_kind"
+    }
+  },
+  "no-kind": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The kind must be Qdrant: it is the only storage kind supported.",
+      "code": "knowledge_base.unsupported_kind"
+    }
+  },
+  "no-connection": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The URL must be an absolute http or https address of the Qdrant gRPC port (for example http://qdrant:6334), without credentials: the API key has its own field.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "no-url": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The URL must be an absolute http or https address of the Qdrant gRPC port (for example http://qdrant:6334), without credentials: the API key has its own field.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "relative-url": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The URL must be an absolute http or https address of the Qdrant gRPC port (for example http://qdrant:6334), without credentials: the API key has its own field.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "ftp-url": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The URL must be an absolute http or https address of the Qdrant gRPC port (for example http://qdrant:6334), without credentials: the API key has its own field.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "url-with-credentials": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The URL must be an absolute http or https address of the Qdrant gRPC port (for example http://qdrant:6334), without credentials: the API key has its own field.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "no-collection": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The collection name is required.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "blank-collection": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The collection name is required.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "non-ascii-key": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The API key can only contain printable ASCII characters: check that nothing but the key was pasted.",
+      "code": "knowledge_base.invalid_connection"
+    }
+  },
+  "no-model": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The name of the embedding model is required.",
+      "code": "knowledge_base.invalid_embedding_model"
+    }
+  }
+}

@@ -1,0 +1,433 @@
+{
+  "create-flat": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "detail-flat": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "policies",
+      "description": "Company policies.",
+      "status": "Available",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Curl\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "department",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "department",
+            "cluster": null,
+            "filterName": "department"
+          },
+          {
+            "path": "year",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "year",
+            "cluster": null,
+            "filterName": "year"
+          },
+          {
+            "path": "published_on",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "published_on",
+            "cluster": null,
+            "filterName": "published_on"
+          },
+          {
+            "path": "confidential",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "confidential",
+            "cluster": null,
+            "filterName": "confidential"
+          }
+        ]
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "create-name-taken": {
+    "status": 409,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+      "title": "Conflict",
+      "status": 409,
+      "detail": "A knowledge base with this name already exists.",
+      "code": "knowledge_base.name_taken"
+    }
+  },
+  "create-text-only": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "create-vector-required": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The collection has several vectors (\u0027dense\u0027, \u0027summary\u0027): choose the one to search.",
+      "code": "knowledge_base.vector_name_required"
+    }
+  },
+  "create-vector-unknown": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The collection has no vector named \u0027nope\u0027. Its vectors are: \u0027dense\u0027, \u0027summary\u0027.",
+      "code": "knowledge_base.vector_not_found"
+    }
+  },
+  "create-vector-chosen": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "create-other-vector-size": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.dimension_mismatch",
+          "message": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "create-missing-collection": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.collection_not_found",
+          "message": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "create-unreachable": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unreachable",
+          "message": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "create-wrong-key": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unauthorized",
+          "message": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "create-with-key": {
+    "status": 201,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "create-invalid-name": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The name must be 1 to 40 characters: lower-case letters, digits, \u0027-\u0027 and \u0027_\u0027, starting with a letter or digit.",
+      "code": "knowledge_base.invalid_name"
+    }
+  },
+  "create-invalid-scope": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The scope kind must be Global, Tenant or Assistant.",
+      "code": "knowledge_base.invalid_scope"
+    }
+  },
+  "create-agent-scope": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The agent scope is not available yet: agents do not exist. Use Global, Tenant or Assistant.",
+      "code": "knowledge_base.scope_not_supported"
+    }
+  },
+  "create-no-text-role": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The mapping needs the text role: the payload field that holds the text of the chunk.",
+      "code": "knowledge_base.invalid_mapping"
+    }
+  },
+  "create-role-path-twice": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "\u0027text\u0027 is used for two roles: each payload field can have only one meaning.",
+      "code": "knowledge_base.invalid_mapping"
+    }
+  },
+  "create-values-do-not-fit": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The values of \u0027department\u0027 do not fit the number dictionary field it is mapped to. Map it to a field of the right type.",
+      "code": "knowledge_base.invalid_mapping"
+    }
+  },
+  "create-field-not-in-dictionary": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The dictionary field \u0027nothing_like_it\u0027 does not exist. Confirm its creation (createFields) or map the payload field to an existing field.",
+      "code": "knowledge_base.invalid_mapping"
+    }
+  },
+  "list": {
+    "status": 200,
+    "body": [
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "missing",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "other-size",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "policies",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "text-only",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "unreachable",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail."
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "vector-chosen",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "with-key",
+        "description": "Company policies.",
+        "status": "Available",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E"
+      },
+      {
+        "id": "\u003Cguid\u003E",
+        "name": "wrong-key",
+        "description": "Company policies.",
+        "status": "Unavailable",
+        "shared": false,
+        "kind": "Qdrant",
+        "scope": "Tenant",
+        "lastVerifiedAt": "\u003Cinstant\u003E",
+        "warning": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail."
+      }
+    ]
+  },
+  "update-keeps-the-key": {
+    "status": 200,
+    "body": {
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "detail-with-key": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "with-key",
+      "description": "Company policies.",
+      "status": "Available",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Ckeyed-url\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": true
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "update-other-server-needs-the-key": {
+    "status": 400,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "The stored API key cannot be used here: enter the API key again. It is only reused for the server it was saved for, and it cannot be read if the installation\u0027s keys were replaced.",
+      "code": "knowledge_base.api_key_required"
+    }
+  },
+  "update-other-server-with-the-key": {
+    "status": 200,
+    "body": {
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unreachable",
+          "message": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "update-back-to-the-server-with-a-new-key": {
+    "status": 200,
+    "body": {
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "update-unknown": {
+    "status": 404,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+      "title": "Not Found",
+      "status": 404,
+      "detail": "The knowledge base does not exist.",
+      "code": "knowledge_base.not_found"
+    }
+  },
+  "detail-unknown": {
+    "status": 404,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+      "title": "Not Found",
+      "status": 404,
+      "detail": "The knowledge base does not exist.",
+      "code": "knowledge_base.not_found"
+    }
+  }
+}

@@ -1,0 +1,451 @@
+{
+  "available": {
+    "status": 200,
+    "body": {
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "available-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "flat",
+      "description": "Company policies.",
+      "status": "Available",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Curl\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": "document_id",
+          "title": "title",
+          "position": "page",
+          "sourceUrl": "source_url"
+        },
+        "fields": [
+          {
+            "path": "department",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "department",
+            "cluster": null,
+            "filterName": "department"
+          },
+          {
+            "path": "year",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "year",
+            "cluster": null,
+            "filterName": "year"
+          },
+          {
+            "path": "published_on",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "published_on",
+            "cluster": null,
+            "filterName": "published_on"
+          },
+          {
+            "path": "confidential",
+            "dictionaryFieldId": "\u003Cguid\u003E",
+            "name": "confidential",
+            "cluster": null,
+            "filterName": "confidential"
+          }
+        ]
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "collection-dropped": {
+    "status": 200,
+    "body": {
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.collection_not_found",
+          "message": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "collection-dropped-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "dropped",
+      "description": "Company policies.",
+      "status": "Unavailable",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Curl\u003E",
+        "collection": "\u003Cprefix\u003Edropped",
+        "vectorName": null,
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "warning": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created.",
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "dimension-mismatch": {
+    "status": 200,
+    "body": {
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.dimension_mismatch",
+          "message": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "dimension-mismatch-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "other-size",
+      "description": "Company policies.",
+      "status": "Unavailable",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Curl\u003E",
+        "collection": "\u003Cprefix\u003Esample_other_vector_size",
+        "vectorName": null,
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "warning": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model.",
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "unreachable": {
+    "status": 200,
+    "body": {
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unreachable",
+          "message": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "unreachable-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "unreachable",
+      "description": "Company policies.",
+      "status": "Unavailable",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "http://[::1]:1/",
+        "collection": "docs",
+        "vectorName": null,
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail.",
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "wrong-key": {
+    "status": 200,
+    "body": {
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.qdrant_unauthorized",
+          "message": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "wrong-key-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "wrong-key",
+      "description": "Company policies.",
+      "status": "Unavailable",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Ckeyed-url\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": true
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "warning": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail.",
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "named-vector": {
+    "status": 200,
+    "body": {
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "named-vector-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "named",
+      "description": "Company policies.",
+      "status": "Available",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Curl\u003E",
+        "collection": "\u003Cprefix\u003Esample_named_vectors",
+        "vectorName": "dense",
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "mapped-path-missing": {
+    "status": 200,
+    "body": {
+      "status": "Available",
+      "warnings": [
+        {
+          "code": "knowledge_base.mapped_path_missing",
+          "message": "\u0027no_such_title\u0027 is in none of the sampled points: the payload may have changed since the mapping was made. Until the mapping is corrected, RAG answers may lack what it should read from there.",
+          "path": "no_such_title"
+        }
+      ]
+    }
+  },
+  "mapped-path-missing-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "moved",
+      "description": "Company policies.",
+      "status": "Available",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Curl\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": false
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": "no_such_title",
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "keyed": {
+    "status": 200,
+    "body": {
+      "status": "Available",
+      "warnings": []
+    }
+  },
+  "keyed-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "keyed",
+      "description": "Company policies.",
+      "status": "Available",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Ckeyed-url\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": true
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "key-unreadable": {
+    "status": 200,
+    "body": {
+      "status": "Unavailable",
+      "warnings": [
+        {
+          "code": "knowledge_base.api_key_required",
+          "message": "The stored API key cannot be used here: enter the API key again. It is only reused for the server it was saved for, and it cannot be read if the installation\u0027s keys were replaced.",
+          "path": null
+        }
+      ]
+    }
+  },
+  "key-unreadable-detail": {
+    "status": 200,
+    "body": {
+      "id": "\u003Cguid\u003E",
+      "name": "keyed",
+      "description": "Company policies.",
+      "status": "Unavailable",
+      "shared": false,
+      "kind": "Qdrant",
+      "connection": {
+        "url": "\u003Ckeyed-url\u003E",
+        "collection": "\u003Cprefix\u003Esample_flat",
+        "vectorName": null,
+        "hasApiKey": true
+      },
+      "embeddingModel": "nomic-embed-text",
+      "mapping": {
+        "roles": {
+          "text": "text",
+          "documentId": null,
+          "title": null,
+          "position": null,
+          "sourceUrl": null
+        },
+        "fields": []
+      },
+      "scope": {
+        "kind": "Tenant",
+        "tenantIds": [],
+        "assistantIds": []
+      },
+      "warning": "The stored API key cannot be used here: enter the API key again. It is only reused for the server it was saved for, and it cannot be read if the installation\u0027s keys were replaced.",
+      "lastVerifiedAt": "\u003Cinstant\u003E"
+    }
+  },
+  "unknown": {
+    "status": 404,
+    "body": {
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+      "title": "Not Found",
+      "status": 404,
+      "detail": "The knowledge base does not exist.",
+      "code": "knowledge_base.not_found"
+    }
+  }
+}
