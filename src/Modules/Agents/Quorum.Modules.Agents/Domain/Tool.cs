@@ -7,6 +7,9 @@ internal enum ToolOrigin
 
     /// <summary>Configured by an administrator as a search over knowledge bases; runs in-process (spec 003).</summary>
     Rag,
+
+    /// <summary>Configured by an administrator as a reader of lookups (lists of values of knowledge bases); runs in-process (spec 007).</summary>
+    Lookup,
 }
 
 internal enum ToolState
@@ -81,6 +84,23 @@ internal sealed class Tool
         Id = Guid.CreateVersion7(),
         TenantId = tenantId,
         Origin = ToolOrigin.Rag,
+        Name = name,
+        Description = description,
+        InputSchema = "{}",
+        DefinitionHash = configurationHash,
+        State = ToolState.Enabled,
+        Policy = policy,
+    };
+
+    /// <summary>
+    /// A lookup tool. As a rag tool's, its schema is generated from the binding at the start of each answer, so none is stored.
+    /// <paramref name="configurationHash"/> stands for the whole binding (see <c>LookupToolHash</c>).
+    /// </summary>
+    public static Tool CreateLookup(Guid tenantId, string name, string description, string configurationHash, ToolPolicy policy) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        Origin = ToolOrigin.Lookup,
         Name = name,
         Description = description,
         InputSchema = "{}",

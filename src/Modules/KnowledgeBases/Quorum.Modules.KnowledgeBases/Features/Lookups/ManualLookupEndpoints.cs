@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Shared.Endpoints;
@@ -19,10 +20,6 @@ namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 internal sealed class ManualLookupEndpoints : IEndpointGroup
 {
     private static readonly Error NameTaken = Error.Conflict("lookup.name_taken", "A lookup with this name already exists.");
-
-    private static readonly Error InUse = Error.Conflict(
-        "lookup.in_use",
-        "Lookup tools use this lookup: remove it from their configuration first.");
 
     public void Map(IEndpointRouteBuilder app)
     {
@@ -142,7 +139,7 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, LookupCache cache, CancellationToken cancellationToken)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, LookupCache cache, ILookupToolUsage lookupTools, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await LockAsync(db, id, cancellationToken);
@@ -153,10 +150,14 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
             return TypedResults.NotFound();
         }
 
-        // Tools say which slices they use, and a manual lookup has the one. Their names join the answer with the tool itself.
+        // Tools say which slices they use, and a manual lookup has the one. The tools of the caller are named, those of others counted.
         if (await db.LookupSlices.AnyAsync(s => s.LookupId == id && s.ToolIds.Count > 0, cancellationToken))
         {
-            return InUse.ToProblem();
+            var users = (await lookupTools.ListAsync(cancellationToken)).Where(t => t.LookupIds.Contains(id)).ToList();
+            var own = users.Where(t => t.TenantId == db.CurrentTenantId).Select(t => t.ToolName).Order(StringComparer.Ordinal).ToList();
+            var others = users.Count(t => t.TenantId != db.CurrentTenantId);
+            var names = own.Count > 0 ? string.Join(", ", own) + (others > 0 ? $" and {others} of other tenants" : string.Empty) : $"{others} lookup tools of other tenants";
+            return Error.Conflict("lookup.in_use", $"The lookup is used by lookup tools {names}: remove it from their configuration first.").ToProblem();
         }
 
         // The slice and its values go with the lookup, by the cascade of the foreign keys.

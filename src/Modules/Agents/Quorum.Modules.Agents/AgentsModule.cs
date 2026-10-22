@@ -9,6 +9,7 @@ using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Provisioning;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Rag;
 using Quorum.Modules.Agents.Tools.Builtin;
@@ -38,10 +39,14 @@ public static class AgentsModule
 
         services.AddScoped<IEmbeddings, OpenAiEmbeddings>();
         services.AddScoped<IRagToolUsage, RagToolUsage>();
+        services.AddScoped<ILookupToolUsage, LookupToolUsage>();
         services.AddScoped<IAssistantDirectory, AssistantDirectory>();
         services.AddMemoryCache();
         services.AddScoped<RagToolResolver>();
+        services.AddScoped<LookupToolResolver>();
+        services.AddScoped<ToolFilterRules>();
         services.AddScoped<RagToolValidation>();
+        services.AddScoped<LookupToolValidation>();
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();

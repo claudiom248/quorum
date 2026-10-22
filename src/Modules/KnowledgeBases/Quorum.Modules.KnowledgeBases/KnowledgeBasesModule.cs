@@ -31,6 +31,7 @@ public static class KnowledgeBasesModule
         services.AddScoped<KnowledgeBaseSearchEngine>();
         services.AddScoped<IKnowledgeBaseSearch, KnowledgeBaseSearch>();
         services.AddScoped<IKnowledgeBaseCatalog, KnowledgeBaseCatalog>();
+        services.AddScoped<IKnowledgeBaseLookups, KnowledgeBaseLookups>();
         services.AddSingleton<KnowledgeBaseSecretProtector>();
 
         services.AddHybridCache();

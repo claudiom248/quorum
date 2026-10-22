@@ -27,6 +27,8 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<RagTool> RagTools => Set<RagTool>();
 
+    public DbSet<LookupTool> LookupTools => Set<LookupTool>();
+
     /// <summary>
     /// The tenant of the request. Queries that must also see what other tenants share with this one (a server's scope) turn the
     /// tenant filter off and state the rule themselves, with this value.
@@ -93,6 +95,20 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             rag.HasIndex(r => r.TenantId);
             rag.HasOne<Tool>().WithOne().HasForeignKey<RagTool>(r => r.ToolId).OnDelete(DeleteBehavior.Cascade);
             rag.HasQueryFilter(r => r.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LookupTool>(lookup =>
+        {
+            lookup.ToTable("lookup_tools");
+            lookup.HasKey(l => l.ToolId);
+            lookup.Property(l => l.ToolId).ValueGeneratedNever();
+            lookup.Property(l => l.LookupAliases).HasColumnType("jsonb").HasDefaultValue("{}");
+            lookup.Property(l => l.ExposedAliases).HasColumnType("jsonb").HasDefaultValue("{}");
+            lookup.Property(l => l.FixedFilters).HasColumnType("jsonb");
+            lookup.Property(l => l.Scope).HasConversion<string>().HasMaxLength(20);
+            lookup.HasIndex(l => l.TenantId);
+            lookup.HasOne<Tool>().WithOne().HasForeignKey<LookupTool>(l => l.ToolId).OnDelete(DeleteBehavior.Cascade);
+            lookup.HasQueryFilter(l => l.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AssistantTool>(activation =>

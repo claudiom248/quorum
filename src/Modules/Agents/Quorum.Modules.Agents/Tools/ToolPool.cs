@@ -9,17 +9,18 @@ internal sealed class PoolTool
 {
     public required Tool Tool { get; init; }
 
-    /// <summary>Null for built-in and rag tools.</summary>
+    /// <summary>Null for built-in, rag and lookup tools.</summary>
     public string? ServerName { get; init; }
 
     public string ExposedName => Tool.Origin switch
     {
         ToolOrigin.Builtin => ToolNaming.Builtin(Tool.Name),
         ToolOrigin.Rag => ToolNaming.Rag(Tool.Name),
+        ToolOrigin.Lookup => ToolNaming.Lookup(Tool.Name),
         _ => ToolNaming.Mcp(ServerName ?? throw new InvalidOperationException("An MCP tool has a server."), Tool.Name),
     };
 
-    /// <summary>As stored. A rag tool's schema is generated when it is used, so this one is only the administrator's description.</summary>
+    /// <summary>As stored. The schema of a rag or lookup tool is generated when it is used, so this one is only the administrator's description.</summary>
     public ToolDefinition Definition => new(ExposedName, Tool.Description, Tool.InputSchema);
 }
 
@@ -43,6 +44,8 @@ internal static class ToolPool
             from server in servers.DefaultIfEmpty()
             join rag in db.RagTools.IgnoreQueryFilters() on tool.Id equals rag.ToolId into rags
             from rag in rags.DefaultIfEmpty()
+            join lookup in db.LookupTools.IgnoreQueryFilters() on tool.Id equals lookup.ToolId into lookups
+            from lookup in lookups.DefaultIfEmpty()
             where tool.State == ToolState.Enabled
                   && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == tenantId)
                       || (server != null
@@ -54,7 +57,11 @@ internal static class ToolPool
                       || (rag != null
                           && (rag.Scope == ToolScopeKind.Global
                               || (rag.Scope == ToolScopeKind.Tenant && (rag.TenantId == tenantId || rag.ScopeTenantIds.Contains(tenantId)))
-                              || (rag.Scope == ToolScopeKind.Assistant && rag.TenantId == tenantId && rag.ScopeAssistantIds.Contains(assistantId)))))
+                              || (rag.Scope == ToolScopeKind.Assistant && rag.TenantId == tenantId && rag.ScopeAssistantIds.Contains(assistantId))))
+                      || (lookup != null
+                          && (lookup.Scope == ToolScopeKind.Global
+                              || (lookup.Scope == ToolScopeKind.Tenant && (lookup.TenantId == tenantId || lookup.ScopeTenantIds.Contains(tenantId)))
+                              || (lookup.Scope == ToolScopeKind.Assistant && lookup.TenantId == tenantId && lookup.ScopeAssistantIds.Contains(assistantId)))))
             select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
     }
 }
@@ -85,6 +92,8 @@ internal static class ToolVisibility
             from server in servers.DefaultIfEmpty()
             join rag in db.RagTools.IgnoreQueryFilters() on tool.Id equals rag.ToolId into rags
             from rag in rags.DefaultIfEmpty()
+            join lookup in db.LookupTools.IgnoreQueryFilters() on tool.Id equals lookup.ToolId into lookups
+            from lookup in lookups.DefaultIfEmpty()
             where tool.TenantId == tenantId
                   || (tool.State == ToolState.Enabled
                       && ((server != null
@@ -92,7 +101,10 @@ internal static class ToolVisibility
                                || (server.Scope == ToolScopeKind.Tenant && server.ScopeTenantIds.Contains(tenantId))))
                           || (rag != null
                               && (rag.Scope == ToolScopeKind.Global
-                                  || (rag.Scope == ToolScopeKind.Tenant && rag.ScopeTenantIds.Contains(tenantId))))))
+                                  || (rag.Scope == ToolScopeKind.Tenant && rag.ScopeTenantIds.Contains(tenantId))))
+                          || (lookup != null
+                              && (lookup.Scope == ToolScopeKind.Global
+                                  || (lookup.Scope == ToolScopeKind.Tenant && lookup.ScopeTenantIds.Contains(tenantId))))))
             select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
     }
 
@@ -113,6 +125,24 @@ internal static class ToolVisibility
                           || (rag.Scope == ToolScopeKind.Tenant && rag.ScopeTenantIds.Contains(tenantId))))
             select new RagToolView { Tool = tool, Binding = rag };
     }
+
+    /// <summary>
+    /// The lookup tools the tenant can see with their bindings: its own and those shared with it (enabled only, as in <see cref="Tools"/>).
+    /// </summary>
+    public static IQueryable<LookupToolView> LookupTools(AgentsDbContext db)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+
+        return
+            from tool in db.Tools.IgnoreQueryFilters()
+            join lookup in db.LookupTools.IgnoreQueryFilters() on tool.Id equals lookup.ToolId
+            where tool.TenantId == tenantId
+                  || (tool.State == ToolState.Enabled
+                      && (lookup.Scope == ToolScopeKind.Global
+                          || (lookup.Scope == ToolScopeKind.Tenant && lookup.ScopeTenantIds.Contains(tenantId))))
+            select new LookupToolView { Tool = tool, Binding = lookup };
+    }
 }
 
 /// <summary>A rag tool with its binding.</summary>
@@ -121,4 +151,12 @@ internal sealed class RagToolView
     public required Tool Tool { get; init; }
 
     public required RagTool Binding { get; init; }
+}
+
+/// <summary>A lookup tool with its binding.</summary>
+internal sealed class LookupToolView
+{
+    public required Tool Tool { get; init; }
+
+    public required LookupTool Binding { get; init; }
 }
