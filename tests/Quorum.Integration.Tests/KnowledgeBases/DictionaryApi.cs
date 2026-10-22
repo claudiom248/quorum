@@ -34,5 +34,5 @@ internal static class DictionaryApi
 
     public sealed record CreatedBody(Guid Id);
 
-    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null);
+    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null, bool Shared = false);
 }

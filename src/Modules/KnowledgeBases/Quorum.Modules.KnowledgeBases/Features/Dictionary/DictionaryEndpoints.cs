@@ -127,7 +127,7 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
     {
         var fields = await DictionaryVisibility.Fields(db).AsNoTracking().OrderBy(f => f.Cluster != null).ThenBy(f => f.Cluster).ThenBy(f => f.Name).ToListAsync(cancellationToken);
         var usage = await DictionaryUsage.LoadAsync(db, ragTools, cancellationToken);
-        return TypedResults.Ok(fields.Select(field => DictionaryFieldDto.From(field, usage.CountFor(field.Id))).ToList());
+        return TypedResults.Ok(fields.Select(field => DictionaryFieldDto.From(field, usage.CountFor(field.Id), db.CurrentTenantId)).ToList());
     }
 
     private static async Task<Results<Created<CreatedFieldDto>, ProblemHttpResult>> CreateAsync(
@@ -198,8 +198,9 @@ internal sealed record DictionaryFieldUpdateRequest(string? Description);
 
 internal sealed record CreatedFieldDto(Guid Id);
 
-internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null)
+/// <param name="Shared"><see langword="true"/> for a Global field of another tenant: it can be used but not changed or deleted.</param>
+internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null, bool Shared = false)
 {
-    public static DictionaryFieldDto From(DictionaryField field, int usedByCount) =>
-        new(field.Id, field.Name, field.Type.ToString(), field.Description, field.Scope.ToString(), usedByCount, field.Cluster);
+    public static DictionaryFieldDto From(DictionaryField field, int usedByCount, Guid? currentTenantId = null) =>
+        new(field.Id, field.Name, field.Type.ToString(), field.Description, field.Scope.ToString(), usedByCount, field.Cluster, currentTenantId is not null && field.TenantId != currentTenantId);
 }

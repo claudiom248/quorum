@@ -164,26 +164,6 @@ public static class KnowledgeAdminView
                 .Select(g => (g.Key, (IReadOnlyList<DictionaryField>)[.. g.OrderBy(f => f.Name, StringComparer.Ordinal)])),
         ];
     }
-
-    /// <summary>
-    /// The filter names of a test search on one knowledge base, as the server reads them: the field's name, or, when two of the
-    /// fields it maps share a name, the cluster and the name joined by an underscore (a field with no cluster keeps its name).
-    /// </summary>
-    public static IReadOnlyList<(string Parameter, DictionaryField Field)> TestSearchNames(IReadOnlyList<DictionaryField> mapped)
-    {
-        ArgumentNullException.ThrowIfNull(mapped);
-
-        var names = new List<(string, DictionaryField)>();
-        foreach (var group in mapped.GroupBy(f => f.Name, StringComparer.Ordinal))
-        {
-            foreach (var field in group)
-            {
-                names.Add((group.Count() > 1 && field.Cluster is not null ? $"{field.Cluster}_{field.Name}" : field.Name, field));
-            }
-        }
-
-        return [.. names.OrderBy(n => n.Item1, StringComparer.Ordinal)];
-    }
 }
 
 /// <summary>What the registration wizard reports once the server saved a knowledge base.</summary>

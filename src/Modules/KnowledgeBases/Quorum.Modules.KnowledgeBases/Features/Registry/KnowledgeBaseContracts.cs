@@ -61,7 +61,8 @@ internal sealed record KnowledgeBaseListItem(
 /// <param name="HasApiKey">Whether a key is stored. The key itself is never returned.</param>
 internal sealed record ConnectionResponse(string Url, string Collection, string? VectorName, bool HasApiKey);
 
-internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null);
+/// <param name="FilterName">The name a test search filters this field by, which is not always its name (spec 003 A1-6).</param>
+internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null);
 
 internal sealed record MappingResponse(RolesDto Roles, IReadOnlyList<MappedFieldResponse> Fields);
 
@@ -86,7 +87,7 @@ internal sealed record KnowledgeBaseDetail(
     public static KnowledgeBaseDetail Shareable(KnowledgeBase registration) =>
         new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, null, null, null, null, null, null, null);
 
-    public static KnowledgeBaseDetail Owned(KnowledgeBase registration, IReadOnlyDictionary<Guid, (string Name, string? Cluster)> fieldNames) => new(
+    public static KnowledgeBaseDetail Owned(KnowledgeBase registration, IReadOnlyDictionary<Guid, (string Name, string? Cluster)> fieldNames, IReadOnlyDictionary<Guid, string> filterNames) => new(
         registration.Id,
         registration.Name,
         registration.Description,
@@ -98,7 +99,7 @@ internal sealed record KnowledgeBaseDetail(
         registration.QueryPrefix,
         new MappingResponse(
             new RolesDto(registration.Mapping.Roles.Text, registration.Mapping.Roles.DocumentId, registration.Mapping.Roles.Title, registration.Mapping.Roles.Position, registration.Mapping.Roles.SourceUrl),
-            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null))]),
+            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null, filterNames.GetValueOrDefault(f.DictionaryFieldId)))]),
         new ScopeResponse(registration.Scope.ToString(), registration.ScopeTenantIds, registration.ScopeAssistantIds),
         registration.LastError,
         registration.LastVerifiedAt);

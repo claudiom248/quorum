@@ -318,6 +318,7 @@
     private WizardStep _step;
     private WizardStep _reached;
     private InspectResult? _inspection;
+    private string? _inspected;
     private ApiProblem? _problem;
     private bool _busy;
     private bool _showProblems;
@@ -349,10 +350,33 @@
         _ => Severity.Info,
     };
 
+    private static readonly ApiProblem StaleInspection = new(
+        0,
+        "client.stale_inspection",
+        "The connection changed since the collection was inspected, so the mapping below it no longer applies: inspect the collection again.",
+        new Dictionary<string, string[]>());
+
+    // What the inspection and the draft mapping were made from. The vector is left out: choosing it does not change the mapping.
+    private string Fingerprint() => string.Join('\u001f', Draft.Url.Trim(), Draft.Collection.Trim(), Draft.EmbeddingModel.Trim(), Draft.QueryPrefix, Draft.Schema.Trim());
+
+    private bool InspectionIsStale => _inspected is not null && _inspected != Fingerprint();
+
     private void GoTo(WizardStep step)
     {
         _problem = null;
         _showProblems = false;
+
+        // A mapping made from another collection must not be carried to this one: later steps need a new inspection.
+        if (step > WizardStep.Connection && InspectionIsStale)
+        {
+            _inspection = null;
+            _inspected = null;
+            _reached = WizardStep.Connection;
+            _step = WizardStep.Connection;
+            _problem = StaleInspection;
+            return;
+        }
+
         _step = step;
     }
 
@@ -399,6 +423,7 @@
             }
 
             _inspection = result.Value;
+            _inspected = Fingerprint();
             if (KnowledgeAdminView.CanReview(result.Value))
             {
                 Draft.UseInspection(result.Value);
@@ -415,7 +440,12 @@
 
     private void ToMapping()
     {
-        _problem = null;
+        _problem = InspectionIsStale ? StaleInspection : null;
+        if (_problem is not null)
+        {
+            return;
+        }
+
         Reach(WizardStep.Mapping);
     }
 

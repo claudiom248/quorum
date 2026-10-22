@@ -32,7 +32,7 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
             field.Property(f => f.Description).HasMaxLength(DictionaryField.MaxDescriptionLength);
             field.Property(f => f.Type).HasConversion<string>().HasMaxLength(20);
             field.Property(f => f.Scope).HasConversion<string>().HasMaxLength(20);
-            // No cluster counts as one value, so a field with none is unique by name like before the clusters.
+            // No cluster counts as one value, so a field with none is unique by name like before the clusters. NULLS NOT DISTINCT needs PostgreSQL 15 or later.
             field.HasIndex(f => new { f.TenantId, f.Cluster, f.Name }).IsUnique().AreNullsDistinct(false);
             field.HasQueryFilter(f => f.TenantId == CurrentTenantId);
         });

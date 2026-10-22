@@ -27,6 +27,7 @@ public sealed class KnowledgePagesTests : BunitContext
     private bool _inspectReachable = true;
     private bool _clustered;
     private bool _candidates;
+    private bool _filterNamed;
     private HttpStatusCode _deleteFieldStatus = HttpStatusCode.NoContent;
     private string _savedStatus = "Available";
 
@@ -45,7 +46,7 @@ public sealed class KnowledgePagesTests : BunitContext
                     return FakeApiHandler.Json(new object[]
                     {
                         new { id = DepartmentId, name = "department", type = "Text", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"hr" },
-                        new { id = LegalDepartmentId, name = "department", type = "Text", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"legal" },
+                        new { id = LegalDepartmentId, name = "department", type = "Text", description = (string?)null, scope = "Global", usedByCount = 0, cluster = (string?)"legal", shared = true },
                         new { id = YearId, name = "year", type = "Text", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"hr" },
                         new { id = FinanceYearId, name = "year", type = "Number", description = (string?)null, scope = "Tenant", usedByCount = 0, cluster = (string?)"finance" },
                     });
@@ -108,7 +109,7 @@ public sealed class KnowledgePagesTests : BunitContext
                     mapping = new
                     {
                         roles = new { text = "text", documentId = (string?)null, title = "title", position = (string?)null, sourceUrl = (string?)null },
-                        fields = new[] { new { path = "department", dictionaryFieldId = DepartmentId, name = "department" } },
+                        fields = new[] { new { path = "department", dictionaryFieldId = DepartmentId, name = "department", cluster = (string?)null, filterName = _filterNamed ? "dept" : null } },
                     },
                     scope = new { kind = "Tenant", tenantIds = Array.Empty<Guid>(), assistantIds = Array.Empty<Guid>() },
                 });
@@ -608,6 +609,67 @@ public sealed class KnowledgePagesTests : BunitContext
 
         page.WaitForAssertion(() => Assert.Empty(page.FindAll("[data-candidates]")));
         Assert.Contains("Existing field in cluster legal", page.Find("[data-path=department]").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact] // a Global field of another tenant can be used but not changed
+    public void AFieldOfAnotherTenantIsMarkedSharedAndOffersNoEditOrDelete()
+    {
+        _clustered = true;
+
+        var page = RenderPage<DictionaryPage>();
+
+        var shared = page.FindAll(".dictionary-field").Single(f => f.TextContent.Contains("legal/department", StringComparison.Ordinal));
+        Assert.Contains("Shared with you", shared.TextContent, StringComparison.Ordinal);
+        Assert.Empty(shared.QuerySelectorAll("button"));
+        var own = page.FindAll(".dictionary-field").First(f => f.TextContent.Contains("hr/department", StringComparison.Ordinal));
+        Assert.NotEmpty(own.QuerySelectorAll("button"));
+    }
+
+    [Fact] // the server says by which name a mapped field is filtered, the page does not work it out
+    public void TheTestSearchFiltersAFieldByTheNameTheServerGaveIt()
+    {
+        _filterNamed = true;
+        var page = RenderPage<KnowledgePage>();
+        ClickIn(page, "[data-kb=policies]", "Test search");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=test-search]")));
+
+        Input(page, "Question").Change("leave");
+        Input(page, "dept is any of").Change("hr");
+        page.Find("[data-form=test-search] form").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, $"/api/knowledge-bases/{OwnId}/search")));
+        var filters = Body(_api, HttpMethod.Post, $"/api/knowledge-bases/{OwnId}/search").GetProperty("filters");
+        Assert.Equal(["hr"], filters.GetProperty("dept").EnumerateArray().Select(v => v.GetString()));
+    }
+
+    [Fact] // the mapping drafted for one collection must not be carried to another
+    public void ChangingTheCollectionAfterTheInspectionSendsTheAdminBackToInspectAgain()
+    {
+        var page = RenderPage<KnowledgePage>();
+        InspectAndReview(page);
+
+        page.FindAll(".wizard-steps button").First(b => b.TextContent.Contains("Connection", StringComparison.Ordinal)).Click();
+        Input(page, "Collection").Change("another_collection");
+        page.FindAll(".wizard-steps button").First(b => b.TextContent.Contains("Mapping", StringComparison.Ordinal)).Click();
+
+        Assert.NotEmpty(page.FindAll("[data-step=connection]"));
+        Assert.Contains("inspect the collection again", page.Markup, StringComparison.Ordinal);
+        Assert.True(page.FindAll(".wizard-steps button").First(b => b.TextContent.Contains("Mapping", StringComparison.Ordinal)).HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ChangingTheSchemaAfterTheInspectionKeepsTheAdminOnTheInspectionUntilItIsRunAgain()
+    {
+        var page = RenderPage<KnowledgePage>();
+        FillConnection(page);
+        Click(page, "Inspect collection");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=inspection]")));
+
+        Input(page, "Payload schema (optional)").Change("""{"type":"object"}""");
+        Click(page, "Review the mapping");
+
+        Assert.NotEmpty(page.FindAll("[data-step=inspection]"));
+        Assert.Contains("inspect the collection again", page.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

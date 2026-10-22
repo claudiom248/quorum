@@ -48,6 +48,10 @@
                     <span class="tool-name">@KnowledgeAdminView.FieldLabel(field, _fields)</span>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@KnowledgeAdminView.TypeLabel(field.Type)</MudChip>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@KnowledgeAdminView.DictionaryScopeLabel(field.Scope)</MudChip>
+                    @if (field.Shared)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Shared with you</MudChip>
+                    }
                     <span class="tool-hint">Used by @field.UsedByCount</span>
                 </div>
 
@@ -65,12 +69,15 @@
                 else
                 {
                     <div class="tool-row-description">@(string.IsNullOrWhiteSpace(field.Description) ? "No description." : field.Description)</div>
+                    @if (!field.Shared)
+                    {
                     <MudStack Row="true" Spacing="2" Class="mt-2">
                         <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_busy" OnClick="() => Edit(field)"
                                    StartIcon="@Icons.Material.Filled.Edit">Edit description</MudButton>
                         <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Error" Disabled="_busy"
                                    OnClick="() => _deleting = field.Id" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
                     </MudStack>
+                    }
                 }
 
                 @if (_deleting == field.Id)

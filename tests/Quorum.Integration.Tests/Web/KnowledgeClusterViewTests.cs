@@ -149,14 +149,6 @@ public sealed class KnowledgeClusterViewTests
         Assert.Equal(["department", "year"], groups[2].Fields.Select(f => f.Name));
     }
 
-    [Fact]
-    public void TheTestSearchNamesAFieldByItsNameAndAddsTheClusterWhenTwoMappedFieldsShareOne()
-    {
-        Assert.Equal(["department", "year"], KnowledgeAdminView.TestSearchNames([HrDepartment, NoClusterYear]).Select(n => n.Parameter));
-        Assert.Equal(["finance_year", "hr_year"], KnowledgeAdminView.TestSearchNames([HrYear, FinanceYear]).Select(n => n.Parameter));
-        Assert.Equal(["finance_year", "year"], KnowledgeAdminView.TestSearchNames([NoClusterYear, FinanceYear]).Select(n => n.Parameter));
-    }
-
     // --- Rag tool aliases ---
 
     private static RagToolForm ClusteredRagForm()

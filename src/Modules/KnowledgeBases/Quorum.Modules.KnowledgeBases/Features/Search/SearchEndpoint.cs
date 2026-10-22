@@ -85,24 +85,37 @@ internal sealed class SearchEndpoint : IEndpointGroup
 
 /// <summary>
 /// The filter names of a test search on one knowledge base: the field name, or, when two of the fields it maps share a name in
-/// different clusters, the cluster and the name joined by an underscore (a field with no cluster keeps its name).
+/// different clusters, the cluster and the name joined by an underscore (a field with no cluster keeps its name). This is the one
+/// place the rule lives: the knowledge base detail hands the names to the admin pages.
 /// </summary>
 internal static class TestSearchNames
 {
+    /// <summary>The filter name of each field a knowledge base maps, by field id.</summary>
+    public static Dictionary<Guid, string> ForMapped(IReadOnlyList<DictionaryField> mapped)
+    {
+        ArgumentNullException.ThrowIfNull(mapped);
+
+        var names = new Dictionary<Guid, string>();
+        foreach (var group in mapped.GroupBy(f => f.Name, StringComparer.Ordinal))
+        {
+            foreach (var field in group)
+            {
+                names[field.Id] = group.Count() > 1 && field.Cluster is not null ? $"{field.Cluster}_{field.Name}" : field.Name;
+            }
+        }
+
+        return names;
+    }
+
     public static Dictionary<string, Guid> For(IReadOnlyList<DictionaryField> visible, IReadOnlyCollection<Guid> mappedIds)
     {
         ArgumentNullException.ThrowIfNull(visible);
         ArgumentNullException.ThrowIfNull(mappedIds);
 
-        var mapped = visible.Where(f => mappedIds.Contains(f.Id)).ToList();
         var names = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        foreach (var group in mapped.GroupBy(f => f.Name, StringComparer.Ordinal))
+        foreach (var (id, name) in ForMapped([.. visible.Where(f => mappedIds.Contains(f.Id))]))
         {
-            foreach (var field in group)
-            {
-                var name = group.Count() > 1 && field.Cluster is not null ? $"{field.Cluster}_{field.Name}" : field.Name;
-                names.TryAdd(name, field.Id);
-            }
+            names.TryAdd(name, id);
         }
 
         // A filter on a field the knowledge base did not map is still a valid filter: the knowledge base is skipped for it (D-12).

@@ -39,6 +39,9 @@ public sealed record KnowledgeBaseSearchRequest
     /// </summary>
     public IReadOnlyDictionary<string, Guid>? FilterFields { get; init; }
 
+    /// <summary>The fields the binding's fixed filters name, by id. A fixed filter that is not an alias is read among these, so narrowing the search to some knowledge bases does not change which field it means.</summary>
+    public IReadOnlyList<Guid>? FixedFilterFieldIds { get; init; }
+
     /// <summary>Chunks to return, 1 to 20.</summary>
     public int TopK { get; init; } = 5;
 

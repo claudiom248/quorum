@@ -101,13 +101,15 @@
 
     protected override void OnParametersSet()
     {
-        var mapped = (Detail?.Mapping?.Fields ?? [])
-            .Select(f => Dictionary.FirstOrDefault(d => d.Id == f.DictionaryFieldId))
-            .OfType<DictionaryField>()
-            .ToList();
-
-        // The names the server reads the filters by: the field name, with the cluster in front when two mapped fields share a name.
-        _fields = [.. KnowledgeAdminView.TestSearchNames(mapped).Select(n => (n.Parameter, n.Field.Type))];
+        // The server says by which name each mapped field is filtered, so the page does not repeat the rule.
+        _fields =
+        [
+            .. (Detail?.Mapping?.Fields ?? [])
+                .Select(f => (Name: f.FilterName ?? f.Name, Field: Dictionary.FirstOrDefault(d => d.Id == f.DictionaryFieldId)))
+                .Where(f => f.Name is not null && f.Field is not null)
+                .Select(f => (f.Name!, f.Field!.Type))
+                .OrderBy(f => f.Item1, StringComparer.Ordinal),
+        ];
     }
 
     private Task Close() => OnClose.InvokeAsync();
