@@ -9,6 +9,7 @@ internal static class QdrantStoreRegistration
     public static IServiceCollection AddQdrantStore(this IServiceCollection services)
     {
         services.AddSingleton<QdrantConnector>();
+        services.AddSingleton<QdrantLookups>();
         services.AddSingleton<IStoreAdapter, QdrantStoreAdapter>();
 
         // Every connection to a Qdrant server goes through this client: the URL is whatever an administrator typed (D-6).

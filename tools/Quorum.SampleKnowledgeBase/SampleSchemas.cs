@@ -27,6 +27,28 @@ public static class SampleSchemas
         }
         """;
 
+    /// <summary>The payload of <see cref="SampleCollections.Lookups"/>.</summary>
+    public const string Lookups = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "Contract chunk",
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" },
+            "document_id": { "type": "string" },
+            "title": { "type": "string" },
+            "source_url": { "type": "string", "format": "uri" },
+            "supplier": { "type": "string" },
+            "department": { "type": "string" },
+            "nationality": { "type": "string" },
+            "audience": { "type": "array", "items": { "type": "string" } },
+            "is_first_chunk": { "type": "boolean" },
+            "chunk_index": { "type": "integer" }
+          },
+          "required": ["text"]
+        }
+        """;
+
     /// <summary>The payload of <see cref="SampleCollections.Nested"/>.</summary>
     public const string Nested = """
         {

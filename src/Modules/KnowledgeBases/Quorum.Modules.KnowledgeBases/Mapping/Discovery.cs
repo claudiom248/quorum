@@ -31,6 +31,8 @@ internal static class WarningCodes
     public const string QdrantUnauthorized = "knowledge_base.qdrant_unauthorized";
     public const string QdrantUnexpected = "knowledge_base.qdrant_unexpected_response";
     public const string QdrantVersion = "knowledge_base.qdrant_version_unsupported";
+    public const string QdrantLookupsVersion = "knowledge_base.qdrant_lookups_version";
+    public const string LookupFieldUnindexed = "knowledge_base.lookup_field_unindexed";
     public const string EmbeddingFailed = "knowledge_base.embedding_failed";
     public const string DimensionMismatch = "knowledge_base.dimension_mismatch";
     public const string VectorNameRequired = "knowledge_base.vector_name_required";

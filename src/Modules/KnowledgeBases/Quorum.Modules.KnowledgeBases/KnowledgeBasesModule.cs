@@ -41,7 +41,7 @@ public static class KnowledgeBasesModule
         services.AddSingleton<LookupRefreshSignal>();
         services.AddSingleton<LookupRefresher>();
         services.AddScoped<LookupStore>();
-        services.AddSingleton<ILookupComputer, UnavailableLookupComputer>();
+        services.AddSingleton<ILookupComputer, LookupComputer>();
         services.AddHostedService<LookupRefreshService>();
         services.AddHostedService<LookupCacheWarmup>();
 

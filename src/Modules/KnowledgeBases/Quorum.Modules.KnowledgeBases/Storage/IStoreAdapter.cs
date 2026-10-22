@@ -23,7 +23,13 @@ internal sealed record StoreQuery(float[] Vector, IReadOnlyList<FilterCondition>
 /// <param name="Info">The source, or <see langword="null"/> when it does not exist or the store could not be used.</param>
 /// <param name="Sample">Rows as JSON, empty unless sampling was asked for and the source has records.</param>
 /// <param name="Warnings">Every problem found, with its cause and what follows from it; none stops registration.</param>
-internal sealed record SourceProbe(bool Reachable, SourceInfo? Info, IReadOnlyList<JsonObject> Sample, IReadOnlyList<InspectWarning> Warnings);
+/// <param name="Notes">What the administrator should know that does not stop a search (the store is too old for lookups): shown, never a reason to mark the source unavailable.</param>
+internal sealed record SourceProbe(
+    bool Reachable,
+    SourceInfo? Info,
+    IReadOnlyList<JsonObject> Sample,
+    IReadOnlyList<InspectWarning> Warnings,
+    IReadOnlyList<InspectWarning>? Notes = null);
 
 /// <summary>The vector that will be searched, or the warning that says why it cannot be told yet.</summary>
 internal sealed record VectorSelection(VectorInfo? Vector, InspectWarning? Warning);

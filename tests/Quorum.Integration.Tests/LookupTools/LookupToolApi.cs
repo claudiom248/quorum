@@ -69,7 +69,8 @@ internal static class LookupToolApi
 
     public static object Mapping(params (string Path, string Name, bool Listable)[] fields) => new
     {
-        roles = new { text = "text", title = "title" },
+        // With a document id the lists count documents, which is what the tests of the tool read.
+        roles = new { text = "text", documentId = "document_id", title = "title" },
         fields = fields.Select(f => new { path = f.Path, name = f.Name, listable = f.Listable }).ToArray(),
     };
 
@@ -77,20 +78,23 @@ internal static class LookupToolApi
     public static object DepartmentMapping { get; } = Mapping(("department", "department", true), ("year", "year", false), ("confidential", "confidential", false));
 
     /// <summary>
-    /// Registers a knowledge base with <paramref name="mapping"/> and gives it a computed lookup of its <c>department</c> field with the slice of
-    /// the whole knowledge base, as the registration will once computed lookups are created there. Returns both ids.
+    /// Registers a knowledge base with <paramref name="mapping"/>, whose <c>department</c> field is listable: the registration creates the computed
+    /// lookup with the slice of the whole knowledge base. The computation is held back, so the list stays "being prepared" until the test publishes one.
+    /// Returns both ids.
     /// </summary>
     public static async Task<(Guid KnowledgeBase, Guid Lookup)> RegisterWithLookupAsync(RagApi.Setup setup, string name, object? mapping = null)
     {
+        setup.App.LookupComputer.Handler = async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            throw new InvalidOperationException("Unreachable: the delay only ends by cancellation.");
+        };
         var knowledgeBase = await setup.RegisterAsync(name, mapping: mapping ?? DepartmentMapping);
         var fieldId = (await setup.FieldsAsync())["department"];
 
         await using var services = setup.App.Services.CreateAsyncScope();
         var db = services.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
-        var lookup = Lookup.Computed(setup.TenantId, knowledgeBase, fieldId, LookupUnit.Documents, Now);
-        db.Lookups.Add(lookup);
-        db.LookupSlices.Add(LookupSlice.Create(setup.TenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, Now));
-        await db.SaveChangesAsync(Ct);
+        var lookup = await db.Lookups.IgnoreQueryFilters().AsNoTracking().SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fieldId, Ct);
         return (knowledgeBase, lookup.Id);
     }
 

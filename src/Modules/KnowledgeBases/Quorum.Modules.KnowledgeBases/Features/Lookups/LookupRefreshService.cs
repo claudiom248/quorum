@@ -42,6 +42,12 @@ internal sealed partial class LookupRefreshService(LookupRefresher refresher, Lo
 {
     internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// A turn claims one slice per knowledge base, so a knowledge base with several listable fields needs several: they follow one
+    /// another at once instead of one a minute. The bound keeps a slice that cannot be settled from holding the turn for ever.
+    /// </summary>
+    internal const int MaxClaimsPerTurn = 50;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Hosted services start one after the other: yield so the rest of the application is not held up by this one.
@@ -79,7 +85,13 @@ internal sealed partial class LookupRefreshService(LookupRefresher refresher, Lo
     {
         try
         {
-            _ = await refresher.RunDueAsync(cancellationToken);
+            for (var claim = 0; claim < MaxClaimsPerTurn; claim++)
+            {
+                if (await refresher.RunDueAsync(cancellationToken) == 0)
+                {
+                    break;
+                }
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

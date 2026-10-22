@@ -9,7 +9,7 @@ internal sealed record MappingRoles(string? Text, string? DocumentId, string? Ti
 internal sealed record DraftField(string Path, string Name, DictionaryFieldType Type, IReadOnlyList<string> Issues);
 
 /// <summary>What the admin reviews: the guessed roles and the proposed metadata fields, never saved without confirmation.</summary>
-internal sealed record DraftMapping(MappingRoles Roles, IReadOnlyList<DraftField> Fields)
+internal sealed record DraftMapping(MappingRoles Roles, IReadOnlyList<DraftField> Fields, CountedPoint? CountedPoint = null)
 {
     public static DraftMapping Empty { get; } = new(new MappingRoles(null, null, null, null, null), []);
 }
@@ -26,6 +26,10 @@ internal static class MappingConventions
     private static readonly string[] PositionNames = ["page", "pagenumber", "position", "section"];
     private static readonly string[] SourceUrlNames = ["sourceurl", "url", "uri", "link"];
 
+    // Spec 007 D-19: the flags that single out one point per document, which a lookup counts. The administrator confirms the proposal.
+    private static readonly string[] CountedFlagNames = ["isfirstchunk", "firstchunk", "isprimary"];
+    private const string CountedIndexName = "chunkindex";
+
     public static DraftMapping Build(IReadOnlyList<DiscoveredProperty> properties)
     {
         ArgumentNullException.ThrowIfNull(properties);
@@ -36,6 +40,7 @@ internal static class MappingConventions
         var title = Claim(properties, claimed, TitleNames, DictionaryFieldType.Text);
         var position = Claim(properties, claimed, PositionNames, DictionaryFieldType.Text, DictionaryFieldType.Number);
         var sourceUrl = Claim(properties, claimed, SourceUrlNames, DictionaryFieldType.Text);
+        var counted = ProposeCountedPoint(properties, claimed);
 
         var metadata = properties.Where(p => !claimed.Contains(p.Path)).ToList();
         var collisions = metadata.GroupBy(p => LastSegment(p.Path), StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
@@ -61,7 +66,20 @@ internal static class MappingConventions
             return new DraftField(property.Path, name, property.Type, issues);
         }).ToList();
 
-        return new DraftMapping(new MappingRoles(text, documentId, title, position, sourceUrl), fields);
+        return new DraftMapping(new MappingRoles(text, documentId, title, position, sourceUrl), fields, counted);
+    }
+
+    /// <summary>A boolean flag that is true for one chunk of each document, or a chunk index equal to 0; the flag wins when both exist.</summary>
+    private static CountedPoint? ProposeCountedPoint(IReadOnlyList<DiscoveredProperty> properties, HashSet<string> claimed)
+    {
+        var flag = Claim(properties, claimed, CountedFlagNames, DictionaryFieldType.Boolean);
+        if (flag is not null)
+        {
+            return new CountedPoint(flag, "true");
+        }
+
+        var index = Claim(properties, claimed, [CountedIndexName], DictionaryFieldType.Number);
+        return index is null ? null : new CountedPoint(index, "0");
     }
 
     /// <summary>

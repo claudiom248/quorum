@@ -87,6 +87,9 @@ internal sealed class LookupSlice
 
     public void BeginComputation(DateTimeOffset now) => ComputingSince = now;
 
+    /// <summary>Makes the slice due now, as the mapping it was computed from changed. The generation served stays until the new one is ready.</summary>
+    public void RequestRefresh(DateTimeOffset now) => NextRefreshAt = now;
+
     /// <summary>A tool starts using the slice; false when it already did.</summary>
     public bool AddUser(Guid toolId)
     {

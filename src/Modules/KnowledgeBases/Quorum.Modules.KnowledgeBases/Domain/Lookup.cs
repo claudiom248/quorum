@@ -72,6 +72,9 @@ internal sealed class Lookup
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>What the lookup counts changed because the mapping did (a counted point or a document id was added or removed).</summary>
+    public void CountAs(LookupUnit unit) => Unit = unit;
+
     /// <summary>Changes what the administrator can edit of a manual lookup. The tenant that owns it never changes.</summary>
     public void Revise(string name, string? description, LookupScope scope, IEnumerable<Guid> scopeTenantIds)
     {
