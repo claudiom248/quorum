@@ -1,0 +1,93 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
+using Quorum.Modules.KnowledgeBases.Domain;
+using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Shared.Endpoints;
+using Quorum.Shared.Results;
+
+namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
+
+/// <summary>The values of any lookup, as the administrator sees them: the same page the lookup tool will read.</summary>
+internal sealed class LookupValuesEndpoint : IEndpointGroup
+{
+    private static readonly Error InvalidSort = Error.Validation("lookup.invalid_sort", "The sort must be 'count' or 'name'.");
+
+    public void Map(IEndpointRouteBuilder app)
+    {
+        var lookups = app.MapGroup("/api/knowledge-bases/lookups")
+            .WithTags("Knowledge bases")
+            .RequireAuthorization(QuorumPolicies.KnowledgeBaseManage);
+
+        lookups.MapGet("/{lookupId:guid}/values", ReadAsync).WithName("ReadLookupValues");
+    }
+
+    /// <param name="slice">The hash of the filters of the slice; the whole knowledge base when it is left out.</param>
+    private static async Task<Results<Ok<LookupValuesDto>, NotFound, ProblemHttpResult>> ReadAsync(
+        Guid lookupId,
+        KnowledgeBasesDbContext db,
+        string? slice,
+        string? search,
+        string? sort,
+        int? limit,
+        string? cursor,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseSort(sort, out var order))
+        {
+            return InvalidSort.ToProblem();
+        }
+
+        var lookup = await LookupVisibility.Readable(db).AsNoTracking().SingleOrDefaultAsync(l => l.Id == lookupId, cancellationToken);
+        if (lookup is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        var hash = slice ?? LookupSliceKey.WholeKnowledgeBase.Hash;
+        var found = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(s => s.LookupId == lookup.Id && s.FilterHash == hash, cancellationToken);
+        if (found is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        var page = await LookupReader.ReadAsync(db, found, new LookupPageRequest(search, order, limit ?? LookupReader.DefaultLimit, cursor), cancellationToken);
+        return page.IsSuccess
+            ? TypedResults.Ok(LookupValuesDto.From(lookup, found, page.Value))
+            : page.Error.ToProblem();
+    }
+
+    private static bool TryParseSort(string? sort, out LookupSort order)
+    {
+        order = LookupSort.Count;
+        return string.IsNullOrEmpty(sort) || DictionaryFieldRules.TryParseMember(sort, out order);
+    }
+}
+
+/// <param name="Unit">What the counts count, as <c>documents</c> or <c>chunks</c>; <see langword="null"/> for a lookup with no counts.</param>
+/// <param name="AsOf">When the list was computed; <see langword="null"/> before the first computation.</param>
+internal sealed record LookupValuesDto(string? Unit, DateTimeOffset? AsOf, bool Stale, bool Truncated, List<LookupValueDto> Values, string? Cursor, bool CursorRestarted)
+{
+    public static LookupValuesDto From(Lookup lookup, LookupSlice slice, LookupPage page) => new(
+        lookup.Unit?.ToString().ToLowerInvariant(),
+        slice.ComputedAt,
+        slice.Stale,
+        slice.Truncated,
+        [.. page.Values.Select(LookupValueDto.From)],
+        page.Cursor,
+        page.CursorRestarted);
+}
+
+internal sealed record LookupValueDto(string Value, string? Label, IReadOnlyList<string>? Synonyms, int? Count, JsonElement? Attributes)
+{
+    public static LookupValueDto From(LookupPageValue value) => new(
+        value.Value,
+        value.Label,
+        value.Synonyms.Count == 0 ? null : value.Synonyms,
+        value.Count,
+        value.Attributes is null ? null : JsonSerializer.Deserialize<JsonElement>(value.Attributes));
+}

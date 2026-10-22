@@ -8,6 +8,9 @@ internal sealed class LookupValue
 {
     public const int MaxValueLength = 200;
 
+    /// <summary>The synonyms of one value of a manual lookup.</summary>
+    public const int MaxSynonyms = 20;
+
     private LookupValue()
     {
     }
