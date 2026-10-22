@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Quorum.SampleKnowledgeBase;
 using Testcontainers.Qdrant;
 
@@ -10,7 +9,7 @@ namespace Quorum.Integration.Tests.Fixtures;
 /// One Qdrant container for the whole test assembly, started the first time a test asks for it so runs that never touch a
 /// knowledge base do not pay for it. The image is the one the dev compose pins, so the tests run against what developers run.
 /// </summary>
-public sealed partial class QdrantFixture : IAsyncLifetime
+public sealed class QdrantFixture : IAsyncLifetime
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly SemaphoreSlim _sharedGate = new(1, 1);
@@ -47,7 +46,7 @@ public sealed partial class QdrantFixture : IAsyncLifetime
             var key = apiKey ?? string.Empty;
             if (!_containers.TryGetValue(key, out var container))
             {
-                var builder = new QdrantBuilder(PinnedImage());
+                var builder = new QdrantBuilder(ComposeFile.Image("qdrant/qdrant"));
                 if (apiKey is not null)
                 {
                     builder = builder.WithEnvironment("QDRANT__SERVICE__API_KEY", apiKey);
@@ -115,21 +114,4 @@ public sealed partial class QdrantFixture : IAsyncLifetime
         await new QdrantSeeder(http).SeedAsync(datasets, TestContext.Current.CancellationToken);
     }
 
-    private static string PinnedImage()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            var compose = Path.Combine(directory.FullName, "docker-compose.yml");
-            if (File.Exists(compose))
-            {
-                var match = ImageLine().Match(File.ReadAllText(compose));
-                return match.Success ? match.Groups["image"].Value : throw new InvalidOperationException("No qdrant image in docker-compose.yml.");
-            }
-        }
-
-        throw new InvalidOperationException("docker-compose.yml not found above the test output directory.");
-    }
-
-    [GeneratedRegex(@"image:\s*(?<image>qdrant/qdrant:\S+)")]
-    private static partial Regex ImageLine();
 }
