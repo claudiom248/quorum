@@ -243,6 +243,10 @@ internal sealed class QdrantStoreAdapter(QdrantConnector connector, KnowledgeBas
         return connector.QueryAsync(Own(connection), query.Vector, query.Conditions, query.Limit, query.ScoreThreshold, query.Paths, cancellationToken);
     }
 
+    // Qdrant declares no optional capability.
+    public T? Capability<T>()
+        where T : class, IStoreCapability => null;
+
     public string CodeOf(StoreFailure failure) => failure switch
     {
         StoreFailure.Unreachable => WarningCodes.QdrantUnreachable,

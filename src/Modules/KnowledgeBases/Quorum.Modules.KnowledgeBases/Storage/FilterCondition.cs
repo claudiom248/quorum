@@ -13,3 +13,9 @@ internal sealed record NumberRangeCondition(string Path, double? Min, double? Ma
 
 /// <summary>A date between two inclusive bounds (UTC), either of which may be open.</summary>
 internal sealed record DateRangeCondition(string Path, DateTime? From, DateTime? To) : FilterCondition(Path);
+
+/// <summary>
+/// The record belongs to one of the documents in <paramref name="Ids"/>; <paramref name="Path"/> is where the knowledge base mapped
+/// the <c>documentId</c> role. The ids are text as the caller has them: a kind compares them the way the stored identifier is typed.
+/// </summary>
+internal sealed record DocumentIdsCondition(string Path, IReadOnlyList<string> Ids) : FilterCondition(Path);

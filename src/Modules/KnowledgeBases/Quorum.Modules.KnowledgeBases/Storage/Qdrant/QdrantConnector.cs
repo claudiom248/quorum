@@ -140,6 +140,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         MatchBooleanCondition flag => Conditions.Match(flag.Path, flag.Value),
         NumberRangeCondition range => Conditions.Range(range.Path, ToRange(range)),
         DateRangeCondition range => Conditions.DatetimeRange(range.Path, gte: range.From, lte: range.To),
+        DocumentIdsCondition documents => Conditions.Match(documents.Path, documents.Ids),
         _ => throw new ArgumentOutOfRangeException(nameof(condition), condition, "Unknown condition."),
     };
 

@@ -86,4 +86,8 @@ internal interface IStoreAdapter
 
     /// <summary>The code a failed search reports to the administrator and the model.</summary>
     string CodeOf(StoreFailure failure);
+
+    /// <summary>The optional capability <typeparamref name="T"/> of this kind, or <see langword="null"/> when the kind does not declare it.</summary>
+    T? Capability<T>()
+        where T : class, IStoreCapability;
 }

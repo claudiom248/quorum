@@ -21,7 +21,8 @@ internal sealed record SearchInput(
     double? ScoreThreshold,
     int? MaxResultCharacters,
     IReadOnlyDictionary<string, Guid>? FilterFields = null,
-    IReadOnlyList<Guid>? FixedFilterFieldIds = null);
+    IReadOnlyList<Guid>? FixedFilterFieldIds = null,
+    IReadOnlyList<string>? DocumentIds = null);
 
 /// <summary>
 /// The search of spec 003 (D-12 to D-14): checks the filters, embeds the query once per embedding setup, queries every knowledge
@@ -57,7 +58,7 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         var skipped = new List<string>();
         foreach (var knowledgeBase in bases.OrderBy(k => k.Name, StringComparer.Ordinal))
         {
-            var translation = FilterTranslator.Translate(filters.Value, knowledgeBase.Mapping);
+            var translation = FilterTranslator.Translate(filters.Value, knowledgeBase.Mapping, input.DocumentIds);
             if (translation.MissingFields.Count > 0)
             {
                 skipped.Add(knowledgeBase.Name);
