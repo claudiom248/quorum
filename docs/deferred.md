@@ -31,6 +31,9 @@ Backlog of things decided *not* to do yet, so they are not forgotten. An item en
 | Hybrid search, sparse vectors and reranking for knowledge bases | Spec 003 | Dense vector search only | Poor retrieval quality on exact terms or codes |
 | Per-user or per-document permissions on knowledge bases (e.g. from OIDC claims) | Spec 003 | Access is at KB level; the admin carves slices with fixed filters | Users and roles spec, KBs shared among mixed audiences |
 | Background verification and payload drift detection for knowledge bases | Spec 003 | Verification is manual | Many KBs or frequent payload changes |
+| An endpoint for the data owner's ETL to refresh lookups, with a service token per knowledge base | Spec 007 | Lookups refresh every 24 hours and from a button in the admin | Data that changes faster than the interval, or ingestion that ends at known times |
+| Lookups for `PgVector` and `Pinecone` knowledge bases | Spec 007 | Qdrant only; the other kinds report no support for lookups. pgvector is a `GROUP BY` away; Pinecone has no facet | A customer on those kinds |
+| Normalising values or a synonym table for computed lookups; a cache shared between several instances; sums, averages and joins over metadata | Spec 007 | Values as stored (synonyms only in manual lookups), in-memory cache with the tables as source of truth, and no aggregates beyond counts of documents | Data with many spellings of one value and no ingestion fix, a multi-instance deployment, or external SQL sources with named parametrised queries |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
@@ -44,6 +47,7 @@ Decided on 2026-10-15 when splitting the MVP; each gets its own spec, plan and P
 | 004 | MCP tools: client, registry, per-agent/role permissions, human confirmation, audit log |
 | 005 | Declarative config and topology: format for assistants, agents and topologies, multi-agent execution |
 | 006 | Web search as a tool (after 004) |
+| 007 | Metadata lookups: lists of values and counts from the metadata of knowledge bases, a lookup tool with live operations and `document_ids` on rag tools (added 2026-10-22) |
 | 008 | pgvector knowledge bases: a relation of a PostgreSQL database as a KB kind, completing the per-kind abstraction (added 2026-10-22; numbered after 005 and 006, already cited by approved specs, and after 007 (lookups)) |
 | 009 | Pinecone knowledge bases: a Pinecone index as a KB kind (after 008) |
 | - | Licensing (no number yet) |
