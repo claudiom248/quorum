@@ -1,0 +1,18 @@
+<span class="source-n">[@Source.N]</span>
+@if (Source.Href is { } href)
+{
+    <a href="@href" target="_blank" rel="noopener noreferrer">@Source.Label</a>
+}
+else
+{
+    <span class="source-label">@Source.Label</span>
+}
+@if (Source.Detail.Length > 0)
+{
+    <span class="source-detail">@Source.Detail</span>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SourceItem Source { get; set; } = null!;
+}

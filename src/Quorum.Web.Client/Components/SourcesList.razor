@@ -1,0 +1,42 @@
+@if (_view.HasSources)
+{
+    <div class="sources">
+        @if (_view.Cited.Count > 0)
+        {
+            <div class="sources-title">Sources</div>
+            <ol class="sources-list">
+                @foreach (var source in _view.Cited)
+                {
+                    <li @key="source.N"><SourceEntry Source="source" /></li>
+                }
+            </ol>
+        }
+
+        @if (_view.Others.Count > 0)
+        {
+            <details class="sources-others">
+                <summary>@(_view.Cited.Count > 0 ? "Other sources" : "Sources") (@_view.Others.Count)</summary>
+                <ol class="sources-list">
+                    @foreach (var source in _view.Others)
+                    {
+                        <li @key="source.N"><SourceEntry Source="source" /></li>
+                    }
+                </ol>
+            </details>
+        }
+    </div>
+}
+
+@code {
+    private SourcesView _view = new(null, string.Empty);
+
+    /// <summary>The sources the answer received; rendered by number.</summary>
+    [Parameter]
+    public IReadOnlyList<MessageSourceDto>? Sources { get; set; }
+
+    /// <summary>The answer's text, read for its <c>[n]</c> markers.</summary>
+    [Parameter]
+    public string Text { get; set; } = string.Empty;
+
+    protected override void OnParametersSet() => _view = new SourcesView(Sources, Text);
+}

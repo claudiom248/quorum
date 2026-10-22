@@ -73,6 +73,7 @@
                             }
 
                             <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                            <SourcesList Sources="message.Sources" Text="@message.Content" />
                             @if (message.Status == MessageStatuses.Interrupted)
                             {
                                 <span class="status-note">Stopped. You can regenerate the answer.</span>
@@ -111,6 +112,8 @@
                         {
                             <div class="bubble"><MudText Typo="Typo.body2">Thinking…</MudText><MudProgressLinear Indeterminate="true" Size="Size.Small" /></div>
                         }
+
+                        <SourcesList Sources="_sources" Text="@_partial" />
                     </div>
                 }
             </div>
@@ -152,6 +155,7 @@
 @code {
     private readonly List<MessageDto> _messages = [];
     private readonly List<ToolCallView> _calls = [];
+    private readonly List<MessageSourceDto> _sources = [];
     private List<ConversationSummary> _conversations = [];
     private ConversationDetail? _loaded;
     private CancellationTokenSource? _stream;
@@ -352,6 +356,7 @@
         _partial = string.Empty;
         _reasoning = string.Empty;
         _calls.Clear();
+        _sources.Clear();
         _stream = new CancellationTokenSource();
         await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
         await RefreshAsync();
@@ -384,6 +389,10 @@
                         break;
                     case ToolResultEvent result:
                         _calls.Find(c => c.CallId == result.CallId)?.Apply(result);
+                        urgent = true;
+                        break;
+                    case SourcesEvent cited:
+                        _sources.AddRange(cited.Sources);
                         urgent = true;
                         break;
                     case AnswerDone:
