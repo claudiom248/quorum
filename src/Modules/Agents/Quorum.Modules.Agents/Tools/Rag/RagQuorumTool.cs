@@ -109,14 +109,24 @@ internal static class RagResultFormat
 
         delimiter ??= AttachmentBlock.NewDelimiter();
         var text = new StringBuilder(Notice);
+
+        // Only the sources that got their number now are new to the answer; the others were published with an earlier call.
         var sources = new List<ToolSource>(response.Chunks.Count);
+        var taken = new List<SourceKey>(response.Chunks.Count);
+        var distinct = new HashSet<SourceKey>();
 
         foreach (var chunk in response.Chunks)
         {
-            var source = new ToolSource(numbering.Next(), chunk.KnowledgeBase, chunk.DocumentId, chunk.Title, chunk.Position, chunk.Url);
-            sources.Add(source);
+            var key = new SourceKey(chunk.KnowledgeBase, chunk.DocumentId, chunk.Title, chunk.Position, chunk.Url);
+            var n = numbering.NumberOf(key, out var isNew);
+            distinct.Add(key);
+            if (isNew)
+            {
+                sources.Add(new ToolSource(n, chunk.KnowledgeBase, chunk.DocumentId, chunk.Title, chunk.Position, chunk.Url));
+                taken.Add(key);
+            }
 
-            text.Append("\n\n[").Append(source.N).Append("] ").Append(Header(chunk));
+            text.Append("\n\n[").Append(n).Append("] ").Append(Header(chunk));
             text.Append("\n<<<SOURCE-").Append(delimiter).Append(">>>\n");
             text.Append(chunk.Text.Replace(delimiter, "[delimiter removed]", StringComparison.Ordinal));
             text.Append("\n<<<END-SOURCE-").Append(delimiter).Append(">>>");
@@ -130,7 +140,7 @@ internal static class RagResultFormat
         }
 
         AppendNotes(text, response);
-        return new ToolOutput(text.ToString(), sources, () => numbering.Release(sources.Count));
+        return new ToolOutput(text.ToString(), sources, () => numbering.Release(taken), distinct.Count);
     }
 
     private static void AppendNotes(StringBuilder text, KnowledgeBaseSearchResponse response)

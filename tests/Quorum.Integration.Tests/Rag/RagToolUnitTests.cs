@@ -59,7 +59,7 @@ public sealed class RagToolUnitTests
     public void SourcesAreNumberedInOrderAndCarryOnlyReferences()
     {
         var numbering = new SourceNumbering();
-        numbering.Next();
+        numbering.NumberOf(new SourceKey("earlier", null, null, null, null), out _);
 
         var output = RagResultFormat.Render(Response(Chunk("first"), Chunk("second", "other", "Other doc", null)), numbering);
 
@@ -67,6 +67,38 @@ public sealed class RagToolUnitTests
         Assert.Equal(("other", "leave", "Other doc", (string?)null, "https://example.test/leave"), (output.Sources![1].KnowledgeBase, output.Sources[1].DocumentId, output.Sources[1].Title, output.Sources[1].Position, output.Sources[1].Url));
         // A source is a reference: it has no place for the text of the chunk.
         Assert.DoesNotContain(typeof(Quorum.Modules.Agents.Tools.ToolSource).GetProperties(), property => property.Name.Contains("Text", StringComparison.Ordinal));
+    }
+
+    [Fact] // AC-37
+    public void ASourceThatComesBackKeepsItsNumberAndIsNotListedAgain()
+    {
+        var numbering = new SourceNumbering();
+        var first = RagResultFormat.Render(Response(Chunk("a", position: "1"), Chunk("b", position: "2")), numbering);
+
+        var second = RagResultFormat.Render(Response(Chunk("b again", position: "2"), Chunk("c", position: "3")), numbering);
+
+        Assert.Equal([1, 2], first.Sources!.Select(s => s.N));
+        // "b" is the source numbered 2 in the first call: the model reads it as [2] again, and only "c" is new.
+        Assert.Equal([3], second.Sources!.Select(s => s.N));
+        Assert.Contains("[2] policies · Leave, 2", second.Text, StringComparison.Ordinal);
+        Assert.Contains("[3] policies · Leave, 3", second.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("[4]", second.Text, StringComparison.Ordinal);
+        Assert.Equal(2, second.SourceCount);
+    }
+
+    [Fact] // AC-37
+    public void OnlyWhatADiscardedResultTookIsGivenBack()
+    {
+        var numbering = new SourceNumbering();
+        RagResultFormat.Render(Response(Chunk("a", position: "1")), numbering);
+        var discarded = RagResultFormat.Render(Response(Chunk("a", position: "1"), Chunk("b", position: "2")), numbering);
+
+        discarded.Discard!();
+        var next = RagResultFormat.Render(Response(Chunk("a", position: "1"), Chunk("c", position: "3")), numbering);
+
+        // "a" keeps its number from the first call, which the discard must not touch, and "b" never existed for the model.
+        Assert.Equal([2], next.Sources!.Select(s => s.N));
+        Assert.Contains("[1] policies", next.Text, StringComparison.Ordinal);
     }
 
     [Fact]

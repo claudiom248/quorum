@@ -1,25 +1,37 @@
 @if (_view.HasSources)
 {
     <div class="sources">
-        @if (_view.Cited.Count > 0)
+        @if (Streaming)
+        {
+            @* The text is still being written: what it cites is not known, so nothing is split or moved until the answer ends. *@
+            <div class="sources-title">Sources</div>
+            <ol class="sources-list">
+                @foreach (var source in _view.Others)
+                {
+                    <li @key="source.Sections[0].Numbers[0]"><SourceEntry Document="source" /></li>
+                }
+            </ol>
+        }
+
+        @if (!Streaming && _view.Cited.Count > 0)
         {
             <div class="sources-title">Sources</div>
             <ol class="sources-list">
                 @foreach (var source in _view.Cited)
                 {
-                    <li @key="source.N"><SourceEntry Source="source" /></li>
+                    <li @key="source.Sections[0].Numbers[0]"><SourceEntry Document="source" /></li>
                 }
             </ol>
         }
 
-        @if (_view.Others.Count > 0)
+        @if (!Streaming && _view.Others.Count > 0)
         {
             <details class="sources-others">
-                <summary>@(_view.Cited.Count > 0 ? "Other sources" : "Sources") (@_view.Others.Count)</summary>
+                <summary>@(_view.Cited.Count > 0 ? "Other sources" : "Sources") (@_view.Others.Sum(document => document.Sections.Count))</summary>
                 <ol class="sources-list">
                     @foreach (var source in _view.Others)
                     {
-                        <li @key="source.N"><SourceEntry Source="source" /></li>
+                        <li @key="source.Sections[0].Numbers[0]"><SourceEntry Document="source" /></li>
                     }
                 </ol>
             </details>
@@ -38,5 +50,9 @@
     [Parameter]
     public string Text { get; set; } = string.Empty;
 
-    protected override void OnParametersSet() => _view = new SourcesView(Sources, Text);
+    /// <summary>The answer is still arriving: the sources are listed as they come, whatever the text cites so far.</summary>
+    [Parameter]
+    public bool Streaming { get; set; }
+
+    protected override void OnParametersSet() => _view = new SourcesView(Sources, Streaming ? string.Empty : Text);
 }

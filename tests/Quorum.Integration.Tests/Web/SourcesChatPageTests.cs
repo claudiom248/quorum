@@ -73,7 +73,7 @@ public sealed class SourcesChatPageTests : BunitContext
     }
 
     [Fact]
-    public async Task SourcesAppearWhileTheAnswerStreamsAndStayAfterItIsStored()
+    public async Task WhileTheAnswerStreamsTheSourcesAreListedAsTheyComeAndOnlySplitWhenItEnds()
     {
         var page = Render<Quorum.Web.Client.Pages.Chat>();
         page.Find("textarea").Input("What is the leave policy?");
@@ -81,32 +81,40 @@ public sealed class SourcesChatPageTests : BunitContext
         await Task.Yield();
 
         await PushAsync("sources", new { sources = new[] { Source(1, "Leave policy", "https://example.com/leave"), Source(2, "Holidays") } });
-        await PushAsync("delta", new { text = "You get 25 days [1]." });
+        // The text cites the second one: it must not move above the first while the answer is being written.
+        await PushAsync("delta", new { text = "Holidays are listed in [2]." });
 
         page.WaitForAssertion(() =>
         {
-            var entries = page.FindAll(".sources .sources-list li");
-            Assert.Equal(2, entries.Count);
-            Assert.Contains("Leave policy", entries[0].TextContent, StringComparison.Ordinal);
-            Assert.Single(page.FindAll(".sources-others"));
+            var titles = page.FindAll(".sources .sources-list > li").Select(li => li.QuerySelector(".source-label, a")!.TextContent).ToList();
+            Assert.Equal(["Leave policy", "Holidays"], titles);
+            Assert.Empty(page.FindAll(".sources-others"));
+        });
+
+        await PushAsync("sources", new { sources = new[] { Source(3, "Travel") } });
+        page.WaitForAssertion(() =>
+        {
+            var titles = page.FindAll(".sources .sources-list > li").Select(li => li.QuerySelector(".source-label, a")!.TextContent).ToList();
+            Assert.Equal(["Leave policy", "Holidays", "Travel"], titles);
         });
 
         _stored =
         [
             new { id = Guid.NewGuid(), role = "User", content = "What is the leave policy?", status = "Completed", createdAt = DateTimeOffset.UnixEpoch, sources = Array.Empty<object>() },
-            Assistant("You get 25 days [1].", Source(1, "Leave policy", "https://example.com/leave"), Source(2, "Holidays")),
+            Assistant("Holidays are listed in [2].", Source(1, "Leave policy", "https://example.com/leave"), Source(2, "Holidays"), Source(3, "Travel")),
         ];
         await PushAsync("done", new { messageId = Guid.NewGuid(), status = "Completed", error = (string?)null });
         _stream.Writer.Complete();
         await sending;
 
+        // Once it has ended the cited source comes first and the others are collapsed.
         page.WaitForAssertion(() =>
         {
-            var cited = page.Find(".sources > .sources-list li");
-            Assert.Equal("[1]", cited.QuerySelector(".source-n")!.TextContent);
-            Assert.Equal("Leave policy", cited.QuerySelector("a")!.TextContent);
-            Assert.Equal("handbook", cited.QuerySelector(".source-detail")!.TextContent);
-            Assert.Equal("[2]", page.Find(".sources-others li .source-n").TextContent);
+            var cited = page.Find(".sources > .sources-list > li");
+            Assert.Equal("[2]", cited.QuerySelector(".source-n")!.TextContent);
+            Assert.Equal("Holidays", cited.QuerySelector(".source-label")!.TextContent);
+            var others = page.FindAll(".sources-others .sources-list > li").Select(li => li.QuerySelector(".source-n")!.TextContent).ToList();
+            Assert.Equal(["[1]", "[3]"], others);
         });
     }
 
@@ -131,6 +139,44 @@ public sealed class SourcesChatPageTests : BunitContext
             Assert.Contains("Sources (1)", lists[1].QuerySelector("summary")!.TextContent, StringComparison.Ordinal);
         });
     }
+
+    [Fact]
+    public void SourcesOfLocalFilesAreGroupedByDocumentNameTheFileAndShowTheSamePlaceOnce()
+    {
+        // The duplicate [4] is an answer stored before the server gave one number to a source.
+        _stored =
+        [
+            Assistant(
+                "Core hours are ten to four [4], and the desk is paid for [3].",
+                LocalSource(1, "Remote work guidelines", "remote-work.html", "Core hours"),
+                LocalSource(2, "Security handbook", "security-handbook.html", "Passwords"),
+                LocalSource(3, "Remote work guidelines", "remote-work.html", "Equipment"),
+                LocalSource(4, "Remote work guidelines", "remote-work.html", "Core hours")),
+        ];
+
+        var page = Render<Quorum.Web.Client.Pages.Chat>(parameters => parameters.Add(chat => chat.Id, Conversation));
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Empty(page.FindAll(".sources a"));
+
+            var document = page.Find(".sources > .sources-list > li");
+            Assert.Equal("Remote work guidelines", document.QuerySelector(".source-doc .source-label")!.TextContent);
+            Assert.Equal("handbook · File: remote-work.html", document.QuerySelector(".source-doc .source-detail")!.TextContent);
+            var sections = document.QuerySelectorAll(".source-sections li").Select(li => (li.QuerySelector(".source-n")!.TextContent, li.QuerySelector(".source-position")!.TextContent)).ToList();
+            Assert.Equal([("[1] [4]", "Section: Core hours"), ("[3]", "Section: Equipment")], sections);
+
+            var others = page.Find(".sources-others");
+            Assert.Contains("(1)", others.QuerySelector("summary")!.TextContent, StringComparison.Ordinal);
+            Assert.Equal("Security handbook", others.QuerySelector(".source-doc .source-label")!.TextContent);
+            Assert.Equal("[2]", others.QuerySelector(".source-sections .source-n")!.TextContent);
+            Assert.Equal("Section: Passwords", others.QuerySelector(".source-sections .source-position")!.TextContent);
+            Assert.Single(page.FindAll(".sources .source-label"), label => label.TextContent == "Remote work guidelines");
+        });
+    }
+
+    private static object LocalSource(int n, string title, string file, string position) =>
+        new { n, knowledgeBase = "handbook", documentId = file, title, position, url = $"file:///srv/documents/{file}" };
 
     [Fact]
     public void OnlyWebAddressesAreLinksAndTheTextIsNeverMarkup()

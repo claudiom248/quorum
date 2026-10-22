@@ -90,6 +90,24 @@ public sealed class RagCitationTests(PostgresFixture postgres, QdrantFixture qdr
     }
 
     [Fact] // AC-37
+    public async Task ASourceFoundAgainKeepsItsNumberAndIsPublishedAndStoredOnce()
+    {
+        await using var setup = await StartAsync();
+
+        var (conversation, events) = await AskAsync(setup, Call(new { query = Text(1) }, "call_1"), Call(new { query = Text(1) }, "call_2"));
+
+        // The second search returns the same two passages: the model reads them as [1] and [2] again, and nothing new is published.
+        Assert.Single(events, e => e.Type == "sources");
+        var results = events.Where(e => e.Type == "tool_result").ToList();
+        var second = results[1].Data.GetProperty("content").GetString()!;
+        Assert.Contains("[1] policies", second, StringComparison.Ordinal);
+        Assert.Contains("[2] policies", second, StringComparison.Ordinal);
+        Assert.DoesNotContain("[3]", second, StringComparison.Ordinal);
+        var stored = await StoredAsync(setup.Admin, conversation, 1);
+        Assert.Equal([1, 2], stored.Select(s => s.GetProperty("n").GetInt32()));
+    }
+
+    [Fact] // AC-37
     public async Task ACallWithNothingFoundOrThatFailedPublishesNoSources()
     {
         await using var setup = await StartAsync(scoreThreshold: 2.0);

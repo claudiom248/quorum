@@ -1,18 +1,33 @@
-<span class="source-n">[@Source.N]</span>
-@if (Source.Href is { } href)
+@if (Document.IsOneLine)
 {
-    <a href="@href" target="_blank" rel="noopener noreferrer">@Source.Label</a>
+    var place = Document.Sections[0];
+    <span class="source-n">@Numbers(place)</span>
+    <DocumentName Document="Document" />
 }
 else
 {
-    <span class="source-label">@Source.Label</span>
-}
-@if (Source.Detail.Length > 0)
-{
-    <span class="source-detail">@Source.Detail</span>
+    <span class="source-doc"><DocumentName Document="Document" /></span>
+    <ul class="source-sections">
+        @foreach (var place in Document.Sections)
+        {
+            <li @key="place.Numbers[0]">
+                <span class="source-n">@Numbers(place)</span>
+                @if (place.Href is { } href)
+                {
+                    <a href="@href" target="_blank" rel="noopener noreferrer">@(place.Position ?? Document.Label)</a>
+                }
+                else if (place.Position is not null)
+                {
+                    <span class="source-position">@place.Position</span>
+                }
+            </li>
+        }
+    </ul>
 }
 
 @code {
     [Parameter, EditorRequired]
-    public SourceItem Source { get; set; } = null!;
+    public SourceDocument Document { get; set; } = null!;
+
+    private static string Numbers(SourceSection place) => string.Join(' ', place.Numbers.Select(n => $"[{n}]"));
 }
