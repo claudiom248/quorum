@@ -3,8 +3,9 @@
 name: quorum-dev
 
 services:
+  # Keep the pgvector version in step with docker-compose.yml, which the tests read it from.
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:0.8.1-pg17
     environment:
       POSTGRES_USER: quorum
       POSTGRES_PASSWORD: quorum-dev

@@ -6,7 +6,7 @@
 # To stamp the real version on the image (shown by /api/version), run docker compose through deploy/compose.sh:
 #   sh deploy/compose.sh --profile bundled-db up --build -d
 #
-# Profiles combine: --profile bundled-db (PostgreSQL) and --profile qdrant (a vector store for knowledge bases).
+# Profiles combine: --profile bundled-db (PostgreSQL), --profile qdrant and --profile pgvector (vector stores for knowledge bases).
 #
 # The image is built from the sources inside Docker (no step to run beforehand).
 #
@@ -69,7 +69,32 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
+  # A PostgreSQL with the pgvector extension to register knowledge bases from (profile "pgvector"). It is separate from the
+  # platform's database, which is never used for knowledge bases. Quorum only reads it: whoever owns the documents fills it.
+  # Inside the compose network register it as host pgvector, port 5432, database "knowledge". The published port is for ingestion
+  # and clients on the host and stays on loopback. The user is "knowledge"; set PGVECTOR_PASSWORD in .env (without it the
+  # container refuses to start; it is not "required" in the file because that would break every start without this profile).
+  # Enable the extension once, in the database you fill: CREATE EXTENSION IF NOT EXISTS vector;
+  pgvector:
+    profiles: [pgvector]
+    image: pgvector/pgvector:0.8.1-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-}
+      POSTGRES_DB: knowledge
+    ports:
+      - "127.0.0.1:${PGVECTOR_PORT:-5433}:5432"
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   quorum-keys:
   postgres-data:
   qdrant-data:
+  pgvector-data:
