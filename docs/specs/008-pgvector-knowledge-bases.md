@@ -1,4 +1,4 @@
-# Spec 007: pgvector Knowledge Bases
+# Spec 008: pgvector Knowledge Bases
 
 **Status:** Approved (2026-10-22)
 **Date:** 2026-10-22
@@ -8,7 +8,7 @@ Spec 003 lets an admin register existing knowledge bases (KBs) and lets assistan
 
 This spec adds the `PgVector` kind: an admin registers a **table or view** of a PostgreSQL database that holds a `vector` or `halfvec` column and the chunk text and metadata beside it. As in spec 003, Quorum only **consumes** the knowledge base (003 D-1): it never writes, creates indexes or installs extensions.
 
-Pinecone is the next kind and has its own spec (008). This spec also completes the per-kind abstraction that 003 D-2 promised and that the code does not have yet: today the registration, inspection, verification and search code talks to the Qdrant connector directly.
+Pinecone is the next kind and has its own spec (009). This spec also completes the per-kind abstraction that 003 D-2 promised and that the code does not have yet: today the registration, inspection, verification and search code talks to the Qdrant connector directly.
 
 ## Scope
 ### In
@@ -23,7 +23,7 @@ Pinecone is the next kind and has its own spec (008). This spec also completes t
 - Documentation for data owners.
 
 ### Out
-- **Pinecone** (spec 008) and the other kinds already deferred: raw documents, external SQL/MongoDB sources.
+- **Pinecone** (spec 009) and the other kinds already deferred: raw documents, external SQL/MongoDB sources.
 - Writing anything to the database: ingestion, `CREATE EXTENSION`, `CREATE INDEX`, `ANALYZE`, schema changes (D-2).
 - A free SQL query as the source of a KB: the source is a relation; a view is how a data owner adapts their schema (D-3).
 - `sparsevec` and `bit` columns, L1 distance, hybrid search (full text plus vectors), reranking.
@@ -35,7 +35,7 @@ Decisions of spec 003 not listed here stand for this kind too: dictionary, mappi
 
 | # | Decision |
 |---|---|
-| D-1 | **Per-kind abstraction.** The KnowledgeBases module gets one internal contract per kind with the operations the module needs: *inspect* (reachability, source exists, vectors with size and distance, indexes, version, a sample of rows as JSON), *list sources* (kinds that can), and *search* (a query vector, filter conditions, limit, score threshold and the paths to read, returning scored rows as JSON). Registration, inspection, verification and search depend on the contract, never on a concrete connector. Qdrant moves behind it with **no change of behaviour**: same routes, same responses, same codes and messages. Pinecone (spec 008) is the third implementation. The connector of each kind owns its failure mapping to a few outcomes with messages that are safe to show. |
+| D-1 | **Per-kind abstraction.** The KnowledgeBases module gets one internal contract per kind with the operations the module needs: *inspect* (reachability, source exists, vectors with size and distance, indexes, version, a sample of rows as JSON), *list sources* (kinds that can), and *search* (a query vector, filter conditions, limit, score threshold and the paths to read, returning scored rows as JSON). Registration, inspection, verification and search depend on the contract, never on a concrete connector. Qdrant moves behind it with **no change of behaviour**: same routes, same responses, same codes and messages. Pinecone (spec 009) is the third implementation. The connector of each kind owns its failure mapping to a few outcomes with messages that are safe to show. |
 | D-2 | **Quorum only reads.** Every call to the database is a `SELECT`, a catalog read, or a `SET LOCAL`, inside a **`READ ONLY` transaction** with a `statement_timeout`. Quorum never writes, never creates or alters anything and does not use the connection's session for anything else. |
 | D-3 | **One KB is one relation**: `schema.name` of a table, view, materialized view or partitioned table, plus one vector column. A data owner with several tables registers several KBs. There is no free SQL. A view is the way to adapt a schema (rename columns, join a documents table, filter rows). Identifiers (schema, relation, columns) come only from names confirmed in the database catalog and are always quoted; values are always parameters. |
 | D-4 | **Connection, two ways.** Either **separate fields** (host, port default 5432, database, username, password, SSL mode) or a **connection string** in Npgsql format; not both. Either way the KB also holds the relation (`schema` default `public`, `table`), the `vectorColumn` and the `distance`. Secrets are encrypted at rest with the master key: with fields only the **password** is secret and the rest is shown on edit; with a connection string the **whole string** is secret, stored encrypted and never returned (only `hasConnectionString`), and editing it means entering it again. Quorum does not restrict addresses and does not inspect or filter the parameters of the connection string: what an administrator enters is their responsibility (decision of 2026-10-22; the same relaxation for Qdrant and MCP is a separate fix). Connections are made with the official PostgreSQL driver. |
