@@ -23,8 +23,10 @@ internal static class BuiltinToolCatalog
     [
         new(
             AskUser,
-            "Asks the user a question and returns their answer. Use it only when you cannot continue without information that only " +
-            "the user has, such as a choice between options or a missing detail. Do not use it to confirm something you can decide yourself.",
+            "Asks the user a question and returns their answer. Call it whenever you need information that only the user can give " +
+            "to answer well: a missing detail, a value you do not have, an ambiguous request or a choice between options. " +
+            "Call this tool instead of writing the question in your reply, and do not answer with a refusal or a guess when a question would " +
+            "let you answer. Do not use it for what you can find out with another tool or decide yourself.",
             """
             {"type":"object","properties":{"question":{"type":"string","description":"The question for the user, short and self-contained."}},"required":["question"],"additionalProperties":false}
             """),
