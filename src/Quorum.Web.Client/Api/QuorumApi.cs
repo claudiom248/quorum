@@ -200,6 +200,7 @@ public sealed partial class QuorumApi(HttpClient http)
                     "tool_call" => JsonSerializer.Deserialize<ToolCallEvent>(item.Data, Json),
                     "tool_result" => JsonSerializer.Deserialize<ToolResultEvent>(item.Data, Json),
                     "ask_user" => JsonSerializer.Deserialize<AskUserEvent>(item.Data, Json),
+                    "sources" => JsonSerializer.Deserialize<SourcesEvent>(item.Data, Json),
 
                     // Includes "ping": the server keeps the connection busy while the answer waits.
                     _ => null,

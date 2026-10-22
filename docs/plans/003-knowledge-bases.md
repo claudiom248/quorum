@@ -129,6 +129,11 @@ C5. Tests for each acceptance criterion; the end-to-end client test of PR 7 is e
 ### PR 8 - Sources in the chat (`feat/003-ui-chat`)
 26. `SourcesList` under the answer, `[n]` markers matching, cited sources first and the others collapsed, links only for `http` and `https` with `rel="noopener noreferrer"`, text never as HTML; sources come back when the conversation is reopened. AC-40, AC-50.
 
+Decisions taken while building PR 8 (details the spec leaves open):
+- **Cited or not** is read from the answer's text: a `[n]` marker, or several in one (`[1, 2]`, `[1][2]`), cites source `n`. Cited sources are listed first under "Sources"; the others sit in a collapsed "Other sources (n)" (just "Sources (n)" when the text cites none). The text itself is not rewritten: the `[n]` label in front of each entry is what a marker matches, and nothing in the markdown renderer changes.
+- **While it streams** the list grows with each `sources` event and cited sources move up as the text reaches them; once the answer is stored the conversation is reloaded and the stored sources replace it, so a regeneration starts from an empty list.
+- **Rendering.** The logic is a plain class (`SourcesView`) covered by tests; `SourcesList` and `SourceEntry` only draw it. A title falls back to the document id and then to "Source n"; the knowledge base name and position follow. A link is made only for an absolute `http` or `https` address, with `target="_blank"` and `rel="noopener noreferrer"`; every other value (relative, `javascript:`, `data:`) is shown as text, and nothing from a source is ever rendered as markup.
+
 ### PR 9 - Documentation and verification (`docs/003-closing`)
 27. `docs/knowledge-bases.md` for data owners (payload conventions and the schema to hand to the admin, payload indexes for the fields to filter on, same embedding model and prefix as the ingestion), a pointer from the README, and how to run the sample project against the dev compose. AC-51 (running it).
 28. `/verify`, and a manual run with a real Ollama embedding model and chat model against the seeded dev Qdrant: registration, a question with filters, the sources in the chat. Record the observations (retrieval quality is measured here, not promised).

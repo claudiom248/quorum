@@ -26,7 +26,11 @@ public sealed record ConversationSummary(Guid Id, string? Title, DateTimeOffset 
 
 public sealed record ConversationDetail(Guid Id, string? Title, IReadOnlyList<MessageDto> Messages, IReadOnlyList<AttachmentInfo>? Attachments = null);
 
-public sealed record MessageDto(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt);
+/// <param name="Sources">What an assistant message cited, by number; none for a user message or an answer that cited nothing.</param>
+public sealed record MessageDto(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt, IReadOnlyList<MessageSourceDto>? Sources = null);
+
+/// <summary>A reference to where a retrieved passage came from. Never the passage itself.</summary>
+public sealed record MessageSourceDto(int N, string KnowledgeBase, string? DocumentId, string? Title, string? Position, string? Url);
 
 public static class MessageRoles
 {
@@ -58,6 +62,9 @@ public sealed record ToolCallEvent(Guid CallId, string Tool, JsonElement Argumen
 
 /// <summary>A tool call ended. <c>Status</c>: <c>succeeded</c>, <c>failed</c>, <c>denied</c>, <c>cancelled</c> or <c>timed_out</c>.</summary>
 public sealed record ToolResultEvent(Guid CallId, string Status, string Content, int SizeCharacters) : AnswerEvent;
+
+/// <summary>A knowledge base search returned these sources; numbering continues across the calls of one answer.</summary>
+public sealed record SourcesEvent(IReadOnlyList<MessageSourceDto> Sources) : AnswerEvent;
 
 /// <summary>The model asked the user a question; the answer waits for the reply (or <c>ExpiresAt</c>).</summary>
 public sealed record AskUserEvent(Guid CallId, string Question, DateTimeOffset ExpiresAt) : AnswerEvent;

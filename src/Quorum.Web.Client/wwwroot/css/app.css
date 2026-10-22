@@ -69,6 +69,13 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .tool-dialog { background: var(--mud-palette-surface); color: var(--mud-palette-text-primary); border-radius: 12px; padding: 1.25rem 1.5rem; max-width: 40rem; width: 100%; max-height: 90vh; overflow: auto; box-shadow: var(--mud-elevation-8); }
 .tool-dialog h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
 .tool-dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+.sources { margin-top: .4rem; font-size: .85rem; }
+.sources-title, .sources-others summary { color: var(--mud-palette-text-secondary); font-size: .8rem; font-weight: 600; }
+.sources-others summary { cursor: pointer; user-select: none; }
+.sources-list { list-style: none; margin: .2rem 0 0; padding: 0; }
+.sources-list li { margin: .15rem 0; overflow-wrap: anywhere; }
+.source-n { font-family: ui-monospace, monospace; color: var(--mud-palette-text-secondary); margin-right: .25rem; }
+.source-detail { margin-left: .4rem; color: var(--mud-palette-text-secondary); font-size: .8rem; }
 .status-note { font-size: .85rem; color: var(--mud-palette-error); }
 .composer { border-top: 1px solid var(--mud-palette-lines-default); padding: .75rem 1rem; background: var(--mud-palette-background); }
 .composer-inner { max-width: 52rem; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
