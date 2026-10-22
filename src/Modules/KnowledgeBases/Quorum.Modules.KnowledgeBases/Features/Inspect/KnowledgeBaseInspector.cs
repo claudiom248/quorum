@@ -7,7 +7,6 @@ using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
-using Quorum.Shared.Networking;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Inspect;
@@ -19,15 +18,8 @@ namespace Quorum.Modules.KnowledgeBases.Features.Inspect;
 internal sealed partial class KnowledgeBaseInspector(
     KnowledgeBasesDbContext db,
     StoreProbe probe,
-    OutboundUrlGuard guard,
     ILogger<KnowledgeBaseInspector> logger)
 {
-    public const string UrlBlockedCode = "knowledge_base.url_blocked";
-
-    public static readonly Error UrlBlocked = Error.Unprocessable(
-        UrlBlockedCode,
-        "The address is not allowed: link-local and cloud metadata addresses are blocked.");
-
     public async Task<Result<InspectResponse>> InspectAsync(InspectRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -40,11 +32,6 @@ internal sealed partial class KnowledgeBaseInspector(
         }
 
         var (connection, embeddingModel) = validated.Value;
-        if (await guard.IsBlockedAsync(connection.Url, cancellationToken))
-        {
-            return UrlBlocked;
-        }
-
         var schemaDiscovery = SchemaText(request.Schema) is { } schema ? JsonSchemaReader.Read(schema) : null;
         if (schemaDiscovery is { IsSuccess: false })
         {
@@ -52,11 +39,6 @@ internal sealed partial class KnowledgeBaseInspector(
         }
 
         var found = await probe.RunAsync(connection, embeddingModel, sample: schemaDiscovery is null, cancellationToken);
-        if (found.Blocked)
-        {
-            return UrlBlocked;
-        }
-
         var warnings = found.Warnings.ToList();
         if (found.Info is { PointsCount: 0 })
         {

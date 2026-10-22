@@ -210,25 +210,6 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
         Assert.Empty(mcp.Calls);
     }
 
-    [Fact] // D-18: the guard also holds when the call runs, not only when the server was registered
-    public async Task AServerWhoseUrlPointsToABlockedAddressIsNotContactedWhenTheCallRuns()
-    {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
-        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
-        await RegisterAndActivateAsync(client, mcp);
-        await ToolFixtures.ExecuteAsync(app, "UPDATE agents.mcp_servers SET \"Url\" = 'http://169.254.169.254/mcp'");
-        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("x")), ChatScript.Reply("It failed."));
-        var id = await ChatApi.CreateConversationAsync(client);
-
-        var events = await ChatApi.SendAsync(client, id, "Go");
-
-        var result = Assert.Single(events, e => e.Type == "tool_result").Data;
-        Assert.Equal("failed", result.GetProperty("status").GetString());
-        Assert.Contains("not allowed", result.GetProperty("content").GetString()!, StringComparison.Ordinal);
-        Assert.Empty(mcp.Calls);
-    }
-
     [Fact]
     public async Task OnlyTextIsPassedOnNonTextContentIsNamedAndStructuredContentIsUsedWhenThereIsNoText()
     {

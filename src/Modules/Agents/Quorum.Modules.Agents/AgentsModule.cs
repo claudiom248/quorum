@@ -61,8 +61,8 @@ public static class AgentsModule
 
         services.AddSingleton<McpServerClient>();
 
-        // Every connection to an MCP server goes through this client (D-18); see AddGuardedHttpClient for what that guarantees.
-        services.AddGuardedHttpClient(McpServerClient.HttpClientName);
+        // Every connection to an MCP server goes through this client (D-18): no redirects, no timeout of its own.
+        services.AddServerHttpClient(McpServerClient.HttpClientName);
 
         return services;
     }

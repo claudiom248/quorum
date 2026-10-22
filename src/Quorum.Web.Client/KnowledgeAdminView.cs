@@ -25,7 +25,6 @@ public static class KnowledgeAdminView
         "knowledge_base.embedding_failed",
         "knowledge_base.vector_name_required",
         "knowledge_base.vector_not_found",
-        "knowledge_base.url_blocked",
     ];
 
     public static WarningLevel LevelOf(KnowledgeBaseWarning warning)

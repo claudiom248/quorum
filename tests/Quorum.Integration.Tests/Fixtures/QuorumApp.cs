@@ -16,7 +16,6 @@ using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
-using Quorum.Shared.Networking;
 using Serilog;
 
 namespace Quorum.Integration.Tests.Fixtures;
@@ -43,9 +42,6 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     public LogCapture Logs { get; } = new();
 
     public FakeModelServer ModelServer { get; } = new();
-
-    /// <summary>Script host names for the servers an administrator registers (MCP, Qdrant): a name that resolves to a blocked address, or changes address.</summary>
-    public TestHostResolver McpHosts { get; } = new();
 
     public string ConnectionString => _connectionString;
 
@@ -191,7 +187,6 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             // Hundreds of tests sign in or create a user: the production iteration count would dominate their time.
             services.Configure<PasswordHasherOptions>(options => options.IterationCount = 1_000);
             services.AddSingleton<IBuiltinTool>(Probe);
-            services.AddSingleton<IHostResolver>(McpHosts);
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);

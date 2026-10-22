@@ -272,7 +272,6 @@ internal sealed partial class KnowledgeBaseSearchEngine(
 
     private static string CodeOf(QdrantFailure failure) => failure switch
     {
-        QdrantFailure.Blocked => "knowledge_base.url_blocked",
         QdrantFailure.Unreachable => WarningCodes.QdrantUnreachable,
         QdrantFailure.Unauthorized => WarningCodes.QdrantUnauthorized,
         QdrantFailure.NotFound => WarningCodes.CollectionNotFound,

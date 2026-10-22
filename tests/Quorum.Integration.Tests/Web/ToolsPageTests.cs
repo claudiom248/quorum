@@ -422,15 +422,15 @@ public sealed class ToolsPageTests : BunitContext
         var script = _api.Respond;
         _api.Respond = (method, path) =>
             method == HttpMethod.Post && path == "/api/tools/servers"
-                ? FakeApiHandler.Json(new { title = "Bad", detail = "The address of the server is not allowed.", code = "tool.url_blocked" }, HttpStatusCode.BadRequest)
+                ? FakeApiHandler.Json(new { title = "Bad", detail = "The URL must be an absolute http or https address.", code = "tool.invalid_url" }, HttpStatusCode.BadRequest)
                 : script(method, path);
         var page = RenderPage();
         Click(page, "Add server");
-        FillServerForm(page, "web", "http://169.254.169.254/");
+        FillServerForm(page, "web", "http://web.test/mcp");
 
         page.Find("[data-form=server] form").Submit();
 
-        page.WaitForAssertion(() => Assert.Contains("is not allowed", page.Markup, StringComparison.Ordinal));
+        page.WaitForAssertion(() => Assert.Contains("must be an absolute", page.Markup, StringComparison.Ordinal));
         Assert.NotEmpty(page.FindAll("[data-form=server]"));
     }
 
