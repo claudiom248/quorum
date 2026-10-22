@@ -23,7 +23,8 @@
 
 ## Order and parallel work
 - **PR 1 comes first and alone.** Spec 007's lookups backend waits for it (007 depends on the contract), and every later PR of this plan builds on it.
-- After PR 1 merges: PR 3 to PR 5 are one chain (same files, no parallel writers); **spec 007's backend can run in parallel** with them (it touches the Qdrant adapter, the mapping and Agents); **PR 2 (compose profile) is independent** and can be done at any time; the UI (PR 6) starts when PR 5 is merged.
+- After PR 1 merges: PR 3 to PR 5 are one chain (same files, no parallel writers); **spec 007's backend can run in parallel** with them (it touches the Qdrant adapter, the mapping and Agents); the UI (PR 6) starts when PR 5 is merged.
+- The compose profile is not a PR of its own: it is the first two steps of PR 3. The numbers of the other PRs are kept, because plan 009 and plan 007 refer to them.
 - Spec 009 (Pinecone) is planned after this plan's PR 1 merges, because its adapter is written against the contract.
 
 ## Steps
@@ -37,11 +38,11 @@ R5. `ConnectionSettings` over `JsonObject` with the value converter; `KnowledgeB
 R6. `IStoreCapability` and `Capability<T>()`; a test with a fake capability and a fake adapter that runs the inspector and the search engine over an in-memory store, which shows that nothing in the shared code assumes Qdrant. AC-39 (mechanism).
 R7. `DocumentIds` condition (008 A1-2): `SearchInput` gains an optional list; the Qdrant adapter translates it to `MatchAny` on the `documentId` path; a KB without `documentId` mapped is skipped and named like a KB lacking a filter field (003 D-12). Not reachable from the rag tool or the public contracts yet: spec 007 wires that. Engine-level tests. AC-41 (skipping part).
 
-### PR 2 - pgvector compose profile (`build/008-pgvector-profile`)
+### PR 3 - Compose profile, connect, discover and inspect (`feat/008-pgvector-inspect`)
+_(PR 2, the compose profile, was folded into this PR on 2026-10-22: it is small and the rest of the PR uses its image.)_
+
 1. Optional `pgvector` profile in `docker-compose.yml`: a PostgreSQL with the extension (`pgvector/pgvector`, pinned), separate from the platform's database, port published on loopback only, credentials from `.env` with no defaults in the file, a named volume, a health check; the header comment lists the profile with `bundled-db` and `qdrant`. `deploy/compose.sh` is checked to pass the profile through.
 2. The tests' compose reader learns the second image; a test that fails if the pinned tag stops being a pgvector one. AC-38.
-
-### PR 3 - Connect, discover and inspect (`feat/008-pgvector-inspect`)
 3. Prototype against the dev compose's PostgreSQL (a separate database): the catalog queries (relations with a `vector` or `halfvec` column the user can read, the column type and its dimensions from `atttypmod`, the operator class of the indexes, the extension version, `has_table_privilege`), the cast of a `real[]` and of the `Pgvector.Npgsql` types to both vector types, `vector_dims` on a column without dimensions, the three distance operators and scores. Findings are written below this step, as in plan 003.
 4. `PgVectorFixture` and the sample generator of D-18 (relations: flat columns, LangChain-style `jsonb` metadata, `text[]` tags, a filtered column without index, two vector columns, `halfvec`, unspecified dimensions, a different dimension, an empty table, a view, HNSW with cosine, IVFFlat with L2, no vector index, names with capitals and spaces, a dotted column name, a pasteable schema); a CLI option in the sample project. AC-36 (generator part).
 5. `KnowledgeBaseKind.PgVector`, the connection model (fields or string, exclusive; `schema`, `table`, `vectorColumn`, `distance`), `PgVectorStoreAdapter` with the secret handling of D-4 and D-16 (`ProtectedPassword` or `ProtectedConnectionString`), the data source cache. AC-2, AC-3, AC-6.
@@ -71,8 +72,7 @@ R7. `DocumentIds` condition (008 A1-2): `SearchInput` gains an optional list; th
 | PR | Criteria |
 |---|---|
 | 1 | AC-1, AC-39 (mechanism), AC-41 (skipping part) |
-| 2 | AC-38 |
-| 3 | AC-2, AC-3, AC-6, AC-7, AC-8 (inspect half), AC-9 to AC-15, AC-36 (generator) |
+| 3 | AC-38, AC-2, AC-3, AC-6, AC-7, AC-8 (inspect half), AC-9 to AC-15, AC-36 (generator) |
 | 4 | AC-4, AC-5, AC-8 (save half), AC-16 to AC-20, AC-31 to AC-33 (registration half), AC-39 (PgVector), AC-42 (by the capability absence, see Decisions), AC-43 |
 | 5 | AC-21 to AC-30, AC-33 (search half), AC-40, AC-41 |
 | 6 | AC-34, AC-35 |
@@ -84,6 +84,7 @@ R7. `DocumentIds` condition (008 A1-2): `SearchInput` gains an optional list; th
 - **The query vector parameter and `halfvec` on the pinned Npgsql.** Mitigation: the PR 3 prototype decides between the helper package and the `real[]` cast before any adapter code.
 - **Filtered approximate search returns too few rows.** Mitigation: iterative scan (D-12), tested with a selective filter on both index types in PR 5; older servers get the verification warning.
 - **`jsonb` keys of mixed types.** Mitigation: extraction only when the JSON type fits the filter, a test per type (AC-24).
+- **PR 3 is now the widest of the chain** (compose, fixture, generator, adapter, connector, discovery, two endpoints). Mitigation: the steps stay in the order above and each is its own commit, so the review can go commit by commit; if it grows past what can be reviewed, the compose profile (steps 1 and 2) is the first piece to split back out.
 - **Testcontainers cost.** One shared pgvector container per test run, started on first use like `QdrantFixture`; sample relations are created once.
 - **Spec 007 lands in parallel and touches the same adapter interface.** Mitigation: PR 1 defines the capability mechanism and the `DocumentIds` condition so that 007 adds, and does not change, the contract.
 
