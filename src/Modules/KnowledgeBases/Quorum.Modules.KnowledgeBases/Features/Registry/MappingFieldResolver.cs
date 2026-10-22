@@ -76,7 +76,12 @@ internal static class MappingFieldResolver
                 return MappingValidation.InvalidMapping($"The dictionary field '{field.Name}' is bound to two payload fields: each field can be mapped once.");
             }
 
-            result.Fields.Add(new MappedField(path, field.Id));
+            if (request.Listable && field.Type is not (DictionaryFieldType.Text or DictionaryFieldType.TextList))
+            {
+                return MappingValidation.InvalidListableField(path, field.Type);
+            }
+
+            result.Fields.Add(new MappedField(path, field.Id, request.Listable));
             result.Types.Add((path, field.Type));
         }
 

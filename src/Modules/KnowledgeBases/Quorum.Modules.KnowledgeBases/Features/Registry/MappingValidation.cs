@@ -30,10 +30,77 @@ internal static class MappingValidation
             : result;
     }
 
-    public static Error? Paths(MappingRoles roles, IReadOnlyList<MappedFieldRequest> fields)
+    public static Error InvalidListableField(string path, DictionaryFieldType type) => Error.Validation(
+        "knowledge_base.invalid_listable_field",
+        $"'{path}' is mapped to a {Describe(type)} field: only text and list of texts fields can be listed, because a lookup shows the values as they are stored.");
+
+    public static Error InvalidCountedPoint(string message) => Error.Validation("knowledge_base.invalid_counted_point", message);
+
+    /// <summary>The entity name role, trimmed; <see langword="null"/> when there is none.</summary>
+    public static Result<string?> EntityName(string? entityName)
+    {
+        var path = Clean(entityName);
+        return path?.Length > MaxPathLength
+            ? InvalidMapping($"A payload path can have up to {MaxPathLength} characters.")
+            : path;
+    }
+
+    /// <summary>The shape of the counted point: a path and a scalar. Whether the scalar fits the field comes later, <see cref="CountedPointFits"/>.</summary>
+    public static Result<CountedPoint?> ReadCountedPoint(CountedPointRequest? request)
+    {
+        if (request is null)
+        {
+            return (CountedPoint?)null;
+        }
+
+        var path = Clean(request.Path);
+        if (path is null || path.Length > MaxPathLength)
+        {
+            return InvalidCountedPoint($"The counted point needs the payload path it reads, up to {MaxPathLength} characters.");
+        }
+
+        return (request.Value is { } value ? CountedPoint.TryCreate(path, value) : null) is { } point
+            ? point
+            : InvalidCountedPoint("The value of the counted point must be true, a number or a text of up to 200 characters.");
+    }
+
+    /// <summary>
+    /// Whether the value of the counted point fits the field it reads: the type of the dictionary field when the path is mapped as a
+    /// metadata field, otherwise what the sampled points hold. A path no sampled point has cannot be checked and is accepted.
+    /// </summary>
+    public static Error? CountedPointFits(CountedPoint? point, IEnumerable<(string Path, DictionaryFieldType Type)> mapped, IReadOnlyList<JsonObject> sample)
+    {
+        if (point is null)
+        {
+            return null;
+        }
+
+        var kind = point.ToJsonElement().ValueKind;
+        foreach (var (path, type) in mapped)
+        {
+            if (path == point.Path)
+            {
+                return FitsScalar(type, kind)
+                    ? null
+                    : InvalidCountedPoint($"The value of the counted point does not fit the {Describe(type)} dictionary field '{path}' is mapped to.");
+            }
+        }
+
+        foreach (var payload in sample)
+        {
+            if (TryRead(payload, point.Path, out var value) && value is not null && Category(value.GetValueKind()) != Category(kind))
+            {
+                return InvalidCountedPoint($"The value of the counted point does not fit the values of '{point.Path}' in the sampled points.");
+            }
+        }
+
+        return null;
+    }
+
+    public static Error? Paths(MappingRoles roles, string? entityName, IReadOnlyList<MappedFieldRequest> fields)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var rolePaths = new[] { roles.Text, roles.DocumentId, roles.Title, roles.Position, roles.SourceUrl }.OfType<string>();
+        var rolePaths = new[] { roles.Text, roles.DocumentId, roles.Title, roles.Position, roles.SourceUrl, entityName }.OfType<string>();
         foreach (var path in rolePaths)
         {
             if (!seen.Add(path))
@@ -85,7 +152,10 @@ internal static class MappingValidation
         }
 
         var roles = mapping.Roles;
-        var paths = new[] { roles.Text, roles.DocumentId, roles.Title, roles.Position, roles.SourceUrl }.OfType<string>().Concat(mapping.Fields.Select(f => f.Path));
+        var paths = new[] { roles.Text, roles.DocumentId, roles.Title, roles.Position, roles.SourceUrl, mapping.EntityName, mapping.CountedPoint?.Path }
+            .OfType<string>()
+            .Concat(mapping.Fields.Select(f => f.Path))
+            .Distinct(StringComparer.Ordinal);
         foreach (var path in paths)
         {
             if (!sample.Any(payload => TryRead(payload, path, out _)))
@@ -130,6 +200,17 @@ internal static class MappingValidation
             _ => false,
         };
     }
+
+    /// <summary>Booleans are one category: a counted point of <c>true</c> reads a field whose points hold <c>true</c> or <c>false</c>.</summary>
+    private static JsonValueKind Category(JsonValueKind kind) => kind == JsonValueKind.False ? JsonValueKind.True : kind;
+
+    private static bool FitsScalar(DictionaryFieldType type, JsonValueKind kind) => type switch
+    {
+        DictionaryFieldType.Text => kind == JsonValueKind.String,
+        DictionaryFieldType.Number => kind == JsonValueKind.Number,
+        DictionaryFieldType.Boolean => kind == JsonValueKind.True,
+        _ => false,
+    };
 
     private static string Describe(DictionaryFieldType type) => type switch
     {

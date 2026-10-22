@@ -17,13 +17,22 @@ internal sealed record KnowledgeBaseRequest(
     string? QueryPrefix,
     MappingRequest? Mapping,
     ScopeRequest? Scope,
-    List<CreateFieldRequest>? CreateFields);
+    List<CreateFieldRequest>? CreateFields,
+    int? LookupRefreshHours = null);
 
-internal sealed record MappingRequest(RolesDto? Roles, List<MappedFieldRequest>? Fields);
+/// <param name="CountedPoint">What a lookup counts (spec 007 D-2). Omitted means not set: a mapping is saved whole.</param>
+/// <param name="EntityName">The path of the name of an entity, for a knowledge base whose points are entities (spec 007 D-4).</param>
+internal sealed record MappingRequest(RolesDto? Roles, List<MappedFieldRequest>? Fields, CountedPointRequest? CountedPoint = null, string? EntityName = null);
+
+/// <param name="Value"><c>true</c>, a number or a text: it has to fit the type of the field at <paramref name="Path"/>.</param>
+internal sealed record CountedPointRequest(string? Path, JsonElement? Value);
+
+internal sealed record CountedPointResponse(string Path, JsonElement Value);
 
 /// <param name="DictionaryFieldId">The dictionary field, when the client knows it; otherwise <paramref name="Name"/> finds it, or names the one to create.</param>
 /// <param name="Cluster">With <paramref name="Name"/>: the cluster of the field; none means a field with no cluster.</param>
-internal sealed record MappedFieldRequest(string? Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null);
+/// <param name="Listable">Whether the distinct values of the field are kept as a lookup (spec 007 D-3).</param>
+internal sealed record MappedFieldRequest(string? Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null, bool Listable = false);
 
 internal sealed record CreateFieldRequest(string? Name, string? Type, string? Description, string? Cluster = null);
 
@@ -62,9 +71,13 @@ internal sealed record KnowledgeBaseListItem(
 
 
 /// <param name="FilterName">The name a test search filters this field by, which is not always its name (spec 003 A1-6).</param>
-internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null);
+internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null, bool Listable = false);
 
-internal sealed record MappingResponse(RolesDto Roles, IReadOnlyList<MappedFieldResponse> Fields);
+internal sealed record MappingResponse(
+    RolesDto Roles,
+    IReadOnlyList<MappedFieldResponse> Fields,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CountedPointResponse? CountedPoint = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EntityName = null);
 
 internal sealed record ScopeResponse(string Kind, IReadOnlyList<Guid> TenantIds, IReadOnlyList<Guid> AssistantIds);
 
@@ -82,7 +95,8 @@ internal sealed record KnowledgeBaseDetail(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MappingResponse? Mapping,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ScopeResponse? Scope,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Warning,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? LastVerifiedAt)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? LastVerifiedAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? LookupRefreshHours = null)
 {
     public static KnowledgeBaseDetail Shareable(KnowledgeBase registration) =>
         new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, null, null, null, null, null, null, null);
@@ -99,8 +113,11 @@ internal sealed record KnowledgeBaseDetail(
         registration.QueryPrefix,
         new MappingResponse(
             new RolesDto(registration.Mapping.Roles.Text, registration.Mapping.Roles.DocumentId, registration.Mapping.Roles.Title, registration.Mapping.Roles.Position, registration.Mapping.Roles.SourceUrl),
-            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null, filterNames.GetValueOrDefault(f.DictionaryFieldId)))]),
+            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null, filterNames.GetValueOrDefault(f.DictionaryFieldId), f.Listable))],
+            registration.Mapping.CountedPoint is { } counted ? new CountedPointResponse(counted.Path, counted.ToJsonElement()) : null,
+            registration.Mapping.EntityName),
         new ScopeResponse(registration.Scope.ToString(), registration.ScopeTenantIds, registration.ScopeAssistantIds),
         registration.LastError,
-        registration.LastVerifiedAt);
+        registration.LastVerifiedAt,
+        registration.LookupRefreshHours);
 }
