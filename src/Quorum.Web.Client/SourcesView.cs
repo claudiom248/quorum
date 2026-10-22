@@ -6,12 +6,12 @@ namespace Quorum.Web.Client;
 /// <summary>One place in a document the answer drew on.</summary>
 /// <param name="Numbers">The numbers the text can cite it by: one for an answer the server numbered by source, several for one stored before it did.</param>
 /// <param name="Position">Says whether it is a page or a section; <see langword="null"/> when the source gave none.</param>
-/// <param name="Href">Only when the sections of the document do not all share one address.</param>
+/// <param name="Href">Where it leads, only for <c>http</c> and <c>https</c> addresses; the model and the store decide what a source says, so nothing else becomes a link.</param>
 public sealed record SourceSection(IReadOnlyList<int> Numbers, string? Position, string? Href);
 
 /// <summary>A document under an answer and the places in it that were used.</summary>
 /// <param name="Detail">The knowledge base it comes from and, when there is no link to say which document it is, its id.</param>
-/// <param name="Href">Only for <c>http</c> and <c>https</c> addresses; the model and the store decide what a source says, so nothing else becomes a link.</param>
+/// <param name="Href">Only for a document cited once as a whole, whose title carries the link; a document with sections links on each section.</param>
 public sealed record SourceDocument(string Label, string Detail, string? Href, IReadOnlyList<SourceSection> Sections)
 {
     /// <summary>A document cited as a whole, once: it fits on one line with its number.</summary>
@@ -97,15 +97,21 @@ public sealed partial class SourcesView
             : !string.IsNullOrWhiteSpace(first.DocumentId) ? first.DocumentId
             : $"Source {group.First().Numbers[0]}";
 
-        var addresses = group.Select(place => WebAddress(place.First.Url)).Distinct().ToList();
-        var shared = addresses is [{ } only] ? only : null;
+        var sections = group.Select(place => new SourceSection([.. place.Numbers], PositionText(place.First.Position), WebAddress(place.First.Url))).ToList();
 
-        // With a link nothing else says which document it is, and when the id already is the label it would only repeat.
-        var file = shared is null && label != first.DocumentId && !string.IsNullOrWhiteSpace(first.DocumentId) ? $"File: {first.DocumentId}" : null;
+        // A link sits on the line that carries the number: on each section, or on the title of a document cited once as a whole. The
+        // heading of a document with sections is never a link, so the same document does not look different for the addresses it has.
+        var oneLine = sections is [{ Position: null }];
+        var href = oneLine ? sections[0].Href : null;
+
+        // Without any link nothing else says which document it is; with one it would only be misleading, and when the id already is
+        // the label it would only repeat.
+        var file = sections.All(section => section.Href is null) && label != first.DocumentId && !string.IsNullOrWhiteSpace(first.DocumentId)
+            ? $"File: {first.DocumentId}"
+            : null;
         var detail = string.Join(" · ", new[] { first.KnowledgeBase, file }.Where(part => !string.IsNullOrWhiteSpace(part)));
 
-        var sections = group.Select(place => new SourceSection([.. place.Numbers], PositionText(place.First.Position), shared is null ? WebAddress(place.First.Url) : null));
-        return new SourceDocument(label, detail, shared, [.. sections]);
+        return new SourceDocument(label, detail, href, sections);
     }
 
     // The position is a page or a section, whatever the data owner put there: a bare number is a page.
