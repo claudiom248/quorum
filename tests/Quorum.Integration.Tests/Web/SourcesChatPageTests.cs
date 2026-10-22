@@ -175,6 +175,35 @@ public sealed class SourcesChatPageTests : BunitContext
         });
     }
 
+    [Fact]
+    public void LinksSitOnTheSectionsWhateverTheAddressesAndTheFileIsNotNamed()
+    {
+        _stored =
+        [
+            Assistant(
+                "See [1], [3] and [5].",
+                WebSource(1, "VPN setup guide", "vpn-setup.html", "Connect", "https://wiki.test/vpn-setup.html#connect"),
+                WebSource(2, "VPN setup guide", "vpn-setup.html", "Troubleshooting", "https://wiki.test/vpn-setup.html#troubleshooting"),
+                WebSource(3, "Resetting your password", "password-reset.html", "Self-service", "https://wiki.test/password-reset.html"),
+                WebSource(4, "Resetting your password", "password-reset.html", "Locked account", "https://wiki.test/password-reset.html"),
+                WebSource(5, "Requesting a laptop", "laptops.html", null, "https://wiki.test/laptops.html")),
+        ];
+
+        var page = Render<Quorum.Web.Client.Pages.Chat>(parameters => parameters.Add(chat => chat.Id, Conversation));
+
+        page.WaitForAssertion(() =>
+        {
+            // Never on the heading of a document that has sections; on every section, and on the title of a document cited whole.
+            Assert.Empty(page.FindAll(".source-doc a"));
+            Assert.Equal(5, page.FindAll(".sources a").Count);
+            Assert.Equal(["Section: Connect", "Section: Self-service", "Requesting a laptop"], page.FindAll(".sources > .sources-list a").Select(a => a.TextContent));
+            Assert.DoesNotContain("File:", page.Find(".sources").TextContent, StringComparison.Ordinal);
+        });
+    }
+
+    private static object WebSource(int n, string title, string file, string? position, string url) =>
+        new { n, knowledgeBase = "wiki", documentId = file, title, position, url };
+
     private static object LocalSource(int n, string title, string file, string position) =>
         new { n, knowledgeBase = "handbook", documentId = file, title, position, url = $"file:///srv/documents/{file}" };
 

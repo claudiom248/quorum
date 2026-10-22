@@ -161,8 +161,9 @@ public sealed class SourcesViewTests
     }
 
     [Fact]
-    public void ADocumentWhoseSectionsShareOneAddressLinksOnTheDocumentAndOtherwiseOnTheSections()
+    public void ALinkAlwaysSitsOnTheSectionsAndNeverOnTheHeadingOfADocumentWithSections()
     {
+        // The same address for every section and a different one for each must look alike: the heading is never the link.
         var same = new SourcesView(
             [Source(1, "A", url: "https://example.com/a", position: "x"), Source(2, "A", url: "https://example.com/a", position: "y")],
             string.Empty);
@@ -170,9 +171,35 @@ public sealed class SourcesViewTests
             [Source(1, "A", url: "https://example.com/a#x", position: "x"), Source(2, "A", url: "https://example.com/a#y", position: "y")],
             string.Empty);
 
-        Assert.Equal("https://example.com/a", same.Others.Single().Href);
-        Assert.All(same.Others.Single().Sections, section => Assert.Null(section.Href));
+        Assert.Null(same.Others.Single().Href);
+        Assert.Equal(["https://example.com/a", "https://example.com/a"], same.Others.Single().Sections.Select(section => section.Href));
         Assert.Null(different.Others.Single().Href);
         Assert.Equal(["https://example.com/a#x", "https://example.com/a#y"], different.Others.Single().Sections.Select(section => section.Href));
+    }
+
+    [Fact]
+    public void ADocumentCitedOnceAsAWholeLinksOnItsTitle()
+    {
+        var view = new SourcesView([Source(1, "Laptops", url: "https://example.com/laptops", documentId: "laptops.html")], string.Empty);
+
+        var document = view.Others.Single();
+        Assert.True(document.IsOneLine);
+        Assert.Equal("https://example.com/laptops", document.Href);
+    }
+
+    [Fact]
+    public void TheFileIsNotNamedWhenAnySectionHasALink()
+    {
+        var view = new SourcesView(
+            [
+                Source(1, "Linked", url: "https://example.com/a#x", documentId: "a.html", position: "x"),
+                Source(2, "Linked", url: "file:///srv/a.html", documentId: "a.html", position: "y"),
+                Source(3, "Local", url: "file:///srv/b.html", documentId: "b.html", position: "x"),
+                Source(4, "Local", url: "file:///srv/b.html", documentId: "b.html", position: "y"),
+            ],
+            string.Empty);
+
+        // One linked section is enough: the link says where the document is. Without any, the file is the only way to find it.
+        Assert.Equal(["handbook", "handbook · File: b.html"], view.Others.Select(document => document.Detail));
     }
 }
