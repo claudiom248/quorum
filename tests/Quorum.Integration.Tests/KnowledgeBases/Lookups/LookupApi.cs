@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Modules.KnowledgeBases.Domain;
@@ -98,11 +99,12 @@ internal static class LookupApi
         Guid tenantId,
         LookupSlice slice,
         int generation,
-        IReadOnlyList<(string Value, int Count)> values)
+        IReadOnlyList<(string Value, int Count)> values,
+        DateTimeOffset? nextRefreshAt = null)
     {
         var ranked = values.OrderByDescending(v => v.Count).ThenBy(v => v.Value, StringComparer.Ordinal).ToList();
         db.LookupValues.AddRange(ranked.Select((v, position) => LookupValue.Create(tenantId, slice.Id, generation, position, v.Value, v.Count)));
-        slice.Publish(generation, ranked.Count, Now, nextRefreshAt: null);
+        slice.Publish(generation, ranked.Count, Now, nextRefreshAt);
         await db.SaveChangesAsync(Ct);
     }
 
@@ -121,6 +123,108 @@ internal static class LookupApi
         await db.SaveChangesAsync(Ct);
         return lookup.Id;
     }
+
+    public static Uri RefreshKnowledgeBase(Guid knowledgeBaseId) => new($"/api/knowledge-bases/{knowledgeBaseId}/lookups/refresh", UriKind.Relative);
+
+    public static Uri RefreshLookup(Guid lookupId) => new($"/api/knowledge-bases/lookups/{lookupId}/refresh", UriKind.Relative);
+
+    public static Uri KnowledgeBaseLookups(Guid knowledgeBaseId) => new($"/api/knowledge-bases/{knowledgeBaseId}/lookups", UriKind.Relative);
+
+    public static async Task<HttpResponseMessage> PostAsync(HttpClient client, Uri uri) => await client.PostAsync(uri, content: null, Ct);
+
+    /// <summary>
+    /// A computed lookup of a knowledge base whose slice is due, as the clock of <paramref name="app"/> sees it. With
+    /// <paramref name="published"/> it already has a first generation, and <paramref name="nextRefreshAt"/> says when it is due next
+    /// (the clock's now when it is left out).
+    /// </summary>
+    public static async Task<SeededLookup> SeedDueAsync(
+        QuorumApp app,
+        Guid tenantId,
+        IReadOnlyList<(string Value, int Count)>? published = null,
+        int refreshHours = 24,
+        DateTimeOffset? nextRefreshAt = null,
+        LookupKind kind = LookupKind.Computed)
+    {
+        var now = app.Clock?.GetUtcNow() ?? DateTimeOffset.UtcNow;
+        await using var services = app.Services.CreateAsyncScope();
+        var db = services.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
+        var registration = KnowledgeBaseFixtures.Create(
+            tenantId,
+            $"policies-{Guid.NewGuid():N}"[..20],
+            "http://qdrant.test:6334",
+            "docs",
+            KnowledgeBaseScope.Tenant,
+            [],
+            lookupRefreshHours: refreshHours);
+        db.KnowledgeBases.Add(registration);
+        var lookup = kind == LookupKind.Entity
+            ? Lookup.Entity(tenantId, registration.Id, "People.", now)
+            : Lookup.Computed(tenantId, registration.Id, Guid.NewGuid(), LookupUnit.Documents, now);
+        var slice = LookupSlice.Create(tenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now);
+        db.Lookups.Add(lookup);
+        db.LookupSlices.Add(slice);
+        await db.SaveChangesAsync(Ct);
+
+        if (published is not null)
+        {
+            var ranked = published.OrderByDescending(v => v.Count).ThenBy(v => v.Value, StringComparer.Ordinal).ToList();
+            db.LookupValues.AddRange(ranked.Select((v, position) => LookupValue.Create(tenantId, slice.Id, 1, position, v.Value, v.Count)));
+            slice.Publish(1, ranked.Count, now, nextRefreshAt ?? now);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        return new SeededLookup(registration.Id, lookup.Id, slice.Id);
+    }
+
+    /// <summary>A slice as the tables hold it, whatever tenant it belongs to.</summary>
+    public static async Task<LookupSlice> SliceAsync(QuorumApp app, Guid sliceId)
+    {
+        await using var services = app.Services.CreateAsyncScope();
+        var db = services.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
+        return await db.LookupSlices.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == sliceId, Ct);
+    }
+
+    /// <summary>The values of a slice in the generations given, in rank order.</summary>
+    public static async Task<List<(int Generation, string Value, int? Count)>> StoredValuesAsync(QuorumApp app, Guid sliceId)
+    {
+        await using var services = app.Services.CreateAsyncScope();
+        var db = services.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
+        var rows = await db.LookupValues.IgnoreQueryFilters().AsNoTracking()
+            .Where(v => v.SliceId == sliceId)
+            .OrderBy(v => v.Generation).ThenBy(v => v.Position)
+            .Select(v => new { v.Generation, v.Value, v.DocumentCount })
+            .ToListAsync(Ct);
+        return [.. rows.Select(v => (v.Generation, v.Value, v.DocumentCount))];
+    }
+
+    /// <summary>Waits for a condition that a background job brings about, without a fixed sleep.</summary>
+    public static async Task<T> UntilAsync<T>(Func<Task<T>> read, Func<T, bool> done, TimeSpan? timeout = null, Func<Task>? between = null)
+    {
+        var limit = TimeProvider.System.GetTimestamp();
+        var budget = timeout ?? TimeSpan.FromSeconds(30);
+        while (true)
+        {
+            var value = await read();
+            if (done(value))
+            {
+                return value;
+            }
+
+            if (TimeProvider.System.GetElapsedTime(limit) > budget)
+            {
+                throw new TimeoutException("The condition was not reached in time.");
+            }
+
+            if (between is not null)
+            {
+                await between();
+            }
+
+            await Task.Delay(50, Ct);
+        }
+    }
+
+    public sealed record SeededLookup(Guid KnowledgeBaseId, Guid LookupId, Guid SliceId);
 
     public sealed record CreatedBody(Guid Id);
 

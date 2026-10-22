@@ -60,6 +60,12 @@ internal sealed class LookupSlice
 
     public DateTimeOffset? NextRefreshAt { get; private set; }
 
+    /// <summary>
+    /// When the computation that is running began, or <see langword="null"/> when none is. It is a lease: a computation that died leaves it
+    /// behind, and the refresh service treats it as expired once the time budget has passed.
+    /// </summary>
+    public DateTimeOffset? ComputingSince { get; private set; }
+
     /// <summary>The tools that use the slice, by id: they live in another schema, so there is no foreign key. A slice no tool uses is removed.</summary>
     public List<Guid> ToolIds { get; private set; } = [];
 
@@ -76,7 +82,10 @@ internal sealed class LookupSlice
         LastError = null;
         ComputedAt = now;
         NextRefreshAt = nextRefreshAt;
+        ComputingSince = null;
     }
+
+    public void BeginComputation(DateTimeOffset now) => ComputingSince = now;
 
     public static LookupSlice Create(Guid tenantId, Guid lookupId, string filterHash, string filters, DateTimeOffset now) => new()
     {

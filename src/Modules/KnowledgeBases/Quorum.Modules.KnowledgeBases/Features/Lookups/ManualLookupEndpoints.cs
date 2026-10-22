@@ -95,6 +95,7 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         ManualLookupRequest request,
         KnowledgeBasesDbContext db,
         TimeProvider clock,
+        LookupCache cache,
         CancellationToken cancellationToken)
     {
         var valid = ManualLookupValidation.Validate(request);
@@ -137,10 +138,11 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
 
         await db.LookupValues.Where(v => v.SliceId == slice.Id && v.Generation < generation).ExecuteDeleteAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await cache.EvictLookupAsync(id, cancellationToken);
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, LookupCache cache, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await LockAsync(db, id, cancellationToken);
@@ -161,6 +163,7 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         db.Lookups.Remove(lookup);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await cache.EvictLookupAsync(id, cancellationToken);
         return TypedResults.NoContent();
     }
 

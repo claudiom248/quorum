@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage;
@@ -86,7 +87,7 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
     }
 
     /// <summary>Removes the registration only: the data in the store is its owner's (D-17).</summary>
-    private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, LookupCache cache, CancellationToken cancellationToken)
     {
         // The tenant filter makes a knowledge base another tenant shares with this one not found here: it is read-only.
         if (await db.KnowledgeBases.SingleOrDefaultAsync(k => k.Id == id, cancellationToken) is not { } registration)
@@ -96,6 +97,7 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
 
         db.KnowledgeBases.Remove(registration);
         await db.SaveChangesAsync(cancellationToken);
+        await cache.EvictKnowledgeBaseAsync(id, cancellationToken);
         return TypedResults.NoContent();
     }
 }
