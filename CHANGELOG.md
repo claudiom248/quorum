@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.9.0](https://github.com/claudiom248/quorum/compare/v0.8.0...v0.9.0) (2026-10-22)
+
+
+### Features
+
+* admin pages for knowledge bases and rag tools (spec 003) ([#51](https://github.com/claudiom248/quorum/issues/51)) ([3388912](https://github.com/claudiom248/quorum/commit/33889122a09067fbbe3b3255ec65998622108f63))
+* citations (spec 003) ([#50](https://github.com/claudiom248/quorum/issues/50)) ([78a7ad0](https://github.com/claudiom248/quorum/commit/78a7ad002a8039992284187c4044468a4504a371))
+* dictionary clusters and rag tool aliases (spec 003) ([#54](https://github.com/claudiom248/quorum/issues/54)) ([d5eed9f](https://github.com/claudiom248/quorum/commit/d5eed9f96f3460b1646c8a23f4ae01c40cf38312))
+* knowledge base module and metadata dictionary (spec 003) ([#43](https://github.com/claudiom248/quorum/issues/43)) ([b41724b](https://github.com/claudiom248/quorum/commit/b41724bdf54c2be1ccbb965e5f302d4da884c3fb))
+* knowledge base registry (spec 003) ([#46](https://github.com/claudiom248/quorum/issues/46)) ([aa89034](https://github.com/claudiom248/quorum/commit/aa890345bb26f8fd735cee870c00deda3737456c))
+* knowledge base search (spec 003) ([#47](https://github.com/claudiom248/quorum/issues/47)) ([1994941](https://github.com/claudiom248/quorum/commit/19949415e34ebda1c427f34ef9ce68d4c4bb3654))
+* one number per source, grouped by document, with the file named (spec 003) ([#59](https://github.com/claudiom248/quorum/issues/59)) ([2105e0b](https://github.com/claudiom248/quorum/commit/2105e0bee08278194ffcd99625fd3146d43477f8))
+* Qdrant connector and inspect endpoint (spec 003) ([#45](https://github.com/claudiom248/quorum/issues/45)) ([6484cc1](https://github.com/claudiom248/quorum/commit/6484cc1f10c3799b50e397c08f89ce2f3e4d87ad))
+* sources in the chat (spec 003) ([#57](https://github.com/claudiom248/quorum/issues/57)) ([6c94970](https://github.com/claudiom248/quorum/commit/6c94970b12b40a927ffbe02034422c12b44e792a))
+* the rag tool (spec 003) ([#48](https://github.com/claudiom248/quorum/issues/48)) ([92e19da](https://github.com/claudiom248/quorum/commit/92e19da77c9354af002e82e228b7d1355db683ca))
+
+
+### Bug Fixes
+
+* apply the code review findings of the admin pages and clusters (spec 003) ([#56](https://github.com/claudiom248/quorum/issues/56)) ([64c48da](https://github.com/claudiom248/quorum/commit/64c48da204c5d468c648260738146c417f5aeee9))
+* links always sit on the sections of a source, no file name beside a link (spec 003) ([#61](https://github.com/claudiom248/quorum/issues/61)) ([7ba6ebc](https://github.com/claudiom248/quorum/commit/7ba6ebcd4cf82b728c9775288a69bda3d1330178))
+* make the model call ask_user instead of asking in plain text (spec 004) ([#60](https://github.com/claudiom248/quorum/issues/60)) ([d34bc0a](https://github.com/claudiom248/quorum/commit/d34bc0a661a85e43494faf3a2be84cad371300a7))
+* stop blocking outbound addresses of registered servers (spec 003 A2, spec 004 D-18) ([#63](https://github.com/claudiom248/quorum/issues/63)) ([f00766b](https://github.com/claudiom248/quorum/commit/f00766b69fb7aba4084e28ffc5932bd5efc8ad06))
+* tell fields of the same name apart in the rag tool editor and its definition (spec 003) ([#55](https://github.com/claudiom248/quorum/issues/55)) ([15f7f16](https://github.com/claudiom248/quorum/commit/15f7f16e064e03feed0a74d8bc01b8454b9b627f))
+* use Regex.Count in the rag search tests (spec 003) ([#49](https://github.com/claudiom248/quorum/issues/49)) ([3db6510](https://github.com/claudiom248/quorum/commit/3db65108f7256b8f9d649f69578df3ec3f5e9e67))
+
 ## [0.8.0](https://github.com/claudiom248/quorum/compare/v0.7.0...v0.8.0) (2026-10-17)
 
 
