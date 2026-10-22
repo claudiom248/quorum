@@ -5,6 +5,7 @@ using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Rag;
 using Quorum.Modules.KnowledgeBases.Contracts;
@@ -19,7 +20,9 @@ internal sealed class AssistantChat(
     QuorumToolFactory toolFactory,
     ToolAccess toolAccess,
     RagToolResolver ragResolver,
-    IKnowledgeBaseSearch knowledgeBaseSearch) : IAssistantChat, IAssistantCatalog
+    LookupToolResolver lookupResolver,
+    IKnowledgeBaseSearch knowledgeBaseSearch,
+    IKnowledgeBaseLookups knowledgeBaseLookups) : IAssistantChat, IAssistantCatalog
 {
     // Added to the system prompt only when tools are offered (D-31); attached documents carry the same warning in their own block.
     internal const string ToolDataNotice =
@@ -149,14 +152,16 @@ internal sealed class AssistantChat(
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
         IReadOnlyList<ActiveTool> active = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken);
-        // The definition of a rag tool is made from the knowledge bases the tenant sees now; one left with none is not offered.
+        // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
         active = caller is null ? active : await ragResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
+        active = caller is null ? active : await lookupResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
         var settings = active.Count == 0 ? null : await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         var limits = settings is null ? ToolLimits.Default : ToolLimits.From(settings);
         // Only an assistant with MCP tools has sessions to open and close.
         var connections = active.Any(tool => tool.Server is not null) ? toolFactory.NewConnections() : null;
         var rag = caller is null ? null : new RagRuntime(knowledgeBaseSearch, new SourceNumbering(), caller.TenantId, assistantId, limits.MaxResultCharacters);
-        var tools = toolFactory.Create(active, connections, rag);
+        var lookup = caller is null ? null : new LookupRuntime(knowledgeBaseLookups, caller.TenantId, assistantId, limits.MaxResultCharacters);
+        var tools = toolFactory.Create(active, connections, rag, lookup);
         if (tools.Count == 0)
         {
             return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded, connections);

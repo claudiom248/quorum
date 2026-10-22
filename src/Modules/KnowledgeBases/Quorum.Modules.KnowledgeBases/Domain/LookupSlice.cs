@@ -87,6 +87,30 @@ internal sealed class LookupSlice
 
     public void BeginComputation(DateTimeOffset now) => ComputingSince = now;
 
+    /// <summary>A tool starts using the slice; false when it already did.</summary>
+    public bool AddUser(Guid toolId)
+    {
+        if (ToolIds.Contains(toolId))
+        {
+            return false;
+        }
+
+        ToolIds = [.. ToolIds, toolId];
+        return true;
+    }
+
+    /// <summary>A tool stops using the slice; false when it did not.</summary>
+    public bool RemoveUser(Guid toolId)
+    {
+        if (!ToolIds.Contains(toolId))
+        {
+            return false;
+        }
+
+        ToolIds = [.. ToolIds.Where(id => id != toolId)];
+        return true;
+    }
+
     public static LookupSlice Create(Guid tenantId, Guid lookupId, string filterHash, string filters, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(now),

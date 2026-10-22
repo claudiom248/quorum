@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Agents.Features.Tools;
@@ -44,6 +45,15 @@ internal static class ToolScopeRules
 
         return new ValidScope(kind, tenantIds, assistantIds);
     }
+
+    /// <summary>The scope kind as the knowledge bases module knows it, to check what a binding of that scope can use.</summary>
+    public static BindingScopeKind KindOf(ToolScopeKind kind) => kind switch
+    {
+        ToolScopeKind.Global => BindingScopeKind.Global,
+        ToolScopeKind.Tenant => BindingScopeKind.Tenant,
+        ToolScopeKind.Assistant => BindingScopeKind.Assistant,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Only Global, Tenant and Assistant scopes are validated."),
+    };
 
     private static string? Problem(ToolScopeKind kind, List<Guid> tenantIds, List<Guid> assistantIds) => kind switch
     {

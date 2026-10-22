@@ -21,19 +21,9 @@ internal static class RagToolHash
             writer.WriteStartObject();
             writer.WriteString("name", name);
             writer.WriteString("description", description);
-            WriteIds(writer, "knowledgeBases", configuration.KnowledgeBaseIds);
-            WriteIds(writer, "exposedFields", configuration.ExposedFieldIds);
-            if (configuration.ExposedAliases is { Count: > 0 } aliases)
-            {
-                // Only when there are some, so a tool without aliases keeps the fingerprint it had before they existed.
-                writer.WriteStartObject("exposedAliases");
-                foreach (var (id, alias) in aliases.OrderBy(a => a.Key))
-                {
-                    writer.WriteString(id.ToString(), alias);
-                }
-
-                writer.WriteEndObject();
-            }
+            ToolHashWriter.WriteIds(writer, "knowledgeBases", configuration.KnowledgeBaseIds);
+            ToolHashWriter.WriteIds(writer, "exposedFields", configuration.ExposedFieldIds);
+            ToolHashWriter.WriteAliases(writer, "exposedAliases", configuration.ExposedAliases);
 
             writer.WritePropertyName("fixedFilters");
             using (var filters = JsonDocument.Parse(configuration.FixedFilters))
@@ -53,23 +43,11 @@ internal static class RagToolHash
 
             writer.WriteNumber("maxResultCharacters", configuration.MaxResultCharacters);
             writer.WriteString("scope", configuration.Scope.ToString());
-            WriteIds(writer, "scopeTenants", configuration.ScopeTenantIds);
-            WriteIds(writer, "scopeAssistants", configuration.ScopeAssistantIds);
+            ToolHashWriter.WriteIds(writer, "scopeTenants", configuration.ScopeTenantIds);
+            ToolHashWriter.WriteIds(writer, "scopeAssistants", configuration.ScopeAssistantIds);
             writer.WriteEndObject();
         }
 
         return Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));
-    }
-
-    // Sorted: the order an administrator listed them in is not part of what the tool is.
-    private static void WriteIds(Utf8JsonWriter writer, string name, IReadOnlyList<Guid> ids)
-    {
-        writer.WriteStartArray(name);
-        foreach (var id in ids.Order())
-        {
-            writer.WriteStringValue(id);
-        }
-
-        writer.WriteEndArray();
     }
 }

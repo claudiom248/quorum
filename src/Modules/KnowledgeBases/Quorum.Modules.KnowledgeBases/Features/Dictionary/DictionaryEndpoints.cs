@@ -79,7 +79,7 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, IRagToolUsage ragTools, CancellationToken cancellationToken)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteAsync(Guid id, KnowledgeBasesDbContext db, IRagToolUsage ragTools, ILookupToolUsage lookupTools, CancellationToken cancellationToken)
     {
         // The usage is read under the lock a knowledge base takes to save its mapping: one that was saved a moment ago is seen here,
         // and one that comes next finds the field gone. Without it both could succeed, leaving a mapping that names a deleted field.
@@ -92,10 +92,10 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
             return TypedResults.NotFound();
         }
 
-        var (bases, tools, others) = (await DictionaryUsage.LoadAsync(db, ragTools, cancellationToken)).UsersOf(id, db.CurrentTenantId);
-        if (bases.Count + tools.Count + others > 0)
+        var (bases, tools, lookups, others) = (await DictionaryUsage.LoadAsync(db, ragTools, lookupTools, cancellationToken)).UsersOf(id, db.CurrentTenantId);
+        if (bases.Count + tools.Count + lookups.Count + others > 0)
         {
-            return FieldInUse(bases, tools, others).ToProblem();
+            return FieldInUse(bases, tools, lookups, others).ToProblem();
         }
 
         db.DictionaryFields.Remove(field);
@@ -105,7 +105,7 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
     }
 
     // What other tenants have is counted, never named.
-    private static Error FieldInUse(List<string> bases, List<string> tools, int others)
+    private static Error FieldInUse(List<string> bases, List<string> tools, List<string> lookups, int others)
     {
         var parts = new List<string>();
         if (bases.Count > 0)
@@ -118,15 +118,20 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
             parts.Add($"rag tools {string.Join(", ", tools)}");
         }
 
-        var users = parts.Count > 0 ? string.Join(" and ", parts) : "knowledge bases or rag tools";
+        if (lookups.Count > 0)
+        {
+            parts.Add($"lookup tools {string.Join(", ", lookups)}");
+        }
+
+        var users = parts.Count > 0 ? string.Join(" and ", parts) : "knowledge bases or tools";
         var more = parts.Count > 0 && others > 0 ? $" and {others} of other tenants" : others > 0 ? $" ({others} of other tenants)" : string.Empty;
         return Error.Conflict("knowledge_base.field_in_use", $"The field is used by {users}{more}: remove it from their mapping or configuration first.");
     }
 
-    private static async Task<Ok<List<DictionaryFieldDto>>> ListAsync(KnowledgeBasesDbContext db, IRagToolUsage ragTools, CancellationToken cancellationToken)
+    private static async Task<Ok<List<DictionaryFieldDto>>> ListAsync(KnowledgeBasesDbContext db, IRagToolUsage ragTools, ILookupToolUsage lookupTools, CancellationToken cancellationToken)
     {
         var fields = await DictionaryVisibility.Fields(db).AsNoTracking().OrderBy(f => f.Cluster != null).ThenBy(f => f.Cluster).ThenBy(f => f.Name).ToListAsync(cancellationToken);
-        var usage = await DictionaryUsage.LoadAsync(db, ragTools, cancellationToken);
+        var usage = await DictionaryUsage.LoadAsync(db, ragTools, lookupTools, cancellationToken);
         return TypedResults.Ok(fields.Select(field => DictionaryFieldDto.From(field, usage.CountFor(field.Id), db.CurrentTenantId)).ToList());
     }
 

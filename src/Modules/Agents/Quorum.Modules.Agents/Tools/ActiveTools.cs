@@ -1,13 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Rag;
 
 namespace Quorum.Modules.Agents.Tools;
 
 /// <summary>A tool of an assistant as stored: what the model sees (name, description, schema) and what the invoker needs to audit, check and run it.</summary>
-/// <param name="Server">Where an MCP tool runs; <see langword="null"/> for built-in and rag tools.</param>
+/// <param name="Server">Where an MCP tool runs; <see langword="null"/> for built-in, rag and lookup tools.</param>
 /// <param name="Rag">The binding of a rag tool; <see langword="null"/> for the others.</param>
+/// <param name="Lookup">The binding of a lookup tool; <see langword="null"/> for the others.</param>
 /// <param name="DefinitionHash">The hash of the definition the model is offered; a call is refused when the stored one differs by then.</param>
 internal sealed record ActiveTool(
     Guid ToolId,
@@ -19,7 +21,8 @@ internal sealed record ActiveTool(
     string InputSchema,
     string? DefinitionHash = null,
     McpServerEndpoint? Server = null,
-    RagBinding? Rag = null);
+    RagBinding? Rag = null,
+    LookupBinding? Lookup = null);
 
 /// <summary>What a call needs to reach an MCP server: its identity, address and the encrypted static headers.</summary>
 internal sealed record McpServerEndpoint(Guid ServerId, string Url, string? ProtectedHeaders);
@@ -77,19 +80,34 @@ internal static class ActiveToolsQuery
                 .Where(rag => ragIds.Contains(rag.ToolId))
                 .ToDictionaryAsync(rag => rag.ToolId, RagBinding.From, cancellationToken);
 
+        var lookupIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.Lookup).Select(pooled => pooled.Tool.Id).ToList();
+        var lookupBindings = lookupIds.Count == 0
+            ? []
+            : await db.LookupTools.IgnoreQueryFilters().AsNoTracking()
+                .Where(lookup => lookupIds.Contains(lookup.ToolId))
+                .ToDictionaryAsync(lookup => lookup.ToolId, LookupBinding.From, cancellationToken);
+
         return tools
             .Select(pooled => new ActiveTool(
                 pooled.Tool.Id,
                 pooled.Tool.Origin,
                 pooled.Tool.Name,
                 pooled.ExposedName,
-                pooled.Tool.Origin == ToolOrigin.Rag ? ToolNaming.RagAuditServer : pooled.ServerName,
+                AuditServerOf(pooled),
                 pooled.Tool.Description,
                 pooled.Tool.InputSchema,
                 pooled.Tool.DefinitionHash,
                 pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null,
-                bindings.GetValueOrDefault(pooled.Tool.Id)))
+                bindings.GetValueOrDefault(pooled.Tool.Id),
+                lookupBindings.GetValueOrDefault(pooled.Tool.Id)))
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
             .ToList();
     }
+
+    private static string? AuditServerOf(PoolTool pooled) => pooled.Tool.Origin switch
+    {
+        ToolOrigin.Rag => ToolNaming.RagAuditServer,
+        ToolOrigin.Lookup => ToolNaming.LookupAuditServer,
+        _ => pooled.ServerName,
+    };
 }

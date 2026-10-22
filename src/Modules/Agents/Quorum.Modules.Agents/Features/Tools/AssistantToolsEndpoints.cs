@@ -7,6 +7,7 @@ using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Rag;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
@@ -42,6 +43,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         Guid id,
         AgentsDbContext db,
         RagToolResolver resolver,
+        LookupToolResolver lookupResolver,
         CancellationToken cancellationToken)
     {
         var budget = await (
@@ -58,13 +60,17 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         var pool = await ToolPool.For(db, id).AsNoTracking().ToListAsync(cancellationToken);
         // A rag tool whose knowledge bases this assistant cannot see is not in its pool: there is nothing it could search.
         var rag = await resolver.ResolvePoolAsync(pool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
-        pool = [.. pool.Where(t => t.Tool.Origin != ToolOrigin.Rag || rag.ContainsKey(t.Tool.Id))];
+        // The same for a lookup tool whose lookups this assistant cannot see.
+        var lookups = await lookupResolver.ResolvePoolAsync(pool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
+        pool = [.. pool.Where(t => (t.Tool.Origin != ToolOrigin.Rag || rag.ContainsKey(t.Tool.Id)) && (t.Tool.Origin != ToolOrigin.Lookup || lookups.ContainsKey(t.Tool.Id)))];
         var active = (await db.AssistantTools.Where(a => a.AssistantId == id).Select(a => a.ToolId).ToListAsync(cancellationToken)).ToHashSet();
 
         // The size a rag tool takes is that of the definition the model gets, not of the stored one.
         var activeDefinitions = pool
             .Where(t => active.Contains(t.Tool.Id))
-            .Select(t => rag.TryGetValue(t.Tool.Id, out var resolved) ? new ToolDefinition(t.ExposedName, resolved.Definition.Description, resolved.Definition.InputSchema) : t.Definition)
+            .Select(t => rag.TryGetValue(t.Tool.Id, out var resolved)
+                ? new ToolDefinition(t.ExposedName, resolved.Definition.Description, resolved.Definition.InputSchema)
+                : lookups.TryGetValue(t.Tool.Id, out var lookup) ? new ToolDefinition(t.ExposedName, lookup.Definition.Description, lookup.Definition.InputSchema) : t.Definition)
             .ToList();
         var warnings = ToolWarnings.Evaluate(
             activeDefinitions.Count,
@@ -84,6 +90,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         SetAssistantToolsRequest request,
         AgentsDbContext db,
         RagToolResolver resolver,
+        LookupToolResolver lookupResolver,
         CancellationToken cancellationToken)
     {
         if (await db.Assistants.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken) is not { } assistant)
@@ -101,6 +108,13 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         // A rag tool with no knowledge base this assistant can see is not in its pool (spec 003 AC-23).
         var rag = await resolver.ResolvePoolAsync(inPool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
         if (inPool.Any(t => t.Tool.Origin == ToolOrigin.Rag && !rag.ContainsKey(t.Tool.Id)))
+        {
+            return NotInPool.ToProblem();
+        }
+
+        // And a lookup tool with no lookup this assistant can see.
+        var lookups = await lookupResolver.ResolvePoolAsync(inPool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
+        if (inPool.Any(t => t.Tool.Origin == ToolOrigin.Lookup && !lookups.ContainsKey(t.Tool.Id)))
         {
             return NotInPool.ToProblem();
         }
