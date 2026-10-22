@@ -75,6 +75,9 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .sources-list { list-style: none; margin: .2rem 0 0; padding: 0; }
 .sources-list li { margin: .15rem 0; overflow-wrap: anywhere; }
 .sources a { color: var(--mud-palette-primary); text-decoration: underline; }
+.source-sections { list-style: none; margin: .1rem 0 .2rem; padding-left: 1.5rem; }
+.source-doc { font-weight: 600; }
+.source-position { color: var(--mud-palette-text-secondary); }
 .source-n { font-family: ui-monospace, monospace; color: var(--mud-palette-text-secondary); margin-right: .25rem; }
 .source-detail { margin-left: .4rem; color: var(--mud-palette-text-secondary); font-size: .8rem; }
 .status-note { font-size: .85rem; color: var(--mud-palette-error); }

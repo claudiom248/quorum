@@ -8,13 +8,16 @@ public sealed class SourcesViewTests
     private static MessageSourceDto Source(int n, string? title = null, string? url = null, string? documentId = null, string? position = null) =>
         new(n, "handbook", documentId, title, position, url);
 
+    private static int[] NumbersOf(IEnumerable<SourceDocument> documents) =>
+        [.. documents.SelectMany(document => document.Sections).SelectMany(section => section.Numbers)];
+
     [Fact]
     public void SourcesTheTextCitesComeFirstAndTheOthersAreSeparate()
     {
         var view = new SourcesView([Source(3, "C"), Source(1, "A"), Source(2, "B")], "Yes [3], as also said in [1].");
 
-        Assert.Equal([1, 3], view.Cited.SelectMany(item => item.Numbers));
-        Assert.Equal([2], view.Others.SelectMany(item => item.Numbers));
+        Assert.Equal([1, 3], NumbersOf(view.Cited));
+        Assert.Equal([2], NumbersOf(view.Others));
     }
 
     [Theory]
@@ -27,8 +30,8 @@ public sealed class SourcesViewTests
     {
         var view = new SourcesView([Source(1, "A"), Source(2, "B")], text);
 
-        Assert.Equal(cited, view.Cited.SelectMany(item => item.Numbers));
-        Assert.Equal(2, view.Cited.Count + view.Others.Count);
+        Assert.Equal(cited, NumbersOf(view.Cited));
+        Assert.Equal(2, NumbersOf(view.Cited).Length + NumbersOf(view.Others).Length);
     }
 
     [Fact]
@@ -41,10 +44,12 @@ public sealed class SourcesViewTests
         Assert.True(view.HasSources);
     }
 
-    [Theory]
-    [InlineData(null)]
-    public void NoSourcesMeansNothingToShow(IReadOnlyList<MessageSourceDto>? sources) =>
-        Assert.False(new SourcesView(sources, "Text [1]").HasSources);
+    [Fact]
+    public void NoSourcesMeansNothingToShow()
+    {
+        Assert.False(new SourcesView(null, "Text [1]").HasSources);
+        Assert.False(new SourcesView([], "Text [1]").HasSources);
+    }
 
     [Theory]
     [InlineData("https://example.com/a?b=1", "https://example.com/a?b=1")]
@@ -65,19 +70,17 @@ public sealed class SourcesViewTests
     {
         var view = new SourcesView([Source(1, "Title", documentId: "doc-1"), Source(2, " ", documentId: "doc-2"), Source(3)], string.Empty);
 
-        Assert.Equal(["Title", "doc-2", "Source 3"], view.Others.Select(item => item.Label));
+        Assert.Equal(["Title", "doc-2", "Source 3"], view.Others.Select(document => document.Label));
     }
 
     [Fact]
-    public void TheDetailSaysWhatEachPartIs()
+    public void ThePositionSaysWhetherItIsAPageOrASection()
     {
         var view = new SourcesView(
-            [Source(1, "A", documentId: "a.html", position: "Core hours"), Source(2, "B", documentId: "b.pdf", position: "12"), Source(3, "C")],
+            [Source(1, "A", documentId: "a.html", position: "Core hours"), Source(2, "A", documentId: "a.html", position: "12"), Source(3, "A", documentId: "a.html")],
             string.Empty);
 
-        Assert.Equal(
-            ["handbook · Section: Core hours · File: a.html", "handbook · Page: 12 · File: b.pdf", "handbook"],
-            view.Others.Select(item => item.Detail));
+        Assert.Equal(["Section: Core hours", "Page: 12", null], view.Others.Single().Sections.Select(section => section.Position));
     }
 
     [Fact]
@@ -92,12 +95,49 @@ public sealed class SourcesViewTests
             string.Empty);
 
         // The link says it for the first; the id already is the label of the second, which has no title.
-        Assert.Equal(["handbook", "handbook", "handbook · File: c.html"], view.Others.Select(item => item.Detail));
+        Assert.Equal(["handbook", "handbook", "handbook · File: c.html"], view.Others.Select(document => document.Detail));
     }
 
     [Fact]
-    public void SourcesThatPointAtTheSamePlaceAreShownOnceUnderAllTheirNumbers()
+    public void SectionsOfOneDocumentAreListedUnderItAndOtherDocumentsApart()
     {
+        var view = new SourcesView(
+            [
+                Source(1, "Remote work", documentId: "remote.html", position: "Core hours"),
+                Source(2, "Leave", documentId: "leave.html", position: "Carry-over"),
+                Source(3, "Remote work", documentId: "remote.html", position: "Equipment"),
+            ],
+            string.Empty);
+
+        Assert.Equal(["Remote work", "Leave"], view.Others.Select(document => document.Label));
+        Assert.Equal([[1], [3]], view.Others[0].Sections.Select(section => section.Numbers));
+        Assert.Equal([[2]], view.Others[1].Sections.Select(section => section.Numbers));
+    }
+
+    [Fact]
+    public void ADocumentCitedInOnePlaceAndNotInAnotherAppearsInBothLists()
+    {
+        var view = new SourcesView(
+            [Source(1, "Remote work", documentId: "remote.html", position: "Core hours"), Source(2, "Remote work", documentId: "remote.html", position: "Equipment")],
+            "See [2].");
+
+        Assert.Equal([2], NumbersOf(view.Cited));
+        Assert.Equal([1], NumbersOf(view.Others));
+    }
+
+    [Fact]
+    public void ADocumentCitedAsAWholeOnceFitsOnOneLine()
+    {
+        var view = new SourcesView([Source(1, "Alone"), Source(2, "Remote work", position: "Core hours")], string.Empty);
+
+        Assert.True(view.Others[0].IsOneLine);
+        Assert.False(view.Others[1].IsOneLine);
+    }
+
+    [Fact]
+    public void ThePlaceTwiceIsShownOnceUnderAllItsNumbers()
+    {
+        // An answer stored before the server gave one number to a source: the same place came back under a new one.
         var view = new SourcesView(
             [
                 Source(1, "Remote work", documentId: "remote.html", position: "Core hours"),
@@ -108,17 +148,31 @@ public sealed class SourcesViewTests
             "As said in [4].");
 
         var cited = Assert.Single(view.Cited);
-        Assert.Equal([1, 4], cited.Numbers);
-        Assert.Equal([[2], [3]], view.Others.Select(item => item.Numbers));
+        Assert.Equal([[1, 4]], cited.Sections.Select(section => section.Numbers));
+        Assert.Equal([2, 3], NumbersOf(view.Others));
     }
 
     [Fact]
-    public void ADifferentDocumentOrPositionIsNotMerged()
+    public void SourcesWithNeitherTitleNorIdAreNeverGroupedTogether()
     {
-        var view = new SourcesView(
-            [Source(1, "A", documentId: "a", position: "x"), Source(2, "A", documentId: "b", position: "x"), Source(3, "A", documentId: "a", position: "y"), Source(4, "A", documentId: "a", position: "x", url: "https://example.com")],
+        var view = new SourcesView([Source(1, position: "a"), Source(2, position: "b")], string.Empty);
+
+        Assert.Equal(["Source 1", "Source 2"], view.Others.Select(document => document.Label));
+    }
+
+    [Fact]
+    public void ADocumentWhoseSectionsShareOneAddressLinksOnTheDocumentAndOtherwiseOnTheSections()
+    {
+        var same = new SourcesView(
+            [Source(1, "A", url: "https://example.com/a", position: "x"), Source(2, "A", url: "https://example.com/a", position: "y")],
+            string.Empty);
+        var different = new SourcesView(
+            [Source(1, "A", url: "https://example.com/a#x", position: "x"), Source(2, "A", url: "https://example.com/a#y", position: "y")],
             string.Empty);
 
-        Assert.Equal(4, view.Others.Count);
+        Assert.Equal("https://example.com/a", same.Others.Single().Href);
+        Assert.All(same.Others.Single().Sections, section => Assert.Null(section.Href));
+        Assert.Null(different.Others.Single().Href);
+        Assert.Equal(["https://example.com/a#x", "https://example.com/a#y"], different.Others.Single().Sections.Select(section => section.Href));
     }
 }

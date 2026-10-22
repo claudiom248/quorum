@@ -133,15 +133,17 @@ public sealed class SourcesChatPageTests : BunitContext
     }
 
     [Fact]
-    public void SourcesOfLocalFilesNameTheFileAndTheSameSourceIsShownOnce()
+    public void SourcesOfLocalFilesAreGroupedByDocumentNameTheFileAndShowTheSamePlaceOnce()
     {
+        // The duplicate [4] is an answer stored before the server gave one number to a source.
         _stored =
         [
             Assistant(
-                "Core hours are ten to four [1].",
+                "Core hours are ten to four [4], and the desk is paid for [3].",
                 LocalSource(1, "Remote work guidelines", "remote-work.html", "Core hours"),
                 LocalSource(2, "Security handbook", "security-handbook.html", "Passwords"),
-                LocalSource(3, "Remote work guidelines", "remote-work.html", "Core hours")),
+                LocalSource(3, "Remote work guidelines", "remote-work.html", "Equipment"),
+                LocalSource(4, "Remote work guidelines", "remote-work.html", "Core hours")),
         ];
 
         var page = Render<Quorum.Web.Client.Pages.Chat>(parameters => parameters.Add(chat => chat.Id, Conversation));
@@ -149,11 +151,19 @@ public sealed class SourcesChatPageTests : BunitContext
         page.WaitForAssertion(() =>
         {
             Assert.Empty(page.FindAll(".sources a"));
-            var cited = page.Find(".sources > .sources-list li");
-            Assert.Equal("[1] [3]", cited.QuerySelector(".source-n")!.TextContent);
-            Assert.Equal("handbook · Section: Core hours · File: remote-work.html", cited.QuerySelector(".source-detail")!.TextContent);
-            Assert.Equal("handbook · Section: Passwords · File: security-handbook.html", page.Find(".sources-others li .source-detail").TextContent);
-            Assert.Single(page.FindAll(".sources li"), li => li.TextContent.Contains("Remote work guidelines", StringComparison.Ordinal));
+
+            var document = page.Find(".sources > .sources-list > li");
+            Assert.Equal("Remote work guidelines", document.QuerySelector(".source-doc .source-label")!.TextContent);
+            Assert.Equal("handbook · File: remote-work.html", document.QuerySelector(".source-doc .source-detail")!.TextContent);
+            var sections = document.QuerySelectorAll(".source-sections li").Select(li => (li.QuerySelector(".source-n")!.TextContent, li.QuerySelector(".source-position")!.TextContent)).ToList();
+            Assert.Equal([("[1] [4]", "Section: Core hours"), ("[3]", "Section: Equipment")], sections);
+
+            var others = page.Find(".sources-others");
+            Assert.Contains("(1)", others.QuerySelector("summary")!.TextContent, StringComparison.Ordinal);
+            Assert.Equal("Security handbook", others.QuerySelector(".source-doc .source-label")!.TextContent);
+            Assert.Equal("[2]", others.QuerySelector(".source-sections .source-n")!.TextContent);
+            Assert.Equal("Section: Passwords", others.QuerySelector(".source-sections .source-position")!.TextContent);
+            Assert.Single(page.FindAll(".sources .source-label"), label => label.TextContent == "Remote work guidelines");
         });
     }
 

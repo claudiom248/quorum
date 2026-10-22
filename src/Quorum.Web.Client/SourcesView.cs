@@ -3,30 +3,41 @@ using Quorum.Web.Client.Api;
 
 namespace Quorum.Web.Client;
 
-/// <summary>One source under an answer, ready to show.</summary>
-/// <param name="Numbers">The numbers the answer can cite it by: several when the same passage came back from more than one search.</param>
-/// <param name="Detail">Where it is: the knowledge base and the position, and the document id when there is no link to say which document it is.</param>
+/// <summary>One place in a document the answer drew on.</summary>
+/// <param name="Numbers">The numbers the text can cite it by: one for an answer the server numbered by source, several for one stored before it did.</param>
+/// <param name="Position">Says whether it is a page or a section; <see langword="null"/> when the source gave none.</param>
+/// <param name="Href">Only when the sections of the document do not all share one address.</param>
+public sealed record SourceSection(IReadOnlyList<int> Numbers, string? Position, string? Href);
+
+/// <summary>A document under an answer and the places in it that were used.</summary>
+/// <param name="Detail">The knowledge base it comes from and, when there is no link to say which document it is, its id.</param>
 /// <param name="Href">Only for <c>http</c> and <c>https</c> addresses; the model and the store decide what a source says, so nothing else becomes a link.</param>
-public sealed record SourceItem(IReadOnlyList<int> Numbers, string Label, string Detail, string? Href);
+public sealed record SourceDocument(string Label, string Detail, string? Href, IReadOnlyList<SourceSection> Sections)
+{
+    /// <summary>A document cited as a whole, once: it fits on one line with its number.</summary>
+    public bool IsOneLine => Sections is [{ Position: null }];
+}
 
 /// <summary>
-/// The sources of an answer split by whether its text cites them with a <c>[n]</c> marker: those cited come first and open,
-/// the others follow collapsed. Sources that point at the same place are shown once, under all their numbers, so every marker
-/// in the text still finds its entry.
+/// The sources of an answer grouped by document, split by whether the text cites them with a <c>[n]</c> marker: those cited come first and
+/// open, the others follow collapsed. The same place twice (an answer stored before the server numbered by source) is shown once, under
+/// all its numbers, so every marker in the text still finds its entry.
 /// </summary>
 public sealed partial class SourcesView
 {
+    private sealed record Place(MessageSourceDto First, List<int> Numbers);
+
     public SourcesView(IReadOnlyList<MessageSourceDto>? sources, string text)
     {
         var cited = CitedNumbers(text);
-        var items = Merge((sources ?? []).OrderBy(source => source.N));
-        Cited = [.. items.Where(item => item.Numbers.Any(cited.Contains))];
-        Others = [.. items.Where(item => !item.Numbers.Any(cited.Contains))];
+        var places = Merge((sources ?? []).OrderBy(source => source.N));
+        Cited = Group(places.Where(place => place.Numbers.Any(cited.Contains)));
+        Others = Group(places.Where(place => !place.Numbers.Any(cited.Contains)));
     }
 
-    public IReadOnlyList<SourceItem> Cited { get; }
+    public IReadOnlyList<SourceDocument> Cited { get; }
 
-    public IReadOnlyList<SourceItem> Others { get; }
+    public IReadOnlyList<SourceDocument> Others { get; }
 
     public bool HasSources => Cited.Count + Others.Count > 0;
 
@@ -47,39 +58,54 @@ public sealed partial class SourcesView
         return numbers;
     }
 
-    private static List<SourceItem> Merge(IEnumerable<MessageSourceDto> sources)
+    private static List<Place> Merge(IEnumerable<MessageSourceDto> sources)
     {
-        var items = new List<SourceItem>();
-        var positions = new Dictionary<(string, string?, string?, string?, string?), int>();
+        var places = new List<Place>();
+        var positions = new Dictionary<(string, string?, string?, string?, string?), Place>();
         foreach (var source in sources)
         {
             var key = (source.KnowledgeBase, source.DocumentId, source.Title, source.Position, source.Url);
-            if (positions.TryGetValue(key, out var index))
+            if (positions.TryGetValue(key, out var place))
             {
-                items[index] = items[index] with { Numbers = [.. items[index].Numbers, source.N] };
+                place.Numbers.Add(source.N);
             }
             else
             {
-                positions[key] = items.Count;
-                items.Add(Item(source));
+                place = new Place(source, [source.N]);
+                positions[key] = place;
+                places.Add(place);
             }
         }
 
-        return items;
+        return places;
     }
 
-    private static SourceItem Item(MessageSourceDto source)
+    private static List<SourceDocument> Group(IEnumerable<Place> places)
     {
-        var label = !string.IsNullOrWhiteSpace(source.Title) ? source.Title
-            : !string.IsNullOrWhiteSpace(source.DocumentId) ? source.DocumentId
-            : $"Source {source.N}";
+        // Two sources with neither a title nor an id cannot be told to be the same document: each stands alone.
+        var groups = places.GroupBy(place => string.IsNullOrWhiteSpace(place.First.Title) && string.IsNullOrWhiteSpace(place.First.DocumentId)
+            ? (place.First.KnowledgeBase, (string?)null, (string?)null, place.Numbers[0])
+            : (place.First.KnowledgeBase, place.First.DocumentId, place.First.Title, 0));
 
-        var href = WebAddress(source.Url);
+        return [.. groups.Select(Document)];
+    }
 
-        // Without a link nothing else says which document it is; with a link, or when it already is the label, it would only repeat.
-        var file = href is null && label != source.DocumentId && !string.IsNullOrWhiteSpace(source.DocumentId) ? $"File: {source.DocumentId}" : null;
-        var detail = string.Join(" · ", new[] { source.KnowledgeBase, PositionText(source.Position), file }.Where(part => !string.IsNullOrWhiteSpace(part)));
-        return new SourceItem([source.N], label, detail, href);
+    private static SourceDocument Document(IGrouping<(string KnowledgeBase, string? DocumentId, string? Title, int Alone), Place> group)
+    {
+        var first = group.First().First;
+        var label = !string.IsNullOrWhiteSpace(first.Title) ? first.Title
+            : !string.IsNullOrWhiteSpace(first.DocumentId) ? first.DocumentId
+            : $"Source {group.First().Numbers[0]}";
+
+        var addresses = group.Select(place => WebAddress(place.First.Url)).Distinct().ToList();
+        var shared = addresses is [{ } only] ? only : null;
+
+        // With a link nothing else says which document it is, and when the id already is the label it would only repeat.
+        var file = shared is null && label != first.DocumentId && !string.IsNullOrWhiteSpace(first.DocumentId) ? $"File: {first.DocumentId}" : null;
+        var detail = string.Join(" · ", new[] { first.KnowledgeBase, file }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+        var sections = group.Select(place => new SourceSection([.. place.Numbers], PositionText(place.First.Position), shared is null ? WebAddress(place.First.Url) : null));
+        return new SourceDocument(label, detail, shared, [.. sections]);
     }
 
     // The position is a page or a section, whatever the data owner put there: a bare number is a page.

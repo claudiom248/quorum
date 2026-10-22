@@ -313,7 +313,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
                 resultCharacters = output.Length;
                 content = output;
                 sources = produced.Sources;
-                sourceCount = sources?.Count;
+                sourceCount = produced.SourceCount ?? sources?.Count;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

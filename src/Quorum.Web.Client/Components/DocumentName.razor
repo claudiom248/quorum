@@ -1,0 +1,17 @@
+@if (Document.Href is { } href)
+{
+    <a href="@href" target="_blank" rel="noopener noreferrer">@Document.Label</a>
+}
+else
+{
+    <span class="source-label">@Document.Label</span>
+}
+@if (Document.Detail.Length > 0)
+{
+    <span class="source-detail">@Document.Detail</span>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SourceDocument Document { get; set; } = null!;
+}
