@@ -133,6 +133,34 @@ public sealed class SourcesChatPageTests : BunitContext
     }
 
     [Fact]
+    public void SourcesOfLocalFilesNameTheFileAndTheSameSourceIsShownOnce()
+    {
+        _stored =
+        [
+            Assistant(
+                "Core hours are ten to four [1].",
+                LocalSource(1, "Remote work guidelines", "remote-work.html", "Core hours"),
+                LocalSource(2, "Security handbook", "security-handbook.html", "Passwords"),
+                LocalSource(3, "Remote work guidelines", "remote-work.html", "Core hours")),
+        ];
+
+        var page = Render<Quorum.Web.Client.Pages.Chat>(parameters => parameters.Add(chat => chat.Id, Conversation));
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Empty(page.FindAll(".sources a"));
+            var cited = page.Find(".sources > .sources-list li");
+            Assert.Equal("[1] [3]", cited.QuerySelector(".source-n")!.TextContent);
+            Assert.Equal("handbook · Section: Core hours · File: remote-work.html", cited.QuerySelector(".source-detail")!.TextContent);
+            Assert.Equal("handbook · Section: Passwords · File: security-handbook.html", page.Find(".sources-others li .source-detail").TextContent);
+            Assert.Single(page.FindAll(".sources li"), li => li.TextContent.Contains("Remote work guidelines", StringComparison.Ordinal));
+        });
+    }
+
+    private static object LocalSource(int n, string title, string file, string position) =>
+        new { n, knowledgeBase = "handbook", documentId = file, title, position, url = $"file:///srv/documents/{file}" };
+
+    [Fact]
     public void OnlyWebAddressesAreLinksAndTheTextIsNeverMarkup()
     {
         _stored =

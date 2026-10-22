@@ -7,7 +7,7 @@
             <ol class="sources-list">
                 @foreach (var source in _view.Cited)
                 {
-                    <li @key="source.N"><SourceEntry Source="source" /></li>
+                    <li @key="source.Numbers[0]"><SourceEntry Source="source" /></li>
                 }
             </ol>
         }
@@ -19,7 +19,7 @@
                 <ol class="sources-list">
                     @foreach (var source in _view.Others)
                     {
-                        <li @key="source.N"><SourceEntry Source="source" /></li>
+                        <li @key="source.Numbers[0]"><SourceEntry Source="source" /></li>
                     }
                 </ol>
             </details>

@@ -1,4 +1,4 @@
-<span class="source-n">[@Source.N]</span>
+<span class="source-n">@string.Join(' ', Source.Numbers.Select(n => $"[{n}]"))</span>
 @if (Source.Href is { } href)
 {
     <a href="@href" target="_blank" rel="noopener noreferrer">@Source.Label</a>

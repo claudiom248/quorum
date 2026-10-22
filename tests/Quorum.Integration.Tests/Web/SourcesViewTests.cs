@@ -13,8 +13,8 @@ public sealed class SourcesViewTests
     {
         var view = new SourcesView([Source(3, "C"), Source(1, "A"), Source(2, "B")], "Yes [3], as also said in [1].");
 
-        Assert.Equal([1, 3], view.Cited.Select(item => item.N));
-        Assert.Equal([2], view.Others.Select(item => item.N));
+        Assert.Equal([1, 3], view.Cited.SelectMany(item => item.Numbers));
+        Assert.Equal([2], view.Others.SelectMany(item => item.Numbers));
     }
 
     [Theory]
@@ -25,16 +25,16 @@ public sealed class SourcesViewTests
     [InlineData("see [99999] and [0]", new int[0])]
     public void MarkersAreReadWhereTheModelWritesThem(string text, int[] cited)
     {
-        var view = new SourcesView([Source(1), Source(2)], text);
+        var view = new SourcesView([Source(1, "A"), Source(2, "B")], text);
 
-        Assert.Equal(cited, view.Cited.Select(item => item.N));
+        Assert.Equal(cited, view.Cited.SelectMany(item => item.Numbers));
         Assert.Equal(2, view.Cited.Count + view.Others.Count);
     }
 
     [Fact]
     public void WithoutMarkersEverySourceIsAmongTheOthers()
     {
-        var view = new SourcesView([Source(1), Source(2)], "No citations here.");
+        var view = new SourcesView([Source(1, "A"), Source(2, "B")], "No citations here.");
 
         Assert.Empty(view.Cited);
         Assert.Equal(2, view.Others.Count);
@@ -69,10 +69,56 @@ public sealed class SourcesViewTests
     }
 
     [Fact]
-    public void TheDetailNamesTheKnowledgeBaseAndThePositionWhenThereIsOne()
+    public void TheDetailSaysWhatEachPartIs()
     {
-        var view = new SourcesView([Source(1, position: "p. 4"), Source(2)], string.Empty);
+        var view = new SourcesView(
+            [Source(1, "A", documentId: "a.html", position: "Core hours"), Source(2, "B", documentId: "b.pdf", position: "12"), Source(3, "C")],
+            string.Empty);
 
-        Assert.Equal(["handbook · p. 4", "handbook"], view.Others.Select(item => item.Detail));
+        Assert.Equal(
+            ["handbook · Section: Core hours · File: a.html", "handbook · Page: 12 · File: b.pdf", "handbook"],
+            view.Others.Select(item => item.Detail));
+    }
+
+    [Fact]
+    public void TheFileIsNamedOnlyWhenNothingElseSaysWhichDocumentItIs()
+    {
+        var view = new SourcesView(
+            [
+                Source(1, "Linked", url: "https://example.com/a", documentId: "a.html"),
+                Source(2, url: "file:///srv/documents/b.html", documentId: "b.html"),
+                Source(3, "Local", url: "file:///srv/documents/c.html", documentId: "c.html"),
+            ],
+            string.Empty);
+
+        // The link says it for the first; the id already is the label of the second, which has no title.
+        Assert.Equal(["handbook", "handbook", "handbook · File: c.html"], view.Others.Select(item => item.Detail));
+    }
+
+    [Fact]
+    public void SourcesThatPointAtTheSamePlaceAreShownOnceUnderAllTheirNumbers()
+    {
+        var view = new SourcesView(
+            [
+                Source(1, "Remote work", documentId: "remote.html", position: "Core hours"),
+                Source(2, "Remote work", documentId: "remote.html", position: "Equipment"),
+                Source(3, "Leave", documentId: "leave.html", position: "Core hours"),
+                Source(4, "Remote work", documentId: "remote.html", position: "Core hours"),
+            ],
+            "As said in [4].");
+
+        var cited = Assert.Single(view.Cited);
+        Assert.Equal([1, 4], cited.Numbers);
+        Assert.Equal([[2], [3]], view.Others.Select(item => item.Numbers));
+    }
+
+    [Fact]
+    public void ADifferentDocumentOrPositionIsNotMerged()
+    {
+        var view = new SourcesView(
+            [Source(1, "A", documentId: "a", position: "x"), Source(2, "A", documentId: "b", position: "x"), Source(3, "A", documentId: "a", position: "y"), Source(4, "A", documentId: "a", position: "x", url: "https://example.com")],
+            string.Empty);
+
+        Assert.Equal(4, view.Others.Count);
     }
 }
