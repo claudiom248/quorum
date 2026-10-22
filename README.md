@@ -39,9 +39,19 @@ Quorum runs in a container, so `localhost` there is the container itself. To rea
 | LiteLLM proxy | `http://host.docker.internal:4000/v1` |
 
 - The server must listen on all interfaces, not only on `127.0.0.1` (for Ollama, `OLLAMA_HOST=0.0.0.0`).
-- On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `quorum` service.
+- `host.docker.internal` also works on Linux: the compose file maps it to the host.
 - Pick a **chat** model. Safety classifiers such as Llama Guard only ever answer `safe` or `unsafe`.
 - The context budget you set must not exceed what the model server actually offers (Ollama: `OLLAMA_CONTEXT_LENGTH` or `num_ctx`), or long documents are cut off without an error.
+
+### A vector store for knowledge bases
+
+Knowledge bases are collections that already hold your documents; Quorum only reads them. If you have no Qdrant yet, the compose file can run one next to Quorum with the `qdrant` profile (profiles combine):
+
+```bash
+docker compose --profile bundled-db --profile qdrant up --build -d
+```
+
+Register it in the admin pages as `http://qdrant:6334` (gRPC, from inside the compose network). Its dashboard is at <http://localhost:6333/dashboard>, and the REST port 6333 on loopback is where ingestion from the host writes. Qdrant has no API key in this setup, so both ports are published on loopback only.
 
 ### Configuration
 

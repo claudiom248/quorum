@@ -6,6 +6,8 @@
 # To stamp the real version on the image (shown by /api/version), run docker compose through deploy/compose.sh:
 #   sh deploy/compose.sh --profile bundled-db up --build -d
 #
+# Profiles combine: --profile bundled-db (PostgreSQL) and --profile qdrant (a vector store for knowledge bases).
+#
 # The image is built from the sources inside Docker (no step to run beforehand).
 #
 # Open http://localhost:8080 and paste the setup token printed in the logs
@@ -28,6 +30,9 @@ services:
     environment:
       ConnectionStrings__Platform: ${QUORUM_DATABASE:-Host=postgres;Port=5432;Database=quorum;Username=quorum;Password=${POSTGRES_PASSWORD:-}}
       DataProtection__KeysPath: /var/lib/quorum/keys
+    # Lets the container reach a model server on the host at host.docker.internal; Docker Desktop already does, Linux needs this.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - quorum-keys:/var/lib/quorum/keys
     depends_on:
@@ -51,6 +56,20 @@ services:
       timeout: 3s
       retries: 10
 
+  # A vector store to register knowledge bases from (profile "qdrant"). Quorum only reads it: whoever owns the documents fills it.
+  # Inside the compose network register it as http://qdrant:6334 (gRPC). The ports below are for the dashboard and for ingestion
+  # from the host; Qdrant has no API key here, so they stay on loopback.
+  qdrant:
+    profiles: [qdrant]
+    image: qdrant/qdrant:v1.12.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
 volumes:
   quorum-keys:
   postgres-data:
+  qdrant-data:

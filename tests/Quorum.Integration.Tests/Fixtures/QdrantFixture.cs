@@ -119,15 +119,15 @@ public sealed partial class QdrantFixture : IAsyncLifetime
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
-            var compose = Path.Combine(directory.FullName, "deploy", "docker-compose.dev.yml");
+            var compose = Path.Combine(directory.FullName, "docker-compose.yml");
             if (File.Exists(compose))
             {
                 var match = ImageLine().Match(File.ReadAllText(compose));
-                return match.Success ? match.Groups["image"].Value : throw new InvalidOperationException("No qdrant image in the dev compose file.");
+                return match.Success ? match.Groups["image"].Value : throw new InvalidOperationException("No qdrant image in docker-compose.yml.");
             }
         }
 
-        throw new InvalidOperationException("deploy/docker-compose.dev.yml not found above the test output directory.");
+        throw new InvalidOperationException("docker-compose.yml not found above the test output directory.");
     }
 
     [GeneratedRegex(@"image:\s*(?<image>qdrant/qdrant:\S+)")]
