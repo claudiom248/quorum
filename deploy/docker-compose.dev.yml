@@ -21,6 +21,7 @@ services:
 
   # Default RAG vector store. Dashboard: http://localhost:6333/dashboard
   # (the pgvector image above also lets you try the pgvector option on a separate database)
+  # Keep the version in step with docker-compose.yml, which the tests read it from.
   qdrant:
     image: qdrant/qdrant:v1.12.0
     ports:

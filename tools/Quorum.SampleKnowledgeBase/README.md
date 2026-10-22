@@ -4,7 +4,14 @@ Sample knowledge bases for developing and testing the knowledge base module (spe
 ingestion would do and what Quorum itself never does: it writes collections into Qdrant. Nothing in the product references it;
 only the integration tests do.
 
-## Seed the dev Qdrant
+## Seed a Qdrant
+
+With the Qdrant of the base compose file (`--profile qdrant`), or the one of the dev compose file:
+
+```bash
+docker compose --profile qdrant up -d qdrant
+dotnet run --project tools/Quorum.SampleKnowledgeBase
+```
 
 ```bash
 docker compose -f deploy/docker-compose.dev.yml up -d qdrant
