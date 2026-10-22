@@ -20,7 +20,8 @@ internal enum KnowledgeBaseScope
 
 
 /// <summary>A metadata field of the payload bound to a dictionary field.</summary>
-internal sealed record MappedField(string Path, Guid DictionaryFieldId);
+/// <param name="Listable">The administrator wants the distinct values of this field as a lookup (spec 007 D-3). Mappings saved before read as <see langword="false"/>.</param>
+internal sealed record MappedField(string Path, Guid DictionaryFieldId, bool Listable = false);
 
 /// <summary>Which payload paths carry the chunk's text and its source (roles), and which are metadata fields (D-9). Stored with the knowledge base.</summary>
 internal sealed class KnowledgeBaseMapping
@@ -30,15 +31,23 @@ internal sealed class KnowledgeBaseMapping
     {
     }
 
-    public KnowledgeBaseMapping(MappingRoles roles, List<MappedField> fields)
+    public KnowledgeBaseMapping(MappingRoles roles, List<MappedField> fields, CountedPoint? countedPoint = null, string? entityName = null)
     {
         Roles = roles;
         Fields = fields;
+        CountedPoint = countedPoint;
+        EntityName = entityName;
     }
 
     public MappingRoles Roles { get; private set; } = null!;
 
     public List<MappedField> Fields { get; private set; } = [];
+
+    /// <summary>What a lookup counts, when the points of a document can be told apart (spec 007 D-2). Not set in mappings saved before lookups.</summary>
+    public CountedPoint? CountedPoint { get; private set; }
+
+    /// <summary>The payload path of the name of an entity, when the points of the knowledge base are entities and not chunks (spec 007 D-4).</summary>
+    public string? EntityName { get; private set; }
 }
 
 /// <summary>
@@ -51,6 +60,13 @@ internal sealed class KnowledgeBase
     public const int MaxDescriptionLength = 1000;
 
     public const int MaxQueryPrefixLength = 200;
+
+    public const int DefaultLookupRefreshHours = 24;
+
+    public const int MinLookupRefreshHours = 1;
+
+    /// <summary>Seven days.</summary>
+    public const int MaxLookupRefreshHours = 168;
 
     /// <summary>What a search is told about this knowledge base also reaches the model, so the stored problem stays short.</summary>
     public const int MaxErrorLength = 1000;
@@ -88,6 +104,9 @@ internal sealed class KnowledgeBase
     /// <summary>With <see cref="KnowledgeBaseScope.Assistant"/>: the assistants that may use the knowledge base.</summary>
     public List<Guid> ScopeAssistantIds { get; private set; } = [];
 
+    /// <summary>How often the lookups of this knowledge base are computed again (spec 007 D-10).</summary>
+    public int LookupRefreshHours { get; private set; } = DefaultLookupRefreshHours;
+
     public KnowledgeBaseStatus Status { get; private set; }
 
     public string? LastError { get; private set; }
@@ -110,7 +129,8 @@ internal sealed class KnowledgeBase
         KnowledgeBaseScope scope,
         IEnumerable<Guid> scopeTenantIds,
         IEnumerable<Guid> scopeAssistantIds,
-        DateTimeOffset now) => new()
+        DateTimeOffset now,
+        int lookupRefreshHours = DefaultLookupRefreshHours) => new()
         {
             Id = Guid.CreateVersion7(now),
             TenantId = tenantId,
@@ -124,6 +144,7 @@ internal sealed class KnowledgeBase
             Scope = scope,
             ScopeTenantIds = [.. scopeTenantIds],
             ScopeAssistantIds = [.. scopeAssistantIds],
+            LookupRefreshHours = lookupRefreshHours,
             Status = KnowledgeBaseStatus.Unavailable,
             CreatedAt = now,
             UpdatedAt = now,
@@ -140,7 +161,8 @@ internal sealed class KnowledgeBase
         KnowledgeBaseScope scope,
         IEnumerable<Guid> scopeTenantIds,
         IEnumerable<Guid> scopeAssistantIds,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        int lookupRefreshHours)
     {
         Name = name;
         Description = description;
@@ -152,6 +174,7 @@ internal sealed class KnowledgeBase
         Scope = scope;
         ScopeTenantIds = [.. scopeTenantIds];
         ScopeAssistantIds = [.. scopeAssistantIds];
+        LookupRefreshHours = lookupRefreshHours;
         UpdatedAt = now;
     }
 

@@ -104,6 +104,11 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastVerifiedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("LookupRefreshHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(24);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -145,11 +150,175 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                     b.ToTable("knowledge_bases", "knowledge_base");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.Lookup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("DictionaryFieldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("KnowledgeBaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Scope")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KnowledgeBaseId", "DictionaryFieldId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("lookups", "knowledge_base");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.LookupSlice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CurrentGeneration")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FilterHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Filters")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("LookupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("NextRefreshAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SkippedValueCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Stale")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<Guid>>("ToolIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<bool>("Truncated")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ValueCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NextRefreshAt");
+
+                    b.HasIndex("LookupId", "FilterHash")
+                        .IsUnique();
+
+                    b.ToTable("lookup_slices", "knowledge_base");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.LookupValue", b =>
+                {
+                    b.Property<Guid>("SliceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Generation")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Attributes")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int?>("DocumentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.PrimitiveCollection<List<string>>("Synonyms")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("SliceId", "Generation", "Position");
+
+                    b.HasIndex("SliceId", "Generation", "DocumentCount")
+                        .IsDescending(false, false, true);
+
+                    b.HasIndex("SliceId", "Generation", "Value");
+
+                    b.ToTable("lookup_values", "knowledge_base");
+                });
+
             modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.KnowledgeBase", b =>
                 {
                     b.OwnsOne("Quorum.Modules.KnowledgeBases.Domain.KnowledgeBaseMapping", "Mapping", b1 =>
                         {
                             b1.Property<Guid>("KnowledgeBaseId");
+
+                            b1.Property<string>("EntityName");
 
                             b1.HasKey("KnowledgeBaseId");
 
@@ -162,6 +331,24 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("KnowledgeBaseId");
 
+                            b1.OwnsOne("Quorum.Modules.KnowledgeBases.Domain.CountedPoint", "CountedPoint", b2 =>
+                                {
+                                    b2.Property<Guid>("KnowledgeBaseMappingKnowledgeBaseId");
+
+                                    b2.Property<string>("Path")
+                                        .IsRequired();
+
+                                    b2.Property<string>("Value")
+                                        .IsRequired();
+
+                                    b2.HasKey("KnowledgeBaseMappingKnowledgeBaseId");
+
+                                    b2.ToTable("knowledge_bases", "knowledge_base");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("KnowledgeBaseMappingKnowledgeBaseId");
+                                });
+
                             b1.OwnsMany("Quorum.Modules.KnowledgeBases.Domain.MappedField", "Fields", b2 =>
                                 {
                                     b2.Property<Guid>("KnowledgeBaseMappingKnowledgeBaseId");
@@ -170,6 +357,8 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                                         .ValueGeneratedOnAdd();
 
                                     b2.Property<Guid>("DictionaryFieldId");
+
+                                    b2.Property<bool>("Listable");
 
                                     b2.Property<string>("Path")
                                         .IsRequired();
@@ -204,6 +393,8 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                                         .HasForeignKey("KnowledgeBaseMappingKnowledgeBaseId");
                                 });
 
+                            b1.Navigation("CountedPoint");
+
                             b1.Navigation("Fields");
 
                             b1.Navigation("Roles")
@@ -211,6 +402,32 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                         });
 
                     b.Navigation("Mapping")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.Lookup", b =>
+                {
+                    b.HasOne("Quorum.Modules.KnowledgeBases.Domain.KnowledgeBase", null)
+                        .WithMany()
+                        .HasForeignKey("KnowledgeBaseId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.LookupSlice", b =>
+                {
+                    b.HasOne("Quorum.Modules.KnowledgeBases.Domain.Lookup", null)
+                        .WithMany()
+                        .HasForeignKey("LookupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.LookupValue", b =>
+                {
+                    b.HasOne("Quorum.Modules.KnowledgeBases.Domain.LookupSlice", null)
+                        .WithMany()
+                        .HasForeignKey("SliceId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

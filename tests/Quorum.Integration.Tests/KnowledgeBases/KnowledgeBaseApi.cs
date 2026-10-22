@@ -51,7 +51,8 @@ internal static class KnowledgeBaseApi
         object? scope = null,
         object[]? createFields = null,
         string model = EmbeddingModel,
-        string? queryPrefix = null) => new
+        string? queryPrefix = null,
+        int? lookupRefreshHours = null) => new
         {
             name,
             description,
@@ -62,6 +63,7 @@ internal static class KnowledgeBaseApi
             mapping = mapping ?? FlatMapping,
             scope = scope ?? new { kind = "Tenant" },
             createFields = createFields ?? FlatCreateFields,
+            lookupRefreshHours,
         };
 
     public static Task<HttpResponseMessage> RegisterAsync(
@@ -76,8 +78,9 @@ internal static class KnowledgeBaseApi
         object? scope = null,
         object[]? createFields = null,
         string model = EmbeddingModel,
-        string? queryPrefix = null) =>
-        client.PostAsJsonAsync(All, Body(url, collection, name, description, apiKey, vectorName, mapping, scope, createFields, model, queryPrefix), TestContext.Current.CancellationToken);
+        string? queryPrefix = null,
+        int? lookupRefreshHours = null) =>
+        client.PostAsJsonAsync(All, Body(url, collection, name, description, apiKey, vectorName, mapping, scope, createFields, model, queryPrefix, lookupRefreshHours), TestContext.Current.CancellationToken);
 
     /// <summary>Registers a knowledge base that must be accepted (even if it is saved unavailable).</summary>
     public static async Task<RegisteredBody> RegisterOkAsync(
@@ -140,9 +143,11 @@ internal static class KnowledgeBaseApi
 
     public sealed record RolesBody(string? Text, string? DocumentId, string? Title, string? Position, string? SourceUrl);
 
-    public sealed record MappedFieldBody(string Path, Guid DictionaryFieldId, string Name);
+    public sealed record MappedFieldBody(string Path, Guid DictionaryFieldId, string Name, bool Listable = false);
 
-    public sealed record MappingBody(RolesBody Roles, List<MappedFieldBody> Fields);
+    public sealed record CountedPointBody(string Path, JsonElement Value);
+
+    public sealed record MappingBody(RolesBody Roles, List<MappedFieldBody> Fields, CountedPointBody? CountedPoint = null, string? EntityName = null);
 
     public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AssistantIds);
 
@@ -159,7 +164,8 @@ internal static class KnowledgeBaseApi
         string Status,
         string? Warning,
         DateTimeOffset? LastVerifiedAt,
-        bool Shared);
+        bool Shared,
+        int? LookupRefreshHours = null);
 
     /// <summary>Makes the fake model endpoint serve the embedding model the sample collections were built with.</summary>
     public static void ServeEmbeddings(QuorumApp app) => InspectApi.ServeEmbeddings(app);

@@ -37,28 +37,32 @@
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "department",
             "cluster": null,
-            "filterName": "department"
+            "filterName": "department",
+            "listable": false
           },
           {
             "path": "year",
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "year",
             "cluster": null,
-            "filterName": "year"
+            "filterName": "year",
+            "listable": false
           },
           {
             "path": "published_on",
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "published_on",
             "cluster": null,
-            "filterName": "published_on"
+            "filterName": "published_on",
+            "listable": false
           },
           {
             "path": "confidential",
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "confidential",
             "cluster": null,
-            "filterName": "confidential"
+            "filterName": "confidential",
+            "listable": false
           }
         ]
       },
@@ -67,7 +71,8 @@
         "tenantIds": [],
         "assistantIds": []
       },
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "create-name-taken": {
@@ -377,7 +382,8 @@
         "tenantIds": [],
         "assistantIds": []
       },
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "update-other-server-needs-the-key": {

@@ -62,7 +62,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
             input.Scope,
             input.ScopeTenantIds,
             input.ScopeAssistantIds,
-            now);
+            now,
+            input.LookupRefreshHours);
         Apply(registration, input.Verdict, now);
 
         db.KnowledgeBases.Add(registration);
@@ -104,7 +105,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
             input.Scope,
             input.ScopeTenantIds,
             input.ScopeAssistantIds,
-            now);
+            now,
+            input.LookupRefreshHours);
         Apply(registration, input.Verdict, now);
 
         if (await SaveAsync(input, cancellationToken) is { } conflict)
@@ -151,7 +153,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return basics.Error;
         }
 
-        var (name, description, queryPrefix, scope, scopeTenantIds, scopeAssistantIds, roles, requestedFields, adapter, requested, model) = basics.Value;
+        var (name, description, queryPrefix, scope, scopeTenantIds, scopeAssistantIds, roles, requestedFields, countedPoint, entityName, adapter, requested, model) = basics.Value;
 
         // A mistyped id would leave the knowledge base visible to nobody, silently.
         if (scope == KnowledgeBaseScope.Assistant && (await assistants.MissingAsync(scopeAssistantIds, cancellationToken)).Count > 0)
@@ -191,7 +193,12 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return misfit;
         }
 
-        var mapping = new KnowledgeBaseMapping(roles, resolved.Value.Fields);
+        if (MappingValidation.CountedPointFits(countedPoint, resolved.Value.Types, found.Sample) is { } countedMisfit)
+        {
+            return countedMisfit;
+        }
+
+        var mapping = new KnowledgeBaseMapping(roles, resolved.Value.Fields, countedPoint, entityName);
         var settings = adapter.ToSettings(connection);
         return new PreparedInput(
             name,
@@ -205,7 +212,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
             settings,
             mapping,
             resolved.Value.Created,
-            Evaluate(found, mapping));
+            Evaluate(found, mapping),
+            request.LookupRefreshHours ?? existing?.LookupRefreshHours ?? KnowledgeBase.DefaultLookupRefreshHours);
     }
 
     private Result<BasicInput> ValidateBasics(KnowledgeBaseRequest request)
@@ -249,10 +257,29 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return roles.Error;
         }
 
+        var entityName = MappingValidation.EntityName(request.Mapping?.EntityName);
+        if (!entityName.IsSuccess)
+        {
+            return entityName.Error;
+        }
+
+        var countedPoint = MappingValidation.ReadCountedPoint(request.Mapping?.CountedPoint);
+        if (!countedPoint.IsSuccess)
+        {
+            return countedPoint.Error;
+        }
+
         IReadOnlyList<MappedFieldRequest> fields = request.Mapping?.Fields ?? [];
-        if (MappingValidation.Paths(roles.Value, fields) is { } pathProblem)
+        if (MappingValidation.Paths(roles.Value, entityName.Value, fields) is { } pathProblem)
         {
             return pathProblem;
+        }
+
+        if (request.LookupRefreshHours is < KnowledgeBase.MinLookupRefreshHours or > KnowledgeBase.MaxLookupRefreshHours)
+        {
+            return Error.Validation(
+                "knowledge_base.invalid_refresh_interval",
+                $"The lookups can be refreshed every {KnowledgeBase.MinLookupRefreshHours} to {KnowledgeBase.MaxLookupRefreshHours} hours.");
         }
 
         var (kind, tenantIds, assistantIds) = scope.Value;
@@ -266,6 +293,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
             assistantIds,
             roles.Value,
             fields,
+            countedPoint.Value,
+            entityName.Value,
             adapter,
             connection,
             model);
@@ -388,6 +417,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
         List<Guid> ScopeAssistantIds,
         MappingRoles Roles,
         IReadOnlyList<MappedFieldRequest> Fields,
+        CountedPoint? CountedPoint,
+        string? EntityName,
         IStoreAdapter Adapter,
         IStoreConnection Connection,
         string EmbeddingModel);
@@ -404,7 +435,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
         ConnectionSettings Settings,
         KnowledgeBaseMapping Mapping,
         List<DictionaryField> NewFields,
-        Verdict Verdict);
+        Verdict Verdict,
+        int LookupRefreshHours);
 
     /// <param name="Error">Why the knowledge base cannot be searched yet, or <see langword="null"/> when it can.</param>
     private sealed record Verdict(string? Error, List<InspectWarning> Warnings);

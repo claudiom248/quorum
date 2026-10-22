@@ -36,28 +36,32 @@
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "department",
             "cluster": null,
-            "filterName": "department"
+            "filterName": "department",
+            "listable": false
           },
           {
             "path": "year",
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "year",
             "cluster": null,
-            "filterName": "year"
+            "filterName": "year",
+            "listable": false
           },
           {
             "path": "published_on",
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "published_on",
             "cluster": null,
-            "filterName": "published_on"
+            "filterName": "published_on",
+            "listable": false
           },
           {
             "path": "confidential",
             "dictionaryFieldId": "\u003Cguid\u003E",
             "name": "confidential",
             "cluster": null,
-            "filterName": "confidential"
+            "filterName": "confidential",
+            "listable": false
           }
         ]
       },
@@ -66,7 +70,8 @@
         "tenantIds": [],
         "assistantIds": []
       },
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "collection-dropped": {
@@ -114,7 +119,8 @@
         "assistantIds": []
       },
       "warning": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created.",
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "dimension-mismatch": {
@@ -162,7 +168,8 @@
         "assistantIds": []
       },
       "warning": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model.",
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "unreachable": {
@@ -210,7 +217,8 @@
         "assistantIds": []
       },
       "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail.",
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "wrong-key": {
@@ -258,7 +266,8 @@
         "assistantIds": []
       },
       "warning": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail.",
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "named-vector": {
@@ -299,7 +308,8 @@
         "tenantIds": [],
         "assistantIds": []
       },
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "mapped-path-missing": {
@@ -346,7 +356,8 @@
         "tenantIds": [],
         "assistantIds": []
       },
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "keyed": {
@@ -387,7 +398,8 @@
         "tenantIds": [],
         "assistantIds": []
       },
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "key-unreadable": {
@@ -435,7 +447,8 @@
         "assistantIds": []
       },
       "warning": "The stored API key cannot be used here: enter the API key again. It is only reused for the server it was saved for, and it cannot be read if the installation\u0027s keys were replaced.",
-      "lastVerifiedAt": "\u003Cinstant\u003E"
+      "lastVerifiedAt": "\u003Cinstant\u003E",
+      "lookupRefreshHours": 24
     }
   },
   "unknown": {
