@@ -8,7 +8,6 @@ using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage;
-using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Search;
@@ -31,9 +30,8 @@ internal sealed record SearchInput(
 /// </summary>
 internal sealed partial class KnowledgeBaseSearchEngine(
     KnowledgeBasesDbContext db,
-    QdrantConnector qdrant,
     IEmbeddings embeddings,
-    KnowledgeBaseSecretProtector protector,
+    StoreAdapters adapters,
     TimeProvider clock,
     ILogger<KnowledgeBaseSearchEngine> logger)
 {
@@ -41,7 +39,6 @@ internal sealed partial class KnowledgeBaseSearchEngine(
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
     private const string TimeoutCode = "knowledge_base.search_timeout";
-    private const string ApiKeyCode = "knowledge_base.api_key_unreadable";
 
     public async Task<Result<KnowledgeBaseSearchResponse>> SearchAsync(IReadOnlyList<KnowledgeBase> bases, SearchInput input, CancellationToken cancellationToken)
     {
@@ -229,20 +226,20 @@ internal sealed partial class KnowledgeBaseSearchEngine(
                 return Outcome.Failed(knowledgeBase, vector.Error.Code, vector.Error.Description);
             }
 
-            var settings = knowledgeBase.Connection;
-            if (!protector.TryUnprotect(settings.ProtectedApiKey, out var apiKey))
+            var adapter = adapters.For(knowledgeBase.Kind);
+            if (!adapter.TryOpen(knowledgeBase.Connection, out var connection))
             {
-                return Outcome.Failed(knowledgeBase, ApiKeyCode, "The knowledge base's API key cannot be read. An administrator has to enter it again.");
+                return Outcome.Failed(knowledgeBase, adapter.SecretUnreadable.Code, adapter.SecretUnreadable.Description);
             }
 
-            var connection = new QdrantConnection(new Uri(settings.Url), settings.Collection, apiKey, settings.VectorName);
-            var hits = await qdrant.QueryAsync(
+            var hits = await adapter.SearchAsync(
                 connection,
-                [.. vector.Value],
-                translation.Conditions,
-                input.TopK,
-                input.ScoreThreshold,
-                ChunkReader.PathsOf(knowledgeBase.Mapping.Roles),
+                new StoreQuery(
+                    [.. vector.Value],
+                    translation.Conditions,
+                    input.TopK,
+                    input.ScoreThreshold,
+                    ChunkReader.PathsOf(knowledgeBase.Mapping.Roles)),
                 limited);
 
             var chunks = new List<RetrievedChunk>(hits.Count);
@@ -263,22 +260,13 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         }
         catch (StoreException exception)
         {
-            return Outcome.Failed(knowledgeBase, CodeOf(exception.Failure), exception.Message);
+            return Outcome.Failed(knowledgeBase, adapters.For(knowledgeBase.Kind).CodeOf(exception.Failure), exception.Message);
         }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested)
         {
             return Outcome.Failed(knowledgeBase, TimeoutCode, $"The search did not finish within {Timeout.TotalSeconds:0} seconds.");
         }
     }
-
-    private static string CodeOf(StoreFailure failure) => failure switch
-    {
-        StoreFailure.Unreachable => WarningCodes.QdrantUnreachable,
-        StoreFailure.Unauthorized => WarningCodes.QdrantUnauthorized,
-        StoreFailure.NotFound => WarningCodes.CollectionNotFound,
-        StoreFailure.Rejected => WarningCodes.DimensionMismatch,
-        _ => WarningCodes.QdrantUnexpected,
-    };
 
     /// <summary>
     /// A failed search marks the knowledge base <see cref="KnowledgeBaseStatus.Unavailable"/>, a later one that works brings it

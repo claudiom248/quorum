@@ -75,6 +75,10 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Connection")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -205,35 +209,6 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                             b1.Navigation("Roles")
                                 .IsRequired();
                         });
-
-                    b.OwnsOne("Quorum.Modules.KnowledgeBases.Domain.QdrantConnectionSettings", "Connection", b1 =>
-                        {
-                            b1.Property<Guid>("KnowledgeBaseId");
-
-                            b1.Property<string>("Collection")
-                                .IsRequired();
-
-                            b1.Property<string>("ProtectedApiKey");
-
-                            b1.Property<string>("Url")
-                                .IsRequired();
-
-                            b1.Property<string>("VectorName");
-
-                            b1.HasKey("KnowledgeBaseId");
-
-                            b1.ToTable("knowledge_bases", "knowledge_base");
-
-                            b1
-                                .ToJson("Connection")
-                                .HasColumnType("jsonb");
-
-                            b1.WithOwner()
-                                .HasForeignKey("KnowledgeBaseId");
-                        });
-
-                    b.Navigation("Connection")
-                        .IsRequired();
 
                     b.Navigation("Mapping")
                         .IsRequired();

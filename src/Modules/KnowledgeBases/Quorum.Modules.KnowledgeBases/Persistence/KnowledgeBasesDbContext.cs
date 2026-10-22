@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Design;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Shared.Persistence;
@@ -50,7 +51,15 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
             knowledgeBase.Property(k => k.LastError).HasMaxLength(KnowledgeBase.MaxErrorLength);
 
             // Kind-specific settings and the mapping are read and written whole, never queried by a column of their own.
-            knowledgeBase.OwnsOne(k => k.Connection, connection => connection.ToJson());
+            knowledgeBase.Property(k => k.Connection)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    settings => settings.ToJson(),
+                    json => ConnectionSettings.Parse(json),
+                    new ValueComparer<ConnectionSettings>(
+                        (left, right) => left != null && right != null && left.ToJson() == right.ToJson(),
+                        settings => settings.ToJson().GetHashCode(StringComparison.Ordinal),
+                        settings => ConnectionSettings.Parse(settings.ToJson())));
             knowledgeBase.OwnsOne(k => k.Mapping, mapping =>
             {
                 mapping.ToJson();

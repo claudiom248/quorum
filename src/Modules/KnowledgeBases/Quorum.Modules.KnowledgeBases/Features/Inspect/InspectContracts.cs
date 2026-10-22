@@ -2,11 +2,9 @@ using System.Text.Json;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Inspect;
 
-/// <summary>Where the knowledge base lives, as the administrator types it. <paramref name="VectorName"/> is only needed when the collection has several vectors.</summary>
-internal sealed record ConnectionRequest(string? Url, string? ApiKey, string? Collection, string? VectorName);
-
+/// <param name="Connection">The members depend on the kind; the adapter of the kind reads them.</param>
 /// <param name="Schema">A pasted JSON Schema of the payload (text, or the schema object itself); omitted, the payload is sampled.</param>
-internal sealed record InspectRequest(string? Kind, ConnectionRequest? Connection, string? EmbeddingModel, string? QueryPrefix, JsonElement? Schema);
+internal sealed record InspectRequest(string? Kind, JsonElement? Connection, string? EmbeddingModel, string? QueryPrefix, JsonElement? Schema);
 
 internal sealed record InspectResponse(
     bool Reachable,

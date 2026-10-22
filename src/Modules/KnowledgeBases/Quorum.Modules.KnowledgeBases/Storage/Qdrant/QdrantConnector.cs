@@ -11,7 +11,7 @@ using GrpcRange = Qdrant.Client.Grpc.Range;
 namespace Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 
 /// <summary>Where a knowledge base lives in Qdrant. <see cref="ApiKey"/> is the plain key, only ever held for the length of a call.</summary>
-internal sealed record QdrantConnection(Uri Url, string Collection, string? ApiKey, string? VectorName)
+internal sealed record QdrantConnection(Uri Url, string Collection, string? ApiKey, string? VectorName) : IStoreConnection
 {
     // The generated ToString prints every member: a key must never reach a log or an exception message that way.
     private bool PrintMembers(StringBuilder builder)

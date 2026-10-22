@@ -1,16 +1,18 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Registry;
 
-/// <param name="Connection">An omitted <c>ApiKey</c> keeps the stored one on an update.</param>
+/// <param name="Connection">The members depend on the kind; the adapter of the kind reads them. An omitted secret keeps the stored one on an update, under the kind's rule.</param>
 /// <param name="CreateFields">The dictionary fields the mapping names that do not exist yet; they are created only when listed here (D-10).</param>
 internal sealed record KnowledgeBaseRequest(
     string? Name,
     string? Description,
     string? Kind,
-    ConnectionRequest? Connection,
+    JsonElement? Connection,
     string? EmbeddingModel,
     string? QueryPrefix,
     MappingRequest? Mapping,
@@ -58,8 +60,6 @@ internal sealed record KnowledgeBaseListItem(
             : new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, null, null, null);
 }
 
-/// <param name="HasApiKey">Whether a key is stored. The key itself is never returned.</param>
-internal sealed record ConnectionResponse(string Url, string Collection, string? VectorName, bool HasApiKey);
 
 /// <param name="FilterName">The name a test search filters this field by, which is not always its name (spec 003 A1-6).</param>
 internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null);
@@ -76,7 +76,7 @@ internal sealed record KnowledgeBaseDetail(
     string Status,
     bool Shared,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Kind,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ConnectionResponse? Connection,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonObject? Connection,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EmbeddingModel,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QueryPrefix,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MappingResponse? Mapping,
@@ -87,14 +87,14 @@ internal sealed record KnowledgeBaseDetail(
     public static KnowledgeBaseDetail Shareable(KnowledgeBase registration) =>
         new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, null, null, null, null, null, null, null);
 
-    public static KnowledgeBaseDetail Owned(KnowledgeBase registration, IReadOnlyDictionary<Guid, (string Name, string? Cluster)> fieldNames, IReadOnlyDictionary<Guid, string> filterNames) => new(
+    public static KnowledgeBaseDetail Owned(KnowledgeBase registration, JsonObject connection, IReadOnlyDictionary<Guid, (string Name, string? Cluster)> fieldNames, IReadOnlyDictionary<Guid, string> filterNames) => new(
         registration.Id,
         registration.Name,
         registration.Description,
         registration.Status.ToString(),
         Shared: false,
         registration.Kind.ToString(),
-        new ConnectionResponse(registration.Connection.Url, registration.Connection.Collection, registration.Connection.VectorName, registration.Connection.ProtectedApiKey is not null),
+        connection,
         registration.EmbeddingModel,
         registration.QueryPrefix,
         new MappingResponse(
