@@ -21,6 +21,16 @@ dotnet run --project tools/Quorum.SampleKnowledgeBase
 Options: `--url <qdrant REST address>` (default `http://localhost:6333`), `--api-key <key>`, `--prefix <text>` (prepended to the
 collection names). Seeding again recreates the collections.
 
+To query the collections from a running Quorum, embed them with a real model instead of the deterministic fake, on any
+OpenAI-compatible endpoint (`--embedding-url`, `--embedding-model`, `--embedding-key`, `--document-prefix`):
+
+```bash
+dotnet run --project tools/Quorum.SampleKnowledgeBase -- --embedding-url http://localhost:11434/v1 --embedding-model nomic-embed-text --document-prefix "search_document: "
+```
+
+The vectors of the default size become the model's dimension; the ones that are different on purpose (`sample_other_vector_size`,
+the `summary` vector) stay deterministic. The walk-through is in [docs/knowledge-bases.md](../../docs/knowledge-bases.md).
+
 ## The collections
 
 | Collection | What it is there to exercise |
@@ -40,6 +50,6 @@ payload, to paste in the registration.
 
 `DeterministicEmbedding` turns a text into a 64-dimension vector with a hashed bag of words, normalised: texts that share words
 point the same way, and the same text gives the same vector in every process. The vectors of the sample collections are made
-with it, so tests can assert a real ranking with no model. To query these collections from a running Quorum, use an embedding
-endpoint that returns the same vectors (the integration tests' fake model server does); a real embedding model gives vectors
-of its own dimension and will not match them.
+with it by default, so tests can assert a real ranking with no model. To query these collections from a running Quorum, either
+seed them with a real model as above, or use an embedding endpoint that returns the same vectors (the integration tests' fake
+model server does); a real embedding model gives vectors of its own dimension and will not match the deterministic ones.

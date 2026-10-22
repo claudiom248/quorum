@@ -8,7 +8,7 @@ namespace Quorum.SampleKnowledgeBase;
 /// Writes sample collections into a Qdrant server over REST. This is what an ingestion pipeline does and what Quorum itself never
 /// does, so the product has no such code: it lives here, next to the data it creates. The client's base address is the server.
 /// </summary>
-public sealed class QdrantSeeder(HttpClient client)
+public sealed class QdrantSeeder(HttpClient client, ModelEmbedder? model = null)
 {
     /// <summary>Drops the collection if it exists, then creates it with its vectors, payload indexes and points.</summary>
     public async Task SeedAsync(SampleDataset collection, CancellationToken cancellationToken)
@@ -29,11 +29,7 @@ public sealed class QdrantSeeder(HttpClient client)
 
         if (collection.Points.Count > 0)
         {
-            await SendAsync(
-                HttpMethod.Put,
-                $"collections/{Uri.EscapeDataString(collection.Name)}/points?wait=true",
-                new JsonObject { ["points"] = new JsonArray(collection.Points.Select(point => (JsonNode?)PointBody(collection, point)).ToArray()) },
-                cancellationToken);
+            await UpsertAsync(collection, collection.Points, cancellationToken);
         }
     }
 
@@ -53,10 +49,16 @@ public sealed class QdrantSeeder(HttpClient client)
         ArgumentNullException.ThrowIfNull(shape);
         ArgumentNullException.ThrowIfNull(points);
 
+        var bodies = new List<JsonNode?>();
+        foreach (var point in points)
+        {
+            bodies.Add(await PointBodyAsync(shape, point, cancellationToken));
+        }
+
         await SendAsync(
             HttpMethod.Put,
             $"collections/{Uri.EscapeDataString(shape.Name)}/points?wait=true",
-            new JsonObject { ["points"] = new JsonArray(points.Select(point => (JsonNode?)PointBody(shape, point)).ToArray()) },
+            new JsonObject { ["points"] = new JsonArray(bodies.ToArray()) },
             cancellationToken);
     }
 
@@ -88,25 +90,39 @@ public sealed class QdrantSeeder(HttpClient client)
 
     private static JsonObject Config(SampleVector vector) => new() { ["size"] = vector.Size, ["distance"] = vector.Distance };
 
-    private static JsonObject PointBody(SampleDataset collection, SamplePoint point)
+    private async Task<JsonObject> PointBodyAsync(SampleDataset collection, SamplePoint point, CancellationToken cancellationToken)
     {
         JsonNode vector;
         if (collection.Vectors is [{ Name: null } single])
         {
-            vector = ToArray(DeterministicEmbedding.Embed(point.EmbeddingText, single.Size));
+            vector = ToArray(await EmbedAsync(single, point, cancellationToken));
         }
         else
         {
             var named = new JsonObject();
             foreach (var item in collection.Vectors)
             {
-                named[item.Name!] = ToArray(DeterministicEmbedding.Embed(point.EmbeddingText, item.Size));
+                named[item.Name!] = ToArray(await EmbedAsync(item, point, cancellationToken));
             }
 
             vector = named;
         }
 
         return new JsonObject { ["id"] = point.Id, ["vector"] = vector, ["payload"] = point.Payload.DeepClone() };
+    }
+
+    private async Task<float[]> EmbedAsync(SampleVector vector, SamplePoint point, CancellationToken cancellationToken)
+    {
+        if (!vector.FromModel)
+        {
+            return DeterministicEmbedding.Embed(point.EmbeddingText, vector.Size);
+        }
+
+        var embedder = model ?? throw new InvalidOperationException("A vector made by a model needs an embedder.");
+        var values = await embedder.EmbedAsync(point.EmbeddingText, cancellationToken);
+        return values.Length == vector.Size
+            ? values
+            : throw new InvalidOperationException($"The model answered {values.Length} dimensions, the collection has {vector.Size}.");
     }
 
     private static JsonArray ToArray(float[] values) => new(values.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray());
