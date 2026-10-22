@@ -74,7 +74,9 @@ internal static class InspectApi
 
     public sealed record VectorBody(string? Name, int Size, string Distance);
 
-    public sealed record DraftBody(RolesBody Roles, List<FieldBody> Fields);
+    public sealed record DraftBody(RolesBody Roles, List<FieldBody> Fields, CountedPointBody? CountedPoint = null);
+
+    public sealed record CountedPointBody(string Path, JsonElement Value);
 
     public sealed record RolesBody(string? Text, string? DocumentId, string? Title, string? Position, string? SourceUrl);
 

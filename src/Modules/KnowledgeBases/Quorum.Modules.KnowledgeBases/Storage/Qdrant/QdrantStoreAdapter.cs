@@ -18,7 +18,7 @@ internal sealed record QdrantConnectionSettings(string Url, string Collection, s
 /// What is specific to Qdrant (spec 008 D-1): the shape of its connection and how it is checked, the API key and the rule that keeps
 /// it, the wording of what is found in a collection, the vector name, and the mapping of its failures to the codes of spec 003.
 /// </summary>
-internal sealed class QdrantStoreAdapter(QdrantConnector connector, KnowledgeBaseSecretProtector protector) : IStoreAdapter
+internal sealed class QdrantStoreAdapter(QdrantConnector connector, KnowledgeBaseSecretProtector protector, QdrantLookups lookups) : IStoreAdapter
 {
     /// <summary>How many points discovery reads: enough to see the usual shape, few enough to be quick on any collection.</summary>
     public const int SampleSize = 20;
@@ -169,7 +169,16 @@ internal sealed class QdrantStoreAdapter(QdrantConnector connector, KnowledgeBas
                 Path: null));
         }
 
-        return new SourceProbe(reachable, info, rows, warnings);
+        List<InspectWarning> notes = [];
+        if (version is not null && QdrantConnector.IsSupported(version) && !QdrantConnector.SupportsLookups(version))
+        {
+            notes.Add(new InspectWarning(
+                WarningCodes.QdrantLookupsVersion,
+                $"The server runs Qdrant {version}; lookups need {QdrantConnector.LookupsMinimumVersion} or later, so a field cannot be listed until it is upgraded. Searching is not affected.",
+                Path: null));
+        }
+
+        return new SourceProbe(reachable, info, rows, warnings, notes);
     }
 
     public VectorSelection SelectVector(SourceInfo source, IStoreConnection connection)
@@ -243,9 +252,8 @@ internal sealed class QdrantStoreAdapter(QdrantConnector connector, KnowledgeBas
         return connector.QueryAsync(Own(connection), query.Vector, query.Conditions, query.Limit, query.ScoreThreshold, query.Paths, cancellationToken);
     }
 
-    // Qdrant declares no optional capability.
     public T? Capability<T>()
-        where T : class, IStoreCapability => null;
+        where T : class, IStoreCapability => lookups as T;
 
     public string CodeOf(StoreFailure failure) => failure switch
     {

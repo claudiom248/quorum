@@ -5,6 +5,7 @@ using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
@@ -26,6 +27,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
     StoreProbe probe,
     StoreAdapters adapters,
     IAssistantDirectory assistants,
+    LookupRefreshSignal refreshSignal,
+    LookupCache lookupCache,
     TimeProvider clock,
     ILogger<KnowledgeBaseRegistrar> logger)
 {
@@ -67,10 +70,13 @@ internal sealed partial class KnowledgeBaseRegistrar(
         Apply(registration, input.Verdict, now);
 
         db.KnowledgeBases.Add(registration);
+        var sync = await ComputedLookups.SyncAsync(db, registration, before: null, now, cancellationToken);
         if (await SaveAsync(input, cancellationToken) is { } conflict)
         {
             return conflict;
         }
+
+        await AfterLookupsSavedAsync(registration.Id, sync, cancellationToken);
 
         LogRegistered(logger, registration.Id, registration.Status, input.Verdict.Warnings.Count);
         return new RegisteredResponse(registration.Id, registration.Status.ToString(), ToDtos(input.Verdict.Warnings));
@@ -94,6 +100,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
 
         var input = prepared.Value;
         var now = clock.GetUtcNow();
+        var before = registration.Mapping;
         registration.Edit(
             input.Name,
             input.Description,
@@ -109,10 +116,13 @@ internal sealed partial class KnowledgeBaseRegistrar(
             input.LookupRefreshHours);
         Apply(registration, input.Verdict, now);
 
+        var sync = await ComputedLookups.SyncAsync(db, registration, before, now, cancellationToken);
         if (await SaveAsync(input, cancellationToken) is { } conflict)
         {
             return conflict;
         }
+
+        await AfterLookupsSavedAsync(registration.Id, sync, cancellationToken);
 
         LogRegistered(logger, registration.Id, registration.Status, input.Verdict.Warnings.Count);
         return new VerificationResponse(registration.Status.ToString(), ToDtos(input.Verdict.Warnings));
@@ -143,6 +153,20 @@ internal sealed partial class KnowledgeBaseRegistrar(
 
         LogVerified(logger, registration.Id, registration.Status, verdict.Warnings.Count);
         return new VerificationResponse(registration.Status.ToString(), ToDtos(verdict.Warnings));
+    }
+
+    /// <summary>The lookups were saved with the knowledge base: tell the refresh service there is work, and drop the lists of what was removed.</summary>
+    private async Task AfterLookupsSavedAsync(Guid knowledgeBaseId, LookupSync sync, CancellationToken cancellationToken)
+    {
+        if (sync.Removed)
+        {
+            await lookupCache.EvictKnowledgeBaseAsync(knowledgeBaseId, cancellationToken);
+        }
+
+        if (sync.Due)
+        {
+            refreshSignal.Wake();
+        }
     }
 
     private async Task<Result<PreparedInput>> PrepareAsync(KnowledgeBaseRequest request, KnowledgeBase? existing, Guid ownerId, CancellationToken cancellationToken)
@@ -284,6 +308,13 @@ internal sealed partial class KnowledgeBaseRegistrar(
 
         var (kind, tenantIds, assistantIds) = scope.Value;
         var (adapter, connection, model) = validated.Value;
+        if (fields.Any(f => f.Listable) && adapter.Capability<ILookupsCapability>() is null)
+        {
+            return Error.Validation(
+                "knowledge_base.lookups_not_supported",
+                $"Knowledge bases of kind {adapter.Kind} cannot list the values of a field: remove the listable marks from the mapping.");
+        }
+
         return new BasicInput(
             name,
             description,
@@ -335,7 +366,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
     /// </summary>
     private static Verdict Evaluate(StoreProbeResult found, KnowledgeBaseMapping mapping)
     {
-        var warnings = found.Warnings.Concat(MappingValidation.MissingPaths(found.Sample, mapping)).ToList();
+        var warnings = found.Warnings.Concat(found.Notes).Concat(MappingValidation.MissingPaths(found.Sample, mapping)).ToList();
         var error = found.Warnings.Count == 0 ? null : string.Join(' ', found.Warnings.Select(w => w.Message));
         return new Verdict(error, warnings);
     }

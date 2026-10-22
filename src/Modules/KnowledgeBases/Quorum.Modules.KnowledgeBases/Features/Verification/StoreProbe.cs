@@ -16,7 +16,8 @@ internal sealed record StoreProbeResult(
     IReadOnlyList<JsonObject> Sample,
     int? EmbeddingSize,
     bool? DimensionMatch,
-    IReadOnlyList<InspectWarning> Warnings);
+    IReadOnlyList<InspectWarning> Warnings,
+    IReadOnlyList<InspectWarning> Notes);
 
 /// <summary>
 /// The checks inspection and verification share: what the adapter of the kind finds in the source, and whether an embedding of
@@ -35,7 +36,7 @@ internal sealed class StoreProbe(IEmbeddings embeddings)
 
         var embeddingSize = await ProbeEmbeddingAsync(embeddingModel, warnings, cancellationToken);
         var dimensionMatch = CheckDimensions(adapter, connection, source.Info, embeddingSize, warnings);
-        return new StoreProbeResult(source.Reachable, source.Info, source.Sample, embeddingSize, dimensionMatch, warnings);
+        return new StoreProbeResult(source.Reachable, source.Info, source.Sample, embeddingSize, dimensionMatch, warnings, source.Notes ?? []);
     }
 
     private async Task<int?> ProbeEmbeddingAsync(string model, List<InspectWarning> warnings, CancellationToken cancellationToken)

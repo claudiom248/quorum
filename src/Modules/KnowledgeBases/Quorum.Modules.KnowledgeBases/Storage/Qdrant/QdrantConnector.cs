@@ -36,6 +36,15 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
     /// <summary>The first version with the query API, which search uses.</summary>
     public static readonly Version MinimumVersion = new(1, 10);
 
+    /// <summary>The first version with the facet API, which computing a lookup uses (spec 007 D-15).</summary>
+    public static readonly Version LookupsMinimumVersion = new(1, 12);
+
+    /// <summary>
+    /// A call of a lookup computation may take longer than an inspection: an exact facet on millions of points takes seconds. The
+    /// computation has its own time budget, which cancels the call.
+    /// </summary>
+    public static readonly TimeSpan LookupTimeout = TimeSpan.FromSeconds(60);
+
     private const string ApiKeyHeader = "api-key";
 
     // 20 points of ordinary chunks are a few hundred KB; this only stops a server that sends without end.
@@ -45,6 +54,12 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
     {
         ArgumentNullException.ThrowIfNull(version);
         return version >= MinimumVersion;
+    }
+
+    public static bool SupportsLookups(Version version)
+    {
+        ArgumentNullException.ThrowIfNull(version);
+        return version >= LookupsMinimumVersion;
     }
 
     /// <summary>The server's version, or <see langword="null"/> when it does not say.</summary>
@@ -134,6 +149,105 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         return points.Select(point => new StoreHit(point.Score, ToJson(point.Payload))).ToList();
     }
 
+    /// <summary>
+    /// The values of <paramref name="path"/> among the records that satisfy <paramref name="conditions"/> with the number of records of
+    /// each, most first. The counts are exact: an approximate facet on a field without an index returns wrong numbers.
+    /// </summary>
+    /// <exception cref="StoreException">The store cannot be used.</exception>
+    public async Task<IReadOnlyList<(string Value, long Count)>> FacetAsync(
+        QdrantConnection connection,
+        string path,
+        IReadOnlyList<FilterCondition> conditions,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(conditions);
+
+        var hits = await RunAsync(
+            connection,
+            (client, token) => client.FacetAsync(connection.Collection, path, ToFilter(conditions), (ulong)limit, exact: true, cancellationToken: token),
+            cancellationToken,
+            LookupTimeout);
+        return [.. hits.Hits.Select(hit => (FacetText(hit.Value), (long)hit.Count))];
+    }
+
+    /// <exception cref="StoreException">The store cannot be used.</exception>
+    public async Task<long> CountAsync(QdrantConnection connection, IReadOnlyList<FilterCondition> conditions, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(conditions);
+
+        var count = await RunAsync(
+            connection,
+            (client, token) => client.CountAsync(connection.Collection, ToFilter(conditions), exact: true, cancellationToken: token),
+            cancellationToken,
+            LookupTimeout);
+        return (long)count;
+    }
+
+    /// <summary>
+    /// A page of the records that satisfy <paramref name="conditions"/>, with the payload at <paramref name="payloadPaths"/> and
+    /// nothing else. <paramref name="cursor"/> is the one the previous page returned.
+    /// </summary>
+    /// <exception cref="StoreException">The store cannot be used.</exception>
+    public async Task<RecordPage> ScrollPageAsync(
+        QdrantConnection connection,
+        IReadOnlyList<FilterCondition> conditions,
+        IReadOnlyList<string> payloadPaths,
+        int limit,
+        string? cursor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(conditions);
+        ArgumentNullException.ThrowIfNull(payloadPaths);
+
+        var offset = cursor is null ? null : ReadOffset(cursor);
+        var payload = new WithPayloadSelector { Include = new PayloadIncludeSelector { Fields = { payloadPaths } } };
+        var response = await RunAsync(
+            connection,
+            (client, token) => client.ScrollAsync(
+                connection.Collection,
+                filter: ToFilter(conditions),
+                limit: (uint)limit,
+                offset: offset,
+                payloadSelector: payload,
+                vectorsSelector: false,
+                cancellationToken: token),
+            cancellationToken,
+            LookupTimeout);
+        return new RecordPage([.. response.Result.Select(point => ToJson(point.Payload))], response.NextPageOffset is { } next ? WriteOffset(next) : null);
+    }
+
+    private static Filter? ToFilter(IReadOnlyList<FilterCondition> conditions)
+    {
+        if (conditions.Count == 0)
+        {
+            return null;
+        }
+
+        var filter = new Filter();
+        filter.Must.AddRange(conditions.Select(ToCondition));
+        return filter;
+    }
+
+    private static string FacetText(FacetValue value) => value.HasStringValue
+        ? value.StringValue
+        : value.HasIntegerValue
+            ? value.IntegerValue.ToString(CultureInfo.InvariantCulture)
+            : value.BoolValue ? "true" : "false";
+
+    // The offset of a scroll is the id of the next point, a number or a UUID; a client can only hand back what it was given.
+    private static string WriteOffset(PointId id) => id.HasNum ? $"n{id.Num.ToString(CultureInfo.InvariantCulture)}" : $"u{id.Uuid}";
+
+    private static PointId ReadOffset(string cursor) =>
+        cursor.Length > 1 && cursor[0] == 'n' && ulong.TryParse(cursor.AsSpan(1), CultureInfo.InvariantCulture, out var number)
+            ? number
+            : cursor.Length > 1 && cursor[0] == 'u' && Guid.TryParse(cursor.AsSpan(1), out var uuid)
+                ? uuid
+                : throw new StoreException(StoreFailure.Rejected, "The cursor does not belong to this source.");
+
     private static Condition ToCondition(FilterCondition condition) => condition switch
     {
         MatchAnyCondition any => Conditions.Match(any.Path, any.Values),
@@ -202,10 +316,15 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         _ => null,
     };
 
-    private async Task<T> RunAsync<T>(QdrantConnection connection, Func<QdrantClient, CancellationToken, Task<T>> call, CancellationToken cancellationToken)
+    private async Task<T> RunAsync<T>(
+        QdrantConnection connection,
+        Func<QdrantClient, CancellationToken, Task<T>> call,
+        CancellationToken cancellationToken,
+        TimeSpan? limit = null)
     {
+        var allowed = limit ?? RequestTimeout;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
+        timeout.CancelAfter(allowed);
 
         using var channel = GrpcChannel.ForAddress(
             connection.Url,
@@ -215,7 +334,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
                 MaxReceiveMessageSize = MaxResponseBytes,
             });
         var invoker = string.IsNullOrEmpty(connection.ApiKey) ? channel.CreateCallInvoker() : channel.Intercept(new ApiKeyInterceptor(connection.ApiKey));
-        using var client = new QdrantClient(new QdrantGrpcClient(invoker), RequestTimeout);
+        using var client = new QdrantClient(new QdrantGrpcClient(invoker), allowed);
 
         try
         {
@@ -223,7 +342,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new StoreException(StoreFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds.");
+            throw new StoreException(StoreFailure.Unreachable, $"The server did not answer within {allowed.TotalSeconds:0} seconds.");
         }
         catch (RpcException exception) when (exception.StatusCode == StatusCode.Cancelled && cancellationToken.IsCancellationRequested)
         {
@@ -232,7 +351,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
         }
         catch (RpcException exception) when (exception.StatusCode == StatusCode.Cancelled && timeout.IsCancellationRequested)
         {
-            throw new StoreException(StoreFailure.Unreachable, $"The server did not answer within {RequestTimeout.TotalSeconds:0} seconds.");
+            throw new StoreException(StoreFailure.Unreachable, $"The server did not answer within {allowed.TotalSeconds:0} seconds.");
         }
         catch (RpcException exception)
         {

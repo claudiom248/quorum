@@ -15,6 +15,8 @@ public static class SampleCollections
     public const string NamedVectors = "sample_named_vectors";
     public const string OtherVectorSize = "sample_other_vector_size";
     public const string Empty = "sample_empty";
+    public const string Lookups = "sample_lookups";
+    public const string LookupsUnindexed = "sample_lookups_unindexed";
 
     /// <summary>The name of the vector to choose in <see cref="NamedVectors"/>: its size matches <see cref="DeterministicEmbedding.DefaultDimensions"/>.</summary>
     public const string DenseVectorName = "dense";
@@ -45,14 +47,16 @@ public static class SampleCollections
         CreateNamedVectors(prefix + NamedVectors),
         CreateOtherVectorSize(prefix + OtherVectorSize),
         CreateEmpty(prefix + Empty),
+        CreateLookups(prefix + Lookups),
+        CreateLookupsUnindexed(prefix + LookupsUnindexed),
     ];
 
     /// <summary>Flat payload, indexed filter fields: the straightforward case.</summary>
     public static SampleDataset CreateFlat(string name = Flat) => new(
         name,
-        "Flat payload (text, document_id, title, page, source_url, department, year, published_on, confidential) with payload indexes on the filter fields.",
+        "Flat payload (text, document_id, title, page, source_url, department, year, published_on, confidential) with payload indexes on the filter fields and on document_id.",
         [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
-        [new("department", "keyword"), new("year", "integer"), new("published_on", "datetime"), new("confidential", "bool")],
+        [new("document_id", "keyword"), new("department", "keyword"), new("year", "integer"), new("published_on", "datetime"), new("confidential", "bool")],
         Corpus.Select(FlatPoint).ToList(),
         SampleSchemas.Flat);
 
@@ -107,6 +111,80 @@ public static class SampleCollections
         [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
         [],
         []);
+
+
+    /// <summary>
+    /// Contracts of a company, several chunks each, for the lookups of spec 007: a supplier, a department, a nationality and a list of
+    /// audiences per document, a flag that is true on the first chunk of each document and the index of the chunk. Indexed.
+    /// </summary>
+    public static SampleDataset CreateLookups(string name = Lookups) => new(
+        name,
+        "Contracts with supplier, department, nationality, audience (list), is_first_chunk and chunk_index, with payload indexes on all of them.",
+        [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
+        [
+            new("document_id", "keyword"),
+            new("supplier", "keyword"),
+            new("department", "keyword"),
+            new("nationality", "keyword"),
+            new("audience", "keyword"),
+            new("is_first_chunk", "bool"),
+            new("chunk_index", "integer"),
+        ],
+        ContractPoints(),
+        SampleSchemas.Lookups);
+
+    /// <summary>The same contracts with no payload index: a lookup on any of them fails, and says which field needs one (spec 007 AC-7).</summary>
+    public static SampleDataset CreateLookupsUnindexed(string name = LookupsUnindexed) => new(
+        name,
+        "The contracts of the lookups collection without any payload index.",
+        [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
+        [],
+        ContractPoints(),
+        SampleSchemas.Lookups);
+
+    private static List<SamplePoint> ContractPoints()
+    {
+        var points = new List<SamplePoint>();
+        ulong id = 1;
+        foreach (var contract in Contracts)
+        {
+            for (var chunk = 0; chunk < contract.Chunks; chunk++)
+            {
+                var text = $"{contract.Title}, part {chunk + 1}.";
+                points.Add(new SamplePoint(
+                    id++,
+                    text,
+                    new JsonObject
+                    {
+                        ["text"] = text,
+                        ["document_id"] = contract.Document,
+                        ["title"] = contract.Title,
+                        ["source_url"] = $"{BaseUrl}/{contract.Document}",
+                        ["supplier"] = contract.Supplier,
+                        ["department"] = contract.Department,
+                        ["nationality"] = contract.Nationality,
+                        ["audience"] = new JsonArray(contract.Audience.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray()),
+                        ["is_first_chunk"] = chunk == 0,
+                        ["chunk_index"] = chunk,
+                    }));
+            }
+        }
+
+        return points;
+    }
+
+    private sealed record Contract(string Document, string Title, string Supplier, string Department, string Nationality, string[] Audience, int Chunks);
+
+    // Documents per supplier: Acme 3, Globex 2, Initech 1. Per department: facilities 2, it 2, finance 1, legal 1. Eleven chunks in all.
+    private static readonly Contract[] Contracts =
+    [
+        new("c1", "Cleaning services contract", "Acme", "facilities", "IT", ["all"], 3),
+        new("c2", "Laptop supply agreement", "Acme", "it", "IT", ["it"], 2),
+        new("c3", "Cloud hosting agreement", "Globex", "it", "US", ["it", "managers"], 2),
+        new("c4", "Legal retainer", "Initech", "legal", "DE", ["managers"], 1),
+        new("c5", "Catering contract", "Acme", "facilities", "IT", ["all"], 2),
+        new("c6", "Travel agency agreement", "Globex", "finance", "US", ["managers"], 1),
+    ];
 
     private static SamplePoint FlatPoint(Chunk chunk) => new(
         chunk.Id,

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Quorum.Modules.KnowledgeBases.Features.Registry;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Inspect;
 
@@ -19,7 +21,11 @@ internal sealed record InspectResponse(
 
 internal sealed record VectorDto(string? Name, int Size, string Distance);
 
-internal sealed record DraftMappingDto(RolesDto Roles, IReadOnlyList<DraftFieldDto> Fields);
+/// <param name="CountedPoint">The point of each document the lookups count, when a field of the payload looks like one (spec 007 D-19).</param>
+internal sealed record DraftMappingDto(
+    RolesDto Roles,
+    IReadOnlyList<DraftFieldDto> Fields,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CountedPointResponse? CountedPoint = null);
 
 internal sealed record RolesDto(string? Text, string? DocumentId, string? Title, string? Position, string? SourceUrl);
 

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Dictionary;
+using Quorum.Modules.KnowledgeBases.Features.Registry;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
@@ -41,7 +42,7 @@ internal sealed partial class KnowledgeBaseInspector(
         }
 
         var found = await probe.RunAsync(adapter, connection, embeddingModel, sample: schemaDiscovery is null, cancellationToken);
-        var warnings = found.Warnings.ToList();
+        var warnings = found.Warnings.Concat(found.Notes).ToList();
         if (found.Info is { RecordCount: 0 })
         {
             warnings.Add(adapter.EmptySourceWarning());
@@ -70,6 +71,18 @@ internal sealed partial class KnowledgeBaseInspector(
             }
         }
 
+        if (found.Info is { } source && adapter.Capability<ILookupsCapability>() is { } lookups)
+        {
+            // The fields of the mapping were warned about above; these are the paths only a lookup reads.
+            foreach (var (path, role) in new[] { (draft.CountedPoint?.Path, "counted point"), (draft.Roles.DocumentId, "document id") })
+            {
+                if (path is not null && !source.IndexedPaths.ContainsKey(path))
+                {
+                    warnings.Add(lookups.UnindexedWarning(path, role));
+                }
+            }
+        }
+
         var response = new InspectResponse(
             found.Reachable,
             found.Reachable && found.Info is not null,
@@ -78,7 +91,8 @@ internal sealed partial class KnowledgeBaseInspector(
             found.DimensionMatch,
             new DraftMappingDto(
                 new RolesDto(draft.Roles.Text, draft.Roles.DocumentId, draft.Roles.Title, draft.Roles.Position, draft.Roles.SourceUrl),
-                fields),
+                fields,
+                draft.CountedPoint is { } counted ? new CountedPointResponse(counted.Path, counted.ToJsonElement()) : null),
             proposed,
             unindexed,
             warnings.Select(w => new WarningDto(w.Code, w.Message, w.Path)).ToList());

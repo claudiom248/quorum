@@ -156,6 +156,11 @@
           "code": "knowledge_base.field_unindexed",
           "message": "\u0027meta.published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
           "path": "meta.published_on"
+        },
+        {
+          "code": "knowledge_base.lookup_field_unindexed",
+          "message": "\u0027doc_id\u0027 (document id) has no payload index in Qdrant: lookups need one on it, and without it they fail or take very long. Ask the data owner to index it.",
+          "path": "doc_id"
         }
       ]
     }
@@ -330,6 +335,11 @@
           "code": "knowledge_base.field_unindexed",
           "message": "\u0027year\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
           "path": "year"
+        },
+        {
+          "code": "knowledge_base.lookup_field_unindexed",
+          "message": "\u0027document_id\u0027 (document id) has no payload index in Qdrant: lookups need one on it, and without it they fail or take very long. Ask the data owner to index it.",
+          "path": "document_id"
         }
       ]
     }
@@ -437,6 +447,11 @@
           "code": "knowledge_base.field_unindexed",
           "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
           "path": "published_on"
+        },
+        {
+          "code": "knowledge_base.lookup_field_unindexed",
+          "message": "\u0027document_id\u0027 (document id) has no payload index in Qdrant: lookups need one on it, and without it they fail or take very long. Ask the data owner to index it.",
+          "path": "document_id"
         }
       ]
     }
@@ -539,6 +554,11 @@
           "code": "knowledge_base.field_unindexed",
           "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
           "path": "published_on"
+        },
+        {
+          "code": "knowledge_base.lookup_field_unindexed",
+          "message": "\u0027document_id\u0027 (document id) has no payload index in Qdrant: lookups need one on it, and without it they fail or take very long. Ask the data owner to index it.",
+          "path": "document_id"
         }
       ]
     }
@@ -646,6 +666,11 @@
           "code": "knowledge_base.field_unindexed",
           "message": "\u0027published_on\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
           "path": "published_on"
+        },
+        {
+          "code": "knowledge_base.lookup_field_unindexed",
+          "message": "\u0027document_id\u0027 (document id) has no payload index in Qdrant: lookups need one on it, and without it they fail or take very long. Ask the data owner to index it.",
+          "path": "document_id"
         }
       ]
     }
@@ -754,6 +779,11 @@
           "code": "knowledge_base.field_unindexed",
           "message": "\u0027year\u0027 has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
           "path": "year"
+        },
+        {
+          "code": "knowledge_base.lookup_field_unindexed",
+          "message": "\u0027document_id\u0027 (document id) has no payload index in Qdrant: lookups need one on it, and without it they fail or take very long. Ask the data owner to index it.",
+          "path": "document_id"
         }
       ]
     }

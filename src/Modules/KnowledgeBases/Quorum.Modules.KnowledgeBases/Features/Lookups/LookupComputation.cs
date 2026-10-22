@@ -42,9 +42,3 @@ internal sealed class LookupComputationException : Exception
     }
 }
 
-/// <summary>Stands in until the store contract can compute lookups: every computation fails, visibly, and the last good list stays.</summary>
-internal sealed class UnavailableLookupComputer : ILookupComputer
-{
-    public Task<LookupComputation> ComputeAsync(LookupComputationRequest request, CancellationToken cancellationToken) =>
-        throw new LookupComputationException("This knowledge base cannot compute lookups yet.");
-}
