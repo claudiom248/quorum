@@ -43,11 +43,8 @@ internal sealed partial class StoreAdaptersStartupCheck(StoreAdapters adapters, 
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (logger.IsEnabled(LogLevel.Information))
-        {
-            LogKinds(logger, string.Join(", ", adapters.Kinds.Order()));
-        }
-
+        var kinds = string.Join(", ", adapters.Kinds.Order());
+        LogKinds(logger, kinds);
         return Task.CompletedTask;
     }
 
