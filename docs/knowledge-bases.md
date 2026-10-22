@@ -150,7 +150,7 @@ The administrator registers the collection under **Knowledge** (guided: connecti
 | On the host that runs Quorum's containers | `http://host.docker.internal:6334` |
 | Another server | `http://<host>:6334`, with the API key if the server needs one |
 
-Internal addresses are allowed. Cloud metadata and link-local addresses are blocked at registration and on every connection, redirects to another host are not followed, and the API key is stored encrypted and never shown again.
+Quorum does not filter addresses: you and your colleagues are responsible for what you enter, so register only addresses you trust. Redirects to another host are not followed, and the API key is stored encrypted and never shown again.
 
 A registration that cannot be verified is still saved, marked **Unavailable**, with the reason. The usual ones:
 
@@ -162,7 +162,6 @@ A registration that cannot be verified is still saved, marked **Unavailable**, w
 | The server refused the API key (or needs one) | Missing or wrong API key |
 | The collection's vectors have N dimensions but the embedding model produces M | Different embedding model than the ingestion's, or the wrong named vector |
 | The server runs Qdrant X; searching needs 1.10 or later | Qdrant too old for the query API |
-| The address is not allowed | A link-local or cloud-metadata address |
 
 A search that fails marks the knowledge base unavailable; the next successful search or verification marks it available again.
 

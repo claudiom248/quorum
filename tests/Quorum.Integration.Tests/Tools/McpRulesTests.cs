@@ -1,7 +1,5 @@
-using System.Net;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
-using Quorum.Shared.Networking;
 
 namespace Quorum.Integration.Tests.Tools;
 
@@ -98,34 +96,4 @@ public sealed class McpRulesTests
         Assert.Equal(4, new[] { original, otherDescription, otherName, otherSchema }.Distinct().Count());
         Assert.NotEqual(original, otherOrderInArray);
     }
-
-    [Theory]
-    [InlineData("169.254.169.254", true)]
-    [InlineData("169.254.0.1", true)]
-    [InlineData("fe80::1", true)]
-    [InlineData("100.100.100.200", true)]
-    [InlineData("fd00:ec2::254", true)]
-    [InlineData("168.63.129.16", true)]
-    [InlineData("192.0.0.192", true)]
-    [InlineData("fd20:ce::254", true)]
-    [InlineData("::ffff:168.63.129.16", true)]
-    [InlineData("168.63.129.17", false)]
-    [InlineData("0.0.0.0", true)]
-    [InlineData("0.1.2.3", true)]
-    [InlineData("::", true)]
-    [InlineData("::ffff:169.254.169.254", true)]
-    [InlineData("::ffff:100.100.100.200", true)]
-    [InlineData("64:ff9b::a9fe:a9fe", true)]
-    [InlineData("127.0.0.1", false)]
-    [InlineData("10.1.2.3", false)]
-    [InlineData("192.168.1.10", false)]
-    [InlineData("172.16.0.5", false)]
-    [InlineData("100.100.100.201", false)]
-    [InlineData("93.184.216.34", false)]
-    [InlineData("::1", false)]
-    [InlineData("2001:db8::1", false)]
-    [InlineData("::ffff:10.0.0.1", false)]
-    [InlineData("64:ff9b::5db8:d822", false)]
-    public void OnlyMetadataAndLinkLocalAddressesAreBlocked(string address, bool blocked) =>
-        Assert.Equal(blocked, OutboundUrlGuard.IsBlocked(IPAddress.Parse(address)));
 }

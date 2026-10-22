@@ -65,8 +65,9 @@ tools of the assistant.
 
 ## Safety notes
 
-- Quorum refuses link-local and cloud metadata addresses and does not follow redirects. Anything else on your network is
-  reachable: register only servers you trust, and prefer a network where Quorum can reach only what it needs.
+- Quorum does not filter addresses and does not follow redirects. Whatever Quorum can reach from its host or container is
+  reachable by the address you enter, cloud metadata included: register only servers you trust, and prefer a network where
+  Quorum can reach only what it needs.
 - A tool result is data for the model, not instructions, but a hostile document or result can still push a model to call tools.
   Keep *Ask before running* for anything with side effects.
 - Every call is recorded in the audit log (`GET /api/tools/audit`). Argument values under keys such as `password`, `token` or

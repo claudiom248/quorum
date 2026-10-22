@@ -4,6 +4,7 @@
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
 **Status:** Approved (2026-10-17)
+**Amended (2026-10-22), pending approval:** the URL guard and its blocked addresses were removed.
 **Amended by spec 003 (2026-10-17):** the tool origin `Native` is renamed `Builtin` and the exposed prefix `native__` becomes `builtin__`; "native tools" in this document are the built-in tools. Rows, API values and names in the code follow the new vocabulary.
 
 
@@ -21,7 +22,7 @@
 | Pending interactions | `PendingInteractions` (singleton, in memory) holds one entry per confirmation or question: call id, conversation id, user id, kind, expiry and a `TaskCompletionSource`. The loop waits on it with the confirmation timeout and the lease token; the decision endpoints complete it. A restart loses all entries, which is a denial (D-9) |
 | Keep-alive | While the stream is paused the relay emits a `ping` SSE event every 15 seconds (ignored by the client) so reverse proxies with a 60 s read timeout do not cut the connection and turn a slow user into a denial |
 | MCP client | The official **`ModelContextProtocol.Core` 2.2.0** (Apache-2.0; client only, no ASP.NET server pieces) with `HttpClientTransport` in Streamable HTTP mode, over a named `HttpClient`. PR 6 starts with a prototype that proves it accepts our `HttpClient`, static headers, redirect control and cancellation; if it does not, a minimal own client (JSON-RPC `initialize`, `tools/list`, `tools/call`, cancellation notification) replaces it. A connection is opened lazily per server **per answer** and disposed when the answer ends (no long-lived sessions to repair), and `tools/list` runs on registration and refresh only |
-| URL guard (D-18) | Named `HttpClient` `mcp-server` with `SocketsHttpHandler { AllowAutoRedirect = false, ConnectCallback }`: the callback resolves the host, rejects blocked addresses and connects to the validated IP, so DNS rebinding cannot swap it afterwards. Blocked: `169.254.0.0/16`, `fe80::/10`, `100.100.100.200` (Alibaba metadata), `fd00:ec2::254` (AWS IPv6 metadata), the unspecified addresses, and IPv4-mapped IPv6 forms of all of them. Registration and test also check the URL up front to return `tool.url_blocked` instead of a connection error. Redirects are never followed (a 3xx is a failed call) |
+| Outbound client (D-18) | *(Amended 2026-10-22: no address blocking.)* Named `HttpClient` `mcp-server` with `SocketsHttpHandler { AllowAutoRedirect = false }`. Redirects are never followed (a 3xx is a failed call) |
 | Server secrets | Headers are stored as one JSON blob encrypted with Data Protection through the existing `ApiKeyProtector` (generalized by purpose string); the API returns `hasHeaders` only |
 | Definition hash | SHA-256 of canonical JSON (name, description, input schema with sorted keys). Annotations are excluded |
 | Audit | `Started` row written before execution (fail closed: any exception means the call does not run); completion written with `CancellationToken.None` like the answer in `AnswerStream`. Arguments are redacted recursively (keys containing `password`, `passwd`, `secret`, `token`, `apikey`, `api_key`, `authorization`, `credential`, `private_key`, case-insensitive) and stored up to 32,000 characters with an `ArgumentsTruncated` flag. Retention runs in a `BackgroundService` once a day with `ExecuteDeleteAsync` per tenant |
@@ -65,7 +66,7 @@
 ### PR 6 - MCP servers registry (`feat/004-mcp-registry`)
 20. Prototype of `ModelContextProtocol.Core` against our requirements (see Decisions); decide SDK or own client before anything else.
 21. `McpServer` entity, `Tool` gains server id, hash, annotations, `PendingReview`; migration `AddMcpServers`. Encrypted headers. AC-6.
-22. URL guard and the `mcp-server` HttpClient. AC-3, AC-4.
+22. The `mcp-server` HttpClient. AC-3, AC-4.
 23. Endpoints: `POST /tools/servers/test`, create, list, detail, update, delete, refresh; name rules and uniqueness; unreachable server saved as `Unavailable`. AC-1, AC-2, AC-5, AC-9, AC-10.
 24. Review flow: hash comparison, new and changed tools pending review and back to `Confirm`, vanished tools removed with their activations. AC-7, AC-8.
 25. Scopes: pool computation for `Global`, `Tenant`, `Assistant`; `agent` rejected. AC-11, AC-12, AC-13, AC-18.
@@ -96,10 +97,8 @@
 - Exposed-name sanitizing rule (see Decisions).
 - Audit arguments cap of 32,000 characters with a flag.
 - `ping` every 15 seconds during pauses.
-- The extra blocked addresses in the URL guard.
 - Test-only dependency on `ModelContextProtocol.AspNetCore`.
 - Server scope in the API is an object, `scope: { kind, tenantIds?, assistantIds? }` (the spec table only says `scope`): `Global` takes no ids, `Tenant` lists tenants besides the owner (the owner is always included), `Assistant` lists at least one existing assistant of the owner. Other tenants see a server only through `Global` or a `Tenant` list that names them, read-only (`shared: true`); an `Assistant` scope never reaches another tenant.
 - Extra validation codes: `tool.invalid_url` (not an absolute http(s) URL, or credentials in it), `tool.invalid_headers` (reserved header names such as `Host`, malformed names or values, more than 20), `tool.invalid_scope`.
 - `PUT /tools/servers/{id}`: omitted `headers` keeps the stored ones, an empty object removes them. A changed URL does not re-read the tools: the server becomes `Unavailable` (what was approved was approved for the old address) until the admin refreshes, which applies the review flow. The URL is stored and returned as entered: credentials belong in the headers, the only encrypted field. Definitions from a server are capped at 50,000 characters per tool and 1,000,000 in total; above that it is treated as unreachable.
-- The `mcp-server` HTTP client does not use the system proxy: a proxy would connect on the guard's behalf, to an address the guard never checked.
 - A server that lists more than 500 tools is treated as unreachable.

@@ -1,6 +1,7 @@
 # Spec 004: MCP Tools
 
-**Status:** Approved (2026-10-17)
+**Status:** In Review (2026-10-22), because of the amendment below. Approved (2026-10-17).
+**Amended (2026-10-22), pending approval:** D-18 no longer blocks addresses (cloud metadata, link-local): whoever registers a server is responsible for what they enter. The `tool.url_blocked` error and AC-3 are removed or rewritten accordingly.
 **Amended by spec 003 (2026-10-17):** the tool origin `Native` is renamed `Builtin` and the exposed prefix `native__` becomes `builtin__`; "native tools" in this document are the built-in tools. Rows, API values and names in the code follow the new vocabulary.
 
 **Date:** 2026-10-17
@@ -55,7 +56,7 @@ Out of scope here are the things that need other pieces first: users and roles (
 | D-15 | Native tools: **current date and time** (with timezone), **calculator** (safe expression evaluator, no code execution) and **ask_user** (the model asks the user a clarifying question, reusing the stream pause of D-9), all policy `auto`. |
 | D-16 | Tool names sent to the model are **always prefixed** with their origin: `<server>__<tool>` for MCP tools, `native__<tool>` for native ones. Server names are restricted so that the full name matches `[a-zA-Z0-9_-]{1,64}`. |
 | D-17 | The visibility scope is set **on the server** and applies to all its tools. Each tool can be individually enabled or disabled and has its own policy. |
-| D-18 | MCP server URLs: the internal network is allowed (customer servers live there); cloud metadata and link-local addresses (e.g. `169.254.0.0/16`) are blocked, and redirects to a different host are not followed. |
+| D-18 | MCP server URLs: **Quorum does not filter addresses** (amended 2026-10-22). The administrator who registers a server, and their colleagues, are responsible for what they enter; the internal network, link-local and cloud metadata addresses are all accepted. Redirects to a different host are not followed. |
 | D-19 | UI in this spec: an admin page to register and refresh servers, review tools, set scope and per-tool policy; the activation of tools on the assistant; in the chat, tool-call cards and the confirmation dialog. The audit log is consulted through the API only; its UI is a later spec (`docs/deferred.md`). |
 | D-20 | The confirmation dialog offers only **approve this call** or **deny**; choices are not remembered. To reduce prompts the admin sets the tool to `auto`. |
 | D-21 | Authentication to HTTP MCP servers uses **static headers** (e.g. `Authorization: Bearer`), encrypted at rest with the master key and never returned by the API (only "set / not set"). The OAuth flow for MCP servers is a later spec (`docs/deferred.md`). |
@@ -95,9 +96,9 @@ Errors use ProblemDetails with a stable `code`. All routes are under `/api`; aut
 
 | Verb | Route | Request | Response | Errors |
 |---|---|---|---|---|
-| POST | `/tools/servers/test` | `{ url, headers? }` | `{ reachable, tools[] }` | 400; 401; 403; 422 `tool.server_unreachable` / `tool.url_blocked` |
+| POST | `/tools/servers/test` | `{ url, headers? }` | `{ reachable, tools[] }` | 400; 401; 403; 422 `tool.server_unreachable` |
 | GET | `/tools/servers` | - | `[{ id, name, url, hasHeaders, status, lastError, scope, toolCount, pendingReviewCount }]` | 401; 403 |
-| POST | `/tools/servers` | `{ name, url, headers?, scope }` | 201 `{ id, status, warning?, tools[] }` (saved even if unreachable, D-25) | 400 `tool.invalid_name` / `tool.url_blocked` / `tool.scope_not_supported`; 401; 403; 409 `tool.server_name_taken` |
+| POST | `/tools/servers` | `{ name, url, headers?, scope }` | 201 `{ id, status, warning?, tools[] }` (saved even if unreachable, D-25) | 400 `tool.invalid_name` / `tool.scope_not_supported`; 401; 403; 409 `tool.server_name_taken` |
 | GET | `/tools/servers/{id}` | - | server detail with its tools | 401; 403; 404 |
 | PUT | `/tools/servers/{id}` | `{ name, url, headers?, scope }` (omitted `headers` keeps the stored ones) | 204 | 400; 401; 403; 404; 409 |
 | DELETE | `/tools/servers/{id}` | - | 204 | 401; 403; 404 |
@@ -138,7 +139,7 @@ Server `headers` are returned as `hasHeaders` only. Conversations of another use
 - **Tenant isolation**: servers, tools, activations, settings and audit entries carry `TenantId` with the global filter. A `Global` or multi-tenant server (D-30) is visible to other tenants through the scope rule, never writable by them.
 - **Confirmations**: only the owner of the conversation can decide or answer a pending call; other users get 404.
 - **Secrets**: server headers are encrypted with the master key, never returned and never written to logs or the audit log.
-- **Outbound requests** (D-18): URL checks apply at registration and at every connection (DNS resolution included), so a hostname cannot later resolve to a blocked address.
+- **Outbound requests** (D-18): no address is refused. Redirects to a different host are not followed, every connection has a timeout and header values never reach logs or messages.
 
 ## Edge Cases & Failure Modes
 - **Loop limits** (D-8): hitting rounds, total time or per-call time ends the answer as `Failed` with a readable error; the call in flight is cancelled and audited as `TimedOut`.
@@ -181,7 +182,7 @@ Server `headers` are returned as `hasHeaders` only. Conversations of another use
 **Servers and tools**
 - **AC-1** Given an admin and a reachable MCP server, When registering it, Then the server is saved as `Available` and its tools are listed as `PendingReview` with policy `Confirm`.
 - **AC-2** Given an unreachable server, When registering it, Then it is saved as `Unavailable` with a warning and offers no tools.
-- **AC-3** Given a server URL pointing to a blocked address (e.g. `169.254.169.254`), When registering or testing it, Then it returns 422 `tool.url_blocked`; a hostname that resolves to a blocked address is blocked at connection time too.
+- **AC-3** Given a server URL pointing to a link-local or cloud metadata address (e.g. `169.254.169.254`), When registering or testing it, Then it is not refused for its address: the outcome is the one of any other address (an unreachable server is saved as unavailable, D-25). *(Replaces the former `tool.url_blocked` rule.)*
 - **AC-4** Given a server that answers with a redirect to a different host, When connecting, Then the redirect is not followed.
 - **AC-5** Given a duplicate or invalid server name, When registering, Then it returns 409 `tool.server_name_taken` or 400 `tool.invalid_name`.
 - **AC-6** Given stored headers, When the server is read, Then only `hasHeaders` is returned; the value is encrypted in the database and absent from logs.

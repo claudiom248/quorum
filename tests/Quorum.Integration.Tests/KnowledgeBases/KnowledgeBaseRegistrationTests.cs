@@ -114,37 +114,6 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
         Assert.False(string.IsNullOrWhiteSpace(detail.Warning));
     }
 
-    [Theory] // AC-15
-    [InlineData("http://169.254.169.254")]
-    [InlineData("http://[fe80::1]:6334")]
-    [InlineData("http://100.100.100.200:6334")]
-    public async Task ABlockedAddressIsRefusedAndNothingIsSaved(string url)
-    {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
-        KnowledgeBaseApi.ServeEmbeddings(app);
-
-        using var response = await KnowledgeBaseApi.RegisterAsync(admin, url, "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
-
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        Assert.Equal("knowledge_base.url_blocked", await KnowledgeBaseApi.ProblemCodeAsync(response));
-        Assert.Empty(await KnowledgeBaseApi.ListAsync(admin));
-    }
-
-    [Fact] // AC-15
-    public async Task AHostNameThatResolvesToABlockedAddressIsRefused()
-    {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
-        KnowledgeBaseApi.ServeEmbeddings(app);
-        app.McpHosts.Script("metadata.test", ["169.254.169.254"]);
-
-        using var response = await KnowledgeBaseApi.RegisterAsync(admin, "http://metadata.test:6334", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
-
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        Assert.Equal("knowledge_base.url_blocked", await KnowledgeBaseApi.ProblemCodeAsync(response));
-    }
-
     [Fact] // AC-18
     public async Task ANameAlreadyUsedInTheTenantIsRefused()
     {

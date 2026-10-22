@@ -1,6 +1,6 @@
 # Spec 003: Knowledge Bases
 
-**Status:** Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval.
+**Status:** In Review (2026-10-22), because of Amendment 2. Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval.
 **Date:** 2026-10-17
 
 ## Problem
@@ -37,7 +37,7 @@ This spec lets an admin **register existing knowledge bases (KBs)** and lets ass
 | D-3 | A new module **KnowledgeBases** (schema `knowledge_base`, own DbContext, `Quorum.Modules.KnowledgeBases.Contracts`) owns dictionary, KBs, storage connectors, discovery and search. It needs query embeddings from Agents and Agents needs search from it: both go through the Contracts projects only, never through the other module's data. |
 | D-4 | Retrieval reaches the assistant **as a tool** of spec 004's system, origin `Rag`, named `rag__<name>` (D-16 of spec 004). A rag tool is a **configured binding** to one or more KBs (up to 10), with its own description for the model, retrieval parameters, fixed filters, scope and policy. It lives in the Agents module with the other tools (pool, activation, policy, audit); its KB list holds KnowledgeBase ids. Default policy `Auto` (read-only), changeable by the admin. |
 | D-5 | KBs and rag tools use **spec 004's model**: registration by API and admin page; visibility scope `Global` (all tenants), `Tenant` (listed tenants) or `Assistant` (listed assistants), set by the installation admin for Global/multi-tenant (D-30 of spec 004); explicit activation of the rag tool per assistant (`tools.attach`). Global KBs are how knowledge is shared across tenants: one registration, one index, never duplicated. |
-| D-6 | The **connection is per KB** and its settings are specific to the kind (for Qdrant: URL, API key, collection, optional vector name). Secrets are encrypted at rest with the master key, never returned (only "set / not set"). The **content of a KB never lives in, or is read from, the platform database**: the platform PostgreSQL holds only the registrations (dictionary, KB configuration, mapping). A KB can sit on any server; a future pgvector kind has its own connection (host, database, credentials) and never reuses the platform's connection string. This replaces the product.md idea of one vector store chosen in the wizard: the bundled `qdrant` service in the compose file stays only as a convenient default target for data owners. URL policy as spec 004 D-18: internal network allowed; cloud metadata and link-local addresses blocked, at registration and at every connection (DNS included); redirects to another host not followed. |
+| D-6 | The **connection is per KB** and its settings are specific to the kind (for Qdrant: URL, API key, collection, optional vector name). Secrets are encrypted at rest with the master key, never returned (only "set / not set"). The **content of a KB never lives in, or is read from, the platform database**: the platform PostgreSQL holds only the registrations (dictionary, KB configuration, mapping). A KB can sit on any server; a future pgvector kind has its own connection (host, database, credentials) and never reuses the platform's connection string. This replaces the product.md idea of one vector store chosen in the wizard: the bundled `qdrant` service in the compose file stays only as a convenient default target for data owners. URL policy: **Quorum does not filter addresses** (amended by A2): the URL is what the administrator typed and they, with their colleagues, are responsible for it; redirects to another host are not followed. |
 | D-7 | Query embeddings use the **installation's model endpoint** (OpenAI-compatible `/embeddings`), with the **embedding model name stored per KB** and an optional **query prefix** (e.g. `search_query: ` for nomic/e5/bge models) prepended before embedding. A dedicated embedding endpoint per KB is a later spec. |
 | D-8 | Registration runs a **verification**: reachability, collection exists, vector size (of the chosen vector) equals the size of an embedding probe from the configured model. A failed verification **does not block** registration (the KB may not be ready yet): it is saved `Unavailable` with a clear warning that RAG on it will malfunction (unreachable, or ingestion and retrieval models with different dimensions). Verification can be repeated on demand; it also checks that the mapped fields still exist in sampled points. |
 | D-9 | **Mapping.** A *role* is the meaning a payload field has for Quorum: `text` (required: the chunk text the model reads), `documentId`, `title`, `position` (page or section), `sourceUrl`. Every other mapped field is a **metadata field** bound to a dictionary field. A draft mapping is produced by **sampling points** of the collection or by a **pasted JSON Schema** of the payload (plain JSON Schema, no Quorum keywords: whoever runs the ingestion knows nothing about Quorum). The draft is filled by **naming conventions** (see Domain Model); the admin reviews and may change everything; nothing is saved without the admin's confirmation. |
@@ -86,6 +86,14 @@ This spec lets an admin **register existing knowledge bases (KBs)** and lets ass
 
 **Deferred by the amendment:** renaming a cluster or moving a field to another one (it would change the identity that tools and mappings were built on).
 
+## Amendment 2: no address blocking
+**Status:** Proposed (2026-10-22), pending approval. Decided by the product owner: the administrator and their colleagues are responsible for what they write, so Quorum does not second-guess an address.
+
+- **D-6** no longer blocks cloud metadata and link-local addresses, neither at registration nor at connection time (DNS included). Any address is accepted, the internal network included.
+- **Kept:** redirects to another host are not followed, timeouts, the cap on response size and the rule that secrets never reach logs or messages.
+- **Removed:** the 422 `knowledge_base.url_blocked` response of inspection, registration and update, the matching warning and the UI message. A search or verification that cannot reach the store ends as `knowledge_base.qdrant_unreachable`, like for any other unreachable address.
+- **AC-15** is rewritten (above).
+
 ## Domain Model
 Every application entity carries `TenantId` (the owner). KnowledgeBase entities live in schema `knowledge_base`; the rag tool lives in Agents (schema `agents`).
 
@@ -120,9 +128,9 @@ Errors use ProblemDetails with a stable `code`. All routes are under `/api`; aut
 
 | Verb | Route | Request | Response | Errors |
 |---|---|---|---|---|
-| POST | `/knowledge-bases/inspect` | `{ kind, connection, embeddingModel, queryPrefix?, schema? }` (`schema`: pasted JSON Schema, optional; omitted = sampling) | `{ reachable, collectionExists, vectors: [{ name?, size, distance }], embeddingSize, dimensionMatch, draftMapping, proposedFields[], unindexedFields[], warnings[] }` | 400 `knowledge_base.invalid_schema`; 401; 403; 422 `knowledge_base.url_blocked` |
+| POST | `/knowledge-bases/inspect` | `{ kind, connection, embeddingModel, queryPrefix?, schema? }` (`schema`: pasted JSON Schema, optional; omitted = sampling) | `{ reachable, collectionExists, vectors: [{ name?, size, distance }], embeddingSize, dimensionMatch, draftMapping, proposedFields[], unindexedFields[], warnings[] }` | 400 `knowledge_base.invalid_schema`; 401; 403 |
 | GET | `/knowledge-bases` | - | `[{ id, name, kind, status, scope, lastVerifiedAt, warning? }]` | 401; 403 |
-| POST | `/knowledge-bases` | `{ name, description, kind, connection, embeddingModel, queryPrefix?, mapping, scope, scopeTenantIds?, scopeAssistantIds?, createFields?[] }` | 201 `{ id, status, warnings[] }` (saved even if verification fails, D-8) | 400 `knowledge_base.invalid_name` / `knowledge_base.invalid_mapping` / `knowledge_base.field_not_visible` / `knowledge_base.scope_not_supported`; 401; 403; 409 `knowledge_base.name_taken` / `knowledge_base.field_type_conflict` / `knowledge_base.field_removed` (a dictionary field of the mapping was deleted while saving); 422 `knowledge_base.url_blocked` |
+| POST | `/knowledge-bases` | `{ name, description, kind, connection, embeddingModel, queryPrefix?, mapping, scope, scopeTenantIds?, scopeAssistantIds?, createFields?[] }` | 201 `{ id, status, warnings[] }` (saved even if verification fails, D-8) | 400 `knowledge_base.invalid_name` / `knowledge_base.invalid_mapping` / `knowledge_base.field_not_visible` / `knowledge_base.scope_not_supported`; 401; 403; 409 `knowledge_base.name_taken` / `knowledge_base.field_type_conflict` / `knowledge_base.field_removed` (a dictionary field of the mapping was deleted while saving) |
 | GET | `/knowledge-bases/{id}` | - | detail (`hasApiKey` instead of the key) | 401; 403; 404 |
 | PUT | `/knowledge-bases/{id}` | as POST (omitted `apiKey` keeps the stored one, only while the server address is unchanged) | 200 `{ status, warnings[] }` (saved even if verification fails) | as POST; 400 `knowledge_base.api_key_required` (the address changed, or the stored key cannot be read); 404 |
 | DELETE | `/knowledge-bases/{id}` | - | 204 | 401; 403; 404 |
@@ -148,7 +156,7 @@ Errors use ProblemDetails with a stable `code`. All routes are under `/api`; aut
 - **Permissions**: `knowledge_base.manage` (dictionary, KBs, discovery, verification, test search). The rag tool configuration, activation and use reuse `tools.manage`, `tools.attach` and `tools.use` of spec 004. Held today only by `Admin`; endpoints use named policies, never role names.
 - **Tenant isolation**: dictionary fields, KBs and rag tools carry `TenantId` with the global filter. A Global or multi-tenant KB or field is visible to other tenants through the scope rule, never writable or editable by them. A tenant never sees the connection details (URL, collection, key) of another tenant's KB; for a Global KB it sees name, description and status only.
 - **Secrets**: the API key is encrypted with the master key, never returned and never in logs, audit entries or error messages.
-- **Outbound requests**: URL policy of D-6 applies to inspect, registration, verification, test search and every search.
+- **Outbound requests**: no address is refused (D-6, A2). Redirects to another host are not followed; every call has a timeout and a limit on the size of the response (non-functional requirements).
 - **Content access**: KB level only (D-16).
 
 ## Edge Cases & Failure Modes
@@ -209,7 +217,7 @@ Errors use ProblemDetails with a stable `code`. All routes are under `/api`; aut
 **Registration and verification**
 - **AC-13** Given a reachable, ready collection with matching dimensions, When registering, Then the KB is `Available` and no warning is returned.
 - **AC-14** Given an unreachable Qdrant, a missing collection or a dimension mismatch, When registering, Then the KB is saved `Unavailable` with a warning naming the cause and the consequence for RAG.
-- **AC-15** Given a URL pointing to a blocked address (e.g. `169.254.169.254`), When inspecting or registering, Then it returns 422 `knowledge_base.url_blocked`; a hostname that resolves to a blocked address is blocked at connection time too.
+- **AC-15** Given a URL pointing to a link-local or cloud metadata address (e.g. `169.254.169.254`), When inspecting or registering, Then Quorum does not refuse it for its address: the outcome is the one of any other address (reachable or not, with the warnings that follow). *(Replaces the former `knowledge_base.url_blocked` rule, see A2.)*
 - **AC-16** Given a registered KB, When reading it through the API, Then the API key is never returned, only `hasApiKey`.
 - **AC-17** Given an `Unavailable` KB that became ready, When verifying, Then it becomes `Available`.
 - **AC-18** Given a KB name already used in the tenant, When registering, Then it returns 409 `knowledge_base.name_taken`.

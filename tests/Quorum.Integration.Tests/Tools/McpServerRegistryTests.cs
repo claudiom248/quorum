@@ -348,25 +348,6 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         Assert.Equal("docs", (await ToolsApi.GetServerAsync(client, other.Id)).Name);
     }
 
-    [Fact] // AC-3 on update
-    public async Task UpdatingAServerToABlockedUrlIsRejectedAndChangesNothing()
-    {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
-        await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
-        var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
-
-        using var response = await client.PutAsJsonAsync(
-            ToolsApi.Server(created.Id),
-            new { name = "files", url = "http://168.63.129.16/mcp", scope = ToolsApi.TenantScope },
-            Ct);
-        var server = await ToolsApi.GetServerAsync(client, created.Id);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("tool.url_blocked", await ToolsApi.ProblemCodeAsync(response));
-        Assert.Equal(("Available", mcp.Url), (server.Status, server.Url));
-    }
-
     [Fact]
     public async Task UpdatingAServerWithInvalidHeadersIsRejected()
     {

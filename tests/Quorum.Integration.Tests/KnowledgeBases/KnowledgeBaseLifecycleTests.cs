@@ -201,24 +201,6 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact] // AC-15
-    public async Task AnUpdateToABlockedAddressIsRefusedAndTheStoredConnectionStays()
-    {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
-        KnowledgeBaseApi.ServeEmbeddings(app);
-        var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
-        await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
-        var url = (await qdrant.GetUrlAsync()).ToString();
-        var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
-
-        using var response = await admin.PutAsJsonAsync(KnowledgeBaseApi.One(registered.Id), UpdateBody("http://169.254.169.254:6334", collection), Ct);
-
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        Assert.Equal("knowledge_base.url_blocked", await KnowledgeBaseApi.ProblemCodeAsync(response));
-        Assert.Equal(new Uri(url).Authority, new Uri((await KnowledgeBaseApi.GetAsync(admin, registered.Id)).Connection!.Url).Authority);
-    }
-
     [Fact] // D-17
     public async Task DeletingRemovesTheRegistrationAndLeavesTheDictionaryAndTheStoreAlone()
     {

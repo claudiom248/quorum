@@ -9,7 +9,6 @@ using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
-using Quorum.Shared.Networking;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
@@ -24,7 +23,6 @@ namespace Quorum.Modules.KnowledgeBases.Features.Registry;
 internal sealed partial class KnowledgeBaseRegistrar(
     KnowledgeBasesDbContext db,
     ITenantContext tenant,
-    OutboundUrlGuard guard,
     StoreProbe probe,
     KnowledgeBaseSecretProtector protector,
     IAssistantDirectory assistants,
@@ -143,21 +141,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
 
         var connection = new QdrantConnection(new Uri(settings.Url), settings.Collection, apiKey, settings.VectorName);
 
-        if (await guard.IsBlockedAsync(connection.Url, cancellationToken))
-        {
-            registration.MarkUnavailable(KnowledgeBaseInspector.UrlBlocked.Description, now);
-            await db.SaveChangesAsync(cancellationToken);
-            return KnowledgeBaseInspector.UrlBlocked;
-        }
-
         var found = await probe.RunAsync(connection, registration.EmbeddingModel, sample: true, cancellationToken);
-        if (found.Blocked)
-        {
-            registration.MarkUnavailable(KnowledgeBaseInspector.UrlBlocked.Description, now);
-            await db.SaveChangesAsync(cancellationToken);
-            return KnowledgeBaseInspector.UrlBlocked;
-        }
-
         var verdict = Evaluate(found, registration.Mapping);
         Apply(registration, verdict, now);
         await db.SaveChangesAsync(cancellationToken);
@@ -188,11 +172,6 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return NameTaken;
         }
 
-        if (await guard.IsBlockedAsync(connection.Url, cancellationToken))
-        {
-            return KnowledgeBaseInspector.UrlBlocked;
-        }
-
         var resolved = await MappingFieldResolver.ResolveAsync(db, ownerId, scope, requestedFields, request.CreateFields ?? [], clock, cancellationToken);
         if (!resolved.IsSuccess)
         {
@@ -211,11 +190,6 @@ internal sealed partial class KnowledgeBaseRegistrar(
         connection = connection with { ApiKey = plainKey };
 
         var found = await probe.RunAsync(connection, model, sample: true, cancellationToken);
-        if (found.Blocked)
-        {
-            return KnowledgeBaseInspector.UrlBlocked;
-        }
-
         if (MappingValidation.Vector(found.Info, connection.VectorName) is { } vector)
         {
             return vector;

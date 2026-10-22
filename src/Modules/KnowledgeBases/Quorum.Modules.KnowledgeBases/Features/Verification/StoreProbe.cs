@@ -6,21 +6,17 @@ using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Verification;
 
-/// <summary>What looking at a collection found. <see cref="Blocked"/> means the address is one a connection must never be made to: nothing else is known.</summary>
+/// <summary>What looking at a collection found.</summary>
 /// <param name="Info">The collection, or <see langword="null"/> when it does not exist or the store could not be used.</param>
 /// <param name="Sample">Payloads of the first points, empty unless sampling was asked for and the collection has points.</param>
 /// <param name="DimensionMatch"><see langword="null"/> when it cannot be told yet (no collection, no embedding, no vector chosen).</param>
 internal sealed record StoreProbeResult(
-    bool Blocked,
     bool Reachable,
     QdrantCollectionInfo? Info,
     IReadOnlyList<JsonObject> Sample,
     int? EmbeddingSize,
     bool? DimensionMatch,
-    IReadOnlyList<InspectWarning> Warnings)
-{
-    public static StoreProbeResult BlockedAddress { get; } = new(Blocked: true, Reachable: false, Info: null, [], EmbeddingSize: null, DimensionMatch: null, []);
-}
+    IReadOnlyList<InspectWarning> Warnings);
 
 /// <summary>
 /// The checks inspection and verification share: is the store reachable, does the collection exist, does the server speak a
@@ -57,10 +53,6 @@ internal sealed class StoreProbe(QdrantConnector qdrant, IEmbeddings embeddings)
                 payloads = await qdrant.ScrollAsync(connection, PayloadSampler.SampleSize, cancellationToken);
             }
         }
-        catch (QdrantException exception) when (exception.Failure == QdrantFailure.Blocked)
-        {
-            return StoreProbeResult.BlockedAddress;
-        }
         catch (QdrantException exception)
         {
             warnings.Add(StoreWarning(exception));
@@ -76,7 +68,7 @@ internal sealed class StoreProbe(QdrantConnector qdrant, IEmbeddings embeddings)
 
         var embeddingSize = await ProbeEmbeddingAsync(embeddingModel, warnings, cancellationToken);
         var dimensionMatch = CheckDimensions(info, connection.VectorName, embeddingSize, warnings);
-        return new StoreProbeResult(Blocked: false, reachable, info, payloads, embeddingSize, dimensionMatch, warnings);
+        return new StoreProbeResult(reachable, info, payloads, embeddingSize, dimensionMatch, warnings);
     }
 
     private static InspectWarning StoreWarning(QdrantException exception) => exception.Failure switch

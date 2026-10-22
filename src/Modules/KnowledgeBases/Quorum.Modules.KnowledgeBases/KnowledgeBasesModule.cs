@@ -30,7 +30,7 @@ public static class KnowledgeBasesModule
         services.AddSingleton<KnowledgeBaseSecretProtector>();
 
         // Every connection to a Qdrant server goes through this client: the URL is whatever an administrator typed (D-6).
-        services.AddGuardedHttpClient(QdrantConnector.HttpClientName);
+        services.AddServerHttpClient(QdrantConnector.HttpClientName);
 
         return services;
     }

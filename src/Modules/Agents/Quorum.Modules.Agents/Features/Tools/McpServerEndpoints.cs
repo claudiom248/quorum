@@ -12,7 +12,6 @@ using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Endpoints;
-using Quorum.Shared.Networking;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
@@ -114,7 +113,6 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         AgentsDbContext db,
         ITenantContext tenant,
         McpServerClient client,
-        OutboundUrlGuard guard,
         McpHeadersProtector protector,
         TimeProvider clock,
         ILogger<McpServerEndpoints> logger,
@@ -122,7 +120,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
 
-        var input = await ServerInput.ValidateAsync(request, db, guard, cancellationToken);
+        var input = await ServerInput.ValidateAsync(request, db, cancellationToken);
         if (input.Error is { } invalid)
         {
             return invalid.ToProblem();
@@ -153,10 +151,6 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             server.MarkAvailable(now);
             McpToolSync.Apply(db, server, [], listed);
         }
-        catch (McpServerException exception) when (exception.Code == McpServerException.UrlBlocked)
-        {
-            return Error.Validation(exception.Code, exception.Message).ToProblem();
-        }
         catch (McpServerException exception)
         {
             server.MarkUnavailable(exception.Message, now);
@@ -185,7 +179,6 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         Guid id,
         ServerRequest request,
         AgentsDbContext db,
-        OutboundUrlGuard guard,
         McpHeadersProtector protector,
         TimeProvider clock,
         CancellationToken cancellationToken)
@@ -196,7 +189,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             return ServerNotFound.ToProblem();
         }
 
-        var input = await ServerInput.ValidateAsync(request, db, guard, cancellationToken);
+        var input = await ServerInput.ValidateAsync(request, db, cancellationToken);
         if (input.Error is { } invalid)
         {
             return invalid.ToProblem();
@@ -314,10 +307,6 @@ internal sealed record ServerInput(
         "tool.invalid_url",
         "The URL must be an absolute http or https address without a user name or password. Put credentials in the headers: the URL is stored unencrypted and shown in the API, only headers are encrypted.");
 
-    private static readonly Error BlockedUrl = Error.Validation(
-        "tool.url_blocked",
-        "The address of the server is not allowed (link-local and cloud metadata addresses are blocked).");
-
     public static Error? CheckConnection(string? url, IReadOnlyDictionary<string, string>? headers)
     {
         if (!McpServerRules.TryParseUrl(url, out _))
@@ -330,7 +319,7 @@ internal sealed record ServerInput(
             : null;
     }
 
-    public static async Task<ServerInput> ValidateAsync(ServerRequest request, AgentsDbContext db, OutboundUrlGuard guard, CancellationToken cancellationToken)
+    public static async Task<ServerInput> ValidateAsync(ServerRequest request, AgentsDbContext db, CancellationToken cancellationToken)
     {
         var failed = (Error error) => new ServerInput(error, null, null, null, ToolScopeKind.Tenant, [], []);
 
@@ -350,13 +339,7 @@ internal sealed record ServerInput(
             return failed(scope.Error);
         }
 
-        var url = new Uri(request.Url!.Trim());
-        if (await guard.IsBlockedAsync(url, cancellationToken))
-        {
-            return failed(BlockedUrl);
-        }
-
-        return new ServerInput(null, request.Name, url, request.Headers, scope.Value.Kind, scope.Value.TenantIds, scope.Value.AssistantIds);
+        return new ServerInput(null, request.Name, new Uri(request.Url!.Trim()), request.Headers, scope.Value.Kind, scope.Value.TenantIds, scope.Value.AssistantIds);
     }
 }
 

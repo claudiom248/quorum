@@ -6,7 +6,6 @@ using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
-using Quorum.Shared.Networking;
 using GrpcRange = Qdrant.Client.Grpc.Range;
 
 namespace Quorum.Modules.KnowledgeBases.Storage.Qdrant;
@@ -24,9 +23,6 @@ internal sealed record QdrantConnection(Uri Url, string Collection, string? ApiK
 
 internal enum QdrantFailure
 {
-    /// <summary>The address is one an outbound connection must never be made to.</summary>
-    Blocked,
-
     /// <summary>No connection, or no answer in time.</summary>
     Unreachable,
 
@@ -61,11 +57,11 @@ internal sealed record QdrantHit(double Score, JsonObject Payload);
 internal sealed record QdrantCollectionInfo(IReadOnlyList<QdrantVector> Vectors, IReadOnlyDictionary<string, string> PayloadIndexes, long? PointsCount);
 
 /// <summary>
-/// Quorum's access to Qdrant: the official client (gRPC) over a channel that goes through the guarded HTTP client, so the URL policy
-/// holds for every connection. What is ours is the edge: the API key header, mapping failures to a few outcomes with messages
+/// Quorum's access to Qdrant: the official client (gRPC) over a channel that goes through the named HTTP client (no redirects).
+/// What is ours is the edge: the API key header, mapping failures to a few outcomes with messages
 /// that are safe to show, and turning payloads into JSON for the mapping. Quorum only reads from the store.
 /// </summary>
-internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, OutboundUrlGuard guard)
+internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory)
 {
     public const string HttpClientName = "knowledge-base-qdrant";
 
@@ -87,7 +83,6 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
     }
 
     /// <summary>The server's version, or <see langword="null"/> when it does not say.</summary>
-    /// <exception cref="QdrantException">The address is blocked.</exception>
     public async Task<Version?> GetVersionAsync(QdrantConnection connection, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -97,7 +92,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
             var reply = await RunAsync(connection, (client, token) => client.HealthAsync(token), cancellationToken);
             return Version.TryParse(reply.Version.Split('-', '+')[0], out var version) ? version : null;
         }
-        catch (QdrantException exception) when (exception.Failure != QdrantFailure.Blocked)
+        catch (QdrantException)
         {
             return null;
         }
@@ -243,12 +238,6 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
 
     private async Task<T> RunAsync<T>(QdrantConnection connection, Func<QdrantClient, CancellationToken, Task<T>> call, CancellationToken cancellationToken)
     {
-        // Up front, so a blocked address is a clear answer; the connection checks again for the address it really opens.
-        if (await guard.IsBlockedAsync(connection.Url, cancellationToken))
-        {
-            throw Blocked();
-        }
-
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
 
@@ -287,11 +276,6 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
 
     private static QdrantException Translate(RpcException exception)
     {
-        if (IsBlocked(exception))
-        {
-            return Blocked();
-        }
-
         return exception.StatusCode switch
         {
             StatusCode.Unauthenticated or StatusCode.PermissionDenied =>
@@ -309,23 +293,7 @@ internal sealed class QdrantConnector(IHttpClientFactory httpClientFactory, Outb
         };
     }
 
-    private static QdrantException Blocked() =>
-        new(QdrantFailure.Blocked, "The address is not allowed (link-local and cloud metadata addresses are blocked).");
-
     private static QdrantException Unexpected() => new(QdrantFailure.Unexpected, "The server answered, but not as the Qdrant gRPC API does. Check that the address is Qdrant's gRPC port (6334 by default).");
-
-    private static bool IsBlocked(Exception exception)
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is OutboundUrlBlockedException)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     /// <summary>Adds the API key to every call: the official client has no hook to give it with a channel of our own.</summary>
     private sealed class ApiKeyInterceptor(string apiKey) : Interceptor
