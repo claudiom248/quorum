@@ -87,6 +87,9 @@ public sealed record ConversationContext(
 
 public sealed record AssistantSummary(Guid Id, string Name);
 
+/// <param name="Current">Whether this is the tenant of the signed-in user: the one a scope never lists as "another tenant".</param>
+public sealed record TenantSummary(Guid Id, string Name, bool Current = false);
+
 /// <summary>A tool an assistant may use, and whether it is activated on it.</summary>
 public sealed record PoolTool(Guid ToolId, string Name, bool Active);
 

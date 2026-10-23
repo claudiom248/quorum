@@ -1,0 +1,106 @@
+@implements IDisposable
+@inject Session Session
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+
+<nav aria-label="Main" class="nav-menu">
+    <MudNavMenu Dense="true">
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Chat">Chat</MudNavLink>
+
+        @if (IsAdmin)
+        {
+            <MudNavGroup Title="Tools" Icon="@Icons.Material.Filled.Build" Expanded="true">
+                @foreach (var entry in ToolEntries)
+                {
+                    <MudNavLink Href="@entry.Href" Match="entry.Match" Class="@ActiveClass(entry)">
+                        @entry.Title
+                        @if (entry.Href == McpServersHref && _pendingReview > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-2 nav-badge">@_pendingReview</MudChip>
+                        }
+                    </MudNavLink>
+                }
+            </MudNavGroup>
+
+            <MudNavGroup Title="Knowledge" Icon="@Icons.Material.Filled.LibraryBooks" Expanded="true">
+                @foreach (var entry in KnowledgeEntries)
+                {
+                    <MudNavLink Href="@entry.Href" Match="entry.Match" Class="@ActiveClass(entry)">@entry.Title</MudNavLink>
+                }
+            </MudNavGroup>
+        }
+
+        <MudNavGroup Title="Assistant" Icon="@Icons.Material.Filled.Tune" Expanded="true">
+            <MudNavLink Href="settings" Match="NavLinkMatch.Prefix">Settings</MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Lab" Icon="@Icons.Material.Filled.Science" Expanded="false">
+            <MudNavLink Href="lab/editor" Match="NavLinkMatch.Prefix">Editor lab</MudNavLink>
+        </MudNavGroup>
+    </MudNavMenu>
+</nav>
+
+@code {
+    internal const string McpServersHref = "tools";
+
+    /// <summary>One entry of a group. An entry whose page does not exist yet points at the page of its area; the first of those entries that share an address is the one highlighted.</summary>
+    internal sealed record Entry(string Title, string Href, NavLinkMatch Match = NavLinkMatch.Prefix);
+
+    private static readonly Entry[] ToolEntries =
+    [
+        new("MCP servers", McpServersHref),
+        new("RAG tools", McpServersHref),
+        new("Lookup tools", McpServersHref),
+        new("Built-in", McpServersHref),
+    ];
+
+    private static readonly Entry[] KnowledgeEntries =
+    [
+        new("Knowledge bases", "knowledge", NavLinkMatch.All),
+        new("Lookups", "knowledge/lookups"),
+        new("Dictionary", "knowledge/dictionary"),
+    ];
+
+    private int _pendingReview;
+
+    private bool IsAdmin => AccessRules.IsAdmin(Session.User?.Role);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        await LoadPendingAsync();
+    }
+
+    // The count changes when the admin reviews a tool, so it is read again whenever the admin moves around the tools.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (AccessRules.IsAdminOnly(Navigation.ToBaseRelativePath(e.Location)))
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await LoadPendingAsync();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task LoadPendingAsync()
+    {
+        if (!IsAdmin)
+        {
+            return;
+        }
+
+        var servers = await Api.ListToolServersAsync();
+        _pendingReview = servers.IsSuccess ? servers.Value.Where(s => !s.Shared).Sum(s => s.PendingReviewCount) : 0;
+    }
+
+    // Entries that share an address would all light up: only the first does.
+    private string? ActiveClass(Entry entry)
+    {
+        var first = ToolEntries.Concat(KnowledgeEntries).First(e => e.Href == entry.Href);
+        return ReferenceEquals(first, entry) ? null : "nav-twin";
+    }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}
