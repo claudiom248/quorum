@@ -55,14 +55,8 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         // A filter makes the list a different one: it is worked out now among the documents that match, not read from the stored list.
         if (asked.Filters.Count > 0)
         {
-            if (attribute is not null)
-            {
-                // Only the lists of entities have attributes to order by, and those cannot be filtered: say that, not what the order cannot be.
-                throw new ToolFailedException(
-                    $"The list '{LookupResultFormat.Clean(name)}' cannot be filtered: only the lists computed from a field of a knowledge base can be. Read it without filters, and order it by one of its attributes if you need.");
-            }
-
-            return await LiveValuesAsync(binding, asked, lookupId, name, sort, limit, cancellationToken);
+            CheckFilters(binding, asked, name);
+            return await LiveValuesAsync(binding, asked, lookupId, name, sort, attribute, limit, cancellationToken);
         }
 
         var filters = binding.SliceFilters();
@@ -107,14 +101,58 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         throw new ToolFailedException($"The list '{LookupResultFormat.Clean(list)}' cannot be ordered by '{Shorten(sort)}'. Use {available}.");
     }
 
-    private async Task<ToolOutput> LiveValuesAsync(LookupBinding binding, Arguments asked, Guid lookupId, string name, LookupSortOrder sort, int limit, CancellationToken cancellationToken)
+    /// <summary>
+    /// A filter applies to the lists whose knowledge base maps its field: the same name can mean the country of a document in one list
+    /// and of a vendor in another. One that does not apply to this list is said so, with what does.
+    /// </summary>
+    private static void CheckFilters(LookupBinding binding, Arguments asked, string list)
+    {
+        var applicable = binding.ListFilters.GetValueOrDefault(list) ?? [];
+        var unfit = asked.Filters.Keys.Where(parameter => !applicable.Contains(FieldOf(binding, parameter), StringComparer.Ordinal)).Order(StringComparer.Ordinal).ToList();
+        if (unfit.Count == 0)
+        {
+            return;
+        }
+
+        var what = applicable.Count > 0 ? $"It can be filtered by {string.Join(", ", applicable)}." : "It cannot be filtered: read it without filters.";
+        throw new ToolFailedException($"The list '{LookupResultFormat.Clean(list)}' cannot be filtered by {string.Join(", ", unfit.Select(LookupResultFormat.Clean))}. {what}");
+    }
+
+    // The filter of a number or a date has two parameters (year_min, year_max): the field is what they share.
+    private static string FieldOf(LookupBinding binding, string parameter)
+    {
+        if (binding.FilterFields.ContainsKey(parameter))
+        {
+            return parameter;
+        }
+
+        foreach (var suffix in new[] { "_min", "_max", "_from", "_to" })
+        {
+            if (parameter.EndsWith(suffix, StringComparison.Ordinal) && binding.FilterFields.ContainsKey(parameter[..^suffix.Length]))
+            {
+                return parameter[..^suffix.Length];
+            }
+        }
+
+        return parameter;
+    }
+
+    private async Task<ToolOutput> LiveValuesAsync(
+        LookupBinding binding,
+        Arguments asked,
+        Guid lookupId,
+        string name,
+        LookupSortOrder sort,
+        LookupAttributeOrder? attribute,
+        int limit,
+        CancellationToken cancellationToken)
     {
         if (asked.Cursor is not null)
         {
             throw new ToolFailedException("A list worked out with filters has no pages. Narrow it with search, or ask for fewer values with limit.");
         }
 
-        var result = await runtime.Lookups.LiveValuesAsync(new LiveValuesRequest(Scope(binding, asked.Filters), lookupId, asked.Search, sort, limit), cancellationToken);
+        var result = await runtime.Lookups.LiveValuesAsync(new LiveValuesRequest(Scope(binding, asked.Filters), lookupId, asked.Search, sort, limit, attribute), cancellationToken);
         if (result.Outcome != LiveOutcome.Ok)
         {
             throw new ToolFailedException(LiveFailure(result.Outcome, result.Message));
@@ -134,7 +172,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             CursorRestarted: false,
             Live: true);
         var delimiter = AttachmentBlock.NewDelimiter();
-        var rendered = LookupResultFormat.Render(read, name, sort, ResultCharacters, delimiter);
+        var rendered = LookupResultFormat.Render(read, name, sort, ResultCharacters, delimiter, attribute: attribute);
         if (!rendered.AllRowsFit && rendered.Shown > 0)
         {
             var more = read.ValueCount - rendered.Shown;
@@ -144,6 +182,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 sort,
                 ResultCharacters,
                 delimiter,
+                attribute: attribute,
                 closing: $"{more.ToString(CultureInfo.InvariantCulture)} more values match and do not fit. Narrow them with search, or ask for fewer with limit.");
         }
 

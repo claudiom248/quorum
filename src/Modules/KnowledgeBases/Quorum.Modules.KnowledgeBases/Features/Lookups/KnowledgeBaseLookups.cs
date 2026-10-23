@@ -261,11 +261,12 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             return new LiveValues(LiveOutcome.NotAvailable, "The list is not available.");
         }
 
-        if (found.Lookup.Kind != LookupKind.Computed || found.KnowledgeBase is null)
+        // A list typed by hand has no documents or entities behind it to filter.
+        if (found.Lookup.Kind == LookupKind.Manual || found.KnowledgeBase is null)
         {
             return new LiveValues(
                 LiveOutcome.NotComputed,
-                $"The list '{found.Info.Name}' cannot be filtered: only the lists computed from a field of a knowledge base can be. Read it without filters.");
+                $"The list '{found.Info.Name}' cannot be filtered: it is typed by hand. Read it without filters.");
         }
 
         return await live.ValuesAsync(found.Lookup, found.KnowledgeBase, found.Info.Name, request, cancellationToken);

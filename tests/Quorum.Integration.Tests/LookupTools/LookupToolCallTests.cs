@@ -226,6 +226,8 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
 
     private static readonly string[] SupplierAttributes = ["country", "contract_count", "supplier_since"];
 
+    private static readonly string[] American = ["US"];
+
     [Fact]
     public async Task AnEntityListIsOrderedByTheAttributeTheModelNamesAndATextAttributeIsRefused()
     {
@@ -248,24 +250,35 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         var fields = await setup.FieldsAsync();
         var tool = await LookupToolApi.CreateOkAsync(
             setup.Admin,
-            LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookups.Single().GetProperty("id").GetGuid())], exposedFields: [new { fieldId = fields["country"] }]));
+            LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookups.Single().GetProperty("id").GetGuid()), LookupToolApi.Bind(await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "language")))], exposedFields: [new { fieldId = fields["country"] }]));
         await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
 
         var definition = (await LookupToolApi.GetAsync(setup.Admin, tool.Id)).Definition!;
         Assert.Contains("contract_count", definition.Parameter("sort").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
         Assert.DoesNotContain("country", definition.Parameter("sort").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
 
-        var ordered = ResultOf(await AskAsync(setup, Call(new { sort = "-contract_count" })));
+        var ordered = ResultOf(await AskAsync(setup, Call(new { lookup = "suppliers", sort = "-contract_count" })));
         Assert.Contains("Ordered by contract_count, the largest first.", ordered, StringComparison.Ordinal);
         Assert.Equal(["Acme", "Hooli", "Globex", "Initech"], Rows(ordered).Select(r => r.Split(' ')[0]));
 
-        var events = await AskAsync(setup, Call(new { sort = "country" }));
+        var events = await AskAsync(setup, Call(new { lookup = "suppliers", sort = "country" }));
         Assert.Equal("failed", StatusOf(events));
         // A text attribute is not in the enum, so the schema refuses it before the tool runs.
         Assert.Contains("not valid", ResultOf(events), StringComparison.Ordinal);
 
-        // A list of entities cannot be filtered, so the fields only its knowledge base maps are not offered as filters: nothing would apply them.
-        Assert.DoesNotContain("country", definition.Parameters);
+        // A list of entities is filtered by the fields its knowledge base maps, read now from the collection that holds the entities.
+        Assert.Contains("country", definition.Parameters);
+        Assert.Contains("suppliers (the entities of suppliers", definition.Description, StringComparison.Ordinal);
+        Assert.Contains("can be filtered by country", definition.Description, StringComparison.Ordinal);
+        var american = ResultOf(await AskAsync(setup, Call(new { lookup = "suppliers", country = American, sort = "-contract_count" })));
+        Assert.Contains("Worked out now among the documents that match the filters", american, StringComparison.Ordinal);
+        Assert.Contains("Ordered by contract_count, the largest first.", american, StringComparison.Ordinal);
+        Assert.Equal(["Hooli", "Globex"], Rows(american).Select(r => r.Split(' ')[0]));
+
+        // The same filter on a list it does not apply to says what the list can be filtered by.
+        var wrong = await AskAsync(setup, Call(new { lookup = "language", country = American }));
+        Assert.Equal("failed", StatusOf(wrong));
+        Assert.Contains("The list 'language' cannot be filtered by country", ResultOf(wrong), StringComparison.Ordinal);
     }
 
     private static List<string> Rows(string result)

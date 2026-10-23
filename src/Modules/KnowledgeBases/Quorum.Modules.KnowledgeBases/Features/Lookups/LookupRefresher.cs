@@ -227,7 +227,7 @@ internal sealed partial class LookupRefresher(
     }
 
     /// <summary>How the attributes of an entity lookup are called in its values: by the name of their dictionary field, read with the tenant filter off.</summary>
-    private static async Task<Dictionary<Guid, string>> AttributeNamesAsync(KnowledgeBasesDbContext db, KnowledgeBase knowledgeBase, CancellationToken cancellationToken)
+    internal static async Task<Dictionary<Guid, string>> AttributeNamesAsync(KnowledgeBasesDbContext db, KnowledgeBase knowledgeBase, CancellationToken cancellationToken)
     {
         var fieldIds = knowledgeBase.Mapping.Fields.Where(f => f.EntityAttribute).Select(f => f.DictionaryFieldId).ToList();
         var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => fieldIds.Contains(f.Id)).ToListAsync(cancellationToken);

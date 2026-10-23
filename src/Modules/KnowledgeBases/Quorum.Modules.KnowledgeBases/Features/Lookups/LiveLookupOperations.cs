@@ -195,11 +195,16 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
     /// <param name="name">The lookup's name for the model.</param>
     public async Task<LiveValues> ValuesAsync(Lookup lookup, KnowledgeBase knowledgeBase, string name, LiveValuesRequest request, CancellationToken cancellationToken)
     {
+        if (lookup.Kind == LookupKind.Entity)
+        {
+            return await EntityValuesAsync(knowledgeBase, name, request, cancellationToken);
+        }
+
         if (lookup.Kind != LookupKind.Computed)
         {
             return new LiveValues(
                 LiveOutcome.NotComputed,
-                $"The list '{name}' cannot be filtered: only the lists computed from a field of a knowledge base can be. Read it without filters.");
+                $"The list '{name}' cannot be filtered: it is typed by hand. Read it without filters.");
         }
 
         var filters = await SearchFilterInputs.ParseAsync(
@@ -275,6 +280,110 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
         {
             return new LiveValues(LiveOutcome.TimedOut, TimedOutMessage);
         }
+    }
+
+    /// <summary>
+    /// The entities that match filters on their own fields, read now from the collection that holds them: their name and the attributes
+    /// the mapping marks, like the stored list, but exact and as fresh as the store. A scan with a filter needs no index to work; one on
+    /// a large collection is faster with it.
+    /// </summary>
+    private async Task<LiveValues> EntityValuesAsync(KnowledgeBase knowledgeBase, string name, LiveValuesRequest request, CancellationToken cancellationToken)
+    {
+        var filters = await SearchFilterInputs.ParseAsync(
+            db,
+            request.Scope.Filters,
+            request.Scope.FixedFilters,
+            request.Scope.FilterFields,
+            request.Scope.FixedFilterFieldIds,
+            [knowledgeBase],
+            cancellationToken);
+        if (!filters.IsSuccess)
+        {
+            return new LiveValues(OutcomeOf(filters.Error), filters.Error.Description);
+        }
+
+        var target = TargetOf(knowledgeBase, filters.Value);
+        if (target.Skipped)
+        {
+            return new LiveValues(
+                LiveOutcome.FilterUnsupported,
+                $"The knowledge base {knowledgeBase.Name} does not have a field these filters use, so the list cannot be filtered with them.");
+        }
+
+        if (target.Problem is { } problem)
+        {
+            return new LiveValues(LiveOutcome.Failed, $"{problem.Name}: {problem.Message}");
+        }
+
+        var mapping = knowledgeBase.Mapping;
+        if (mapping.EntityName is not { } namePath)
+        {
+            return new LiveValues(LiveOutcome.NotAvailable, $"The list '{name}' is not available.");
+        }
+
+        var names = await LookupRefresher.AttributeNamesAsync(db, knowledgeBase, cancellationToken);
+        var attributes = mapping.Fields
+            .Where(f => f.EntityAttribute && names.ContainsKey(f.DictionaryFieldId))
+            .Select(f => (f.Path, Name: names[f.DictionaryFieldId]))
+            .ToList();
+        string[] paths = [namePath, .. attributes.Select(a => a.Path)];
+        var ceiling = options.Value.MaxValuesPerLookup;
+
+        using var limited = new CancellationTokenSource(Timeout, clock);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, limited.Token);
+        try
+        {
+            var found = new List<ComputedValue>();
+            string? cursor = null;
+            do
+            {
+                var page = await target.Capability!.ScanAsync(target.Connection!, new RecordQuery(target.Counted().Conditions, paths, LookupComputer.EntityPageSize, cursor), linked.Token);
+                found.AddRange(page.Rows.Select(row => EntityAttributes.ToValue(row, namePath, attributes)).OfType<ComputedValue>());
+                cursor = page.Cursor;
+            }
+            while (cursor is not null && found.Count <= ceiling);
+
+            var truncated = cursor is not null || found.Count > ceiling;
+            var matching = found.Take(ceiling).Where(v => request.Search is not { Length: > 0 } search || v.Value.Contains(search, StringComparison.OrdinalIgnoreCase));
+            var ordered = OrderEntities(matching, request).ToList();
+
+            return new LiveValues(
+                LiveOutcome.Ok,
+                Name: name,
+                KnowledgeBase: knowledgeBase.Name,
+                Unit: null,
+                ValueCount: ordered.Count,
+                Truncated: truncated,
+                Values: [.. ordered.Take(Math.Clamp(request.Limit, 1, MaxLimit)).Select(v => new LookupReadValue(v.Value, Label: null, [], Count: null, v.Attributes))]);
+        }
+        catch (StoreException exception)
+        {
+            return new LiveValues(LiveOutcome.Failed, $"{knowledgeBase.Name}: {exception.Message}");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new LiveValues(LiveOutcome.TimedOut, TimedOutMessage);
+        }
+    }
+
+    // The order of the store unless asked otherwise; an entity without the attribute goes last.
+    private static IEnumerable<ComputedValue> OrderEntities(IEnumerable<ComputedValue> values, LiveValuesRequest request)
+    {
+        if (request.Sort == LookupSortOrder.Name)
+        {
+            return values.OrderBy(v => v.Value, StringComparer.OrdinalIgnoreCase).ThenBy(v => v.Value, StringComparer.Ordinal);
+        }
+
+        if (request is { Sort: LookupSortOrder.Attribute, Attribute: { } attribute })
+        {
+            var keyed = values.Select(v => (Value: v, Key: EntityAttributes.SortKey(v.Attributes, attribute.Name)));
+            var present = keyed.Where(k => k.Key is not null);
+            var absent = keyed.Where(k => k.Key is null).Select(k => k.Value);
+            var ranked = attribute.Descending ? present.OrderByDescending(k => k.Key) : present.OrderBy(k => k.Key);
+            return ranked.ThenBy(k => k.Value.Value, StringComparer.Ordinal).Select(k => k.Value).Concat(absent);
+        }
+
+        return values;
     }
 
     public async Task<IReadOnlyList<UnindexedFilter>> UnindexedAsync(UnindexedFiltersQuery query, CancellationToken cancellationToken)

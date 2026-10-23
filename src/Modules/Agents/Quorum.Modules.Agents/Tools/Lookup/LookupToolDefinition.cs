@@ -12,7 +12,8 @@ internal sealed record GeneratedLookupFunction(string Operation, string Descript
 internal sealed record GeneratedLookupDefinition(IReadOnlyList<GeneratedLookupFunction> Functions);
 
 /// <summary>A lookup as the model is offered it: the name it sees, which is an alias when one was given.</summary>
-internal sealed record OfferedLookup(string Name, LookupInfo Info);
+/// <param name="Filters">The fields the model may filter this list by: the exposed ones that its knowledge base maps. A list typed by hand has none.</param>
+internal sealed record OfferedLookup(string Name, LookupInfo Info, IReadOnlyList<string>? Filters = null);
 
 internal static class LookupToolDefinition
 {
@@ -55,36 +56,36 @@ internal static class LookupToolDefinition
     /// <param name="description">The administrator's text for the model.</param>
     /// <param name="lookups">The lookups the tenant can see, by the name the model sees.</param>
     /// <param name="knowledgeBases">The knowledge bases the live operations query that the tenant can see; with none, only <c>values</c> is offered.</param>
-    /// <param name="exposedFields">The fields the model may filter on that a knowledge base of the tool, or of one of its lookups, maps.</param>
+    /// <param name="valuesFields">The fields the model may filter the lists by: those the knowledge base of a computed list or of a list of entities maps.</param>
+    /// <param name="documentFields">The fields the model may filter the documents and the count by: those a knowledge base the tool queries maps.</param>
     public static GeneratedLookupDefinition Build(
         string toolName,
         string description,
         IReadOnlyList<OfferedLookup> lookups,
         IReadOnlyList<KnowledgeBaseInfo> knowledgeBases,
-        IReadOnlyList<FilterFieldInfo> exposedFields)
+        IReadOnlyList<FilterFieldInfo> valuesFields,
+        IReadOnlyList<FilterFieldInfo> documentFields)
     {
         ArgumentException.ThrowIfNullOrEmpty(toolName);
         ArgumentNullException.ThrowIfNull(description);
         ArgumentNullException.ThrowIfNull(lookups);
         ArgumentNullException.ThrowIfNull(knowledgeBases);
-        ArgumentNullException.ThrowIfNull(exposedFields);
+        ArgumentNullException.ThrowIfNull(valuesFields);
+        ArgumentNullException.ThrowIfNull(documentFields);
 
         var live = knowledgeBases.Count > 0;
-        var filters = ListsOfFilters(lookups, exposedFields);
+        var filters = ListsOfFilters(lookups, [.. valuesFields.Concat(documentFields).DistinctBy(f => f.Id)]);
         var introduction = description.Trim();
-
-        // Only a list computed from a field can be filtered (spec 007 AC-31): for a tool with none, the filters belong to documents and count alone.
-        var valuesFilters = lookups.Any(l => l.Info.Kind == LookupKindInfo.Computed) ? exposedFields : [];
 
         List<GeneratedLookupFunction> functions =
         [
-            new(ValuesOperation, DescribeValues(introduction, lookups, valuesFilters.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFilters, filters)),
+            new(ValuesOperation, DescribeValues(introduction, lookups, valuesFields.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFields, filters)),
         ];
 
         if (live)
         {
-            functions.Add(new(DocumentsOperation, DescribeDocuments(introduction, knowledgeBases, filters, toolName), DocumentsSchema(knowledgeBases, exposedFields, filters)));
-            functions.Add(new(CountOperation, DescribeCount(introduction, knowledgeBases, filters, toolName), CountSchema(knowledgeBases, exposedFields, filters)));
+            functions.Add(new(DocumentsOperation, DescribeDocuments(introduction, knowledgeBases, filters, toolName), DocumentsSchema(knowledgeBases, documentFields, filters)));
+            functions.Add(new(CountOperation, DescribeCount(introduction, knowledgeBases, filters, toolName), CountSchema(knowledgeBases, documentFields, filters)));
         }
 
         return new GeneratedLookupDefinition(functions);
@@ -146,6 +147,11 @@ internal static class LookupToolDefinition
                     about.Add("typed by hand; it may hold values that occur in no document");
                     break;
             }
+
+            // Which filters apply to which list: the same field name can mean the country of a document in one list and of a vendor in another.
+            about.Add(lookup.Filters is { Count: > 0 } applicable
+                ? $"can be filtered by {string.Join(", ", applicable)}"
+                : "cannot be filtered: read it whole");
 
             text.Append(" (").Append(string.Join("; ", about)).Append(')');
             if (!string.IsNullOrWhiteSpace(lookup.Info.Description))
