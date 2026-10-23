@@ -1,4 +1,4 @@
-@* The guided registration of a knowledge base (spec 003 D-9, D-19): connection → inspection → mapping → scope → save. *@
+@* The guided registration of a knowledge base (spec 003 D-9, D-19): connection → inspection → mapping → lookups → scope → save. *@
 @inject QuorumApi Api
 
 <MudPaper Outlined="true" Class="pa-4 mb-3" data-form="knowledge-base">
@@ -227,7 +227,7 @@
 
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
                     <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Inspection)" Disabled="_busy">Back</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToScope" Disabled="_busy">Next</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToLookups" Disabled="_busy">Next</MudButton>
                 </MudStack>
                 @if (_showProblems && mapping.Problems(Dictionary) is { Count: > 0 } mappingProblems)
                 {
@@ -243,6 +243,78 @@
             </MudStack>
             break;
 
+        case WizardStep.Lookups when Draft.Mapping is { } lookupMapping:
+            <MudStack Spacing="3" data-step="lookups">
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    Lookups are lists of values that models read to know what exists, e.g. the suppliers or the departments. Quorum computes them in the
+                    background from the collection and keeps them in its own database. All of this is optional: skip the step if the collection needs no list.
+                </MudText>
+
+                <MudText Typo="Typo.subtitle2">Fields to list</MudText>
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    Each marked field gets a list of its distinct values with how many documents have each. Only text and list of texts fields can be listed.
+                    Filters on these fields should have a payload index in the collection: Quorum never creates one.
+                </MudText>
+                @foreach (var review in lookupMapping.Review(Dictionary))
+                {
+                    var row = review.Row;
+                    <div class="lookup-field-row" data-lookup-field="@row.Path">
+                        <MudCheckBox T="bool" @bind-Value="row.Listable" Dense="true"
+                                     Label="@($"List the values of {(row.Name.Trim().Length > 0 ? row.Name.Trim() : row.Path)} ({row.Path})")" />
+                        @if (lookupMapping.EntityName.Trim().Length > 0)
+                        {
+                            <MudCheckBox T="bool" @bind-Value="row.EntityAttribute" Dense="true" Label="Show it beside each entity" />
+                        }
+                    </div>
+                }
+                @if (lookupMapping.Rows.Count == 0)
+                {
+                    <div class="tool-hint">No metadata field is mapped, so there is nothing to list.</div>
+                }
+
+                <MudText Typo="Typo.subtitle2" Class="mt-2">What the counts count</MudText>
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    A document is usually split into many chunks. If one chunk of each document is marked in the payload (e.g. is_first_chunk is true),
+                    say which: the lists then count documents. Without it they count chunks.
+                </MudText>
+                <MudStack Row="true" Spacing="2" Class="mapping-row-fields">
+                    <MudTextField @bind-Value="lookupMapping.CountedPointPath" Label="Counted point: payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                                  HelperText="e.g. is_first_chunk or chunk_index" />
+                    <MudTextField @bind-Value="lookupMapping.CountedPointValue" Label="Counted point: value" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                                  HelperText="true, a number such as 0, or a text. Put a text that looks like a number in double quotes." />
+                </MudStack>
+
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Entities</MudText>
+                <MudText Typo="Typo.body2" Class="tools-support-hint">
+                    If every point of the collection is a thing in itself (a person, a product) rather than a piece of a document, say which payload field holds
+                    its name. Up to @LookupLimits.MaxEntityAttributes fields can be shown beside the name.
+                </MudText>
+                <MudTextField @bind-Value="lookupMapping.EntityName" Label="Entity name: payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Refresh</MudText>
+                <MudNumericField T="int" @bind-Value="Draft.LookupRefreshHours" Label="Refresh every (hours)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Min="LookupLimits.MinRefreshHours" Max="LookupLimits.MaxRefreshHours"
+                                 HelperText="@($"{LookupLimits.MinRefreshHours} to {LookupLimits.MaxRefreshHours}. You can also refresh a knowledge base on demand from the Lookups page.")" />
+
+                @if (_showProblems && Draft.LookupProblems(Dictionary) is { Count: > 0 } lookupProblems)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                        <ul class="problem-list">
+                            @foreach (var message in lookupProblems)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Mapping)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToScope" Disabled="_busy">Next</MudButton>
+                </MudStack>
+            </MudStack>
+            break;
+
         case WizardStep.Scope:
             <MudStack Spacing="3" data-step="scope">
                 <ScopeEditor Form="Draft.Scope" Assistants="Assistants" Subject="knowledge base"
@@ -253,7 +325,7 @@
                 }
 
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
-                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Mapping)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Lookups)" Disabled="_busy">Back</MudButton>
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToReview" Disabled="_busy">Next</MudButton>
                 </MudStack>
             </MudStack>
@@ -302,6 +374,7 @@
         Connection,
         Inspection,
         Mapping,
+        Lookups,
         Scope,
         Review,
     }
@@ -311,6 +384,7 @@
         (WizardStep.Connection, "Connection"),
         (WizardStep.Inspection, "Inspection"),
         (WizardStep.Mapping, "Mapping"),
+        (WizardStep.Lookups, "Lookups"),
         (WizardStep.Scope, "Who can use it"),
         (WizardStep.Review, "Save"),
     ];
@@ -449,9 +523,21 @@
         Reach(WizardStep.Mapping);
     }
 
-    private void ToScope()
+    private void ToLookups()
     {
         if (Draft.Mapping!.Problems(Dictionary).Count > 0)
+        {
+            _showProblems = true;
+            return;
+        }
+
+        _showProblems = false;
+        Reach(WizardStep.Lookups);
+    }
+
+    private void ToScope()
+    {
+        if (Draft.LookupProblems(Dictionary).Count > 0)
         {
             _showProblems = true;
             return;

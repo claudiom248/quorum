@@ -9,6 +9,7 @@ internal sealed class FakeApiHandler : HttpMessageHandler
 {
     private readonly List<(HttpMethod Method, string Path)> _requests = [];
     private readonly List<(HttpMethod Method, string Path, string Body)> _bodies = [];
+    private readonly List<string> _queries = [];
 
     /// <summary>The requests received, oldest first.</summary>
     public IReadOnlyList<(HttpMethod Method, string Path)> Requests
@@ -18,6 +19,18 @@ internal sealed class FakeApiHandler : HttpMessageHandler
             lock (_requests)
             {
                 return [.. _requests];
+            }
+        }
+    }
+
+    /// <summary>The query strings received, oldest first (the paths in <see cref="Requests"/> have none).</summary>
+    public IReadOnlyList<string> Queries
+    {
+        get
+        {
+            lock (_requests)
+            {
+                return [.. _queries];
             }
         }
     }
@@ -58,6 +71,7 @@ internal sealed class FakeApiHandler : HttpMessageHandler
         {
             _requests.Add((request.Method, path));
             _bodies.Add((request.Method, path, body));
+            _queries.Add(request.RequestUri.Query);
         }
 
         return Respond(request.Method, path);

@@ -58,7 +58,11 @@ public sealed record DraftField(string Path, string Name, string Type, Guid? Dic
 
 public sealed record FieldCandidate(Guid Id, string? Cluster, string Type);
 
-public sealed record DraftMapping(MappingRoles Roles, IReadOnlyList<DraftField> Fields);
+/// <param name="CountedPoint">The point of each document the lookups count, when a field of the payload looks like one.</param>
+public sealed record DraftMapping(MappingRoles Roles, IReadOnlyList<DraftField> Fields, CountedPointInfo? CountedPoint = null);
+
+/// <param name="Value"><c>true</c>, a number or a text.</param>
+public sealed record CountedPointInfo(string Path, JsonElement Value);
 
 /// <summary>A dictionary field the draft needs and that does not exist yet.</summary>
 public sealed record ProposedField(string Name, string Type, string? Cluster = null);
@@ -78,9 +82,13 @@ public sealed record InspectResult(
 
 /// <param name="DictionaryFieldId">The dictionary field, when it exists; otherwise <paramref name="Name"/> finds it or names the one to create.</param>
 /// <param name="Cluster">With <paramref name="Name"/>: the cluster of the field; none means a field with no cluster.</param>
-public sealed record MappedFieldRequest(string Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null);
+/// <param name="Listable">Keep the distinct values of the field as a lookup (spec 007).</param>
+/// <param name="EntityAttribute">The entity lookup lists the field beside the name of each entity.</param>
+public sealed record MappedFieldRequest(string Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null, bool Listable = false, bool EntityAttribute = false);
 
-public sealed record MappingRequest(MappingRoles Roles, IReadOnlyList<MappedFieldRequest> Fields);
+/// <param name="CountedPoint">What a lookup counts; omitted means not set.</param>
+/// <param name="EntityName">The payload path of the name of an entity, for a collection whose points are entities.</param>
+public sealed record MappingRequest(MappingRoles Roles, IReadOnlyList<MappedFieldRequest> Fields, CountedPointInfo? CountedPoint = null, string? EntityName = null);
 
 /// <summary>A dictionary field the mapping names that does not exist yet: it is created only when listed here.</summary>
 public sealed record CreateFieldRequest(string Name, string Type, string? Description = null, string? Cluster = null);
@@ -94,7 +102,8 @@ public sealed record KnowledgeBaseRequest(
     string? QueryPrefix,
     MappingRequest Mapping,
     ToolScope Scope,
-    IReadOnlyList<CreateFieldRequest> CreateFields);
+    IReadOnlyList<CreateFieldRequest> CreateFields,
+    int? LookupRefreshHours = null);
 
 /// <param name="Shared"><see langword="true"/> for a knowledge base of another tenant: only name, description and status are known.</param>
 /// <param name="Scope">The kind of the scope (<c>Global</c>, <c>Tenant</c> or <c>Assistant</c>).</param>
@@ -110,9 +119,9 @@ public sealed record KnowledgeBaseListItem(
     string? Warning);
 
 /// <param name="FilterName">The name a test search filters this field by: the server decides it, the page only uses it.</param>
-public sealed record MappedFieldInfo(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null);
+public sealed record MappedFieldInfo(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null, bool Listable = false, bool EntityAttribute = false);
 
-public sealed record MappingInfo(MappingRoles Roles, IReadOnlyList<MappedFieldInfo> Fields);
+public sealed record MappingInfo(MappingRoles Roles, IReadOnlyList<MappedFieldInfo> Fields, CountedPointInfo? CountedPoint = null, string? EntityName = null);
 
 /// <summary>A knowledge base of this tenant in full. Of another tenant's only the first five members are present.</summary>
 public sealed record KnowledgeBaseDetail(
@@ -128,7 +137,8 @@ public sealed record KnowledgeBaseDetail(
     MappingInfo? Mapping,
     ToolScope? Scope,
     string? Warning,
-    DateTimeOffset? LastVerifiedAt);
+    DateTimeOffset? LastVerifiedAt,
+    int? LookupRefreshHours = null);
 
 /// <summary>Saved even when the verification fails: the status and the warnings say what is wrong.</summary>
 public sealed record RegisteredKnowledgeBase(Guid Id, string Status, IReadOnlyList<KnowledgeBaseWarning> Warnings);

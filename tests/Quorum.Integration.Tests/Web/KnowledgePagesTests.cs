@@ -516,6 +516,8 @@ public sealed class KnowledgePagesTests : BunitContext
 
         page.Find("[data-new-fields] input[type=checkbox]").Change(true);
         Click(page, "Next");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=lookups]")));
+        Click(page, "Next");
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=scope]")));
         page.Find("[data-step=scope] select[aria-label=Scope]").Change("Assistant");
         page.Find("[data-step=scope]").QuerySelector("input[type=checkbox]")!.Change(true);
@@ -551,6 +553,8 @@ public sealed class KnowledgePagesTests : BunitContext
         var page = RenderPage<KnowledgePage>();
         InspectAndReview(page);
         page.Find("[data-new-fields] input[type=checkbox]").Change(true);
+        Click(page, "Next");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=lookups]")));
         Click(page, "Next");
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=scope]")));
         Click(page, "Next");
@@ -684,6 +688,8 @@ public sealed class KnowledgePagesTests : BunitContext
 
         Click(page, "Keep the mapping");
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=mapping]")));
+        Click(page, "Next");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=lookups]")));
         Click(page, "Next");
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-step=scope]")));
         Click(page, "Next");
