@@ -17,6 +17,8 @@ internal sealed class TenancyDbContext(DbContextOptions<TenancyDbContext> option
 
     public DbSet<SetupState> SetupStates => Set<SetupState>();
 
+    public DbSet<OnboardingChecklist> OnboardingChecklists => Set<OnboardingChecklist>();
+
     private Guid? CurrentTenantId => tenantContext.TenantId;
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -34,6 +36,12 @@ internal sealed class TenancyDbContext(DbContextOptions<TenancyDbContext> option
         {
             setup.ToTable("setup_state");
             setup.Property(s => s.Id).ValueGeneratedNever();
+        });
+
+        builder.Entity<OnboardingChecklist>(checklist =>
+        {
+            checklist.ToTable("onboarding_checklist");
+            checklist.Property(c => c.Id).ValueGeneratedNever();
         });
 
         builder.Entity<QuorumUser>(user =>

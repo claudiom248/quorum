@@ -87,6 +87,25 @@ namespace Quorum.Modules.Tenancy.Persistence.Migrations
                     b.ToTable("user_tokens", "tenancy");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Tenancy.Domain.OnboardingChecklist", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Completed")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Dismissed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("onboarding_checklist", "tenancy");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Tenancy.Domain.QuorumUser", b =>
                 {
                     b.Property<Guid>("Id")

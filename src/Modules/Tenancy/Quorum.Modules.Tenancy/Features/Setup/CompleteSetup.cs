@@ -46,6 +46,7 @@ internal static class CompleteSetup
                 var tenant = Tenant.CreateDefault(now);
                 db.Tenants.Add(tenant);
                 db.SetupStates.Add(SetupState.Completed(now));
+                db.OnboardingChecklists.Add(OnboardingChecklist.Start(now));
                 await db.SaveChangesAsync(cancellationToken);
 
                 var email = adminRequest.Email!.Trim();
