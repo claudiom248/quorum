@@ -41,6 +41,9 @@ public sealed partial class KnowledgeBaseDraft
     /// <summary>A pasted JSON Schema of the payload; empty means the collection is sampled.</summary>
     public string Schema { get; set; } = string.Empty;
 
+    /// <summary>How often the lists computed from the knowledge base are refreshed (spec 007 D-10).</summary>
+    public int LookupRefreshHours { get; set; } = LookupLimits.DefaultRefreshHours;
+
     public ScopeForm Scope { get; set; } = new();
 
     public MappingDraft? Mapping { get; set; }
@@ -67,6 +70,7 @@ public sealed partial class KnowledgeBaseDraft
             VectorName = connection.VectorName ?? string.Empty,
             EmbeddingModel = detail.EmbeddingModel ?? string.Empty,
             QueryPrefix = detail.QueryPrefix ?? string.Empty,
+            LookupRefreshHours = detail.LookupRefreshHours ?? LookupLimits.DefaultRefreshHours,
             Scope = detail.Scope is { } scope ? ScopeForm.From(scope) : new ScopeForm(),
             Mapping = detail.Mapping is { } mapping ? MappingDraft.From(mapping) : null,
         };
@@ -142,6 +146,18 @@ public sealed partial class KnowledgeBaseDraft
         return result.Vectors.Count > 1 && VectorName.Trim().Length == 0;
     }
 
+    /// <summary>What blocks the lookups step: the counted point, the entity attributes, the listed fields and the refresh interval.</summary>
+    public IReadOnlyList<string> LookupProblems(IReadOnlyList<DictionaryField> dictionary)
+    {
+        var problems = new List<string>(Mapping?.LookupProblems(dictionary) ?? []);
+        if (LookupRefreshHours is < LookupLimits.MinRefreshHours or > LookupLimits.MaxRefreshHours)
+        {
+            problems.Add($"The refresh interval is {LookupLimits.MinRefreshHours} to {LookupLimits.MaxRefreshHours} hours.");
+        }
+
+        return problems;
+    }
+
     /// <summary>What blocks the scope step.</summary>
     public string? ScopeProblem() => Scope.Build().Error;
 
@@ -156,6 +172,7 @@ public sealed partial class KnowledgeBaseDraft
         else
         {
             problems.AddRange(Mapping.Problems(dictionary));
+            problems.AddRange(LookupProblems(dictionary));
         }
 
         if (ScopeProblem() is { } scope)
@@ -179,7 +196,8 @@ public sealed partial class KnowledgeBaseDraft
             Clean(QueryPrefix, trim: false),
             mapping,
             Scope.Build().Scope!,
-            createFields);
+            createFields,
+            LookupRefreshHours);
     }
 
     /// <summary>A short account of what will be saved, for the last step.</summary>
@@ -198,6 +216,11 @@ public sealed partial class KnowledgeBaseDraft
             if (created.Count > 0)
             {
                 lines.Add($"New dictionary field(s): {string.Join(", ", created.Select(f => f.Cluster is null ? f.Name : $"{f.Cluster}/{f.Name}"))}");
+            }
+
+            if (mapping.LookupSummary(LookupRefreshHours) is { } lookups)
+            {
+                lines.Add(lookups);
             }
         }
 

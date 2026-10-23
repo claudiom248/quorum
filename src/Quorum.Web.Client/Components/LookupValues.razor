@@ -1,0 +1,169 @@
+@* The values of a lookup as the model will read them (spec 007 AC-10, admin view): searchable, sortable, in pages. *@
+@inject QuorumApi Api
+
+<div class="lookup-values" data-lookup-values="@LookupId">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End" Class="mb-2">
+        <MudTextField @bind-Value="_search" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                      OnKeyUp="OnKey" aria-label="Search the values" />
+        @if (Counted)
+        {
+            <label class="tool-policy">Sort by
+                <select aria-label="Sort" @bind="_sort">
+                    <option value="count">Largest count first</option>
+                    <option value="name">Name</option>
+                </select>
+            </label>
+        }
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SearchAsync" Disabled="_busy">Show</MudButton>
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => OnClose.InvokeAsync()">Close</MudButton>
+    </MudStack>
+
+    <ProblemMessage Problem="_problem" />
+
+    @if (_page is { } page)
+    {
+        <div class="tool-hint" data-lookup-header>
+            @LookupAdminView.UnitLabel(page.Unit) · as of @LookupAdminView.When(page.AsOf)
+            @if (page.Stale)
+            {
+                <span> · out of date</span>
+            }
+            @if (page.Truncated)
+            {
+                <span> · the list was cut at the ceiling: models are told so</span>
+            }
+        </div>
+        @if (page.CursorRestarted)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-1" role="status">The list was recomputed while you were reading it, so it starts again from the top.</MudAlert>
+        }
+
+        @if (_values.Count == 0)
+        {
+            <div class="tool-hint mt-1" data-lookup-empty>@(string.IsNullOrWhiteSpace(_applied) ? "This list has no values yet." : "No value matches.")</div>
+        }
+        else
+        {
+            <table class="lookup-table" aria-label="Values">
+                <thead>
+                    <tr>
+                        <th scope="col">Value</th>
+                        <th scope="col">Label</th>
+                        <th scope="col">Synonyms</th>
+                        @if (page.Unit is not null)
+                        {
+                            <th scope="col">Count</th>
+                        }
+                        @if (_hasAttributes)
+                        {
+                            <th scope="col">Attributes</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var value in _values)
+                    {
+                        <tr data-value="@value.Value">
+                            <td>@value.Value</td>
+                            <td>@value.Label</td>
+                            <td>@(value.Synonyms is { Count: > 0 } synonyms ? string.Join(", ", synonyms) : string.Empty)</td>
+                            @if (page.Unit is not null)
+                            {
+                                <td>@value.Count</td>
+                            }
+                            @if (_hasAttributes)
+                            {
+                                <td>@LookupAdminView.Attributes(value)</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (page.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mt-2" OnClick="MoreAsync" Disabled="_busy">Show more</MudButton>
+        }
+    }
+    else if (_busy)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+</div>
+
+@code {
+    private const int PageSize = 50;
+
+    private string? _search;
+    private string? _sort;
+    private string? _applied;
+    private LookupValuesPage? _page;
+    private List<LookupValueInfo> _values = [];
+    private bool _hasAttributes;
+    private ApiProblem? _problem;
+    private bool _busy;
+
+    [Parameter, EditorRequired]
+    public Guid LookupId { get; set; }
+
+    /// <summary>The hash of the slice to read; the whole knowledge base when left out.</summary>
+    [Parameter]
+    public string? Slice { get; set; }
+
+    /// <summary>Whether the lookup has counts, so it can be ordered by them.</summary>
+    [Parameter]
+    public bool Counted { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sort = Counted ? "count" : null;
+        await LoadAsync(cursor: null);
+    }
+
+    private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchAsync();
+        }
+    }
+
+    private Task SearchAsync() => LoadAsync(cursor: null);
+
+    private Task MoreAsync() => LoadAsync(_page?.Cursor);
+
+    private async Task LoadAsync(string? cursor)
+    {
+        _busy = true;
+        _problem = null;
+        try
+        {
+            var search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
+            var result = await Api.ReadLookupValuesAsync(LookupId, Slice, search, _sort, PageSize, cursor);
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+                return;
+            }
+
+            // A cursor that restarted brings the list from the top: what is on screen no longer follows it.
+            if (cursor is null || result.Value.CursorRestarted)
+            {
+                _values = [];
+            }
+
+            _values.AddRange(result.Value.Values);
+            _hasAttributes = _values.Any(v => v.Attributes is { ValueKind: System.Text.Json.JsonValueKind.Object });
+            _page = result.Value;
+            _applied = search;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
