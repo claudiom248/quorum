@@ -259,7 +259,8 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         Assert.Contains("not valid", ResultOf(events), StringComparison.Ordinal);
 
         // A list of entities cannot be filtered, so the fields only its knowledge base maps are not offered as filters: nothing would apply them.
-        Assert.DoesNotContain("country", definition.Parameters);    }
+        Assert.DoesNotContain("country", definition.Parameters);
+    }
 
     private static List<string> Rows(string result)
     {
