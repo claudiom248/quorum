@@ -73,9 +73,12 @@ internal static class LookupToolDefinition
         var filters = ListsOfFilters(lookups, exposedFields);
         var introduction = description.Trim();
 
+        // Only a list computed from a field can be filtered (spec 007 AC-31): for a tool with none, the filters belong to documents and count alone.
+        var valuesFilters = lookups.Any(l => l.Info.Kind == LookupKindInfo.Computed) ? exposedFields : [];
+
         List<GeneratedLookupFunction> functions =
         [
-            new(ValuesOperation, DescribeValues(introduction, lookups, live), ValuesSchema(lookups, knowledgeBases, live ? exposedFields : [], filters)),
+            new(ValuesOperation, DescribeValues(introduction, lookups, valuesFilters.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFilters, filters)),
         ];
 
         if (live)
@@ -104,11 +107,11 @@ internal static class LookupToolDefinition
             .ToDictionary(g => g.Key, g => byField[g.First().Id], StringComparer.Ordinal);
     }
 
-    private static string DescribeValues(string introduction, IReadOnlyList<OfferedLookup> lookups, bool live)
+    private static string DescribeValues(string introduction, IReadOnlyList<OfferedLookup> lookups, bool filterable)
     {
         var text = new StringBuilder(introduction)
             .Append("\n\nReads a list of values: the values that exist, with the number of documents of each when the list has counts.");
-        if (live)
+        if (filterable)
         {
             text.Append(" With filters, a list computed from a field is worked out now among the documents that match them.");
         }

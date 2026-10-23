@@ -169,6 +169,26 @@ public sealed class LookupToolUnitTests
         Assert.DoesNotContain("Knowledge bases:", all.Functions.Single(f => f.Operation == "values").Description, StringComparison.Ordinal);
     }
 
+    [Fact] // AC-31
+    public void OnlyAListComputedFromAFieldCanBeFilteredAndAToolWithoutKnowledgeBasesStillOffersItsFilters()
+    {
+        var audience = new FilterFieldInfo(Guid.NewGuid(), "audience", FilterFieldType.TextList, null);
+        OfferedLookup[] computed = [new("audience", new LookupInfo(LookupA, "audience", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents", FieldId: audience.Id))];
+        OfferedLookup[] manual = [new("language", new LookupInfo(LookupB, "language", LookupKindInfo.Manual, null, null, null, null))];
+
+        string[] ValuesParameters(OfferedLookup[] lookups, KnowledgeBaseInfo[] knowledgeBases)
+        {
+            using var schema = JsonDocument.Parse(AllOf("Reads.", lookups, knowledgeBases, [audience]).Functions.Single(f => f.Operation == "values").InputSchema);
+            return [.. schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name)];
+        }
+
+        // No knowledge base to ask live, but the list is computed from a field: the filters are still its own.
+        Assert.Contains("audience", ValuesParameters(computed, []));
+        Assert.Contains("worked out now", ValuesOf("Reads.", computed, [], [audience]).Description, StringComparison.Ordinal);
+        // A list typed by hand cannot be filtered, so the parameter would only lead to an error.
+        Assert.DoesNotContain("audience", ValuesParameters(manual, [new(Guid.NewGuid(), "contracts", "Contracts.", [])]));
+    }
+
     [Fact]
     public void TheFunctionsAreNamedAfterWhatTheyDo()
     {
