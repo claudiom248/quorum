@@ -12,9 +12,9 @@ namespace Quorum.Modules.KnowledgeBases.Features.Search;
 internal static class ChunkReader
 {
     // What reaches the model and is stored with a message: a payload cannot make a source reference arbitrarily large.
-    private const int MaxReferenceLength = 300;
+    internal const int MaxReferenceLength = 300;
 
-    private const int MaxUrlLength = 2000;
+    internal const int MaxUrlLength = 2000;
 
     /// <summary>The payload paths a search has to ask the store for.</summary>
     public static IReadOnlyList<string> PathsOf(MappingRoles roles) =>
@@ -45,7 +45,7 @@ internal static class ChunkReader
             Reference(payload, roles.SourceUrl, MaxUrlLength, truncate: false));
     }
 
-    private static string? Reference(JsonObject payload, string? path, int maxLength, bool truncate = true)
+    internal static string? Reference(JsonObject payload, string? path, int maxLength, bool truncate = true)
     {
         if (path is null || Find(payload, path) is not JsonValue node)
         {
@@ -81,7 +81,7 @@ internal static class ChunkReader
     }
 
     /// <summary>The value at a payload path in dot notation (<c>meta.year</c>).</summary>
-    private static JsonNode? Find(JsonObject payload, string path)
+    internal static JsonNode? Find(JsonObject payload, string path)
     {
         JsonNode? current = payload;
         foreach (var segment in path.Split('.'))

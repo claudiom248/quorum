@@ -12,7 +12,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-27
-    public async Task TheDefinitionHasTheOperationTheListsAndThePagingParametersButNoLiveOperations()
+    public async Task TheDefinitionHasTheOperationsTheListsAndThePagingParametersAndNothingToFilterByWhenNoFieldIsExposed()
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
@@ -26,7 +26,8 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
         var definition = created.Definition!;
         Assert.Equal("lookup__lists", definition.Name);
         Assert.Equal(["cursor", "limit", "lookup", "operation", "search", "sort"], definition.Parameters.Order().ToArray());
-        Assert.Equal(["values"], definition.Parameter("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray());
+        // The tool queries a knowledge base, so the live operations are offered next to the stored lists.
+        Assert.Equal(["values", "documents", "count"], definition.Parameter("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray());
         Assert.Equal(["language", "nationality"], definition.Parameter("lookup").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Order().ToArray());
         Assert.Contains("Reads the lists of values.", definition.Description, StringComparison.Ordinal);
         Assert.True(definition.EstimatedTokens > 0);

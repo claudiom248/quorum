@@ -14,6 +14,7 @@ using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.KnowledgeBases.Features.Lookups;
+using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
@@ -60,6 +61,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     /// <summary>Computes the lookups of the app: tests script <see cref="FakeLookupComputer.Handler"/>.</summary>
     internal FakeLookupComputer LookupComputer { get; } = new();
+
+    /// <summary>Holds the calls to Qdrant: tests set <see cref="QdrantGate.Hold"/>.</summary>
+    internal QdrantGate Qdrant { get; } = new();
 
     public static QuorumApp Start(string connectionString, string? dataProtectionKeysPath = null, FakeTimeProvider? clock = null)
     {
@@ -192,6 +196,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             services.Configure<PasswordHasherOptions>(options => options.IterationCount = 1_000);
             services.AddSingleton<IBuiltinTool>(Probe);
             services.AddSingleton<ILookupComputer>(LookupComputer);
+            services.AddHttpClient(QdrantConnector.HttpClientName).AddHttpMessageHandler(() => new QdrantGateHandler(Qdrant));
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);

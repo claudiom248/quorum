@@ -27,6 +27,21 @@ public interface IKnowledgeBaseLookups
 
     /// <summary>Reads a page of one lookup from the cache or the tables, never from the store and never waiting for a computation.</summary>
     Task<LookupRead> ReadAsync(LookupReadRequest request, CancellationToken cancellationToken);
+
+    /// <summary>The documents of the knowledge bases that match the filters, a page at a time, computed now against the store (spec 007 D-7).</summary>
+    Task<LiveDocuments> DocumentsAsync(LiveDocumentsRequest request, CancellationToken cancellationToken);
+
+    /// <summary>How many documents (or chunks, when the knowledge base has no way to tell documents apart) match the filters, exactly, computed now.</summary>
+    Task<LiveCount> CountAsync(LiveCountRequest request, CancellationToken cancellationToken);
+
+    /// <summary>The values of a computed lookup's field among the documents that match the filters, computed now instead of read from the stored list.</summary>
+    Task<LiveValues> LiveValuesAsync(LiveValuesRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Which of the fields a tool filters on have no index in the stores of its knowledge bases, so that a live operation filtering on
+    /// them may be slow (spec 007 D-8). A store that cannot be reached is not reported: there is nothing to say about it yet.
+    /// </summary>
+    Task<IReadOnlyList<UnindexedFilter>> UnindexedFiltersAsync(UnindexedFiltersQuery query, CancellationToken cancellationToken);
 }
 
 public enum LookupKindInfo
@@ -147,6 +162,7 @@ public sealed record LookupReadValue(string Value, string? Label, IReadOnlyList<
 /// <param name="ValueCount">Values in the whole list, not in the page.</param>
 /// <param name="Cursor"><see langword="null"/> on the last page.</param>
 /// <param name="CursorRestarted">The cursor belonged to an older list, so this page starts again from the top.</param>
+/// <param name="Live">The list was worked out now among the documents that match filters, not read from the stored one.</param>
 public sealed record LookupRead(
     LookupReadOutcome Outcome,
     string? Name = null,
@@ -158,7 +174,112 @@ public sealed record LookupRead(
     int ValueCount = 0,
     IReadOnlyList<LookupReadValue>? Values = null,
     string? Cursor = null,
-    bool CursorRestarted = false)
+    bool CursorRestarted = false,
+    bool Live = false)
 {
     public static LookupRead Of(LookupReadOutcome outcome, string? name = null, string? knowledgeBase = null) => new(outcome, name, knowledgeBase);
 }
+
+/// <summary>
+/// What the live operations share: who asks and the filters, in the shape of <see cref="KnowledgeBaseSearchRequest"/>. The model's filters
+/// and the tool's fixed ones always apply together, and a model's value for a field the tool fixed can only narrow it.
+/// </summary>
+/// <param name="Filters">The model's filters by parameter name: <c>department</c>, <c>year_min</c>... A <see langword="null"/> or empty value is no filter.</param>
+/// <param name="FixedFilters">The tool's own, never visible to the model.</param>
+/// <param name="FilterFields">The parameters the model was offered (the aliases of the exposed fields) with the field each stands for.</param>
+/// <param name="FixedFilterFieldIds">The fields the fixed filters name.</param>
+public sealed record LiveScope(
+    Guid TenantId,
+    Guid AssistantId,
+    IReadOnlyDictionary<string, JsonElement> Filters,
+    IReadOnlyDictionary<string, JsonElement> FixedFilters,
+    IReadOnlyDictionary<string, Guid> FilterFields,
+    IReadOnlyList<Guid> FixedFilterFieldIds);
+
+public enum LiveOutcome
+{
+    Ok,
+
+    /// <summary>None of the knowledge bases can be used: they do not exist, are not visible or their kind has no lookups.</summary>
+    NotAvailable,
+
+    /// <summary>A filter of the model is not valid; the message says why.</summary>
+    InvalidFilter,
+
+    /// <summary>A filter that the tool always applies is not valid any more.</summary>
+    InvalidFixedFilter,
+
+    /// <summary>No knowledge base maps the fields the filters use, so none could apply them.</summary>
+    FilterUnsupported,
+
+    /// <summary>The cursor is not one these knowledge bases issued.</summary>
+    InvalidCursor,
+
+    /// <summary>It did not finish within the limit (a filter on a field without an index is the usual cause).</summary>
+    TimedOut,
+
+    /// <summary>Every knowledge base failed; the message has the reasons.</summary>
+    Failed,
+
+    /// <summary>With the live values: the lookup is not a computed one, so it has no field to list among documents.</summary>
+    NotComputed,
+}
+
+/// <param name="KnowledgeBaseIds">Only these are queried, among the ones the assistant can see.</param>
+/// <param name="ReturnFieldIds">The exposed fields whose values come back with each document.</param>
+/// <param name="Limit">Documents in the page; 1 to 200.</param>
+/// <param name="Cursor">The opaque cursor the previous page returned.</param>
+public sealed record LiveDocumentsRequest(
+    LiveScope Scope,
+    IReadOnlyList<Guid> KnowledgeBaseIds,
+    IReadOnlyList<Guid> ReturnFieldIds,
+    int Limit,
+    string? Cursor);
+
+/// <param name="Fields">The values of the fields asked for that the document has, by field id; lists are joined by commas.</param>
+public sealed record LiveDocument(string KnowledgeBase, string? Id, string? Title, string? Url, IReadOnlyDictionary<Guid, string> Fields);
+
+/// <param name="Message">With a failure: written for the model, with no address, key or internal detail.</param>
+/// <param name="Cursor"><see langword="null"/> on the last page. A page may hold fewer documents than the limit and still have a cursor.</param>
+/// <param name="Skipped">Knowledge bases left out because they do not map a field of the filters, or have no lookups.</param>
+/// <param name="Failed">Knowledge bases that could not be queried, with why.</param>
+public sealed record LiveDocuments(
+    LiveOutcome Outcome,
+    string? Message = null,
+    IReadOnlyList<LiveDocument>? Documents = null,
+    string? Cursor = null,
+    IReadOnlyList<string>? Skipped = null,
+    IReadOnlyList<FailedKnowledgeBase>? Failed = null);
+
+public sealed record LiveCountRequest(LiveScope Scope, IReadOnlyList<Guid> KnowledgeBaseIds);
+
+/// <param name="Unit"><c>documents</c> or <c>chunks</c>; counts of different units are never added.</param>
+public sealed record LiveKnowledgeBaseCount(string KnowledgeBase, long Count, string Unit);
+
+public sealed record LiveCount(
+    LiveOutcome Outcome,
+    string? Message = null,
+    IReadOnlyList<LiveKnowledgeBaseCount>? Counts = null,
+    IReadOnlyList<string>? Skipped = null,
+    IReadOnlyList<FailedKnowledgeBase>? Failed = null);
+
+/// <param name="Search">A case-insensitive substring of a value.</param>
+/// <param name="Limit">Values in the answer; 1 to 200.</param>
+public sealed record LiveValuesRequest(LiveScope Scope, Guid LookupId, string? Search, LookupSortOrder Sort, int Limit);
+
+/// <param name="Truncated">There are more values than the answer holds, or the scan stopped at its cap.</param>
+/// <param name="ValueCount">Values among the matching documents, before the limit.</param>
+public sealed record LiveValues(
+    LiveOutcome Outcome,
+    string? Message = null,
+    string? Name = null,
+    string? KnowledgeBase = null,
+    string? Unit = null,
+    int ValueCount = 0,
+    bool Truncated = false,
+    IReadOnlyList<LookupReadValue>? Values = null);
+
+public sealed record UnindexedFiltersQuery(Guid TenantId, IReadOnlyList<Guid> KnowledgeBaseIds, IReadOnlyList<Guid> FieldIds);
+
+/// <param name="Path">The payload path the field is mapped to in that knowledge base.</param>
+public sealed record UnindexedFilter(Guid FieldId, string FieldName, Guid KnowledgeBaseId, string KnowledgeBaseName, string Path);

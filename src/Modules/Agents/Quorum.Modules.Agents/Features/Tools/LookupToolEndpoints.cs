@@ -113,7 +113,10 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
             view.Tool,
             view.Binding,
             await PreviewAsync(resolver, tenantId, view.Tool, view.Binding, cancellationToken),
-            LookupToolWarnings.Evaluate(view.Binding, seenLookups, seen),
+            [
+                .. LookupToolWarnings.Evaluate(view.Binding, seenLookups, seen),
+                .. await LookupToolWarnings.UnindexedAsync(lookups, tenantId, view.Binding, seenLookups, cancellationToken),
+            ],
             seen));
     }
 
@@ -176,8 +179,12 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         }
 
         LogSaved(logger, tool.Id, binding.LookupIds.Count, binding.KnowledgeBaseIds.Count, "created");
+        var visible = await lookups.ListAsync(new LookupListQuery(tenantId, AssistantId: null, binding.LookupIds), cancellationToken);
         return TypedResults.CreatedAtRoute(
-            new CreatedLookupTool(tool.Id, await PreviewAsync(resolver, tenantId, tool, binding, cancellationToken)),
+            new CreatedLookupTool(
+                tool.Id,
+                await PreviewAsync(resolver, tenantId, tool, binding, cancellationToken),
+                await LookupToolWarnings.UnindexedAsync(lookups, tenantId, binding, visible, cancellationToken)),
             "GetLookupTool",
             new RouteValueDictionary { ["id"] = tool.Id });
     }
@@ -352,7 +359,7 @@ internal sealed record LookupToolListItem(
 /// <param name="EstimatedTokens">What the definition takes of the context, the figure the context gauge counts.</param>
 internal sealed record LookupToolDefinitionPreview(string Name, string Description, JsonElement InputSchema, int EstimatedTokens);
 
-internal sealed record CreatedLookupTool(Guid Id, LookupToolDefinitionPreview? Definition);
+internal sealed record CreatedLookupTool(Guid Id, LookupToolDefinitionPreview? Definition, IReadOnlyList<ToolWarning> Warnings);
 
 /// <param name="Alias">The name the model sees for the lookup, when one was given.</param>
 internal sealed record BoundLookupDetail(Guid LookupId, string? Alias);

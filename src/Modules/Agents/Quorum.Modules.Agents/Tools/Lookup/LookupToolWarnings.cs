@@ -40,4 +40,36 @@ internal static class LookupToolWarnings
 
         return warnings;
     }
+
+    /// <summary>
+    /// The filters of a tool that no index in the store backs (spec 007 D-8): the fields the model may filter on and the ones the tool
+    /// always filters on, in the knowledge bases the live operations query and those the lists come from. A live call on them is allowed
+    /// but can be slow, and ends at the 15 s limit.
+    /// </summary>
+    public static async Task<IReadOnlyList<ToolWarning>> UnindexedAsync(
+        IKnowledgeBaseLookups lookups,
+        Guid tenantId,
+        LookupTool binding,
+        IReadOnlyList<LookupInfo> visible,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lookups);
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentNullException.ThrowIfNull(visible);
+
+        var knowledgeBases = binding.KnowledgeBaseIds.Concat(visible.Select(l => l.KnowledgeBaseId).OfType<Guid>()).Distinct().ToList();
+        var fields = binding.ExposedFieldIds.Concat(binding.FixedFilterFieldIds).Distinct().ToList();
+        if (knowledgeBases.Count == 0 || fields.Count == 0)
+        {
+            return [];
+        }
+
+        var unindexed = await lookups.UnindexedFiltersAsync(new UnindexedFiltersQuery(tenantId, knowledgeBases, fields), cancellationToken);
+        return
+        [
+            .. unindexed.Select(u => new ToolWarning(
+                "lookup_tool.filter_unindexed",
+                $"The field '{u.FieldName}' has no payload index in {u.KnowledgeBaseName} ({u.Path}): a filter on it may take a long time, and a call ends after 15 seconds. Ask the data owner to index it.")),
+        ];
+    }
 }
