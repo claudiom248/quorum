@@ -1,6 +1,6 @@
 # Spec 010: Admin UI Redesign
 
-**Status:** Approved (2026-10-24)
+**Status:** Approved (2026-10-24). Amendment 1 (bUnit is already in use, so component tests are not deferred) approved with plan 010.
 **Date:** 2026-10-23
 
 ## Problem
@@ -92,7 +92,7 @@ Unchanged. The new endpoints require an admin (`tools.manage` or `knowledge_base
 
 ## Non-Functional Requirements
 - Lists with thousands of rows: a page of 50 rows renders and a filter change answers in under 1 s on a typical installation; the grid never holds more than the loaded pages.
-- Each list page and its drawer are independent components; shared components have unit tests (bUnit is not used today; see Deferred Decisions).
+- Each list page and its drawer are independent components; shared components and pages are covered by bUnit tests, which the repository already uses.
 - Accessibility kept at today's level or better: drawers trap focus and return it to the row, grids are keyboard navigable, state is never conveyed by colour alone.
 - No new UI library; MudBlazor version unchanged.
 
@@ -125,7 +125,6 @@ None external. Internal: the Agents and KnowledgeBases modules expose the query 
 | Decision | Fallback chosen now | Revisit when |
 |---|---|---|
 | Flat "All tools" view across types | Not built; the review happens per server and per type | Reviewing pending tools across many servers is reported as painful |
-| Component tests for the UI (bUnit) | Shared components covered by Playwright-free unit tests of their view models; pages verified by hand in the browser | A regression slips through that a component test would have caught |
 | Several assistants in the UI | Single assistant; filter by agent already works with the assistants the API returns | The product allows more than one assistant |
 | Saved filter views | None | Admins ask for named views |
 
