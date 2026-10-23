@@ -100,7 +100,7 @@ internal static class KnowledgeBaseApi
     }
 
     public static async Task<IReadOnlyList<ListItemBody>> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<ListItemBody>>(All, TestContext.Current.CancellationToken))!;
+        (await client.GetFromJsonAsync<PageBody<ListItemBody>>(All, TestContext.Current.CancellationToken))!.Items;
 
     public static async Task<DetailBody> GetAsync(HttpClient client, Guid id) =>
         (await client.GetFromJsonAsync<DetailBody>(One(id), TestContext.Current.CancellationToken))!;
@@ -122,6 +122,8 @@ internal static class KnowledgeBaseApi
         return document.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
+    public sealed record PageBody<T>(List<T> Items, string? Cursor);
+
     public sealed record WarningBody(string Code, string Message, string? Path);
 
     public sealed record RegisteredBody(Guid Id, string Status, List<WarningBody> Warnings);
@@ -134,7 +136,7 @@ internal static class KnowledgeBaseApi
         string? Description,
         string? Kind,
         string Status,
-        string? Scope,
+        ScopeBody? Scope,
         DateTimeOffset? LastVerifiedAt,
         string? Warning,
         bool Shared);

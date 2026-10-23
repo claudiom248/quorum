@@ -13,9 +13,9 @@ public sealed class KnowledgeAdminViewTests
     private static readonly Guid KnowledgeBaseId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b2011");
     private static readonly Guid OtherBaseId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b2012");
 
-    private static readonly DictionaryField Department = new(DepartmentId, "department", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0);
-    private static readonly DictionaryField Year = new(YearId, "year", DictionaryFieldTypes.Number, null, ScopeKinds.Tenant, 0);
-    private static readonly DictionaryField Tags = new(TagsId, "tags", DictionaryFieldTypes.TextList, null, ScopeKinds.Global, 0);
+    private static readonly DictionaryField Department = new(DepartmentId, "department", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0);
+    private static readonly DictionaryField Year = new(YearId, "year", DictionaryFieldTypes.Number, null, new ToolScope(ScopeKinds.Tenant, [], []), 0);
+    private static readonly DictionaryField Tags = new(TagsId, "tags", DictionaryFieldTypes.TextList, null, new ToolScope(ScopeKinds.Global, [], []), 0);
     private static readonly DictionaryField[] Dictionary = [Department, Year, Tags];
 
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
@@ -489,7 +489,7 @@ public sealed class KnowledgeAdminViewTests
     [Fact]
     public void SelectingKnowledgeBasesExposesTheirFieldsUpToTheLimitAndDeselectingRemovesThem()
     {
-        var many = Enumerable.Range(0, 12).Select(i => new DictionaryField(Guid.NewGuid(), $"f{i:00}", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0)).ToList();
+        var many = Enumerable.Range(0, 12).Select(i => new DictionaryField(Guid.NewGuid(), $"f{i:00}", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0)).ToList();
         var form = new RagToolForm();
 
         form.ApplyCandidates(many, exposeNew: true);

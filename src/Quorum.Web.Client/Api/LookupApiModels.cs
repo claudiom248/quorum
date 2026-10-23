@@ -55,8 +55,7 @@ public sealed record LookupValueInfo(string Value, string? Label, IReadOnlyList<
 public sealed record LookupValuesPage(string? Unit, DateTimeOffset? AsOf, bool Stale, bool Truncated, IReadOnlyList<LookupValueInfo> Values, string? Cursor, bool CursorRestarted);
 
 /// <param name="Shared"><see langword="true"/> for a lookup of another tenant: it can be read but not changed.</param>
-/// <param name="ScopeTenantIds">The tenants the owner shares the lookup with; only the owner sees them.</param>
-public sealed record ManualLookupInfo(Guid Id, string Name, string? Description, string Scope, int ValueCount, bool Shared, IReadOnlyList<Guid>? ScopeTenantIds);
+public sealed record ManualLookupInfo(Guid Id, string Name, string? Description, ToolScope Scope, int ValueCount, bool Shared);
 
 public sealed record ManualValueRequest(string Value, string? Label, IReadOnlyList<string>? Synonyms);
 

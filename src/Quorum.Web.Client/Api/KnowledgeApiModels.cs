@@ -30,7 +30,7 @@ public static class KnowledgeBaseKinds
 /// <param name="UsedByCount">How many knowledge bases and rag tools use the field: a field in use cannot be deleted.</param>
 /// <param name="Cluster">The label that groups the field, or <see langword="null"/>; with the name it identifies the field.</param>
 /// <param name="Shared"><see langword="true"/> for a Global field of another tenant: it can be used but not changed or deleted.</param>
-public sealed record DictionaryField(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null, bool Shared = false);
+public sealed record DictionaryField(Guid Id, string Name, string Type, string? Description, ToolScope Scope, int UsedByCount, string? Cluster = null, bool Shared = false);
 
 public sealed record DictionaryFieldRequest(string Name, string Type, string? Description, string Scope, string? Cluster = null);
 
@@ -114,7 +114,7 @@ public sealed record KnowledgeBaseListItem(
     string Status,
     bool Shared,
     string? Kind,
-    string? Scope,
+    ToolScope? Scope,
     DateTimeOffset? LastVerifiedAt,
     string? Warning);
 

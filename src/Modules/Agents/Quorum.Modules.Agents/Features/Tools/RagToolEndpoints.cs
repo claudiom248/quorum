@@ -41,17 +41,43 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
         rag.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteRagTool");
     }
 
-    private static async Task<Ok<List<RagToolListItem>>> ListAsync(
+    private static async Task<Results<Ok<Page<RagToolListItem>>, ProblemHttpResult>> ListAsync(
+        HttpRequest request,
         AgentsDbContext db,
         ITenantContext tenant,
         IKnowledgeBaseCatalog catalog,
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
-        var tools = await ToolVisibility.RagTools(db).AsNoTracking().OrderBy(t => t.Tool.Name).ToListAsync(cancellationToken);
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        var filtered = ScopeFilter.Apply(
+            ToolVisibility.RagTools(db).AsNoTracking(),
+            query.Value,
+            v => v.Binding.Scope,
+            v => v.Tool.TenantId,
+            v => v.Binding.ScopeTenantIds,
+            v => v.Binding.ScopeAssistantIds,
+            v => v.Tool.State,
+            v => v.Tool.Name,
+            v => v.Tool.Description);
+        if (!filtered.IsSuccess)
+        {
+            return filtered.Error.ToProblem();
+        }
+
+        var page = await filtered.Value.ToPageAsync(query.Value, "rag-tools", t => t.Tool.Name, t => t.Tool.Id, t => t, cancellationToken);
+        if (!page.IsSuccess)
+        {
+            return page.Error.ToProblem();
+        }
 
         // Knowledge bases are named as the tenant sees them: one it cannot see is absent, and a shared tool shows none of its binding.
-        var own = tools.Where(t => t.Tool.TenantId == tenantId).ToList();
+        var own = page.Value.Items.Where(t => t.Tool.TenantId == tenantId).ToList();
         var seen = await catalog.DescribeAsync(
             new BindingQuery(
                 tenantId,
@@ -61,11 +87,11 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
             cancellationToken);
         var byId = seen.KnowledgeBases.ToDictionary(k => k.Id);
 
-        return TypedResults.Ok(tools
-            .Select(t => t.Tool.TenantId == tenantId
+        return TypedResults.Ok(new Page<RagToolListItem>(
+            [.. page.Value.Items.Select(t => t.Tool.TenantId == tenantId
                 ? RagToolListItem.ForOwner(t, [.. t.Binding.KnowledgeBaseIds.Where(byId.ContainsKey).Select(id => new RagKnowledgeBase(id, byId[id].Name))], RagToolWarnings.Evaluate(t.Binding, seen))
-                : RagToolListItem.ForOther(t))
-            .ToList());
+                : RagToolListItem.ForOther(t))],
+            page.Value.Cursor));
     }
 
     private static async Task<Results<Ok<RagToolDetail>, ProblemHttpResult>> GetAsync(

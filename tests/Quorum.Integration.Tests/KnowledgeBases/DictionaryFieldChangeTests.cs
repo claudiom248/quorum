@@ -35,7 +35,7 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
         var field = Assert.Single(await DictionaryApi.ListAsync(admin));
         Assert.Equal("year", field.Name);
         Assert.Equal("Number", field.Type);
-        Assert.Equal("Tenant", field.Scope);
+        Assert.Equal("Tenant", field.Scope.Kind);
         Assert.Equal("New", field.Description);
     }
 

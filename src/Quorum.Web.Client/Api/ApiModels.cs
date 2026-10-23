@@ -133,7 +133,10 @@ public sealed record ToolInfo(
     string Description,
     string State,
     string Policy,
-    JsonElement? Annotations);
+    JsonElement? Annotations,
+    Guid? ServerId = null,
+    ToolScope? ServerScope = null,
+    bool Shared = false);
 
 /// <param name="TenantIds">Tenants besides the owner that see the server (scope <c>Tenant</c>).</param>
 /// <param name="AssistantIds">Assistants that may use the server (scope <c>Assistant</c>).</param>
@@ -166,3 +169,6 @@ public sealed record ToolServerTest(bool Reachable, IReadOnlyList<TestedTool> To
 public sealed record CreatedToolServer(Guid Id, string Status, string? Warning, IReadOnlyList<ToolInfo> Tools);
 
 public sealed record ToolRefresh(string Status, IReadOnlyList<string> Added, IReadOnlyList<string> Changed, IReadOnlyList<string> Removed);
+
+/// <summary>One page of a list. <paramref name="Cursor"/> is set when there is a next one.</summary>
+public sealed record Page<T>(IReadOnlyList<T> Items, string? Cursor);

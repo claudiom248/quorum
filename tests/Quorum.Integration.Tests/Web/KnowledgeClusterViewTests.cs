@@ -13,11 +13,11 @@ public sealed class KnowledgeClusterViewTests
     private static readonly Guid HrYearId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b5103");
     private static readonly Guid FinanceYearId = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b5104");
 
-    private static readonly DictionaryField HrDepartment = new(HrDepartmentId, "department", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0, "hr");
-    private static readonly DictionaryField LegalDepartment = new(LegalDepartmentId, "department", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0, "legal");
-    private static readonly DictionaryField HrYear = new(HrYearId, "year", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0, "hr");
-    private static readonly DictionaryField FinanceYear = new(FinanceYearId, "year", DictionaryFieldTypes.Number, null, ScopeKinds.Tenant, 0, "finance");
-    private static readonly DictionaryField NoClusterYear = new(Guid.NewGuid(), "year", DictionaryFieldTypes.Number, null, ScopeKinds.Tenant, 0);
+    private static readonly DictionaryField HrDepartment = new(HrDepartmentId, "department", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0, "hr");
+    private static readonly DictionaryField LegalDepartment = new(LegalDepartmentId, "department", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0, "legal");
+    private static readonly DictionaryField HrYear = new(HrYearId, "year", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0, "hr");
+    private static readonly DictionaryField FinanceYear = new(FinanceYearId, "year", DictionaryFieldTypes.Number, null, new ToolScope(ScopeKinds.Tenant, [], []), 0, "finance");
+    private static readonly DictionaryField NoClusterYear = new(Guid.NewGuid(), "year", DictionaryFieldTypes.Number, null, new ToolScope(ScopeKinds.Tenant, [], []), 0);
     private static readonly DictionaryField[] Clustered = [HrDepartment, LegalDepartment, HrYear, FinanceYear];
 
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
@@ -131,7 +131,7 @@ public sealed class KnowledgeClusterViewTests
     [Fact] // AC-58
     public void AClusterIsWrittenInFrontOfANameOnlyWhereTheNameAloneIsAmbiguous()
     {
-        var region = new DictionaryField(Guid.NewGuid(), "region", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0, "sales");
+        var region = new DictionaryField(Guid.NewGuid(), "region", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0, "sales");
         DictionaryField[] all = [.. Clustered, region];
 
         Assert.Equal("hr/year", KnowledgeAdminView.FieldLabel(HrYear, all));

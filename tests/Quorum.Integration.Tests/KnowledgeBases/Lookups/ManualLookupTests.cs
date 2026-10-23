@@ -20,7 +20,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
         var id = await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody(description: "Where people come from."));
 
         var listed = Assert.Single(await LookupApi.ListManualAsync(admin));
-        Assert.Equal((id, "nationality", "Where people come from.", "Tenant", 2, false), (listed.Id, listed.Name, listed.Description, listed.Scope, listed.ValueCount, listed.Shared));
+        Assert.Equal((id, "nationality", "Where people come from.", "Tenant", 2, false), (listed.Id, listed.Name, listed.Description, listed.Scope.Kind, listed.ValueCount, listed.Shared));
 
         var values = await LookupApi.ReadValuesOkAsync(admin, id);
         Assert.False(values.Stale);
@@ -48,7 +48,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
         Assert.Equal(
             [("listed", true), ("own", false), ("shared", true)],
             lookups.OrderBy(l => l.Name, StringComparer.Ordinal).Select(l => (l.Name, l.Shared)).ToArray());
-        Assert.All(lookups.Where(l => l.Shared), l => Assert.Null(l.ScopeTenantIds));
+        Assert.All(lookups.Where(l => l.Shared), l => Assert.Empty(l.Scope.TenantIds));
         Assert.DoesNotContain(lookups, l => l.Id == hidden);
 
         // What others share is readable but never writable.
@@ -205,7 +205,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
         Assert.Equal(["Deutschland"], germany.Synonyms!);
         var listed = Assert.Single(await LookupApi.ListManualAsync(admin));
         Assert.Equal(("Changed.", 1), (listed.Description, listed.ValueCount));
-        Assert.Equal([tenant], listed.ScopeTenantIds!);
+        Assert.Equal([tenant], listed.Scope.TenantIds);
         Assert.Equal(1, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM knowledge_base.lookup_values"));
         Assert.Equal(2, await ToolFixtures.ScalarAsync<int>(app, "SELECT \"CurrentGeneration\" FROM knowledge_base.lookup_slices"));
     }

@@ -257,92 +257,127 @@
   },
   "list": {
     "status": 200,
-    "body": [
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "missing",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "other-size",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "policies",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "text-only",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "unreachable",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "vector-chosen",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "with-key",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "wrong-key",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail."
-      }
-    ]
+    "body": {
+      "items": [
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "missing",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The collection does not exist on that server. It can still be registered, but RAG on it will fail until the collection is created."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "other-size",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The collection\u0027s vectors have 128 dimensions but the embedding model produces 64. RAG searches would fail: ingestion and retrieval must use the same model."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "policies",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "text-only",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "unreachable",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333. Until the server is reachable, RAG on this collection will fail."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "vector-chosen",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "with-key",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "wrong-key",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The server refused the API key (or needs one). Until it is right, RAG on this collection will fail."
+        }
+      ],
+      "cursor": null
+    }
   },
   "update-keeps-the-key": {
     "status": 200,

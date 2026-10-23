@@ -814,92 +814,127 @@
   },
   "list-after-the-failures": {
     "status": 200,
-    "body": [
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "dropped",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The collection was not found."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "empty",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "flat",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "keyed",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The knowledge base\u0027s API key cannot be read. An administrator has to enter it again."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "nested",
-        "description": "Company policies.",
-        "status": "Available",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E"
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "other-size",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The server rejected the query. Usually the collection\u0027s vectors have a different size than the embedding model\u0027s, or the vector name does not exist: ingestion and retrieval must use the same model."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "unreachable",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333."
-      },
-      {
-        "id": "\u003Cguid\u003E",
-        "name": "wrong-key",
-        "description": "Company policies.",
-        "status": "Unavailable",
-        "shared": false,
-        "kind": "Qdrant",
-        "scope": "Tenant",
-        "lastVerifiedAt": "\u003Cinstant\u003E",
-        "warning": "The server refused the API key (or needs one)."
-      }
-    ]
+    "body": {
+      "items": [
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "dropped",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The collection was not found."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "empty",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "flat",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "keyed",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The knowledge base\u0027s API key cannot be read. An administrator has to enter it again."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "nested",
+          "description": "Company policies.",
+          "status": "Available",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E"
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "other-size",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The server rejected the query. Usually the collection\u0027s vectors have a different size than the embedding model\u0027s, or the vector name does not exist: ingestion and retrieval must use the same model."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "unreachable",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The server could not be reached over gRPC. Check the address: Qdrant\u0027s gRPC port is 6334 by default, not the REST port 6333."
+        },
+        {
+          "id": "\u003Cguid\u003E",
+          "name": "wrong-key",
+          "description": "Company policies.",
+          "status": "Unavailable",
+          "shared": false,
+          "kind": "Qdrant",
+          "scope": {
+            "kind": "Tenant",
+            "tenantIds": [],
+            "assistantIds": []
+          },
+          "lastVerifiedAt": "\u003Cinstant\u003E",
+          "warning": "The server refused the API key (or needs one)."
+        }
+      ],
+      "cursor": null
+    }
   }
 }

@@ -37,6 +37,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         servers.MapGet("/", ListAsync).WithName("ListToolServers");
         servers.MapPost("/", CreateAsync).WithName("CreateToolServer");
         servers.MapGet("/{id:guid}", GetAsync).WithName("GetToolServer");
+        servers.MapGet("/{id:guid}/tools", ListServerToolsAsync).WithName("ListToolServerTools");
         servers.MapPut("/{id:guid}", UpdateAsync).WithName("UpdateToolServer");
         servers.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteToolServer");
         servers.MapPost("/{id:guid}/refresh", RefreshAsync).WithName("RefreshToolServer");
@@ -66,22 +67,77 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         }
     }
 
-    private static async Task<Ok<List<ServerResponse>>> ListAsync(AgentsDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<Page<ServerResponse>>, ProblemHttpResult>> ListAsync(HttpRequest request, AgentsDbContext db, CancellationToken cancellationToken)
     {
-        var servers = await ToolVisibility.Servers(db).AsNoTracking().OrderBy(s => s.Name).ToListAsync(cancellationToken);
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        var filtered = ScopeFilter.Apply(ToolVisibility.Servers(db).AsNoTracking(), query.Value, s => s.Scope, s => s.TenantId, s => s.ScopeTenantIds, s => s.ScopeAssistantIds, s => s.Status, s => s.Name, s => s.Url);
+        if (!filtered.IsSuccess)
+        {
+            return filtered.Error.ToProblem();
+        }
+
+        var page = await filtered.Value.ToPageAsync(query.Value, "tool-servers", s => s.Name, s => s.Id, s => s, cancellationToken);
+        if (!page.IsSuccess)
+        {
+            return page.Error.ToProblem();
+        }
+
+        // The tool counts are read for the servers of the page only.
+        var ids = page.Value.Items.Select(s => s.Id).ToList();
         var tools = await ToolVisibility.Tools(db)
-            .Where(t => t.Tool.ServerId != null)
+            .Where(t => t.Tool.ServerId != null && ids.Contains(t.Tool.ServerId.Value))
             .Select(t => new { t.Tool.ServerId, t.Tool.State })
             .ToListAsync(cancellationToken);
 
-        return TypedResults.Ok(servers
-            .Select(server => ServerResponse.From(
+        return TypedResults.Ok(new Page<ServerResponse>(
+            [.. page.Value.Items.Select(server => ServerResponse.From(
                 server,
                 db.CurrentTenantId,
                 tools.Count(t => t.ServerId == server.Id),
                 tools.Count(t => t.ServerId == server.Id && t.State == ToolState.PendingReview),
-                tools: null))
-            .ToList());
+                tools: null))],
+            page.Value.Cursor));
+    }
+
+    /// <summary>The tools of one server, paged, with the state and search filters; the tools of a server shared with the tenant are the enabled ones.</summary>
+    private static async Task<Results<Ok<Page<ToolResponse>>, ProblemHttpResult>> ListServerToolsAsync(Guid id, HttpRequest request, AgentsDbContext db, CancellationToken cancellationToken)
+    {
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Assistant.Count + query.Value.Type.Count > 0)
+        {
+            return ScopeFilter.NotForTools.ToProblem();
+        }
+
+        if (!await ToolVisibility.Servers(db).AnyAsync(s => s.Id == id, cancellationToken))
+        {
+            return ServerNotFound.ToProblem();
+        }
+
+        var statused = ScopeFilter.Status(ToolVisibility.Tools(db).AsNoTracking().Where(t => t.Tool.ServerId == id), query.Value, t => t.Tool.State);
+        if (!statused.IsSuccess)
+        {
+            return statused.Error.ToProblem();
+        }
+
+        var searched = ScopeFilter.Search(statused.Value, query.Value, t => t.Tool.Name, t => t.Tool.Description);
+        var page = await searched.ToPageAsync(query.Value, "server-tools", t => t.Tool.Name, t => t.Tool.Id, t => t, cancellationToken);
+        if (!page.IsSuccess)
+        {
+            return page.Error.ToProblem();
+        }
+
+        var tenantId = db.CurrentTenantId;
+        return TypedResults.Ok(new Page<ToolResponse>([.. page.Value.Items.Select(t => ToolResponse.From(t.Tool, t.Server, tenantId))], page.Value.Cursor));
     }
 
     private static async Task<Results<Ok<ServerResponse>, ProblemHttpResult>> GetAsync(
@@ -105,7 +161,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             db.CurrentTenantId,
             tools.Count,
             tools.Count(t => t.Tool.State == ToolState.PendingReview),
-            [.. tools.Select(t => ToolResponse.From(t.Tool, t.ServerName))]));
+            [.. tools.Select(t => ToolResponse.From(t.Tool, t.Server, db.CurrentTenantId))]));
     }
 
     private static async Task<Results<CreatedAtRoute<CreateServerResponse>, ProblemHttpResult>> CreateAsync(
@@ -170,7 +226,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         var tools = await db.Tools.AsNoTracking().Where(t => t.ServerId == server.Id).OrderBy(t => t.Name).ToListAsync(cancellationToken);
         LogServerRegistered(logger, server.Id, server.Status, tools.Count);
         return TypedResults.CreatedAtRoute(
-            new CreateServerResponse(server.Id, server.Status.ToString(), warning, [.. tools.Select(t => ToolResponse.From(t, server.Name))]),
+            new CreateServerResponse(server.Id, server.Status.ToString(), warning, [.. tools.Select(t => ToolResponse.From(t, server, tenantId))]),
             "GetToolServer",
             new RouteValueDictionary { ["id"] = server.Id });
     }

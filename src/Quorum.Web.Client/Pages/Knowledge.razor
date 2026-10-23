@@ -204,7 +204,7 @@
         }
     }
 
-    private string ScopeText(KnowledgeBaseListItem knowledgeBase) => knowledgeBase.Scope switch
+    private string ScopeText(KnowledgeBaseListItem knowledgeBase) => knowledgeBase.Scope?.Kind switch
     {
         ScopeKinds.Global => "every tenant",
         ScopeKinds.Assistant => "chosen assistants",
