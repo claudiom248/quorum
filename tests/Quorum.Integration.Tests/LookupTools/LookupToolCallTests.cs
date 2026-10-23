@@ -239,7 +239,10 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         var lookups = await LookupApi.UntilAsync(
             async () => (await setup.Admin.GetFromJsonAsync<List<JsonElement>>(LookupApi.KnowledgeBaseLookups(knowledgeBase), TestContext.Current.CancellationToken))!,
             list => list.Count > 0 && list.All(l => l.GetProperty("slices").EnumerateArray().All(s => s.GetProperty("status").GetString() == "Ready" && !s.GetProperty("running").GetBoolean())));
-        var tool = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookups.Single().GetProperty("id").GetGuid())]));
+        var fields = await setup.FieldsAsync();
+        var tool = await LookupToolApi.CreateOkAsync(
+            setup.Admin,
+            LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookups.Single().GetProperty("id").GetGuid())], exposedFields: [new { fieldId = fields["country"] }]));
         await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
 
         var definition = (await LookupToolApi.GetAsync(setup.Admin, tool.Id)).Definition!;
@@ -254,7 +257,9 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         Assert.Equal("failed", StatusOf(events));
         // A text attribute is not in the enum, so the schema refuses it before the tool runs.
         Assert.Contains("not valid", ResultOf(events), StringComparison.Ordinal);
-    }
+
+        // A list of entities cannot be filtered, so the fields only its knowledge base maps are not offered as filters: nothing would apply them.
+        Assert.DoesNotContain("country", definition.Parameters);    }
 
     private static List<string> Rows(string result)
     {

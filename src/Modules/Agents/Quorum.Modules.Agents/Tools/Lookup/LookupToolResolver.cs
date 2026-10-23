@@ -82,9 +82,16 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
 
             // The live operations query only the knowledge bases the tool names that the tenant sees; a tool with none keeps its lists.
             var queried = tool.Binding.KnowledgeBaseIds.Distinct().Where(basesById.ContainsKey).Select(id => basesById[id]).OrderBy(k => k.Name, StringComparer.Ordinal).ToList();
+            // Only the knowledge bases a filter can reach: the ones the tool asks and those of the lists computed from a field. A list of
+            // entities cannot be filtered, so the fields only its knowledge base maps would be parameters nothing applies.
             var mapping = queried
                 .SelectMany(k => k.FieldIds)
-                .Concat(offered.Select(l => l.Info.KnowledgeBaseId).OfType<Guid>().Where(basesById.ContainsKey).SelectMany(id => basesById[id].FieldIds))
+                .Concat(offered
+                    .Where(l => l.Info.Kind == LookupKindInfo.Computed)
+                    .Select(l => l.Info.KnowledgeBaseId)
+                    .OfType<Guid>()
+                    .Where(basesById.ContainsKey)
+                    .SelectMany(id => basesById[id].FieldIds))
                 .ToHashSet();
 
             // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.

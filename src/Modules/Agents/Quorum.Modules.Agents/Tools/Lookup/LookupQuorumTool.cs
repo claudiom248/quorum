@@ -57,7 +57,9 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         {
             if (attribute is not null)
             {
-                throw new ToolFailedException("A list worked out with filters can be ordered by 'count' or 'name' only.");
+                // Only the lists of entities have attributes to order by, and those cannot be filtered: say that, not what the order cannot be.
+                throw new ToolFailedException(
+                    $"The list '{LookupResultFormat.Clean(name)}' cannot be filtered: only the lists computed from a field of a knowledge base can be. Read it without filters, and order it by one of its attributes if you need.");
             }
 
             return await LiveValuesAsync(binding, asked, lookupId, name, sort, limit, cancellationToken);
