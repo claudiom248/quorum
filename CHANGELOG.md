@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/claudiom248/quorum/compare/v0.10.0...v0.11.0) (2026-10-23)
+
+
+### Features
+
+* sidebar shell and shared list components (spec 010) ([#94](https://github.com/claudiom248/quorum/issues/94)) ([1a361c5](https://github.com/claudiom248/quorum/commit/1a361c548f1a032eee5c9f72a207a0845138e41c))
+* tenants list and onboarding checklist API (spec 010) ([#96](https://github.com/claudiom248/quorum/issues/96)) ([9fc98a2](https://github.com/claudiom248/quorum/commit/9fc98a2ddd53dd6b80bf54441af1ce277d2fc602))
+
 ## [0.10.0](https://github.com/claudiom248/quorum/compare/v0.9.0...v0.10.0) (2026-10-23)
 
 
