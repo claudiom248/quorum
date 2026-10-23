@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Quorum.Modules.Agents.Domain;
+using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.KnowledgeBases.Contracts;
 
@@ -10,6 +11,13 @@ public sealed class LookupToolUnitTests
 {
     private static readonly Guid LookupA = Guid.Parse("00000000-0000-0000-0000-00000000000a");
     private static readonly Guid LookupB = Guid.Parse("00000000-0000-0000-0000-00000000000b");
+
+    /// <summary>The function that reads the lists, which is where the lists, their filters and their sort are described.</summary>
+    private static GeneratedLookupFunction ValuesOf(string description, IReadOnlyList<OfferedLookup> lookups, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields) =>
+        AllOf(description, lookups, knowledgeBases, fields).Functions.Single(f => f.Operation == "values");
+
+    private static GeneratedLookupDefinition AllOf(string description, IReadOnlyList<OfferedLookup> lookups, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields) =>
+        LookupToolDefinition.Build("lists", description, lookups, knowledgeBases, fields);
 
     private static LookupRead Page(params LookupReadValue[] values) => new(
         LookupReadOutcome.Ok,
@@ -123,24 +131,125 @@ public sealed class LookupToolUnitTests
             new("supplier", new LookupInfo(LookupB, "supplier", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents")),
         ];
 
-        var first = LookupToolDefinition.Build("Reads lists.", lookups, [], []);
-        var second = LookupToolDefinition.Build("Reads lists.", lookups, [], []);
+        var first = ValuesOf("Reads lists.", lookups, [], []);
+        var second = ValuesOf("Reads lists.", lookups, [], []);
 
         Assert.Equal(first, second);
+        Assert.Single(AllOf("Reads lists.", lookups, [], []).Functions);
         using var schema = JsonDocument.Parse(first.InputSchema);
         var properties = schema.RootElement.GetProperty("properties");
-        Assert.Equal(["operation", "lookup", "search", "sort", "limit", "cursor"], properties.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(["values"], properties.GetProperty("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["lookup", "search", "sort", "limit", "cursor"], properties.EnumerateObject().Select(p => p.Name));
         Assert.Equal(["lookup"], schema.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(
-            "Reads lists.\n\nLists:\n- language: Spoken languages.\n- supplier (from contracts, counts documents)",
+            "Reads lists.\n\nReads a list of values: the values that exist, with the number of documents of each when the list has counts.\n\nLists:\n- language (typed by hand; it may hold values that occur in no document): Spoken languages.\n- supplier (from contracts; counts documents; only the values that occur in the documents)",
             first.Description);
+    }
+
+    [Fact]
+    public void WithKnowledgeBasesEachThingTheToolDoesIsItsOwnFunctionWithOnlyItsOwnArguments()
+    {
+        OfferedLookup[] lookups = [new("supplier", new LookupInfo(LookupB, "supplier", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents"))];
+        KnowledgeBaseInfo[] knowledgeBases = [new(Guid.NewGuid(), "contracts", "Company contracts.", []), new(Guid.NewGuid(), "policies", "HR policies.", [])];
+        FilterFieldInfo[] fields = [new(Guid.NewGuid(), "audience", FilterFieldType.TextList, null)];
+
+        var all = AllOf("Reads lists.", lookups, knowledgeBases, fields);
+
+        Assert.Equal(["values", "documents", "count"], all.Functions.Select(f => f.Operation));
+        string[] Parameters(string operation)
+        {
+            using var schema = JsonDocument.Parse(all.Functions.Single(f => f.Operation == operation).InputSchema);
+            return [.. schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name)];
+        }
+
+        Assert.Equal(["lookup", "audience", "search", "sort", "limit", "cursor"], Parameters("values"));
+        Assert.Equal(["knowledge_base", "audience", "limit", "cursor"], Parameters("documents"));
+        Assert.Equal(["knowledge_base", "audience"], Parameters("count"));
+        Assert.DoesNotContain("Lists:", all.Functions.Single(f => f.Operation == "documents").Description, StringComparison.Ordinal);
+        Assert.Contains("Knowledge bases:", all.Functions.Single(f => f.Operation == "count").Description, StringComparison.Ordinal);
+        Assert.DoesNotContain("Knowledge bases:", all.Functions.Single(f => f.Operation == "values").Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheFunctionsAreNamedAfterWhatTheyDo()
+    {
+        Assert.Equal("lookup_values__lists", ToolNaming.LookupFunction("lists", "values"));
+        Assert.Equal("lookup_documents__lists", ToolNaming.LookupFunction("lists", "documents"));
+        Assert.Equal("lookup_count__lists", ToolNaming.LookupFunction("lists", "count"));
+        Assert.True(ToolNaming.LookupDocuments(new string('x', 40)).Length <= ToolNaming.MaxLength);
+    }
+
+    [Fact]
+    public void AnEntityListSaysItHoldsEntitiesAndWhatItCanBeOrderedBy()
+    {
+        OfferedLookup[] lookups =
+        [
+            new("suppliers", new LookupInfo(LookupA, "suppliers", LookupKindInfo.Entity, Guid.NewGuid(), "suppliers", "One per supplier.", null, SortableAttributes: ["contract_count", "supplier_since"])),
+        ];
+
+        var definition = ValuesOf("Reads.", lookups, [], []);
+
+        Assert.Contains("- suppliers (the entities of suppliers, one entry each, with their attributes; can be ordered by contract_count, supplier_since): One per supplier.", definition.Description, StringComparison.Ordinal);
+        using var schema = JsonDocument.Parse(definition.InputSchema);
+        var sort = schema.RootElement.GetProperty("properties").GetProperty("sort");
+        Assert.Equal(["count", "name", "contract_count", "-contract_count", "supplier_since", "-supplier_since"], sort.GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+        Assert.Contains("suppliers: contract_count, supplier_since", sort.GetProperty("description").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithoutEntityListsTheSortOffersOnlyCountAndName()
+    {
+        OfferedLookup[] lookups = [new("supplier", new LookupInfo(LookupB, "supplier", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents"))];
+
+        var definition = ValuesOf("Reads.", lookups, [], []);
+
+        using var schema = JsonDocument.Parse(definition.InputSchema);
+        Assert.Equal(["count", "name"], schema.RootElement.GetProperty("properties").GetProperty("sort").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public void AFilterOnTheFieldOfAListSaysWhereItsExactValuesAre()
+    {
+        var audience = Guid.NewGuid();
+        OfferedLookup[] lookups = [new("audience", new LookupInfo(LookupA, "audience", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents", FieldId: audience))];
+        FilterFieldInfo[] fields =
+        [
+            new(audience, "audience", FilterFieldType.TextList, null),
+            new(Guid.NewGuid(), "department", FilterFieldType.Text, null),
+        ];
+
+        var definition = ValuesOf("Reads.", lookups, [new(Guid.NewGuid(), "contracts", "Contracts.", [])], fields);
+
+        using var schema = JsonDocument.Parse(definition.InputSchema);
+        var properties = schema.RootElement.GetProperty("properties");
+        Assert.Contains("the exact values are in the list 'audience'", properties.GetProperty("audience").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("exact values", properties.GetProperty("department").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.Equal(new Dictionary<string, string> { ["audience"] = "audience" }, LookupToolDefinition.ListsOfFilters(lookups, fields));
+    }
+
+    [Fact]
+    public void AListWithNoCountsSaysSoInsteadOfPretendingToBeRanked()
+    {
+        var page = new LookupRead(LookupReadOutcome.Ok, "suppliers", "suppliers", null, null, ValueCount: 1, Values: [Value("Acme")]);
+
+        var text = LookupResultFormat.Render(page, "suppliers", LookupSortOrder.Count, 6_000, "d").Text;
+
+        Assert.Contains("Ordered by the list's own order: it has no counts to rank by.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAttributeOrderIsNamedInTheHeader()
+    {
+        var page = new LookupRead(LookupReadOutcome.Ok, "suppliers", "suppliers", null, null, ValueCount: 1, Values: [Value("Acme")]);
+
+        var text = LookupResultFormat.Render(page, "suppliers", LookupSortOrder.Attribute, 6_000, "d", attribute: new LookupAttributeOrder("contract_count", Descending: true)).Text;
+
+        Assert.Contains("Ordered by contract_count, the largest first.", text, StringComparison.Ordinal);
     }
 
     [Fact]
     public void WithASingleListTheListIsNotRequired()
     {
-        var definition = LookupToolDefinition.Build("Reads.", [new("language", new LookupInfo(LookupA, "language", LookupKindInfo.Manual, null, null, null, null))], [], []);
+        var definition = ValuesOf("Reads.", [new("language", new LookupInfo(LookupA, "language", LookupKindInfo.Manual, null, null, null, null))], [], []);
 
         using var schema = JsonDocument.Parse(definition.InputSchema);
         Assert.False(schema.RootElement.TryGetProperty("required", out _));
@@ -168,7 +277,7 @@ public sealed class LookupToolUnitTests
     }
 
     [Fact] // AC-27
-    public void WithKnowledgeBasesTheDefinitionOffersTheLiveOperationsTheKnowledgeBaseChoiceAndTheFilters()
+    public void WithKnowledgeBasesTheDocumentsAndCountFunctionsOfferTheKnowledgeBaseChoiceAndTheFilters()
     {
         OfferedLookup[] lookups = [new("supplier", new LookupInfo(LookupB, "supplier", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents"))];
         KnowledgeBaseInfo[] knowledgeBases =
@@ -182,15 +291,14 @@ public sealed class LookupToolUnitTests
             new(Guid.NewGuid(), "year", FilterFieldType.Number, null),
         ];
 
-        var definition = LookupToolDefinition.Build("Reads lists.", lookups, knowledgeBases, fields);
+        var documents = AllOf("Reads lists.", lookups, knowledgeBases, fields).Functions.Single(f => f.Operation == "documents");
 
-        using var schema = JsonDocument.Parse(definition.InputSchema);
+        using var schema = JsonDocument.Parse(documents.InputSchema);
         var properties = schema.RootElement.GetProperty("properties");
-        Assert.Equal(["operation", "lookup", "knowledge_base", "audience", "year_min", "year_max", "search", "sort", "limit", "cursor"], properties.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(["values", "documents", "count"], properties.GetProperty("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["knowledge_base", "audience", "year_min", "year_max", "limit", "cursor"], properties.EnumerateObject().Select(p => p.Name));
         Assert.Equal(["contracts", "policies"], properties.GetProperty("knowledge_base").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
         Assert.False(schema.RootElement.TryGetProperty("required", out _));
-        Assert.EndsWith("Knowledge bases:\n- contracts: Company contracts.\n- policies: HR policies.", definition.Description, StringComparison.Ordinal);
+        Assert.EndsWith("Knowledge bases:\n- contracts: Company contracts.\n- policies: HR policies.", documents.Description, StringComparison.Ordinal);
     }
 
     [Fact] // AC-27
@@ -198,10 +306,13 @@ public sealed class LookupToolUnitTests
     {
         OfferedLookup[] lookups = [new("supplier", new LookupInfo(LookupB, "supplier", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents"))];
 
-        var definition = LookupToolDefinition.Build("Reads.", lookups, [new(Guid.NewGuid(), "contracts", "Company contracts.", [])], []);
+        var all = AllOf("Reads.", lookups, [new(Guid.NewGuid(), "contracts", "Company contracts.", [])], []);
 
-        using var schema = JsonDocument.Parse(definition.InputSchema);
-        Assert.False(schema.RootElement.GetProperty("properties").TryGetProperty("knowledge_base", out _));
+        foreach (var function in all.Functions)
+        {
+            using var schema = JsonDocument.Parse(function.InputSchema);
+            Assert.False(schema.RootElement.GetProperty("properties").TryGetProperty("knowledge_base", out _), function.Operation);
+        }
     }
 
     [Fact] // AC-34

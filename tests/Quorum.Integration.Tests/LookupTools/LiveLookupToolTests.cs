@@ -34,7 +34,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     {
         roles = new { text = "text", documentId = "document_id", title = "title", sourceUrl = "source_url" },
         fields = MappedPaths
-            .Select(name => new { path = name, name, listable = listable && name == "supplier" })
+            .Select(name => new { path = name, name, listable = listable && name is "supplier" or "audience" })
             .ToArray(),
         countedPoint = countedPoint ? new { path = "is_first_chunk", value = true } : null,
     };
@@ -42,6 +42,10 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     private static readonly string[] MappedPaths = ["supplier", "department", "nationality", "audience"];
 
     private static readonly string[] Managers = ["managers"];
+
+    private static readonly string[] Manager = ["manager"];
+
+    private static readonly string[] Nowhere = ["nowhere"];
 
     private static readonly string[] ItAudience = ["it"];
 
@@ -81,6 +85,9 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
             var supplier = await db.Lookups.IgnoreQueryFilters().AsNoTracking()
                 .SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fields["supplier"], Ct);
             lookups.Add(LookupToolApi.Bind(supplier.Id));
+            var audience = await db.Lookups.IgnoreQueryFilters().AsNoTracking()
+                .SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fields["audience"], Ct);
+            lookups.Add(LookupToolApi.Bind(audience.Id));
         }
 
         var tool = await LookupToolApi.CreateOkAsync(
@@ -94,7 +101,14 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         return new Live(setup, knowledgeBase, tool.Id);
     }
 
-    private static FakeToolCall Call(object arguments, string id = "call_1") => new("lookup__lists", JsonSerializer.Serialize(arguments), id);
+    // Each thing the tool does is a function of its own: an `operation` in the arguments says which one the call is for.
+    private static FakeToolCall Call(object arguments, string id = "call_1")
+    {
+        var node = JsonSerializer.SerializeToNode(arguments)!.AsObject();
+        var operation = node["operation"]?.GetValue<string>() ?? "values";
+        node.Remove("operation");
+        return new($"lookup_{operation}__lists", node.ToJsonString(), id);
+    }
 
     private static Task<IReadOnlyList<SseEvent>> AskAsync(RagApi.Setup setup, params FakeToolCall[] calls)
     {
@@ -134,14 +148,16 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         var live = await StartAsync();
         await using var _ = live.Setup;
 
-        var definition = (await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool)).Definition!;
+        var detail = await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool);
 
-        Assert.Equal(["audience", "cursor", "department", "limit", "lookup", "operation", "search", "sort"], definition.Parameters.Order().ToArray());
-        Assert.Equal(
-            ["values", "documents", "count"],
-            definition.Parameter("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray());
-        Assert.Contains("contracts", definition.Description, StringComparison.Ordinal);
-        Assert.False(definition.InputSchema.TryGetProperty("required", out var required), required.ToString());
+        // One function for each thing the tool does, each with only its own arguments.
+        Assert.Equal(["lookup_values__lists", "lookup_documents__lists", "lookup_count__lists"], detail.Definitions.Select(d => d.Name));
+        Assert.Equal(["audience", "cursor", "department", "limit", "lookup", "search", "sort"], detail.Function("values").Parameters.Order().ToArray());
+        Assert.Equal(["audience", "cursor", "department", "limit"], detail.Function("documents").Parameters.Order().ToArray());
+        Assert.Equal(["audience", "department"], detail.Function("count").Parameters.Order().ToArray());
+        Assert.Contains("contracts", detail.Function("documents").Description, StringComparison.Ordinal);
+        Assert.False(detail.Function("documents").InputSchema.TryGetProperty("required", out var required), required.ToString());
+        Assert.Equal(detail.Definition!.Name, detail.Function("values").Name);
     }
 
     [Fact] // AC-27
@@ -150,13 +166,13 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         var live = await StartAsync(withKnowledgeBase: false);
         await using var _ = live.Setup;
 
-        var definition = (await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool)).Definition!;
+        var detail = await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool);
 
-        Assert.Equal(["values"], definition.Parameter("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray());
+        Assert.Equal("lookup_values__lists", Assert.Single(detail.Definitions).Name);
         var events = await AskAsync(live.Setup, Call(new { operation = "count" }));
         Assert.Equal("failed", StatusOf(events));
-        // The schema refuses an operation the definition does not offer before the tool runs.
-        Assert.Contains("not valid", ResultOf(events), StringComparison.Ordinal);
+        // A function that was not offered is not found: the model never had it.
+        Assert.Contains("lookup_count__lists", ResultOf(events), StringComparison.Ordinal);
     }
 
     [Theory] // AC-29
@@ -181,6 +197,48 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         Assert.DoesNotContain("cursor", result, StringComparison.Ordinal);
         var audit = Assert.Single(await ToolFixtures.AuditRowsAsync(live.Setup.App));
         Assert.Equal(3, audit.SourceCount);
+    }
+
+    [Fact]
+    public async Task AFilterValueThatMatchesNothingPointsToTheListThatHoldsTheExactValues()
+    {
+        var live = await StartAsync();
+        await using var _ = live.Setup;
+
+        var events = await AskAsync(live.Setup, Call(new { operation = "documents", audience = Manager }));
+
+        var result = ResultOf(events);
+        Assert.Equal("succeeded", StatusOf(events));
+        Assert.Contains("No document matches.", result, StringComparison.Ordinal);
+        Assert.Contains("the values of 'audience' are in the list 'audience'", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACountOfZeroPointsToTheListTooButAFilterWithoutAListGetsNoHint()
+    {
+        var live = await StartAsync();
+        await using var _ = live.Setup;
+
+        var withList = ResultOf(await AskAsync(live.Setup, Call(new { operation = "count", audience = Manager })));
+        Assert.Contains("the values of 'audience' are in the list 'audience'", withList, StringComparison.Ordinal);
+
+        live.Setup.App.ModelServer.EnqueueRounds([ChatScript.CallTools(Call(new { operation = "documents", department = Nowhere })), ChatScript.Reply("Done.")]);
+        var without = ResultOf(await AskCoreAsync(live.Setup));
+        Assert.Contains("No document matches.", without, StringComparison.Ordinal);
+        Assert.DoesNotContain("Nothing matched", without, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheDefinitionSaysWhereTheValuesOfAFilterAreAndWhatEachListIs()
+    {
+        var live = await StartAsync();
+        await using var _ = live.Setup;
+
+        var definition = (await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool)).Definition!;
+
+        Assert.Contains("the exact values are in the list 'audience'", definition.Parameter("audience").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.Contains("(from contracts; counts documents; only the values that occur in the documents)", definition.Description, StringComparison.Ordinal);
+        Assert.Contains("typed by hand", definition.Description, StringComparison.Ordinal);
     }
 
     [Theory] // AC-29

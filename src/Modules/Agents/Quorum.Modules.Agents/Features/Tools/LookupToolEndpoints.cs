@@ -179,11 +179,13 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         }
 
         LogSaved(logger, tool.Id, binding.LookupIds.Count, binding.KnowledgeBaseIds.Count, "created");
+        var previews = await PreviewAsync(resolver, tenantId, tool, binding, cancellationToken);
         var visible = await lookups.ListAsync(new LookupListQuery(tenantId, AssistantId: null, binding.LookupIds), cancellationToken);
         return TypedResults.CreatedAtRoute(
             new CreatedLookupTool(
                 tool.Id,
-                await PreviewAsync(resolver, tenantId, tool, binding, cancellationToken),
+                previews.Count > 0 ? previews[0] : null,
+                previews,
                 await LookupToolWarnings.UnindexedAsync(lookups, tenantId, binding, visible, cancellationToken)),
             "GetLookupTool",
             new RouteValueDictionary { ["id"] = tool.Id });
@@ -292,26 +294,33 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
     }
 
     /// <summary>The definition the model would get now, as an administrator sees it; <see langword="null"/> when no lookup of the tool is visible.</summary>
-    private static async Task<LookupToolDefinitionPreview?> PreviewAsync(LookupToolResolver resolver, Guid tenantId, Tool tool, LookupTool binding, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<LookupToolDefinitionPreview>> PreviewAsync(LookupToolResolver resolver, Guid tenantId, Tool tool, LookupTool binding, CancellationToken cancellationToken)
     {
         var resolved = await resolver.ResolveAsync(
             tenantId,
             assistantId: null,
-            [new LookupToolToDescribe(tool.Id, tool.Description, LookupBinding.From(binding))],
+            [new LookupToolToDescribe(tool.Id, tool.Name, tool.Description, LookupBinding.From(binding))],
             cancellationToken);
         if (!resolved.TryGetValue(tool.Id, out var found))
         {
-            return null;
+            return [];
         }
 
-        var exposedName = ToolNaming.Lookup(tool.Name);
-        var characters = ToolDefinitionRenderer.Length([new ToolDefinition(exposedName, found.Definition.Description, found.Definition.InputSchema)]);
-        using var schema = JsonDocument.Parse(found.Definition.InputSchema);
-        return new LookupToolDefinitionPreview(
-            exposedName,
-            found.Definition.Description,
-            schema.RootElement.Clone(),
-            (characters + ContextUsage.CharactersPerToken - 1) / ContextUsage.CharactersPerToken);
+        // One function for each thing the tool can do, each with the size it takes of the context.
+        var previews = new List<LookupToolDefinitionPreview>();
+        foreach (var function in found.Definition.Functions)
+        {
+            var exposedName = ToolNaming.LookupFunction(tool.Name, function.Operation);
+            var characters = ToolDefinitionRenderer.Length([new ToolDefinition(exposedName, function.Description, function.InputSchema)]);
+            using var schema = JsonDocument.Parse(function.InputSchema);
+            previews.Add(new LookupToolDefinitionPreview(
+                exposedName,
+                function.Description,
+                schema.RootElement.Clone(),
+                (characters + ContextUsage.CharactersPerToken - 1) / ContextUsage.CharactersPerToken));
+        }
+
+        return previews;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Lookup tool {ToolId} {Action} with {LookupCount} lookups and {KnowledgeBaseCount} knowledge bases")]
@@ -359,7 +368,8 @@ internal sealed record LookupToolListItem(
 /// <param name="EstimatedTokens">What the definition takes of the context, the figure the context gauge counts.</param>
 internal sealed record LookupToolDefinitionPreview(string Name, string Description, JsonElement InputSchema, int EstimatedTokens);
 
-internal sealed record CreatedLookupTool(Guid Id, LookupToolDefinitionPreview? Definition, IReadOnlyList<ToolWarning> Warnings);
+/// <param name="Definition">The function that reads the lists, kept for clients that show one definition; <paramref name="Definitions"/> has them all.</param>
+internal sealed record CreatedLookupTool(Guid Id, LookupToolDefinitionPreview? Definition, IReadOnlyList<LookupToolDefinitionPreview> Definitions, IReadOnlyList<ToolWarning> Warnings);
 
 /// <param name="Alias">The name the model sees for the lookup, when one was given.</param>
 internal sealed record BoundLookupDetail(Guid LookupId, string? Alias);
@@ -376,9 +386,10 @@ internal sealed record LookupToolDetail(
     string State,
     string Policy,
     LookupToolDefinitionPreview? Definition,
+    IReadOnlyList<LookupToolDefinitionPreview> Definitions,
     IReadOnlyList<ToolWarning> Warnings)
 {
-    public static LookupToolDetail From(Tool tool, LookupTool binding, LookupToolDefinitionPreview? definition, IReadOnlyList<ToolWarning> warnings, BindingDescription seen)
+    public static LookupToolDetail From(Tool tool, LookupTool binding, IReadOnlyList<LookupToolDefinitionPreview> definitions, IReadOnlyList<ToolWarning> warnings, BindingDescription seen)
     {
         using var filters = JsonDocument.Parse(binding.FixedFilters);
         var current = LookupBinding.From(binding);
@@ -397,7 +408,8 @@ internal sealed record LookupToolDetail(
             new ScopeResponse(binding.Scope.ToString(), binding.ScopeTenantIds, binding.ScopeAssistantIds),
             tool.State.ToString(),
             tool.Policy.ToString(),
-            definition,
+            definitions.Count > 0 ? definitions[0] : null,
+            definitions,
             warnings);
     }
 }

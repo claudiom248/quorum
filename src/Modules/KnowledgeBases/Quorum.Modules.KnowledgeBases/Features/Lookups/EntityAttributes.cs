@@ -27,6 +27,17 @@ internal static class EntityAttributes
         return all.ToDictionary(f => f.Id, f => f.Cluster is not null && shared.Contains(f.Name) ? $"{f.Cluster}_{f.Name}" : f.Name);
     }
 
+    /// <summary>The attributes a list can be ordered by: the ones of type number or date, since a text has no order a model could rely on.</summary>
+    /// <param name="attributeFields">The dictionary fields the knowledge base marks as attributes.</param>
+    public static IReadOnlyList<string> Sortable(IEnumerable<DictionaryField> attributeFields)
+    {
+        ArgumentNullException.ThrowIfNull(attributeFields);
+
+        var all = attributeFields.ToList();
+        var keys = Names(all);
+        return [.. all.Where(f => f.Type is DictionaryFieldType.Number or DictionaryFieldType.Date).Select(f => keys[f.Id]).Order(StringComparer.Ordinal)];
+    }
+
     /// <summary>The value of an entity: its name and the attributes it has, or <see langword="null"/> for a point with no usable name.</summary>
     public static ComputedValue? ToValue(JsonObject row, string namePath, IReadOnlyList<(string Path, string Name)> attributes)
     {

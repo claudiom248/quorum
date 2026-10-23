@@ -24,10 +24,10 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
             LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality), LookupToolApi.Bind(languages)], knowledgeBaseIds: [knowledgeBase]));
 
         var definition = created.Definition!;
-        Assert.Equal("lookup__lists", definition.Name);
-        Assert.Equal(["cursor", "limit", "lookup", "operation", "search", "sort"], definition.Parameters.Order().ToArray());
+        Assert.Equal("lookup_values__lists", definition.Name);
+        Assert.Equal(["cursor", "limit", "lookup", "search", "sort"], definition.Parameters.Order().ToArray());
         // The tool queries a knowledge base, so the live operations are offered next to the stored lists.
-        Assert.Equal(["values", "documents", "count"], definition.Parameter("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray());
+        Assert.Equal(["lookup_values__lists", "lookup_documents__lists", "lookup_count__lists"], created.Definitions.Select(d => d.Name));
         Assert.Equal(["language", "nationality"], definition.Parameter("lookup").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Order().ToArray());
         Assert.Contains("Reads the lists of values.", definition.Description, StringComparison.Ordinal);
         Assert.True(definition.EstimatedTokens > 0);
@@ -275,7 +275,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
         Assert.False(item.Shared);
         Assert.Equal("Enabled", item.State);
         Assert.Equal([knowledgeBase], detail.KnowledgeBaseIds);
-        Assert.Equal("lookup__lists", detail.Definition!.Name);
+        Assert.Equal("lookup_values__lists", detail.Definition!.Name);
     }
 
     [Fact] // AC-40 (the /tools/lookup half)

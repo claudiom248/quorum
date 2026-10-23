@@ -22,6 +22,12 @@ internal static class ToolNaming
 
     public const string LookupPrefix = "lookup__";
 
+    public const string LookupValuesPrefix = "lookup_values__";
+
+    public const string LookupDocumentsPrefix = "lookup_documents__";
+
+    public const string LookupCountPrefix = "lookup_count__";
+
     /// <summary>What the audit log records as the server of a rag tool: the origin prefix, so that <c>rag__name</c> finds its calls like <c>server__tool</c> does.</summary>
     public const string RagAuditServer = "rag";
 
@@ -38,6 +44,21 @@ internal static class ToolNaming
     public static string Rag(string toolName) => RagPrefix + toolName;
 
     public static string Lookup(string toolName) => LookupPrefix + toolName;
+
+    /// <summary>The function that reads the lists of a lookup tool; its sisters ask the knowledge bases (spec 007 A1).</summary>
+    public static string LookupValues(string toolName) => LookupValuesPrefix + toolName;
+
+    public static string LookupDocuments(string toolName) => LookupDocumentsPrefix + toolName;
+
+    public static string LookupCount(string toolName) => LookupCountPrefix + toolName;
+
+    /// <summary>The name the model sees for one operation of a lookup tool.</summary>
+    public static string LookupFunction(string toolName, string operation) => operation switch
+    {
+        "documents" => LookupDocuments(toolName),
+        "count" => LookupCount(toolName),
+        _ => LookupValues(toolName),
+    };
 
     /// <summary>
     /// <c>&lt;server&gt;__&lt;tool&gt;</c>. A tool name the model APIs would not accept (characters outside <c>[a-zA-Z0-9_-]</c>, or too

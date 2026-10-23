@@ -68,9 +68,12 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         // The size a rag tool takes is that of the definition the model gets, not of the stored one.
         var activeDefinitions = pool
             .Where(t => active.Contains(t.Tool.Id))
-            .Select(t => rag.TryGetValue(t.Tool.Id, out var resolved)
-                ? new ToolDefinition(t.ExposedName, resolved.Definition.Description, resolved.Definition.InputSchema)
-                : lookups.TryGetValue(t.Tool.Id, out var lookup) ? new ToolDefinition(t.ExposedName, lookup.Definition.Description, lookup.Definition.InputSchema) : t.Definition)
+            .SelectMany(t => rag.TryGetValue(t.Tool.Id, out var resolved)
+                ? [new ToolDefinition(t.ExposedName, resolved.Definition.Description, resolved.Definition.InputSchema)]
+                : lookups.TryGetValue(t.Tool.Id, out var lookup)
+                    // A lookup tool is offered as one function for each thing it can do, and each takes its own part of the context.
+                    ? lookup.Definition.Functions.Select(f => new ToolDefinition(ToolNaming.LookupFunction(t.Tool.Name, f.Operation), f.Description, f.InputSchema)).ToList()
+                    : [t.Definition])
             .ToList();
         var warnings = ToolWarnings.Evaluate(
             activeDefinitions.Count,

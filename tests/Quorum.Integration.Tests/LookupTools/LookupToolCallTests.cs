@@ -1,10 +1,15 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.KnowledgeBases.Lookups;
 using Quorum.Integration.Tests.Rag;
 using Quorum.Integration.Tests.Tools;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
+using Quorum.Modules.KnowledgeBases.Storage;
+using Quorum.SampleKnowledgeBase;
 using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 
 namespace Quorum.Integration.Tests.LookupTools;
@@ -12,8 +17,14 @@ namespace Quorum.Integration.Tests.LookupTools;
 /// <summary>A lookup tool in an answer: the model calls it and reads a page of a list (spec 007, AC-10, AC-19, AC-22, AC-26, AC-28, AC-33, AC-35).</summary>
 public sealed partial class LookupToolCallTests(PostgresFixture postgres, QdrantFixture qdrant)
 {
-    private static FakeToolCall Call(object arguments, string id = "call_1", string tool = "lookup__lists") =>
-        new(tool, JsonSerializer.Serialize(arguments), id);
+    // Each thing the tool does is a function of its own: an `operation` in the arguments says which one the call is for.
+    private static FakeToolCall Call(object arguments, string id = "call_1", string? tool = null)
+    {
+        var node = JsonSerializer.SerializeToNode(arguments)!.AsObject();
+        var operation = node["operation"]?.GetValue<string>() ?? "values";
+        node.Remove("operation");
+        return new(tool ?? $"lookup_{operation}__lists", node.ToJsonString(), id);
+    }
 
     private static string ResultOf(IEnumerable<SseEvent> events, int index = 0) =>
         events.Where(e => e.Type == "tool_result").ElementAt(index).Data.GetProperty("content").GetString()!;
@@ -143,7 +154,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         await AskAsync(setup, Call(new { }));
 
         var entry = Assert.Single(await ToolFixtures.AuditRowsAsync(setup.App));
-        Assert.Equal("lists", entry.ToolName);
+        Assert.Equal("lists.values", entry.ToolName);
         Assert.Equal("lookup", entry.ServerName);
         Assert.Equal("Succeeded", entry.Outcome);
         Assert.Equal(2, entry.SourceCount);
@@ -204,6 +215,57 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         var offered = Assert.Single(pool, t => t.ToolId == tool);
         Assert.Equal("lookup__lists", offered.Name);
         Assert.True(offered.Active);
+    }
+
+    private static readonly object[] SupplierFields =
+    [
+        new { name = "country", type = "Text" },
+        new { name = "contract_count", type = "Number" },
+        new { name = "supplier_since", type = "Date" },
+    ];
+
+    private static readonly string[] SupplierAttributes = ["country", "contract_count", "supplier_since"];
+
+    [Fact]
+    public async Task AnEntityListIsOrderedByTheAttributeTheModelNamesAndATextAttributeIsRefused()
+    {
+        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var _ = setup;
+        setup.App.LookupComputer.Handler = new LookupComputer(setup.App.Services.GetRequiredService<StoreAdapters>()).ComputeAsync;
+        var knowledgeBase = await setup.RegisterAsync(
+            "suppliers",
+            SampleCollections.CreateSuppliers,
+            new
+            {
+                roles = new { text = "text" },
+                fields = SupplierAttributes.Select(name => new { path = name, name, entityAttribute = true }).ToArray(),
+                entityName = "name",
+            },
+            SupplierFields);
+        var lookups = await LookupApi.UntilAsync(
+            async () => (await setup.Admin.GetFromJsonAsync<List<JsonElement>>(LookupApi.KnowledgeBaseLookups(knowledgeBase), TestContext.Current.CancellationToken))!,
+            list => list.Count > 0 && list.All(l => l.GetProperty("slices").EnumerateArray().All(s => s.GetProperty("status").GetString() == "Ready" && !s.GetProperty("running").GetBoolean())));
+        var fields = await setup.FieldsAsync();
+        var tool = await LookupToolApi.CreateOkAsync(
+            setup.Admin,
+            LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookups.Single().GetProperty("id").GetGuid())], exposedFields: [new { fieldId = fields["country"] }]));
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
+
+        var definition = (await LookupToolApi.GetAsync(setup.Admin, tool.Id)).Definition!;
+        Assert.Contains("contract_count", definition.Parameter("sort").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+        Assert.DoesNotContain("country", definition.Parameter("sort").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+
+        var ordered = ResultOf(await AskAsync(setup, Call(new { sort = "-contract_count" })));
+        Assert.Contains("Ordered by contract_count, the largest first.", ordered, StringComparison.Ordinal);
+        Assert.Equal(["Acme", "Hooli", "Globex", "Initech"], Rows(ordered).Select(r => r.Split(' ')[0]));
+
+        var events = await AskAsync(setup, Call(new { sort = "country" }));
+        Assert.Equal("failed", StatusOf(events));
+        // A text attribute is not in the enum, so the schema refuses it before the tool runs.
+        Assert.Contains("not valid", ResultOf(events), StringComparison.Ordinal);
+
+        // A list of entities cannot be filtered, so the fields only its knowledge base maps are not offered as filters: nothing would apply them.
+        Assert.DoesNotContain("country", definition.Parameters);
     }
 
     private static List<string> Rows(string result)
