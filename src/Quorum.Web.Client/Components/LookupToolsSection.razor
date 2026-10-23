@@ -270,20 +270,30 @@ else
                         <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" data-warning="@warning.Code">@warning.Message</MudAlert>
                     }
 
-                    @if (_definition is { } definition)
+                    @if (_definitions.Count > 0)
                     {
                         <MudDivider />
-                        <div data-definition>
-                            <MudText Typo="Typo.subtitle2">Definition the model gets</MudText>
-                            <div class="tool-hint">
-                                <span class="tool-name">@definition.Name</span> · @RagToolView.SizeText(definition.EstimatedTokens)
+                        <MudText Typo="Typo.subtitle2">
+                            @(_definitions.Count == 1 ? "Definition the model gets" : $"Definitions the model gets ({_definitions.Count} functions)")
+                        </MudText>
+                        @if (_definitions.Count > 1)
+                        {
+                            <div class="tool-hint" data-definitions-total>@RagToolView.SizeText(_definitions.Sum(d => d.EstimatedTokens)) in all</div>
+                        }
+
+                        @foreach (var definition in _definitions)
+                        {
+                            <div data-definition="@definition.Name" class="mb-2">
+                                <div class="tool-hint">
+                                    <span class="tool-name">@definition.Name</span> · @RagToolView.SizeText(definition.EstimatedTokens)
+                                </div>
+                                <div class="tool-row-description">@definition.Description</div>
+                                <details class="tool-detail" open="@(_definitions.Count == 1)">
+                                    <summary>Input schema</summary>
+                                    <pre class="tool-pre">@RagToolView.FormatSchema(definition.InputSchema)</pre>
+                                </details>
                             </div>
-                            <div class="tool-row-description">@definition.Description</div>
-                            <details class="tool-detail" open>
-                                <summary>Input schema</summary>
-                                <pre class="tool-pre">@RagToolView.FormatSchema(definition.InputSchema)</pre>
-                            </details>
-                        </div>
+                        }
                     }
                     else if (!form.IsNew)
                     {
@@ -314,7 +324,7 @@ else
     private LookupToolForm? _form;
     private IReadOnlyList<string> _formProblems = [];
     private ApiProblem? _formProblem;
-    private LookupToolDefinitionInfo? _definition;
+    private IReadOnlyList<LookupToolDefinitionInfo> _definitions = [];
     private IReadOnlyList<ToolWarning> _formWarnings = [];
 
     protected override async Task OnInitializedAsync()
@@ -486,7 +496,8 @@ else
         var form = LookupToolForm.From(detail, _dictionary, mapped.Fields);
         form.KnowCandidates(mapped.Fields);
         _form = form;
-        _definition = detail.Definition;
+        // One function for each thing the tool does; a server that sends only one definition still shows it.
+        _definitions = detail.Definitions is { Count: > 0 } ? detail.Definitions : detail.Definition is null ? [] : [detail.Definition];
         _formWarnings = detail.Warnings;
         _formProblems = [];
         _formProblem = null;
@@ -553,7 +564,7 @@ else
         _form = null;
         _formProblems = [];
         _formProblem = null;
-        _definition = null;
+        _definitions = [];
         _formWarnings = [];
     }
 

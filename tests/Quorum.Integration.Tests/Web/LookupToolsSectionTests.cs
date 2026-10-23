@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AngleSharp.Dom;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -405,6 +406,40 @@ public sealed class LookupToolsSectionTests : BunitContext
         Assert.Equal("vendor", body.GetProperty("lookups")[0].GetProperty("alias").GetString());
         Assert.Equal(["hr"], body.GetProperty("fixedFilters").GetProperty("department").EnumerateArray().Select(v => v.GetString()));
     }
+
+    [Fact]
+    public void AToolOfSeveralFunctionsShowsEachOneWithItsSizeAndTheTotal()
+    {
+        var script = _api.Respond;
+        _api.Respond = (method, path) =>
+        {
+            if (method != HttpMethod.Get || path != $"/api/tools/lookup/{ToolId}")
+            {
+                return script(method, path);
+            }
+
+            var detail = JsonNode.Parse(JsonSerializer.Serialize(Detail(ToolId, "contracts", [new { lookupId = SupplierLookup, alias = (string?)null }], ContractsOnly, DepartmentOnly, new { })))!;
+            detail["definitions"] = new JsonArray(
+                Function("lookup_values__contracts", 951),
+                Function("lookup_documents__contracts", 681),
+                Function("lookup_count__contracts", 591));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(detail.ToJsonString(), global::System.Text.Encoding.UTF8, "application/json") };
+        };
+        var section = RenderSection();
+
+        Click(section.Find("[data-lookup-tool=contracts]"), "Edit");
+        section.WaitForAssertion(() => Assert.Equal(3, section.FindAll("[data-definition]").Count));
+
+        Assert.Equal(
+            ["lookup_values__contracts", "lookup_documents__contracts", "lookup_count__contracts"],
+            section.FindAll("[data-definition]").Select(d => d.GetAttribute("data-definition")));
+        Assert.Contains("about 951 tokens", section.Find("[data-definition=lookup_values__contracts]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("about 2.2k tokens of the context in all", section.Find("[data-definitions-total]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("3 functions", section.Markup, StringComparison.Ordinal);
+    }
+
+    private static JsonNode Function(string name, int tokens) => JsonNode.Parse(
+        JsonSerializer.Serialize(new { name, description = $"{name}.", inputSchema = new { type = "object", properties = new { }, additionalProperties = false }, estimatedTokens = tokens }))!;
 
     [Fact]
     public void DeletingAToolAsksFirst()
