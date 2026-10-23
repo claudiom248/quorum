@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.10.0](https://github.com/claudiom248/quorum/compare/v0.9.0...v0.10.0) (2026-10-23)
+
+
+### Features
+
+* admin UI for lookup tools and the document_ids switch (spec 007) ([#86](https://github.com/claudiom248/quorum/issues/86)) ([db9de58](https://github.com/claudiom248/quorum/commit/db9de58f21a5c1fcca83e2cf98e101b83d899d3a))
+* admin UI for lookups (spec 007) ([#85](https://github.com/claudiom248/quorum/issues/85)) ([834ed4e](https://github.com/claudiom248/quorum/commit/834ed4e985425001b03c7f1ef0394c38a92ea8c9))
+* document_ids on rag tools (spec 007) ([#84](https://github.com/claudiom248/quorum/issues/84)) ([576b1f6](https://github.com/claudiom248/quorum/commit/576b1f6cebc1814bf6e4da4c953af7560b4d1a40))
+* entity lookups over a collection of entities (spec 007) ([#81](https://github.com/claudiom248/quorum/issues/81)) ([94abb53](https://github.com/claudiom248/quorum/commit/94abb5390bd06607a3906df5c30fc3d5ec4c0443))
+* filter lists of entities live and say which lists can be filtered (spec 007 A1) ([#89](https://github.com/claudiom248/quorum/issues/89)) ([9f22bbc](https://github.com/claudiom248/quorum/commit/9f22bbc18dd8004c4ba826b03b9bb76c57af83e8))
+* live lookup operations (spec 007) ([#83](https://github.com/claudiom248/quorum/issues/83)) ([93b4342](https://github.com/claudiom248/quorum/commit/93b4342a03d670c75550870dd1abec0b6828fdf7))
+* lookup generations, cache and background refresh (spec 007) ([#78](https://github.com/claudiom248/quorum/issues/78)) ([610ef51](https://github.com/claudiom248/quorum/commit/610ef51ca05bbcaa2b69257da260ce4064083f25))
+* lookup storage and mapping members (spec 007) ([#73](https://github.com/claudiom248/quorum/issues/73)) ([3d3881e](https://github.com/claudiom248/quorum/commit/3d3881ee7d4af64d639f8839884e494b042ba4b3))
+* lookup tool over stored lookups (spec 007) ([#79](https://github.com/claudiom248/quorum/issues/79)) ([f41deb6](https://github.com/claudiom248/quorum/commit/f41deb68e876b1e2ca0a151ee02af9ac7d543ecb))
+* manual lookups and the lookup values reader (spec 007) ([#75](https://github.com/claudiom248/quorum/issues/75)) ([4049bc3](https://github.com/claudiom248/quorum/commit/4049bc35a3ab842e6ae8f7e3cd1afbd52344a962))
+* Qdrant lookups computed through the store contract (spec 007) ([#80](https://github.com/claudiom248/quorum/issues/80)) ([f278218](https://github.com/claudiom248/quorum/commit/f27821876da5026ccdec3074c631f008e20bfbd7))
+
+
+### Bug Fixes
+
+* guide the model through the lookup tool definition and results (spec 007) ([#87](https://github.com/claudiom248/quorum/issues/87)) ([cb37b7d](https://github.com/claudiom248/quorum/commit/cb37b7d11395b28fee8f51ca0645b8b8c9d970f5))
+
 ## [0.9.0](https://github.com/claudiom248/quorum/compare/v0.8.0...v0.9.0) (2026-10-22)
 
 
