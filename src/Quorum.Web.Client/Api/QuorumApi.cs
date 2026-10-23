@@ -63,7 +63,14 @@ public sealed partial class QuorumApi(HttpClient http)
         SendAsync(HttpMethod.Put, $"api/tools/{toolId}", new { state, policy }, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<ToolServer>>> ListToolServersAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<ToolServer>>("api/tools/servers", cancellationToken);
+        ListAllAsync<ToolServer>("api/tools/servers", cancellationToken);
+
+    public Task<ApiResult<Page<ToolServer>>> ListToolServersPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<ToolServer>>(PageRoute("api/tools/servers", query, limit, cursor), cancellationToken);
+
+    /// <summary>One page of the tools of a server, filtered by state (<c>status</c>) and search.</summary>
+    public Task<ApiResult<Page<ToolInfo>>> ListToolServerToolsPageAsync(Guid serverId, ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<ToolInfo>>(PageRoute($"api/tools/servers/{serverId}/tools", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<ToolServer>> GetToolServerAsync(Guid id, CancellationToken cancellationToken = default) =>
         GetAsync<ToolServer>($"api/tools/servers/{id}", cancellationToken);

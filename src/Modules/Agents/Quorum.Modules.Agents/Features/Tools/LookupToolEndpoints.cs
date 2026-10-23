@@ -42,7 +42,8 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         tools.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteLookupTool");
     }
 
-    private static async Task<Ok<List<LookupToolListItem>>> ListAsync(
+    private static async Task<Results<Ok<Page<LookupToolListItem>>, ProblemHttpResult>> ListAsync(
+        HttpRequest request,
         AgentsDbContext db,
         ITenantContext tenant,
         IKnowledgeBaseCatalog catalog,
@@ -50,10 +51,35 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
-        var tools = await ToolVisibility.LookupTools(db).AsNoTracking().OrderBy(t => t.Tool.Name).ToListAsync(cancellationToken);
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        var filtered = ScopeFilter.Apply(
+            ToolVisibility.LookupTools(db).AsNoTracking(),
+            query.Value,
+            v => v.Binding.Scope,
+            v => v.Tool.TenantId,
+            v => v.Binding.ScopeTenantIds,
+            v => v.Binding.ScopeAssistantIds,
+            v => v.Tool.State,
+            v => v.Tool.Name,
+            v => v.Tool.Description);
+        if (!filtered.IsSuccess)
+        {
+            return filtered.Error.ToProblem();
+        }
+
+        var page = await filtered.Value.ToPageAsync(query.Value, "lookup-tools", t => t.Tool.Name, t => t.Tool.Id, t => t, cancellationToken);
+        if (!page.IsSuccess)
+        {
+            return page.Error.ToProblem();
+        }
 
         // Lookups and knowledge bases are named as the tenant sees them: one it cannot see is absent, and a shared tool shows none of its binding.
-        var own = tools.Where(t => t.Tool.TenantId == tenantId).ToList();
+        var own = page.Value.Items.Where(t => t.Tool.TenantId == tenantId).ToList();
         var seenLookups = await lookups.ListAsync(new LookupListQuery(tenantId, AssistantId: null, [.. own.SelectMany(t => t.Binding.LookupIds).Distinct()]), cancellationToken);
         var seen = await catalog.DescribeAsync(
             new BindingQuery(
@@ -65,15 +91,15 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         var lookupsById = seenLookups.ToDictionary(l => l.Id);
         var basesById = seen.KnowledgeBases.ToDictionary(k => k.Id);
 
-        return TypedResults.Ok(tools
-            .Select(t => t.Tool.TenantId == tenantId
+        return TypedResults.Ok(new Page<LookupToolListItem>(
+            [.. page.Value.Items.Select(t => t.Tool.TenantId == tenantId
                 ? LookupToolListItem.ForOwner(
                     t,
                     [.. t.Binding.LookupIds.Where(lookupsById.ContainsKey).Select(id => new NamedId(id, lookupsById[id].Name))],
                     [.. t.Binding.KnowledgeBaseIds.Where(basesById.ContainsKey).Select(id => new NamedId(id, basesById[id].Name))],
                     LookupToolWarnings.Evaluate(t.Binding, seenLookups, seen))
-                : LookupToolListItem.ForOther(t))
-            .ToList());
+                : LookupToolListItem.ForOther(t))],
+            page.Value.Cursor));
     }
 
     private static async Task<Results<Ok<LookupToolDetail>, ProblemHttpResult>> GetAsync(

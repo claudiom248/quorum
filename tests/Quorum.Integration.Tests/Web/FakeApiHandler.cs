@@ -82,7 +82,7 @@ internal sealed class FakeApiHandler : HttpMessageHandler
     }
 
     private static readonly HashSet<string> ListRoutes =
-        ["/api/knowledge-bases", "/api/knowledge-bases/dictionary", "/api/knowledge-bases/manual-lookups"];
+        ["/api/knowledge-bases", "/api/knowledge-bases/dictionary", "/api/knowledge-bases/manual-lookups", "/api/tools/servers", "/api/tools/rag", "/api/tools/lookup"];
 
     /// <summary>
     /// The scripts below answer these lists with a bare array and a scope written as text: the server now sends a page and a scope

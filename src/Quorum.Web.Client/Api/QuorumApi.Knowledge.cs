@@ -50,7 +50,10 @@ public sealed partial class QuorumApi
         SendAsync<TestSearchResult>(HttpMethod.Post, $"api/knowledge-bases/{id}/search", request, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<RagToolListItem>>> ListRagToolsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<RagToolListItem>>("api/tools/rag", cancellationToken);
+        ListAllAsync<RagToolListItem>("api/tools/rag", cancellationToken);
+
+    public Task<ApiResult<Page<RagToolListItem>>> ListRagToolsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<RagToolListItem>>(PageRoute("api/tools/rag", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<RagToolDetail>> GetRagToolAsync(Guid id, CancellationToken cancellationToken = default) =>
         GetAsync<RagToolDetail>($"api/tools/rag/{id}", cancellationToken);
@@ -67,7 +70,10 @@ public sealed partial class QuorumApi
     // Lookup tools (spec 007 D-12).
 
     public Task<ApiResult<List<LookupToolListItem>>> ListLookupToolsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<LookupToolListItem>>("api/tools/lookup", cancellationToken);
+        ListAllAsync<LookupToolListItem>("api/tools/lookup", cancellationToken);
+
+    public Task<ApiResult<Page<LookupToolListItem>>> ListLookupToolsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<LookupToolListItem>>(PageRoute("api/tools/lookup", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<LookupToolDetail>> GetLookupToolAsync(Guid id, CancellationToken cancellationToken = default) =>
         GetAsync<LookupToolDetail>($"api/tools/lookup/{id}", cancellationToken);

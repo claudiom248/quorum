@@ -133,7 +133,10 @@ public sealed record ToolInfo(
     string Description,
     string State,
     string Policy,
-    JsonElement? Annotations);
+    JsonElement? Annotations,
+    Guid? ServerId = null,
+    ToolScope? ServerScope = null,
+    bool Shared = false);
 
 /// <param name="TenantIds">Tenants besides the owner that see the server (scope <c>Tenant</c>).</param>
 /// <param name="AssistantIds">Assistants that may use the server (scope <c>Assistant</c>).</param>

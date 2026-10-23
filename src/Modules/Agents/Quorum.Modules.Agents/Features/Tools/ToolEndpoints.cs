@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Shared.Results;
 using Quorum.Shared.Endpoints;
 
 namespace Quorum.Modules.Agents.Features.Tools;
@@ -24,14 +25,31 @@ internal sealed class ToolEndpoints : IEndpointGroup
         tools.MapPut("/{id:guid}", UpdateAsync).WithName("UpdateTool");
     }
 
-    private static async Task<Ok<List<ToolResponse>>> ListAsync(AgentsDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<List<ToolResponse>>, ProblemHttpResult>> ListAsync(HttpRequest request, AgentsDbContext db, CancellationToken cancellationToken)
     {
-        var tools = await ToolVisibility.Tools(db)
-            .AsNoTracking()
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        // The tools are few and kept whole: only the state and the search narrow them, so a scope is refused instead of ignored.
+        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Assistant.Count + query.Value.Type.Count > 0)
+        {
+            return ScopeFilter.NotForTools.ToProblem();
+        }
+
+        var statused = ScopeFilter.Status(ToolVisibility.Tools(db).AsNoTracking(), query.Value, t => t.Tool.State);
+        if (!statused.IsSuccess)
+        {
+            return statused.Error.ToProblem();
+        }
+
+        var tools = await ScopeFilter.Search(statused.Value, query.Value, t => t.Tool.Name, t => t.Tool.Description)
             .OrderBy(t => t.Tool.Origin).ThenBy(t => t.ServerName).ThenBy(t => t.Tool.Name)
             .ToListAsync(cancellationToken);
 
-        return TypedResults.Ok(tools.Select(t => ToolResponse.From(t.Tool, t.ServerName)).ToList());
+        return TypedResults.Ok(tools.Select(t => ToolResponse.From(t.Tool, t.Server, db.CurrentTenantId)).ToList());
     }
 
     /// <summary>A tool pending review is left by enabling or disabling it; nothing sets that state from outside.</summary>
@@ -74,6 +92,9 @@ internal sealed class ToolEndpoints : IEndpointGroup
 }
 
 /// <param name="Annotations">What the server claims about the tool (<c>readOnlyHint</c>...): information for the admin, it never changes the policy.</param>
+/// <param name="ServerId">Only for a tool of an MCP server.</param>
+/// <param name="ServerScope">The scope of that server, for the badge: a tool is shared the way its server is.</param>
+/// <param name="Shared"><see langword="true"/> for a tool of another tenant's server made visible by its scope: read-only here.</param>
 internal sealed record ToolResponse(
     Guid Id,
     string Origin,
@@ -82,17 +103,23 @@ internal sealed record ToolResponse(
     string Description,
     string State,
     string Policy,
-    JsonElement? Annotations)
+    JsonElement? Annotations,
+    Guid? ServerId = null,
+    ScopeResponse? ServerScope = null,
+    bool Shared = false)
 {
-    public static ToolResponse From(Tool tool, string? serverName) => new(
+    public static ToolResponse From(Tool tool, McpServer? server, Guid? currentTenantId) => new(
         tool.Id,
         tool.Origin.ToString(),
-        serverName,
+        server?.Name,
         tool.Name,
         tool.Description,
         tool.State.ToString(),
         tool.Policy.ToString(),
-        Json.Parse(tool.Annotations));
+        Json.Parse(tool.Annotations),
+        tool.ServerId,
+        server is null ? null : new ScopeResponse(server.Scope.ToString(), tool.TenantId == currentTenantId ? server.ScopeTenantIds : [], tool.TenantId == currentTenantId ? server.ScopeAssistantIds : []),
+        tool.TenantId != currentTenantId);
 }
 
 internal sealed record UpdateToolRequest(string? State, string? Policy);
