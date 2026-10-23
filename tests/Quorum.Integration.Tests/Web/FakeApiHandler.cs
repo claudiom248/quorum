@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json.Nodes;
 
 namespace Quorum.Integration.Tests.Web;
 
@@ -74,6 +75,37 @@ internal sealed class FakeApiHandler : HttpMessageHandler
             _queries.Add(request.RequestUri.Query);
         }
 
-        return Respond(request.Method, path);
+        var response = Respond(request.Method, path);
+        return request.Method == HttpMethod.Get && ListRoutes.Contains(path) && response.IsSuccessStatusCode
+            ? await AsPageAsync(response, cancellationToken)
+            : response;
+    }
+
+    private static readonly HashSet<string> ListRoutes =
+        ["/api/knowledge-bases", "/api/knowledge-bases/dictionary", "/api/knowledge-bases/manual-lookups"];
+
+    /// <summary>
+    /// The scripts below answer these lists with a bare array and a scope written as text: the server now sends a page and a scope
+    /// object, so the stand-in turns one into the other and the scripts keep saying only what a test is about.
+    /// </summary>
+    private static async Task<HttpResponseMessage> AsPageAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var items = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        if (items is not JsonArray array)
+        {
+            return response;
+        }
+
+        foreach (var item in array.OfType<JsonObject>())
+        {
+            if (item["scope"] is JsonValue scope && scope.TryGetValue<string>(out var kind))
+            {
+                var tenants = item["scopeTenantIds"]?.DeepClone() ?? new JsonArray();
+                item.Remove("scopeTenantIds");
+                item["scope"] = new JsonObject { ["kind"] = kind, ["tenantIds"] = tenants, ["assistantIds"] = new JsonArray() };
+            }
+        }
+
+        return Json(new JsonObject { ["items"] = array, ["cursor"] = null }, response.StatusCode);
     }
 }

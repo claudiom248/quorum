@@ -47,7 +47,7 @@
                 <div class="tool-row-head">
                     <span class="tool-name">@KnowledgeAdminView.FieldLabel(field, _fields)</span>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@KnowledgeAdminView.TypeLabel(field.Type)</MudChip>
-                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@KnowledgeAdminView.DictionaryScopeLabel(field.Scope)</MudChip>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@KnowledgeAdminView.DictionaryScopeLabel(field.Scope.Kind)</MudChip>
                     @if (field.Shared)
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Shared with you</MudChip>

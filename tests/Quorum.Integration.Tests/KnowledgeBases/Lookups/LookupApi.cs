@@ -52,7 +52,7 @@ internal static class LookupApi
     }
 
     public static async Task<IReadOnlyList<ManualLookupBody>> ListManualAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<ManualLookupBody>>(ManualLookups, Ct))!;
+        (await client.GetFromJsonAsync<KnowledgeBaseApi.PageBody<ManualLookupBody>>(ManualLookups, Ct))!.Items;
 
     public static async Task<ValuesBody> ReadValuesOkAsync(HttpClient client, Guid lookupId, string? query = null)
     {
@@ -228,7 +228,7 @@ internal static class LookupApi
 
     public sealed record CreatedBody(Guid Id);
 
-    public sealed record ManualLookupBody(Guid Id, string Name, string? Description, string Scope, int ValueCount, bool Shared, Guid[]? ScopeTenantIds);
+    public sealed record ManualLookupBody(Guid Id, string Name, string? Description, KnowledgeBaseApi.ScopeBody Scope, int ValueCount, bool Shared);
 
     public sealed record ValueBody(string Value, string? Label, string[]? Synonyms, int? Count, JsonElement? Attributes);
 

@@ -166,3 +166,6 @@ public sealed record ToolServerTest(bool Reachable, IReadOnlyList<TestedTool> To
 public sealed record CreatedToolServer(Guid Id, string Status, string? Warning, IReadOnlyList<ToolInfo> Tools);
 
 public sealed record ToolRefresh(string Status, IReadOnlyList<string> Added, IReadOnlyList<string> Changed, IReadOnlyList<string> Removed);
+
+/// <summary>One page of a list. <paramref name="Cursor"/> is set when there is a next one.</summary>
+public sealed record Page<T>(IReadOnlyList<T> Items, string? Cursor);

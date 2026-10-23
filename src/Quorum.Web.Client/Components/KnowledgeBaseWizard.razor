@@ -174,7 +174,7 @@
                         <div class="tool-hint">
                             @if (review.Existing is { } existing)
                             {
-                                <span>Existing field@(existing.Cluster is null ? string.Empty : $" in cluster {existing.Cluster}"): @KnowledgeAdminView.TypeLabel(existing.Type), @KnowledgeAdminView.DictionaryScopeLabel(existing.Scope).ToLowerInvariant()</span>
+                                <span>Existing field@(existing.Cluster is null ? string.Empty : $" in cluster {existing.Cluster}"): @KnowledgeAdminView.TypeLabel(existing.Type), @KnowledgeAdminView.DictionaryScopeLabel(existing.Scope.Kind).ToLowerInvariant()</span>
                             }
                             else if (row.Name.Trim().Length > 0)
                             {

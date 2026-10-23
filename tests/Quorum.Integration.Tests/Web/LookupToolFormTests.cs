@@ -14,8 +14,8 @@ public sealed class LookupToolFormTests
 
     private static readonly IReadOnlyList<DictionaryField> Dictionary =
     [
-        new(DepartmentId, "department", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0),
-        new(YearId, "year", DictionaryFieldTypes.Number, null, ScopeKinds.Tenant, 0),
+        new(DepartmentId, "department", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0),
+        new(YearId, "year", DictionaryFieldTypes.Number, null, new ToolScope(ScopeKinds.Tenant, [], []), 0),
     ];
 
     private static LookupChoice Choice(string name, Guid? knowledgeBase = null) =>
@@ -174,14 +174,14 @@ public sealed class LookupToolFormTests
     [Fact]
     public void TheChoicesNameEachListByWhereItComesFromAndLeaveOutSharedKnowledgeBases()
     {
-        var own = new KnowledgeBaseListItem(BaseId, "contracts", "d", "Available", false, "Qdrant", "Tenant", null, null);
+        var own = new KnowledgeBaseListItem(BaseId, "contracts", "d", "Available", false, "Qdrant", new ToolScope("Tenant", [], []), null, null);
         var shared = new KnowledgeBaseListItem(OtherBaseId, "handbook", "d", "Available", true, null, null, null, null);
         var lookups = new Dictionary<Guid, IReadOnlyList<KnowledgeBaseLookupInfo>>
         {
             [BaseId] = [new(Guid.NewGuid(), "supplier", LookupKinds.Computed, "supplier", "documents", []), new(Guid.NewGuid(), "contracts", LookupKinds.Entity, null, null, [])],
             [OtherBaseId] = [new(Guid.NewGuid(), "secret", LookupKinds.Computed, "secret", "documents", [])],
         };
-        var manual = new[] { new ManualLookupInfo(Guid.NewGuid(), "nationality", null, ScopeKinds.Global, 3, true, null) };
+        var manual = new[] { new ManualLookupInfo(Guid.NewGuid(), "nationality", null, new ToolScope(ScopeKinds.Global, [], []), 3, true) };
 
         var choices = LookupToolView.Choices([own, shared], lookups, manual);
 

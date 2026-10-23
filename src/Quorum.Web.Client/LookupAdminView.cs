@@ -110,11 +110,11 @@ public static class LookupAdminView
     {
         ArgumentNullException.ThrowIfNull(lookup);
 
-        if (lookup.Scope == ScopeKinds.Global)
+        if (lookup.Scope.Kind == ScopeKinds.Global)
         {
             return "every tenant";
         }
 
-        return lookup.ScopeTenantIds is { Count: > 0 } tenants ? $"this tenant and {tenants.Count} other(s)" : "this tenant";
+        return lookup.Scope.TenantIds is { Count: > 0 } tenants ? $"this tenant and {tenants.Count} other(s)" : "this tenant";
     }
 }

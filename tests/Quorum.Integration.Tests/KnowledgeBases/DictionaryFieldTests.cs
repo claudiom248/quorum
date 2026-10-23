@@ -24,7 +24,7 @@ public sealed class DictionaryFieldTests(PostgresFixture postgres)
         Assert.Equal("year", field.Name);
         Assert.Equal("Number", field.Type);
         Assert.Equal("Publication year", field.Description);
-        Assert.Equal("Tenant", field.Scope);
+        Assert.Equal("Tenant", field.Scope.Kind);
         Assert.Equal(0, field.UsedByCount);
     }
 
@@ -129,7 +129,7 @@ public sealed class DictionaryFieldTests(PostgresFixture postgres)
         Assert.Equal("knowledge_base.field_name_taken", await DictionaryApi.ProblemCodeAsync(response));
         var listed = Assert.Single(await DictionaryApi.ListAsync(admin));
         Assert.Equal(shared, listed.Id);
-        Assert.Equal("Global", listed.Scope);
+        Assert.Equal("Global", listed.Scope.Kind);
     }
 
     [Fact] // a Global field of another tenant can be used, and says it is not the caller's to change

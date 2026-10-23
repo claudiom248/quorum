@@ -32,7 +32,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
 
         Assert.True((await api.UpdateDictionaryFieldAsync(created.Value.Id, "Where it was sold", Ct)).IsSuccess);
         var listed = (await api.ListDictionaryAsync(Ct)).Value.Single(f => f.Id == created.Value.Id);
-        Assert.Equal(("region", DictionaryFieldTypes.Text, "Where it was sold", ScopeKinds.Tenant, 0), (listed.Name, listed.Type, listed.Description, listed.Scope, listed.UsedByCount));
+        Assert.Equal(("region", DictionaryFieldTypes.Text, "Where it was sold", ScopeKinds.Tenant, 0), (listed.Name, listed.Type, listed.Description, listed.Scope.Kind, listed.UsedByCount));
 
         Assert.True((await api.DeleteDictionaryFieldAsync(created.Value.Id, Ct)).IsSuccess);
         Assert.Empty((await api.ListDictionaryAsync(Ct)).Value);
