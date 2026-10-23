@@ -17,6 +17,7 @@ public static class SampleCollections
     public const string Empty = "sample_empty";
     public const string Lookups = "sample_lookups";
     public const string LookupsUnindexed = "sample_lookups_unindexed";
+    public const string Suppliers = "sample_suppliers";
 
     /// <summary>The name of the vector to choose in <see cref="NamedVectors"/>: its size matches <see cref="DeterministicEmbedding.DefaultDimensions"/>.</summary>
     public const string DenseVectorName = "dense";
@@ -49,6 +50,7 @@ public static class SampleCollections
         CreateEmpty(prefix + Empty),
         CreateLookups(prefix + Lookups),
         CreateLookupsUnindexed(prefix + LookupsUnindexed),
+        CreateSuppliers(prefix + Suppliers),
     ];
 
     /// <summary>Flat payload, indexed filter fields: the straightforward case.</summary>
@@ -141,6 +143,43 @@ public static class SampleCollections
         [],
         ContractPoints(),
         SampleSchemas.Lookups);
+
+    /// <summary>
+    /// A collection of entities for the entity lookups of spec 007 (D-4): one point per supplier, with its name, country, the number of
+    /// contracts and the date it became a supplier. The text is a description, since a mapping always needs the text role.
+    /// </summary>
+    public static SampleDataset CreateSuppliers(string name = Suppliers) => new(
+        name,
+        "One point per supplier (name, country, contract_count, supplier_since), as a data owner keeps a collection of entities.",
+        [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
+        [new("country", "keyword"), new("contract_count", "integer"), new("supplier_since", "datetime")],
+        SupplierRows().Select(SupplierPoint).ToList(),
+        SampleSchemas.Suppliers);
+
+    private static SamplePoint SupplierPoint((ulong Id, string Name, string Country, int Contracts, string Since) supplier)
+    {
+        var text = $"{supplier.Name} supplies the company from {supplier.Country}.";
+        return new SamplePoint(
+            supplier.Id,
+            text,
+            new JsonObject
+            {
+                ["text"] = text,
+                ["name"] = supplier.Name,
+                ["country"] = supplier.Country,
+                ["contract_count"] = supplier.Contracts,
+                ["supplier_since"] = supplier.Since,
+            });
+    }
+
+    // Contract counts are all different, so an order by them is the same for every consumer.
+    private static IEnumerable<(ulong Id, string Name, string Country, int Contracts, string Since)> SupplierRows() =>
+    [
+        (1, "Acme", "IT", 12, "2019-03-01"),
+        (2, "Globex", "US", 5, "2021-06-15"),
+        (3, "Initech", "DE", 1, "2023-01-10"),
+        (4, "Hooli", "US", 8, "2020-09-01"),
+    ];
 
     private static List<SamplePoint> ContractPoints()
     {

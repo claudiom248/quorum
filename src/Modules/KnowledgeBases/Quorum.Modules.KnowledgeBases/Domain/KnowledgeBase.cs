@@ -21,7 +21,8 @@ internal enum KnowledgeBaseScope
 
 /// <summary>A metadata field of the payload bound to a dictionary field.</summary>
 /// <param name="Listable">The administrator wants the distinct values of this field as a lookup (spec 007 D-3). Mappings saved before read as <see langword="false"/>.</param>
-internal sealed record MappedField(string Path, Guid DictionaryFieldId, bool Listable = false);
+/// <param name="EntityAttribute">The field is one of the attributes the entity lookup of the knowledge base lists beside the name (spec 007 D-4). Mappings saved before read as <see langword="false"/>.</param>
+internal sealed record MappedField(string Path, Guid DictionaryFieldId, bool Listable = false, bool EntityAttribute = false);
 
 /// <summary>Which payload paths carry the chunk's text and its source (roles), and which are metadata fields (D-9). Stored with the knowledge base.</summary>
 internal sealed class KnowledgeBaseMapping

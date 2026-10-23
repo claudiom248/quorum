@@ -42,6 +42,9 @@ the `summary` vector) stay deterministic. The walk-through is in [docs/knowledge
 | `sample_named_vectors` | Two named vectors, `dense` (64) and `summary` (32): the vector name must be chosen |
 | `sample_other_vector_size` | 128-dimension vectors, as if ingested with a different model: the verification warns |
 | `sample_empty` | Ready but with no points |
+| `sample_lookups` | Contracts with `supplier`, `department`, `nationality`, `audience` (list), `is_first_chunk` and `chunk_index`, all indexed: computed lookups (spec 007) |
+| `sample_lookups_unindexed` | The same contracts with no payload index: a lookup fails and names the field that needs one |
+| `sample_suppliers` | One point per supplier (`name`, `country`, `contract_count`, `supplier_since`): entity lookups, with `name` as the entity name (spec 007) |
 
 `dotnet run --project tools/Quorum.SampleKnowledgeBase -- --schema flat` (or `nested`) prints the plain JSON Schema of the
 payload, to paste in the registration.

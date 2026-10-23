@@ -81,7 +81,7 @@ internal static class MappingFieldResolver
                 return MappingValidation.InvalidListableField(path, field.Type);
             }
 
-            result.Fields.Add(new MappedField(path, field.Id, request.Listable));
+            result.Fields.Add(new MappedField(path, field.Id, request.Listable, request.EntityAttribute));
             result.Types.Add((path, field.Type));
         }
 

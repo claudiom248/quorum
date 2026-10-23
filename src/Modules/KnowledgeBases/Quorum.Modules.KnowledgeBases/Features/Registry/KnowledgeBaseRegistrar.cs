@@ -299,6 +299,11 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return pathProblem;
         }
 
+        if (MappingValidation.EntityAttributeProblem(entityName.Value, fields) is { } attributeProblem)
+        {
+            return attributeProblem;
+        }
+
         if (request.LookupRefreshHours is < KnowledgeBase.MinLookupRefreshHours or > KnowledgeBase.MaxLookupRefreshHours)
         {
             return Error.Validation(
@@ -308,11 +313,11 @@ internal sealed partial class KnowledgeBaseRegistrar(
 
         var (kind, tenantIds, assistantIds) = scope.Value;
         var (adapter, connection, model) = validated.Value;
-        if (fields.Any(f => f.Listable) && adapter.Capability<ILookupsCapability>() is null)
+        if ((fields.Any(f => f.Listable) || entityName.Value is not null) && adapter.Capability<ILookupsCapability>() is null)
         {
             return Error.Validation(
                 "knowledge_base.lookups_not_supported",
-                $"Knowledge bases of kind {adapter.Kind} cannot list the values of a field: remove the listable marks from the mapping.");
+                $"Knowledge bases of kind {adapter.Kind} cannot list the values of a field or their entities: remove the listable marks and the entity name from the mapping.");
         }
 
         return new BasicInput(

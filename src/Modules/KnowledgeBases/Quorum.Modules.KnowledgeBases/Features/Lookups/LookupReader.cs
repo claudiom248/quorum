@@ -12,11 +12,23 @@ internal enum LookupSort
     Count,
 
     Name,
+
+    /// <summary>An entity lookup by one of its attributes (spec 007 D-12); <see cref="LookupPageRequest.Attribute"/> says which.</summary>
+    Attribute,
+}
+
+/// <param name="Name">The key of the attribute in the stored values.</param>
+/// <param name="Descending">Largest or latest first. A value without the attribute comes last either way.</param>
+internal sealed record LookupAttributeSort(string Name, bool Descending)
+{
+    /// <summary>What a cursor remembers of the order, so a cursor of one order is refused in another.</summary>
+    public string Key => Descending ? "-" + Name : Name;
 }
 
 /// <param name="Search">A case-insensitive substring of the value, its label or one of its synonyms.</param>
 /// <param name="Cursor">What the previous page returned.</param>
-internal sealed record LookupPageRequest(string? Search, LookupSort Sort, int Limit, string? Cursor);
+/// <param name="Attribute">With <see cref="LookupSort.Attribute"/>: the attribute to order by.</param>
+internal sealed record LookupPageRequest(string? Search, LookupSort Sort, int Limit, string? Cursor, LookupAttributeSort? Attribute = null);
 
 internal sealed record LookupPageValue(string Value, string? Label, IReadOnlyList<string> Synonyms, int? Count, string? Attributes);
 
@@ -58,6 +70,12 @@ internal static class LookupReader
         }
 
         var generation = slice.CurrentGeneration;
+        if (request.Sort == LookupSort.Attribute)
+        {
+            // The order is by a value inside the JSON of each row, so the generation (at most the ceiling of values) is ordered in memory, as the cache does.
+            return LookupPager.Page(await LookupCache.LoadAsync(db, slice.Id, generation, cancellationToken), slice, request);
+        }
+
         var values = db.LookupValues.IgnoreQueryFilters().AsNoTracking().Where(v => v.SliceId == slice.Id && v.Generation == generation);
         if (!string.IsNullOrWhiteSpace(request.Search))
         {

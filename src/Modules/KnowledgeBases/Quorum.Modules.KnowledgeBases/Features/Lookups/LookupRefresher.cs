@@ -151,7 +151,9 @@ internal sealed partial class LookupRefresher(
             await store.DiscardUnpublishedAsync(sliceId, budget.Token);
 
             var computer = scope.ServiceProvider.GetRequiredService<ILookupComputer>();
-            var computation = await computer.ComputeAsync(new LookupComputationRequest(lookup, slice, knowledgeBase, Options.MaxValuesPerLookup), budget.Token);
+            var attributeNames = lookup.Kind == LookupKind.Entity ? await AttributeNamesAsync(db, knowledgeBase, budget.Token) : null;
+            var computation = await computer.ComputeAsync(
+                new LookupComputationRequest(lookup, slice, knowledgeBase, Options.MaxValuesPerLookup, attributeNames), budget.Token);
             var (ranked, skipped, truncated) = Rank(lookup, computation, Options.MaxValuesPerLookup);
 
             var generation = slice.CurrentGeneration + 1;
@@ -188,6 +190,14 @@ internal sealed partial class LookupRefresher(
                 await ReleaseAsync(store, sliceId);
             }
         }
+    }
+
+    /// <summary>How the attributes of an entity lookup are called in its values: by the name of their dictionary field, read with the tenant filter off.</summary>
+    private static async Task<Dictionary<Guid, string>> AttributeNamesAsync(KnowledgeBasesDbContext db, KnowledgeBase knowledgeBase, CancellationToken cancellationToken)
+    {
+        var fieldIds = knowledgeBase.Mapping.Fields.Where(f => f.EntityAttribute).Select(f => f.DictionaryFieldId).ToList();
+        var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => fieldIds.Contains(f.Id)).ToListAsync(cancellationToken);
+        return EntityAttributes.Names(fields);
     }
 
     private static bool IsFailure(Exception exception, CancellationToken stoppingToken) =>
