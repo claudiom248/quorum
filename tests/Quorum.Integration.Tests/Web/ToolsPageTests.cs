@@ -35,8 +35,8 @@ public sealed class ToolsPageTests : BunitContext
 
         _api.Respond = (method, path) =>
         {
-            // The rag tools section of the page loads its own lists: none here.
-            if (method == HttpMethod.Get && path is "/api/tools/rag" or "/api/knowledge-bases" or "/api/knowledge-bases/dictionary")
+            // The rag and lookup tools sections of the page load their own lists: none here.
+            if (method == HttpMethod.Get && path is "/api/tools/rag" or "/api/tools/lookup" or "/api/knowledge-bases" or "/api/knowledge-bases/dictionary" or "/api/knowledge-bases/manual-lookups")
             {
                 return FakeApiHandler.Json(Array.Empty<object>());
             }
