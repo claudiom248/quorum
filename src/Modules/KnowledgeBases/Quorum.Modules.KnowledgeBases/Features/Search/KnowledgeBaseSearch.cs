@@ -26,6 +26,12 @@ internal sealed class KnowledgeBaseSearch(KnowledgeBasesDbContext db, ITenantCon
             return invalid;
         }
 
+        var documentIds = SearchRules.DocumentIds(request.DocumentIds);
+        if (!documentIds.IsSuccess)
+        {
+            return documentIds.Error;
+        }
+
         var none = Error.NotFound(KnowledgeBaseSearchErrors.NotFound, "None of the knowledge bases can be searched.");
         if (tenant.TenantId is not { } tenantId || tenantId != request.TenantId || request.KnowledgeBaseIds.Count == 0)
         {
@@ -41,7 +47,7 @@ internal sealed class KnowledgeBaseSearch(KnowledgeBasesDbContext db, ITenantCon
 
         return await engine.SearchAsync(
             bases,
-            new SearchInput(request.Query.Trim(), request.Filters, request.FixedFilters, request.TopK, request.ScoreThreshold, request.MaxResultCharacters, request.FilterFields, request.FixedFilterFieldIds),
+            new SearchInput(request.Query.Trim(), request.Filters, request.FixedFilters, request.TopK, request.ScoreThreshold, request.MaxResultCharacters, request.FilterFields, request.FixedFilterFieldIds, documentIds.Value),
             cancellationToken);
     }
 }
@@ -49,6 +55,25 @@ internal sealed class KnowledgeBaseSearch(KnowledgeBasesDbContext db, ITenantCon
 /// <summary>What every way into a search checks about the query and the limits.</summary>
 internal static class SearchRules
 {
+    /// <summary>The document ids of a request, trimmed and without repeats; <see langword="null"/> when there is no restriction.</summary>
+    public static Result<IReadOnlyList<string>?> DocumentIds(IReadOnlyList<string>? ids)
+    {
+        if (ids is not { Count: > 0 })
+        {
+            return Result<IReadOnlyList<string>?>.Success(null);
+        }
+
+        if (ids.Any(string.IsNullOrWhiteSpace))
+        {
+            return Error.Validation(KnowledgeBaseSearchErrors.InvalidRequest, "Every document id must be a non-empty text.");
+        }
+
+        var distinct = ids.Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        return distinct.Count > KnowledgeBaseSearchRequest.MaxDocumentIds
+            ? Error.Validation(KnowledgeBaseSearchErrors.InvalidRequest, $"At most {KnowledgeBaseSearchRequest.MaxDocumentIds} document ids can be given.")
+            : Result<IReadOnlyList<string>?>.Success(distinct);
+    }
+
     public static Error? Validate(string? query, int topK, double? scoreThreshold, int? maxResultCharacters)
     {
         if (string.IsNullOrWhiteSpace(query))

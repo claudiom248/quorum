@@ -30,6 +30,7 @@ internal sealed class RagQuorumTool(ActiveTool descriptor, RagRuntime runtime) :
 
         var filters = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         string? knowledgeBase = null;
+        List<string>? documentIds = null;
         if (arguments.ValueKind == JsonValueKind.Object)
         {
             foreach (var property in arguments.EnumerateObject())
@@ -40,6 +41,9 @@ internal sealed class RagQuorumTool(ActiveTool descriptor, RagRuntime runtime) :
                         break;
                     case RagToolDefinition.KnowledgeBaseParameter:
                         knowledgeBase = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : null;
+                        break;
+                    case RagToolDefinition.DocumentIdsParameter when binding.AllowDocumentIds:
+                        documentIds = ReadDocumentIds(property.Value);
                         break;
                     default:
                         filters[property.Name] = property.Value.Clone();
@@ -62,6 +66,7 @@ internal sealed class RagQuorumTool(ActiveTool descriptor, RagRuntime runtime) :
                 FixedFilters = fixedFilters.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone(), StringComparer.Ordinal),
                 FilterFields = binding.FilterFields,
                 FixedFilterFieldIds = binding.FixedFilterFieldIds,
+                DocumentIds = documentIds,
                 TopK = binding.TopK,
                 ScoreThreshold = binding.ScoreThreshold,
                 MaxResultCharacters = RagTool.FitResultSize(binding.MaxResultCharacters, binding.TopK, runtime.ResultLimit),
@@ -70,8 +75,27 @@ internal sealed class RagQuorumTool(ActiveTool descriptor, RagRuntime runtime) :
 
         // The descriptions of the errors of the search are written for the model and carry no address, key or internal detail.
         return result.IsSuccess
-            ? RagResultFormat.Render(result.Value, runtime.Numbering)
+            ? RagResultFormat.Render(result.Value, runtime.Numbering, documentIdsUsed: documentIds is { Count: > 0 })
             : throw new ToolFailedException(result.Error.Description);
+    }
+
+    /// <summary>An empty or null list is no restriction; anything but a list of texts, or more ids than a search takes, is an error the model can correct.</summary>
+    private static List<string>? ReadDocumentIds(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Array || value.EnumerateArray().Any(id => id.ValueKind != JsonValueKind.String))
+        {
+            throw new ToolFailedException($"'{RagToolDefinition.DocumentIdsParameter}' must be a list of document ids, as texts.");
+        }
+
+        var ids = value.EnumerateArray().Select(id => id.GetString()!).ToList();
+        return ids.Distinct(StringComparer.Ordinal).Count() > KnowledgeBaseSearchRequest.MaxDocumentIds
+            ? throw new ToolFailedException($"'{RagToolDefinition.DocumentIdsParameter}' can have up to {KnowledgeBaseSearchRequest.MaxDocumentIds} document ids; search in fewer documents at a time.")
+            : ids;
     }
 
     private static IReadOnlyList<Guid> Targets(RagBinding binding, string? knowledgeBase)
@@ -102,7 +126,8 @@ internal static class RagResultFormat
         "Cite what you use by its number, like [1].";
 
     /// <param name="delimiter">Random for each call; only tests give one, to prove that a chunk containing it cannot close its block.</param>
-    public static ToolOutput Render(KnowledgeBaseSearchResponse response, SourceNumbering numbering, string? delimiter = null)
+    /// <param name="documentIdsUsed">The call restricted the search to documents, which a knowledge base without a document id cannot apply.</param>
+    public static ToolOutput Render(KnowledgeBaseSearchResponse response, SourceNumbering numbering, string? delimiter = null, bool documentIdsUsed = false)
     {
         ArgumentNullException.ThrowIfNull(response);
         ArgumentNullException.ThrowIfNull(numbering);
@@ -139,15 +164,17 @@ internal static class RagResultFormat
                 : "Nothing was found for this search.");
         }
 
-        AppendNotes(text, response);
+        AppendNotes(text, response, documentIdsUsed);
         return new ToolOutput(text.ToString(), sources, () => numbering.Release(taken), distinct.Count);
     }
 
-    private static void AppendNotes(StringBuilder text, KnowledgeBaseSearchResponse response)
+    private static void AppendNotes(StringBuilder text, KnowledgeBaseSearchResponse response, bool documentIdsUsed)
     {
         if (response.SkippedKnowledgeBases.Count > 0)
         {
-            text.Append("\n\nNot searched, because they have no field for the filters used: ")
+            text.Append("\n\nNot searched, because they have no field for the filters")
+                .Append(documentIdsUsed ? " or the document ids" : string.Empty)
+                .Append(" used: ")
                 .Append(string.Join(", ", response.SkippedKnowledgeBases.Select(Clean)))
                 .Append('.');
         }

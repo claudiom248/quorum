@@ -42,6 +42,15 @@ public sealed record KnowledgeBaseSearchRequest
     /// <summary>The fields the binding's fixed filters name, by id. A fixed filter that is not an alias is read among these, so narrowing the search to some knowledge bases does not change which field it means.</summary>
     public IReadOnlyList<Guid>? FixedFilterFieldIds { get; init; }
 
+    /// <summary>
+    /// Restricts the search to the chunks of these documents (spec 007 D-14), by the value of the <c>documentId</c> role. It is combined
+    /// in AND with every filter and so can only narrow the search. A knowledge base that does not map the role is skipped and named.
+    /// <see langword="null"/> or empty is no restriction; there can be at most <see cref="MaxDocumentIds"/>.
+    /// </summary>
+    public IReadOnlyList<string>? DocumentIds { get; init; }
+
+    public const int MaxDocumentIds = 50;
+
     /// <summary>Chunks to return, 1 to 20.</summary>
     public int TopK { get; init; } = 5;
 

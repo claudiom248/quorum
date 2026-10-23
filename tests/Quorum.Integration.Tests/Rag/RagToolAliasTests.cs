@@ -69,7 +69,7 @@ public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qd
 
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [f.HrBase, f.FinanceBase], exposedFields: Exposed(f, "year_hr", "year_finance")));
 
-        Assert.Equal(["knowledge_base", "query", "year_finance_max", "year_finance_min", "year_hr"], Sorted(created.Definition!.Parameters));
+        Assert.Equal(["document_ids", "knowledge_base", "query", "year_finance_max", "year_finance_min", "year_hr"], Sorted(created.Definition!.Parameters));
         Assert.Equal("array", created.Definition.Parameter("year_hr").GetProperty("type").GetString());
         Assert.Equal("number", created.Definition.Parameter("year_finance_min").GetProperty("type").GetString());
         Assert.StartsWith("year (hr)", created.Definition.Parameter("year_hr").GetProperty("description").GetString(), StringComparison.Ordinal);
@@ -146,7 +146,7 @@ public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qd
 
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "finance", knowledgeBaseIds: [f.FinanceBase], exposedFields: [new { fieldId = f.FinanceYear }]));
 
-        Assert.Equal(["query", "year_max", "year_min"], Sorted(created.Definition!.Parameters));
+        Assert.Equal(["document_ids", "query", "year_max", "year_min"], Sorted(created.Definition!.Parameters));
         var detail = await RagApi.GetAsync(setup.Admin, created.Id);
         Assert.Equal("year", Assert.Single(detail.ExposedFields).Alias);
     }
@@ -182,7 +182,7 @@ public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qd
             setup.Admin,
             RagApi.Body(knowledgeBaseIds: [f.FinanceBase], exposedFields: [], fixedFilters: new { year_min = 1900 }));
 
-        Assert.Equal(["query"], Sorted(created.Definition!.Parameters));
+        Assert.Equal(["document_ids", "query"], Sorted(created.Definition!.Parameters));
     }
 
     [Fact] // AC-28, D-12

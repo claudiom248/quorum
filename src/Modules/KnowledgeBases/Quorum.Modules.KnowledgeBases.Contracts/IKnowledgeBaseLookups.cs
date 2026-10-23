@@ -279,7 +279,9 @@ public sealed record LiveValues(
     bool Truncated = false,
     IReadOnlyList<LookupReadValue>? Values = null);
 
-public sealed record UnindexedFiltersQuery(Guid TenantId, IReadOnlyList<Guid> KnowledgeBaseIds, IReadOnlyList<Guid> FieldIds);
+/// <param name="IncludeDocumentId">Also report the knowledge bases whose <c>documentId</c> path has no index, for a tool that restricts searches to documents (spec 007 D-14).</param>
+public sealed record UnindexedFiltersQuery(Guid TenantId, IReadOnlyList<Guid> KnowledgeBaseIds, IReadOnlyList<Guid> FieldIds, bool IncludeDocumentId = false);
 
+/// <param name="FieldId"><see cref="Guid.Empty"/> for the document id, which is a role of the knowledge base and not a dictionary field.</param>
 /// <param name="Path">The payload path the field is mapped to in that knowledge base.</param>
 public sealed record UnindexedFilter(Guid FieldId, string FieldName, Guid KnowledgeBaseId, string KnowledgeBaseName, string Path);

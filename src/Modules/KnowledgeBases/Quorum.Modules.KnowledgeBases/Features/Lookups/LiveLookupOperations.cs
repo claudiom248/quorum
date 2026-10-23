@@ -281,7 +281,7 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
     {
         var ids = query.KnowledgeBaseIds.Distinct().ToList();
         var fieldIds = query.FieldIds.Distinct().ToList();
-        if (ids.Count == 0 || fieldIds.Count == 0)
+        if (ids.Count == 0 || (fieldIds.Count == 0 && !query.IncludeDocumentId))
         {
             return [];
         }
@@ -313,6 +313,13 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
             if (probe.Info is not { } source)
             {
                 continue;
+            }
+
+            if (query.IncludeDocumentId
+                && knowledgeBase.Mapping.Roles.DocumentId is { } documentPath
+                && !source.IndexedPaths.ContainsKey(documentPath))
+            {
+                unindexed.Add(new UnindexedFilter(Guid.Empty, "document id", knowledgeBase.Id, knowledgeBase.Name, documentPath));
             }
 
             foreach (var fieldId in fieldIds)

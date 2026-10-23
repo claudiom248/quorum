@@ -10,7 +10,8 @@ namespace Quorum.Integration.Tests.KnowledgeBases.Search;
 
 /// <summary>
 /// The search can be restricted to some documents (spec 008 A1-2, the engine's part): the condition is combined with the filters
-/// and applies to the path the knowledge base mapped to the <c>documentId</c> role. Nothing reaches it from the rag tool yet.
+/// and applies to the path the knowledge base mapped to the <c>documentId</c> role. The rag tool reaches it
+/// with <c>document_ids</c> (spec 007 D-14); the request's own rules (at most 50, no blank id) are checked here too.
 /// </summary>
 public sealed class DocumentIdsSearchTests(PostgresFixture postgres, QdrantFixture qdrant)
 {
@@ -106,6 +107,28 @@ public sealed class DocumentIdsSearchTests(PostgresFixture postgres, QdrantFixtu
         Assert.Equal(["unmapped"], response.SkippedKnowledgeBases);
         Assert.All(response.Chunks, chunk => Assert.Equal("mapped", chunk.KnowledgeBase));
         Assert.NotEmpty(response.Chunks);
+    }
+
+    [Fact] // AC-37
+    public void AtMostFiftyDistinctIdsAreAccepted()
+    {
+        var fifty = Enumerable.Range(0, 50).Select(n => $"doc-{n}").ToList();
+
+        Assert.True(SearchRules.DocumentIds(fifty).IsSuccess);
+        Assert.True(SearchRules.DocumentIds([.. fifty, .. fifty]).IsSuccess);
+
+        var tooMany = SearchRules.DocumentIds([.. fifty, "one-more"]);
+        Assert.False(tooMany.IsSuccess);
+        Assert.Equal(Modules.KnowledgeBases.Contracts.KnowledgeBaseSearchErrors.InvalidRequest, tooMany.Error.Code);
+    }
+
+    [Fact]
+    public void ABlankIdIsRefusedAndNoListIsNoRestriction()
+    {
+        Assert.False(SearchRules.DocumentIds(["leave", " "]).IsSuccess);
+        Assert.Null(SearchRules.DocumentIds(null).Value);
+        Assert.Null(SearchRules.DocumentIds([]).Value);
+        Assert.Equal(["leave"], SearchRules.DocumentIds([" leave ", "leave"]).Value);
     }
 
     [Fact]
