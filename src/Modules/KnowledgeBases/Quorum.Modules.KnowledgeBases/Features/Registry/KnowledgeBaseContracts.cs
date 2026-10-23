@@ -32,7 +32,8 @@ internal sealed record CountedPointResponse(string Path, JsonElement Value);
 /// <param name="DictionaryFieldId">The dictionary field, when the client knows it; otherwise <paramref name="Name"/> finds it, or names the one to create.</param>
 /// <param name="Cluster">With <paramref name="Name"/>: the cluster of the field; none means a field with no cluster.</param>
 /// <param name="Listable">Whether the distinct values of the field are kept as a lookup (spec 007 D-3).</param>
-internal sealed record MappedFieldRequest(string? Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null, bool Listable = false);
+/// <param name="EntityAttribute">Whether the entity lookup lists the field beside the name of each entity (spec 007 D-4); at most 10 fields.</param>
+internal sealed record MappedFieldRequest(string? Path, Guid? DictionaryFieldId, string? Name, string? Cluster = null, bool Listable = false, bool EntityAttribute = false);
 
 internal sealed record CreateFieldRequest(string? Name, string? Type, string? Description, string? Cluster = null);
 
@@ -71,7 +72,7 @@ internal sealed record KnowledgeBaseListItem(
 
 
 /// <param name="FilterName">The name a test search filters this field by, which is not always its name (spec 003 A1-6).</param>
-internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null, bool Listable = false);
+internal sealed record MappedFieldResponse(string Path, Guid DictionaryFieldId, string? Name, string? Cluster = null, string? FilterName = null, bool Listable = false, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool EntityAttribute = false);
 
 internal sealed record MappingResponse(
     RolesDto Roles,
@@ -113,7 +114,7 @@ internal sealed record KnowledgeBaseDetail(
         registration.QueryPrefix,
         new MappingResponse(
             new RolesDto(registration.Mapping.Roles.Text, registration.Mapping.Roles.DocumentId, registration.Mapping.Roles.Title, registration.Mapping.Roles.Position, registration.Mapping.Roles.SourceUrl),
-            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null, filterNames.GetValueOrDefault(f.DictionaryFieldId), f.Listable))],
+            [.. registration.Mapping.Fields.Select(f => new MappedFieldResponse(f.Path, f.DictionaryFieldId, fieldNames.TryGetValue(f.DictionaryFieldId, out var label) ? label.Name : null, fieldNames.TryGetValue(f.DictionaryFieldId, out var clustered) ? clustered.Cluster : null, filterNames.GetValueOrDefault(f.DictionaryFieldId), f.Listable, f.EntityAttribute))],
             registration.Mapping.CountedPoint is { } counted ? new CountedPointResponse(counted.Path, counted.ToJsonElement()) : null,
             registration.Mapping.EntityName),
         new ScopeResponse(registration.Scope.ToString(), registration.ScopeTenantIds, registration.ScopeAssistantIds),

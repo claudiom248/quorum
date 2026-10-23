@@ -126,7 +126,7 @@ internal sealed partial class LookupCache(HybridCache cache, ILogger<LookupCache
             cancellationToken);
     }
 
-    private static async ValueTask<CachedLookup> LoadAsync(KnowledgeBasesDbContext db, Guid sliceId, int generation, CancellationToken cancellationToken)
+    internal static async ValueTask<CachedLookup> LoadAsync(KnowledgeBasesDbContext db, Guid sliceId, int generation, CancellationToken cancellationToken)
     {
         var rows = await db.LookupValues.IgnoreQueryFilters().AsNoTracking()
             .Where(v => v.SliceId == sliceId && v.Generation == generation)
@@ -172,19 +172,19 @@ internal static class LookupPager
         var search = request.Search?.Trim();
         var matches = string.IsNullOrEmpty(search) ? null : search;
 
+        // Null is the rank order itself; any other order lists indexes into it.
+        var order = OrderOf(entry, request);
         var start = 0;
         if (after is { Position: { } position })
         {
-            start = request.Sort == LookupSort.Count
-                ? IndexOfFirstAfter(entry.ByPosition, position)
-                : IndexOfNameAfter(entry, position);
+            start = order is null ? IndexOfFirstAfter(entry.ByPosition, position) : IndexOfPositionAfter(entry, order, position);
         }
 
         // One more than the page tells whether there is a next one without counting.
         var page = new List<CachedLookupValue>(limit + 1);
         for (var i = start; i < entry.ByPosition.Count && page.Count <= limit; i++)
         {
-            var row = request.Sort == LookupSort.Count ? entry.ByPosition[i] : entry.ByPosition[entry.NameOrder[i]];
+            var row = order is null ? entry.ByPosition[i] : entry.ByPosition[order[i]];
             if (matches is null || Matches(row.Value, matches))
             {
                 page.Add(row);
@@ -192,8 +192,24 @@ internal static class LookupPager
         }
 
         var shown = page.Take(limit).ToList();
-        var next = page.Count > limit ? LookupCursor.Encode(entry.Generation, request.Sort, shown[^1].Position, shown[^1].Value.Value) : null;
+        var remembered = request.Sort == LookupSort.Attribute ? request.Attribute!.Key : shown.Count > 0 ? shown[^1].Value.Value : string.Empty;
+        var next = page.Count > limit ? LookupCursor.Encode(entry.Generation, request.Sort, shown[^1].Position, remembered) : null;
         return new LookupPage([.. shown.Select(r => r.Value)], next, restarted);
+    }
+
+    private static IReadOnlyList<int>? OrderOf(CachedLookup entry, LookupPageRequest request) => request.Sort switch
+    {
+        LookupSort.Count => null,
+        LookupSort.Name => entry.NameOrder,
+        _ => ByAttribute(entry, request.Attribute ?? throw new ArgumentException("A page by attribute names the attribute.", nameof(request))),
+    };
+
+    /// <summary>The rows with the attribute in order, then the ones without it; rows that tie keep their rank.</summary>
+    private static int[] ByAttribute(CachedLookup entry, LookupAttributeSort sort)
+    {
+        var keys = entry.ByPosition.Select(row => EntityAttributes.SortKey(row.Value.Attributes, sort.Name)).ToArray();
+        var indexes = Enumerable.Range(0, keys.Length).OrderBy(i => keys[i] is null);
+        return [.. sort.Descending ? indexes.ThenByDescending(i => keys[i]).ThenBy(i => i) : indexes.ThenBy(i => keys[i]).ThenBy(i => i)];
     }
 
     private static int IndexOfFirstAfter(IReadOnlyList<CachedLookupValue> byPosition, int position)
@@ -209,17 +225,17 @@ internal static class LookupPager
         return byPosition.Count;
     }
 
-    private static int IndexOfNameAfter(CachedLookup entry, int position)
+    private static int IndexOfPositionAfter(CachedLookup entry, IReadOnlyList<int> order, int position)
     {
-        for (var i = 0; i < entry.NameOrder.Count; i++)
+        for (var i = 0; i < order.Count; i++)
         {
-            if (entry.ByPosition[entry.NameOrder[i]].Position == position)
+            if (entry.ByPosition[order[i]].Position == position)
             {
                 return i + 1;
             }
         }
 
-        return entry.NameOrder.Count;
+        return order.Count;
     }
 
     private static bool Matches(LookupPageValue value, string text) =>

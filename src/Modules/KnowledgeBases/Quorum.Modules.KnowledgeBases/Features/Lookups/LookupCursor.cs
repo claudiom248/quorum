@@ -17,9 +17,10 @@ internal sealed record LookupCursor(
 
     private static readonly Error Invalid = Error.Validation("lookup.invalid_cursor", "The cursor was not returned by this lookup in this order.");
 
+    /// <param name="value">The value of the last row for a page by name; the key of the attribute order for a page by attribute.</param>
     public static string Encode(int generation, LookupSort sort, int position, string value) =>
         Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(
-            new LookupCursor(generation, sort, position, sort == LookupSort.Name ? value : null),
+            new LookupCursor(generation, sort, position, sort == LookupSort.Count ? null : value),
             Options));
 
     /// <summary>
@@ -31,7 +32,9 @@ internal sealed record LookupCursor(
     {
         var cursor = Parse(request.Cursor);
         var unreadable = cursor is null && !string.IsNullOrEmpty(request.Cursor);
-        if (unreadable || (cursor is not null && cursor.Sort != request.Sort))
+        if (unreadable
+            || (cursor is not null && cursor.Sort != request.Sort)
+            || (cursor is { Sort: LookupSort.Attribute } && cursor.Value != request.Attribute?.Key))
         {
             return Invalid;
         }

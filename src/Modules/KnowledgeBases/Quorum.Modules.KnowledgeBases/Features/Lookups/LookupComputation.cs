@@ -4,7 +4,13 @@ namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 
 /// <summary>What a computer needs to compute one slice.</summary>
 /// <param name="MaxValues">The ceiling of values; the computer may stop early and report <see cref="LookupComputation.Truncated"/>.</param>
-internal sealed record LookupComputationRequest(Lookup Lookup, LookupSlice Slice, KnowledgeBase KnowledgeBase, int MaxValues);
+/// <param name="AttributeNames">Only entity lookups: the key of each attribute field in the stored JSON, by dictionary field id.</param>
+internal sealed record LookupComputationRequest(
+    Lookup Lookup,
+    LookupSlice Slice,
+    KnowledgeBase KnowledgeBase,
+    int MaxValues,
+    IReadOnlyDictionary<Guid, string>? AttributeNames = null);
 
 /// <param name="Count"><see langword="null"/> for an entity.</param>
 /// <param name="Attributes">Only entities: the chosen attributes as a JSON object.</param>

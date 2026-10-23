@@ -49,6 +49,23 @@ public static class SampleSchemas
         }
         """;
 
+    /// <summary>The payload of <see cref="SampleCollections.Suppliers"/>.</summary>
+    public const string Suppliers = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "Supplier",
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" },
+            "name": { "type": "string" },
+            "country": { "type": "string" },
+            "contract_count": { "type": "integer" },
+            "supplier_since": { "type": "string", "format": "date" }
+          },
+          "required": ["text", "name"]
+        }
+        """;
+
     /// <summary>The payload of <see cref="SampleCollections.Nested"/>.</summary>
     public const string Nested = """
         {

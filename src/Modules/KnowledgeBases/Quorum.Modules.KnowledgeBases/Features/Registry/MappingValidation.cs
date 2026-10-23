@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Features.Inspect;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Shared.Results;
 
@@ -43,6 +44,24 @@ internal static class MappingValidation
         return path?.Length > MaxPathLength
             ? InvalidMapping($"A payload path can have up to {MaxPathLength} characters.")
             : path;
+    }
+
+    public static Error TooManyEntityAttributes() => Error.Validation(
+        "knowledge_base.too_many_entity_attributes",
+        $"An entity lookup lists up to {EntityAttributes.MaxAttributes} attributes: unmark some of the fields.");
+
+    /// <summary>The attributes of the entity lookup: they belong to a knowledge base that names its entities, and there are at most ten.</summary>
+    public static Error? EntityAttributeProblem(string? entityName, IReadOnlyList<MappedFieldRequest> fields)
+    {
+        var count = fields.Count(f => f.EntityAttribute);
+        if (count > EntityAttributes.MaxAttributes)
+        {
+            return TooManyEntityAttributes();
+        }
+
+        return count > 0 && entityName is null
+            ? InvalidMapping("Entity attributes need the entity name role: map the payload field that holds the name of each entity.")
+            : null;
     }
 
     /// <summary>The shape of the counted point: a path and a scalar. Whether the scalar fits the field comes later, <see cref="CountedPointFits"/>.</summary>

@@ -31,12 +31,12 @@ internal static class ComputedLookups
         var wanted = mapping.Fields.Where(f => f.Listable).DistinctBy(f => f.DictionaryFieldId).ToList();
         var existing = before is null
             ? []
-            : await db.Lookups.Where(l => l.KnowledgeBaseId == knowledgeBase.Id && l.Kind == LookupKind.Computed).ToListAsync(cancellationToken);
+            : await db.Lookups.Where(l => l.KnowledgeBaseId == knowledgeBase.Id && l.Kind != LookupKind.Manual).ToListAsync(cancellationToken);
 
         var due = false;
         foreach (var field in wanted)
         {
-            var lookup = existing.FirstOrDefault(l => l.DictionaryFieldId == field.DictionaryFieldId);
+            var lookup = existing.FirstOrDefault(l => l.Kind == LookupKind.Computed && l.DictionaryFieldId == field.DictionaryFieldId);
             if (lookup is null)
             {
                 lookup = Lookup.Computed(knowledgeBase.TenantId, knowledgeBase.Id, field.DictionaryFieldId, unit, now);
@@ -57,10 +57,41 @@ internal static class ComputedLookups
             }
         }
 
-        var gone = existing.Where(l => !wanted.Any(f => f.DictionaryFieldId == l.DictionaryFieldId)).ToList();
+        var entities = existing.FirstOrDefault(l => l.Kind == LookupKind.Entity);
+        if (mapping.EntityName is not null && entities is null)
+        {
+            var created = Lookup.Entity(knowledgeBase.TenantId, knowledgeBase.Id, description: null, now);
+            db.Lookups.Add(created);
+            db.LookupSlices.Add(LookupSlice.Create(
+                knowledgeBase.TenantId, created.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now));
+            due = true;
+        }
+        else if (mapping.EntityName is not null && entities is not null && before is not null && EntitiesChange(before, mapping))
+        {
+            foreach (var slice in await db.LookupSlices.IgnoreQueryFilters().Where(s => s.LookupId == entities.Id).ToListAsync(cancellationToken))
+            {
+                slice.RequestRefresh(now);
+            }
+
+            due = true;
+        }
+
+        var gone = existing
+            .Where(l => l.Kind == LookupKind.Entity
+                ? mapping.EntityName is null
+                : !wanted.Any(f => f.DictionaryFieldId == l.DictionaryFieldId))
+            .ToList();
         db.Lookups.RemoveRange(gone);
         return new LookupSync(due, gone.Count > 0);
     }
+
+    /// <summary>Whether the entities or their attributes would differ under the new mapping.</summary>
+    private static bool EntitiesChange(KnowledgeBaseMapping before, KnowledgeBaseMapping after) =>
+        before.EntityName != after.EntityName
+        || !AttributesOf(before).SequenceEqual(AttributesOf(after));
+
+    private static IEnumerable<(Guid Field, string Path)> AttributesOf(KnowledgeBaseMapping mapping) =>
+        mapping.Fields.Where(f => f.EntityAttribute).Select(f => (f.DictionaryFieldId, f.Path)).Order();
 
     /// <summary>Whether the values or the counts of the lookup would differ under the new mapping.</summary>
     private static bool ChangesValues(KnowledgeBaseMapping before, KnowledgeBaseMapping after, MappedField field, LookupUnit? storedUnit, LookupUnit unit) =>

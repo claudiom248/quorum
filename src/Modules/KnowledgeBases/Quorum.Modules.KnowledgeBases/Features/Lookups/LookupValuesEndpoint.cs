@@ -14,7 +14,9 @@ namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 /// <summary>The values of any lookup, as the administrator sees them: the same page the lookup tool will read.</summary>
 internal sealed class LookupValuesEndpoint : IEndpointGroup
 {
-    private static readonly Error InvalidSort = Error.Validation("lookup.invalid_sort", "The sort must be 'count' or 'name'.");
+    private static readonly Error InvalidSort = Error.Validation(
+        "lookup.invalid_sort",
+        "The sort must be 'count' or 'name'; for an entity lookup it can also be the name of an attribute of type number or date, with '-' in front for the largest first.");
 
     public void Map(IEndpointRouteBuilder app)
     {
@@ -37,15 +39,22 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
         string? cursor,
         CancellationToken cancellationToken)
     {
-        if (!TryParseSort(sort, out var order))
-        {
-            return InvalidSort.ToProblem();
-        }
-
         var lookup = await LookupVisibility.Readable(db).AsNoTracking().SingleOrDefaultAsync(l => l.Id == lookupId, cancellationToken);
         if (lookup is null)
         {
             return TypedResults.NotFound();
+        }
+
+        LookupAttributeSort? attribute = null;
+        if (!TryParseSort(sort, out var order))
+        {
+            attribute = await AttributeSortAsync(db, lookup, sort!, cancellationToken);
+            if (attribute is null)
+            {
+                return InvalidSort.ToProblem();
+            }
+
+            order = LookupSort.Attribute;
         }
 
         var hash = slice ?? LookupSliceKey.WholeKnowledgeBase.Hash;
@@ -56,7 +65,7 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
             return TypedResults.NotFound();
         }
 
-        var page = await cache.ReadAsync(db, lookup, found, new LookupPageRequest(search, order, limit ?? LookupReader.DefaultLimit, cursor), cancellationToken);
+        var page = await cache.ReadAsync(db, lookup, found, new LookupPageRequest(search, order, limit ?? LookupReader.DefaultLimit, cursor, attribute), cancellationToken);
         return page.IsSuccess
             ? TypedResults.Ok(LookupValuesDto.From(lookup, found, page.Value))
             : page.Error.ToProblem();
@@ -65,7 +74,28 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
     private static bool TryParseSort(string? sort, out LookupSort order)
     {
         order = LookupSort.Count;
-        return string.IsNullOrEmpty(sort) || DictionaryFieldRules.TryParseMember(sort, out order);
+        return string.IsNullOrEmpty(sort) || (DictionaryFieldRules.TryParseMember(sort, out order) && order != LookupSort.Attribute);
+    }
+
+    /// <summary>
+    /// The attribute an entity lookup can be ordered by: one of the attributes its knowledge base marks, of type number or date, since
+    /// a text has no order a model could rely on. A leading '-' asks for the largest first.
+    /// </summary>
+    private static async Task<LookupAttributeSort?> AttributeSortAsync(KnowledgeBasesDbContext db, Lookup lookup, string sort, CancellationToken cancellationToken)
+    {
+        var descending = sort.StartsWith('-');
+        var name = descending ? sort[1..] : sort;
+        if (lookup.Kind != LookupKind.Entity || await db.KnowledgeBases.AsNoTracking().SingleOrDefaultAsync(k => k.Id == lookup.KnowledgeBaseId, cancellationToken) is not { } knowledgeBase)
+        {
+            return null;
+        }
+
+        var fieldIds = knowledgeBase.Mapping.Fields.Where(f => f.EntityAttribute).Select(f => f.DictionaryFieldId).ToList();
+        var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => fieldIds.Contains(f.Id)).ToListAsync(cancellationToken);
+        var keys = EntityAttributes.Names(fields);
+        return fields.Any(f => keys[f.Id] == name && f.Type is DictionaryFieldType.Number or DictionaryFieldType.Date)
+            ? new LookupAttributeSort(name, descending)
+            : null;
     }
 }
 

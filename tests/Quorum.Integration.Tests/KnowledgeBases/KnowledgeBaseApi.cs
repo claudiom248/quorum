@@ -143,7 +143,7 @@ internal static class KnowledgeBaseApi
 
     public sealed record RolesBody(string? Text, string? DocumentId, string? Title, string? Position, string? SourceUrl);
 
-    public sealed record MappedFieldBody(string Path, Guid DictionaryFieldId, string Name, bool Listable = false);
+    public sealed record MappedFieldBody(string Path, Guid DictionaryFieldId, string Name, bool Listable = false, bool EntityAttribute = false);
 
     public sealed record CountedPointBody(string Path, JsonElement Value);
 
