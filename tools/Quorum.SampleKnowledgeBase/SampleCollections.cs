@@ -187,9 +187,9 @@ public static class SampleCollections
         ulong id = 1;
         foreach (var contract in Contracts)
         {
-            for (var chunk = 0; chunk < contract.Chunks; chunk++)
+            for (var chunk = 0; chunk < contract.Sections.Length; chunk++)
             {
-                var text = $"{contract.Title}, part {chunk + 1}.";
+                var text = contract.Sections[chunk];
                 points.Add(new SamplePoint(
                     id++,
                     text,
@@ -212,17 +212,77 @@ public static class SampleCollections
         return points;
     }
 
-    private sealed record Contract(string Document, string Title, string Supplier, string Department, string Nationality, string[] Audience, int Chunks);
+    /// <param name="Sections">The text of each chunk of the contract, in order: a model that reads them finds what the contract really says.</param>
+    private sealed record Contract(string Document, string Title, string Supplier, string Department, string Nationality, string[] Audience, string[] Sections);
 
     // Documents per supplier: Acme 3, Globex 2, Initech 1. Per department: facilities 2, it 2, finance 1, legal 1. Eleven chunks in all.
     private static readonly Contract[] Contracts =
     [
-        new("c1", "Cleaning services contract", "Acme", "facilities", "IT", ["all"], 3),
-        new("c2", "Laptop supply agreement", "Acme", "it", "IT", ["it"], 2),
-        new("c3", "Cloud hosting agreement", "Globex", "it", "US", ["it", "managers"], 2),
-        new("c4", "Legal retainer", "Initech", "legal", "DE", ["managers"], 1),
-        new("c5", "Catering contract", "Acme", "facilities", "IT", ["all"], 2),
-        new("c6", "Travel agency agreement", "Globex", "finance", "US", ["managers"], 1),
+        new(
+            "c1",
+            "Cleaning services contract",
+            "Acme",
+            "facilities",
+            "IT",
+            ["all"],
+            [
+                "Acme provides daily cleaning of all office floors, meeting rooms and restrooms, Monday to Friday between 6:00 and 8:00, and a deep clean of the kitchens and the windows once a month. Soap, paper and other consumables are supplied by Acme.",
+                "The contract runs for 24 months from 1 January 2025 and renews automatically for 12 months unless either party gives 90 days' written notice. The fee is 4,800 euros per month, invoiced monthly and payable within 30 days.",
+                "A cleaning that is missed must be redone within 24 hours at no cost. Acme carries liability insurance of 2 million euros, and the company may deduct 2% of the monthly fee for each missed service beyond three in a month.",
+            ]),
+        new(
+            "c2",
+            "Laptop supply agreement",
+            "Acme",
+            "it",
+            "IT",
+            ["it"],
+            [
+                "Acme supplies up to 200 business laptops per year, in the models and specifications chosen by the IT department. Each laptop has a three-year on-site warranty with replacement by the next business day, and is delivered to the IT warehouse within 15 working days of the order.",
+                "Prices are fixed for 24 months: 1,250 euros for a standard laptop and 1,900 euros for a high-performance one. Devices that are returned are collected and wiped by Acme under the company's data-erasure procedure, with a certificate of erasure for each device.",
+            ]),
+        new(
+            "c3",
+            "Cloud hosting agreement",
+            "Globex",
+            "it",
+            "US",
+            ["it", "managers"],
+            [
+                "Globex hosts the internal applications of the company on dedicated cloud infrastructure in two European regions. It guarantees an availability of 99.9% per month, monitors the systems around the clock and keeps encrypted daily backups for 30 days.",
+                "The fee is 9,500 dollars per month plus any usage above the agreed quota. Security incidents must be reported to the company within four hours. The data remains the property of the company and is returned in an open format within 30 days of the end of the contract.",
+            ]),
+        new(
+            "c4",
+            "Legal retainer",
+            "Initech",
+            "legal",
+            "DE",
+            ["managers"],
+            [
+                "Initech gives legal advice on commercial contracts, employment matters and data protection for a fixed monthly retainer of 6,000 euros that covers up to 25 hours. Further hours are billed at 220 euros. All advice is confidential and is delivered within three working days of a request.",
+            ]),
+        new(
+            "c5",
+            "Catering contract",
+            "Acme",
+            "facilities",
+            "IT",
+            ["all"],
+            [
+                "Acme provides lunch for up to 150 employees on every working day, from a weekly menu that always includes vegetarian, vegan and gluten-free dishes. Meals are served in the company canteen between 12:00 and 14:30.",
+                "The price is 8.50 euros per meal, billed monthly on the number of meals served. Acme must follow the food-safety rules in force, allow an audit of the kitchen with 48 hours' notice, and replace any dish that does not meet the agreed quality.",
+            ]),
+        new(
+            "c6",
+            "Travel agency agreement",
+            "Globex",
+            "finance",
+            "US",
+            ["managers"],
+            [
+                "Globex books flights, hotels and rail tickets for business trips at the negotiated corporate rates, with an emergency line for travellers open around the clock. Bookings above 1,500 euros need the approval of the traveller's manager, and Globex charges a service fee of 25 euros per booking.",
+            ]),
     ];
 
     private static SamplePoint FlatPoint(Chunk chunk) => new(
