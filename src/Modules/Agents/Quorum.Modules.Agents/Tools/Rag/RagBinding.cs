@@ -16,6 +16,9 @@ internal sealed record RagBinding(
     /// <summary>The alias given to an exposed field, by field id; a field without one is known by its name (spec 003 A1-3).</summary>
     public IReadOnlyDictionary<Guid, string> ExposedAliases { get; init; } = new Dictionary<Guid, string>();
 
+    /// <summary>The model may pass <c>document_ids</c>; whether the definition offers it also depends on the knowledge bases (<see cref="RagToolResolver"/>).</summary>
+    public bool AllowDocumentIds { get; init; }
+
     /// <summary>The knowledge bases the tenant can see now, by name, as of the start of the answer; filled by <see cref="RagToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, Guid> KnowledgeBases { get; init; } = new Dictionary<string, Guid>();
 
@@ -28,6 +31,7 @@ internal sealed record RagBinding(
         return new RagBinding([.. row.KnowledgeBaseIds], [.. row.ExposedFieldIds], [.. row.FixedFilterFieldIds], row.FixedFilters, row.TopK, row.ScoreThreshold, row.MaxResultCharacters)
         {
             ExposedAliases = ReadAliases(row.ExposedAliases),
+            AllowDocumentIds = row.AllowDocumentIds,
         };
     }
 

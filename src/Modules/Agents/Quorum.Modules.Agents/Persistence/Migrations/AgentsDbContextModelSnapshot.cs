@@ -244,6 +244,9 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<Guid>("ToolId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AllowDocumentIds")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 

@@ -30,7 +30,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
 
         var definition = created.Definition!;
         Assert.Equal("rag__company", definition.Name);
-        Assert.Equal(["department", "query", "year_max", "year_min"], Sorted(definition.Parameters));
+        Assert.Equal(["department", "document_ids", "query", "year_max", "year_min"], Sorted(definition.Parameters));
         Assert.Equal(["query"], definition.InputSchema.GetProperty("required").EnumerateArray().Select(r => r.GetString()));
         Assert.False(definition.InputSchema.GetProperty("additionalProperties").GetBoolean());
         Assert.Contains("Searches the company policies.", definition.Description);
@@ -49,7 +49,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
 
         var parameter = created.Definition!.Parameter("knowledge_base");
         Assert.Equal(["alpha", "beta"], parameter.GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal(["knowledge_base", "query"], Sorted(created.Definition.Parameters));
+        Assert.Equal(["document_ids", "knowledge_base", "query"], Sorted(created.Definition.Parameters));
     }
 
     [Fact] // AC-20
@@ -66,7 +66,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
 
         var definition = created.Definition!;
         Assert.Equal(
-            ["confidential", "department", "knowledge_base", "published_on_from", "published_on_to", "query", "tags", "year_max", "year_min"],
+            ["confidential", "department", "document_ids", "knowledge_base", "published_on_from", "published_on_to", "query", "tags", "year_max", "year_min"],
             Sorted(definition.Parameters));
         Assert.Equal(("array", "string"), (definition.Parameter("department").GetProperty("type").GetString(), definition.Parameter("department").GetProperty("items").GetProperty("type").GetString()));
         Assert.Equal(("array", "string"), (definition.Parameter("tags").GetProperty("type").GetString(), definition.Parameter("tags").GetProperty("items").GetProperty("type").GetString()));
@@ -374,7 +374,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
         var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool;
 
         Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
-        Assert.Equal(["department", "query"], Sorted(detail.Definition!.Parameters));
+        Assert.Equal(["department", "document_ids", "query"], Sorted(detail.Definition!.Parameters));
         Assert.Equal(("Searches policies by department.", 3), (detail.Description, detail.TopK));
         Assert.True(Assert.Single(pool, t => t.Name == "rag__company").Active);
     }

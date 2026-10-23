@@ -29,7 +29,8 @@ internal static class RagApi
         double? scoreThreshold = null,
         int? maxResultCharacters = null,
         object? scope = null,
-        string? policy = null) => new
+        string? policy = null,
+        bool? allowDocumentIds = null) => new
         {
             name,
             description,
@@ -41,6 +42,7 @@ internal static class RagApi
             maxResultCharacters,
             scope = scope ?? OwnTenant,
             policy,
+            allowDocumentIds,
         };
 
     public static async Task<HttpResponseMessage> CreateAsync(HttpClient client, object body) =>
@@ -97,7 +99,8 @@ internal static class RagApi
         string State,
         string Policy,
         PreviewBody? Definition,
-        List<WarningBody> Warnings)
+        List<WarningBody> Warnings,
+        bool AllowDocumentIds)
     {
         public List<Guid> ExposedFieldIds => [.. ExposedFields.Select(f => f.FieldId)];
     }

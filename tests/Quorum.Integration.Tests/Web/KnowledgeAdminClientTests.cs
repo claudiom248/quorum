@@ -165,7 +165,8 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
         Assert.Contains("year_min", saved.Definition!.InputSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name));
         Assert.Equal(
             RagToolView.ParameterNames(choices.Fields, 1).Order(StringComparer.Ordinal),
-            saved.Definition.InputSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+            // The editor does not know the document_ids switch yet (spec 007 PR 9b); the server turns it on for a tool that leaves it out.
+            saved.Definition.InputSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name).Where(n => n != "document_ids").Order(StringComparer.Ordinal));
 
         reloaded.Policy = ToolPolicies.Confirm;
         reloaded.TopK = 3;

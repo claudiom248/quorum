@@ -56,6 +56,12 @@ internal sealed class RagTool
     /// <summary>The dictionary fields the fixed filters name, kept so that a field in use cannot be deleted.</summary>
     public List<Guid> FixedFilterFieldIds { get; private set; } = [];
 
+    /// <summary>
+    /// Whether the model may restrict a search to documents with <c>document_ids</c> (spec 007 D-14). Off for the tools saved before it
+    /// existed, so they keep their definition and their hash.
+    /// </summary>
+    public bool AllowDocumentIds { get; private set; }
+
     public int TopK { get; private set; }
 
     public double? ScoreThreshold { get; private set; }
@@ -90,6 +96,7 @@ internal sealed class RagTool
         ExposedAliases = JsonSerializer.Serialize(configuration.ExposedAliases ?? new Dictionary<Guid, string>());
         FixedFilters = configuration.FixedFilters;
         FixedFilterFieldIds = [.. configuration.FixedFilterFieldIds];
+        AllowDocumentIds = configuration.AllowDocumentIds;
         TopK = configuration.TopK;
         ScoreThreshold = configuration.ScoreThreshold;
         MaxResultCharacters = configuration.MaxResultCharacters;
@@ -112,4 +119,5 @@ internal sealed record RagConfiguration(
     ToolScopeKind Scope,
     IReadOnlyList<Guid> ScopeTenantIds,
     IReadOnlyList<Guid> ScopeAssistantIds,
-    IReadOnlyDictionary<Guid, string>? ExposedAliases = null);
+    IReadOnlyDictionary<Guid, string>? ExposedAliases = null,
+    bool AllowDocumentIds = false);

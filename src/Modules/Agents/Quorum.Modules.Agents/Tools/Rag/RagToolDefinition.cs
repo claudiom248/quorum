@@ -13,16 +13,23 @@ internal static class RagToolDefinition
 
     public const string KnowledgeBaseParameter = "knowledge_base";
 
+    public const string DocumentIdsParameter = "document_ids";
+
     /// <param name="description">The administrator's text for the model.</param>
     /// <param name="knowledgeBases">The knowledge bases the tenant can see, by name.</param>
     /// <param name="exposedFields">The fields the model may filter on that at least one of those knowledge bases maps.</param>
-    public static GeneratedRagDefinition Build(string description, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> exposedFields)
+    /// <param name="offerDocumentIds">The tool allows <c>document_ids</c> and at least one of the knowledge bases maps the document id.</param>
+    public static GeneratedRagDefinition Build(
+        string description,
+        IReadOnlyList<KnowledgeBaseInfo> knowledgeBases,
+        IReadOnlyList<FilterFieldInfo> exposedFields,
+        bool offerDocumentIds = false)
     {
         ArgumentNullException.ThrowIfNull(description);
         ArgumentNullException.ThrowIfNull(knowledgeBases);
         ArgumentNullException.ThrowIfNull(exposedFields);
 
-        return new GeneratedRagDefinition(Describe(description, knowledgeBases), Schema(knowledgeBases, exposedFields));
+        return new GeneratedRagDefinition(Describe(description, knowledgeBases), Schema(knowledgeBases, exposedFields, offerDocumentIds));
     }
 
     private static string Describe(string description, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases)
@@ -36,7 +43,7 @@ internal static class RagToolDefinition
         return text.ToString();
     }
 
-    private static string Schema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields)
+    private static string Schema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields, bool offerDocumentIds)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
@@ -62,6 +69,18 @@ internal static class RagToolDefinition
 
                 writer.WriteEndArray();
                 writer.WriteString("description", "Search only this knowledge base. Leave it out to search all of them.");
+                writer.WriteEndObject();
+            }
+
+            if (offerDocumentIds)
+            {
+                writer.WriteStartObject(DocumentIdsParameter);
+                writer.WriteString("type", "array");
+                writer.WriteStartObject("items");
+                writer.WriteString("type", "string");
+                writer.WriteEndObject();
+                writer.WriteNumber("maxItems", KnowledgeBaseSearchRequest.MaxDocumentIds);
+                writer.WriteString("description", "Search only inside these documents, by the document ids that a listing of documents returned. It narrows every other filter and never widens it.");
                 writer.WriteEndObject();
             }
 

@@ -39,4 +39,31 @@ internal static class RagToolWarnings
 
         return warnings;
     }
+
+    /// <summary>
+    /// A tool that lets the model restrict searches to documents filters on the document id, which no index backs in some knowledge bases
+    /// (spec 007 D-14): the search still works, but it can be slow. Probes the stores, so it is left to the calls that show one tool.
+    /// </summary>
+    public static async Task<IReadOnlyList<ToolWarning>> UnindexedDocumentIdAsync(
+        IKnowledgeBaseLookups lookups,
+        Guid tenantId,
+        RagTool binding,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lookups);
+        ArgumentNullException.ThrowIfNull(binding);
+
+        if (!binding.AllowDocumentIds || binding.KnowledgeBaseIds.Count == 0)
+        {
+            return [];
+        }
+
+        var unindexed = await lookups.UnindexedFiltersAsync(new UnindexedFiltersQuery(tenantId, binding.KnowledgeBaseIds, [], IncludeDocumentId: true), cancellationToken);
+        return
+        [
+            .. unindexed.Select(u => new ToolWarning(
+                "rag.document_id_unindexed",
+                $"The document id has no payload index in {u.KnowledgeBaseName} ({u.Path}): a search restricted to documents may take a long time. Ask the data owner to index it.")),
+        ];
+    }
 }

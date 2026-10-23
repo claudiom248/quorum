@@ -27,7 +27,8 @@ public sealed record BindingDescription(IReadOnlyList<KnowledgeBaseInfo> Knowled
 
 /// <param name="Description">Written by the administrator for the model.</param>
 /// <param name="FieldIds">The dictionary fields the knowledge base maps and the tenant can see.</param>
-public sealed record KnowledgeBaseInfo(Guid Id, string Name, string Description, IReadOnlyList<Guid> FieldIds);
+/// <param name="MapsDocumentId">The knowledge base maps the <c>documentId</c> role, so a search can be restricted to documents.</param>
+public sealed record KnowledgeBaseInfo(Guid Id, string Name, string Description, IReadOnlyList<Guid> FieldIds, bool MapsDocumentId = false);
 
 public enum FilterFieldType
 {

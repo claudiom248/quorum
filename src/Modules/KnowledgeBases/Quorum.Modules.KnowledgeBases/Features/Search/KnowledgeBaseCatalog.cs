@@ -36,7 +36,8 @@ internal sealed class KnowledgeBaseCatalog(KnowledgeBasesDbContext db, ITenantCo
                 k.Id,
                 k.Name,
                 k.Description,
-                [.. k.Mapping.Fields.Select(f => f.DictionaryFieldId).Where(visibleFieldIds.Contains).Distinct()]))],
+                [.. k.Mapping.Fields.Select(f => f.DictionaryFieldId).Where(visibleFieldIds.Contains).Distinct()],
+                k.Mapping.Roles.DocumentId is not null))],
             [.. fields.Select(f => new FilterFieldInfo(f.Id, f.Name, TypeOf(f.Type), f.Description, f.Cluster))]);
     }
 

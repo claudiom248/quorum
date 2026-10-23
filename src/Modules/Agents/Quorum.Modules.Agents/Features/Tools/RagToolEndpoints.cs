@@ -74,6 +74,7 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
         ITenantContext tenant,
         RagToolResolver resolver,
         IKnowledgeBaseCatalog catalog,
+        IKnowledgeBaseLookups lookups,
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
@@ -103,7 +104,10 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
             view.Tool,
             view.Binding,
             await PreviewAsync(resolver, tenantId, view.Tool, view.Binding, cancellationToken),
-            RagToolWarnings.Evaluate(view.Binding, seen),
+            [
+                .. RagToolWarnings.Evaluate(view.Binding, seen),
+                .. await RagToolWarnings.UnindexedDocumentIdAsync(lookups, tenantId, view.Binding, cancellationToken),
+            ],
             seen));
     }
 
@@ -176,7 +180,7 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
             return NotFound.ToProblem();
         }
 
-        var valid = await validation.ValidateAsync(request, tenantId, cancellationToken);
+        var valid = await validation.ValidateAsync(request, tenantId, cancellationToken, documentIdsWhenOmitted: binding.AllowDocumentIds);
         if (!valid.IsSuccess)
         {
             return valid.Error.ToProblem();
@@ -299,7 +303,8 @@ internal sealed record RagToolDetail(
     string State,
     string Policy,
     RagToolDefinitionPreview? Definition,
-    IReadOnlyList<ToolWarning> Warnings)
+    IReadOnlyList<ToolWarning> Warnings,
+    bool AllowDocumentIds)
 {
     public static RagToolDetail From(Tool tool, RagTool binding, RagToolDefinitionPreview? definition, IReadOnlyList<ToolWarning> warnings, BindingDescription seen)
     {
@@ -318,7 +323,8 @@ internal sealed record RagToolDetail(
             tool.State.ToString(),
             tool.Policy.ToString(),
             definition,
-            warnings);
+            warnings,
+            binding.AllowDocumentIds);
     }
 }
 

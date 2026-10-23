@@ -39,7 +39,12 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
         "rag.knowledge_base_not_visible",
         "Every knowledge base and field of a rag tool must be visible to everyone the tool is for. Check the scope of the knowledge bases and of the fields, or narrow the scope of the tool.");
 
-    public async Task<Result<ValidatedRagTool>> ValidateAsync(RagToolRequest request, Guid tenantId, CancellationToken cancellationToken)
+    private static readonly Error DocumentIdsNotSupported = Error.Validation(
+        "rag.document_ids_not_supported",
+        "None of the knowledge bases of this tool maps the document id, so the model cannot be allowed to search inside documents. Map the document id in a knowledge base of the tool, or turn the switch off.");
+
+    /// <param name="documentIdsWhenOmitted">What <c>allowDocumentIds</c> is when the request leaves it out: the current value of a tool being changed, <see langword="null"/> for a new tool, which gets it on whenever a knowledge base can support it.</param>
+    public async Task<Result<ValidatedRagTool>> ValidateAsync(RagToolRequest request, Guid tenantId, CancellationToken cancellationToken, bool? documentIdsWhenOmitted = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -129,6 +134,15 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
 
         var (filtersJson, filterFieldIds) = (fixedFilters.Value.Json, fixedFilters.Value.FieldIds);
 
+        // Asked for explicitly it must be possible; left out it is what it was (on for a new tool) as far as a knowledge base can support it.
+        var supportsDocumentIds = seen.KnowledgeBases.Any(k => k.MapsDocumentId);
+        if (request.AllowDocumentIds is true && !supportsDocumentIds)
+        {
+            return DocumentIdsNotSupported;
+        }
+
+        var allowDocumentIds = request.AllowDocumentIds ?? ((documentIdsWhenOmitted ?? true) && supportsDocumentIds);
+
         var check = await catalog.CheckScopeAsync(
             new ScopeCheckQuery(
                 tenantId,
@@ -156,7 +170,8 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
                 scope.Value.Kind,
                 scope.Value.TenantIds,
                 scope.Value.AssistantIds,
-                aliases));
+                aliases,
+                allowDocumentIds));
     }
 
     private static Result<(int TopK, double? ScoreThreshold, int MaxResultCharacters)> Limits(RagToolRequest request)
@@ -184,10 +199,12 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
     }
 
     // `query` and `knowledge_base` are the tool's own parameters; an alias may not take either, whether or not the tool has several knowledge bases.
-    private static readonly string[] ReservedAliasNames = [RagToolDefinition.QueryParameter, RagToolDefinition.KnowledgeBaseParameter];
+    private static readonly string[] ReservedAliasNames = [RagToolDefinition.QueryParameter, RagToolDefinition.KnowledgeBaseParameter, RagToolDefinition.DocumentIdsParameter];
 
     private static List<string> ReservedParameters(bool hasKnowledgeBaseParameter) =>
-        hasKnowledgeBaseParameter ? [RagToolDefinition.QueryParameter, RagToolDefinition.KnowledgeBaseParameter] : [RagToolDefinition.QueryParameter];
+        hasKnowledgeBaseParameter
+            ? [RagToolDefinition.QueryParameter, RagToolDefinition.KnowledgeBaseParameter, RagToolDefinition.DocumentIdsParameter]
+            : [RagToolDefinition.QueryParameter, RagToolDefinition.DocumentIdsParameter];
 
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,39}$")]
     private static partial Regex ValidNamePattern();
@@ -204,7 +221,8 @@ internal sealed record RagToolRequest(
     double? ScoreThreshold,
     int? MaxResultCharacters,
     ScopeRequest? Scope,
-    string? Policy);
+    string? Policy,
+    bool? AllowDocumentIds = null);
 
 /// <param name="Alias">The parameter name the model sees for the field; the field's own name when left out.</param>
 internal sealed record ExposedFieldRequest(Guid? FieldId, string? Alias = null);

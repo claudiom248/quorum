@@ -31,6 +31,12 @@ internal static class RagToolHash
                 ToolDefinitionHash.WriteCanonical(writer, filters.RootElement);
             }
 
+            // Only when on, so the hash of a tool saved before the switch existed does not change.
+            if (configuration.AllowDocumentIds)
+            {
+                writer.WriteBoolean("allowDocumentIds", true);
+            }
+
             writer.WriteNumber("topK", configuration.TopK);
             if (configuration.ScoreThreshold is { } threshold)
             {

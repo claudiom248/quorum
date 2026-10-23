@@ -13,7 +13,8 @@ internal sealed record RagToolToDescribe(Guid ToolId, string Description, RagBin
 /// <summary>A rag tool as the model is offered it now.</summary>
 /// <param name="KnowledgeBases">The knowledge bases the tenant can see, by name.</param>
 /// <param name="FilterFields">The filter parameters the model was offered (the aliases of the exposed fields), with the field each stands for.</param>
-internal sealed record ResolvedRagTool(GeneratedRagDefinition Definition, IReadOnlyDictionary<string, Guid> KnowledgeBases, IReadOnlyDictionary<string, Guid> FilterFields);
+/// <param name="OffersDocumentIds">The definition has <c>document_ids</c>: the tool allows it and a visible knowledge base maps the document id.</param>
+internal sealed record ResolvedRagTool(GeneratedRagDefinition Definition, IReadOnlyDictionary<string, Guid> KnowledgeBases, IReadOnlyDictionary<string, Guid> FilterFields, bool OffersDocumentIds = false);
 
 /// <summary>
 /// Builds the definition of rag tools from the live catalog (spec 003 D-11): at the start of each answer and not when the tool is
@@ -73,10 +74,14 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
+            // Like a field: offered only while a visible knowledge base can apply it.
+            var offersDocumentIds = tool.Binding.AllowDocumentIds && visible.Any(k => k.MapsDocumentId);
+
             resolved[tool.ToolId] = new ResolvedRagTool(
-                RagToolDefinition.Build(tool.Description, visible, exposed),
+                RagToolDefinition.Build(tool.Description, visible, exposed, offersDocumentIds),
                 visible.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
-                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal));
+                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal),
+                offersDocumentIds);
         }
 
         return resolved;
@@ -163,7 +168,7 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
                     {
                         Description = definition.Definition.Description,
                         InputSchema = definition.Definition.InputSchema,
-                        Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields },
+                        Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields, AllowDocumentIds = definition.OffersDocumentIds },
                     }
                     : null).OfType<ActiveTool>(),
         ];
