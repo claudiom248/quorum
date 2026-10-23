@@ -37,13 +37,13 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             throw new ToolFailedException($"The limit must be between 1 and {LookupToolDefinition.MaxLimit}.");
         }
 
-        return asked.Operation switch
+        // Each function of the tool does one thing: the model chose it by name, and the definition it was given has only its arguments.
+        return binding.Operation switch
         {
-            null or LookupToolDefinition.ValuesOperation => await ValuesAsync(binding, asked, limit, cancellationToken),
+            LookupToolDefinition.ValuesOperation => await ValuesAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.DocumentsOperation when live => await DocumentsAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.CountOperation when live => await CountAsync(binding, asked, cancellationToken),
-            _ => throw new ToolFailedException(
-                $"The operation '{Shorten(asked.Operation)}' is not available in this tool. Use {(live ? "'values', 'documents' or 'count'" : $"'{LookupToolDefinition.ValuesOperation}'")}."),
+            _ => throw new ToolFailedException("This function is not available in this tool."),
         };
     }
 
@@ -191,7 +191,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             .ToList();
         return lists.Count == 0
             ? null
-            : $"\n\nNothing matched. A filter value must be written exactly as the list holds it, so check it: {string.Join("; ", lists)} (read it with the values operation).";
+            : $"\n\nNothing matched. A filter value must be written exactly as the list holds it, so check it: {string.Join("; ", lists)} (read it with the function that reads the lists).";
     }
 
     private async Task<ToolOutput> CountAsync(LookupBinding binding, Arguments asked, CancellationToken cancellationToken)

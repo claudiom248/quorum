@@ -7,7 +7,7 @@ using Quorum.Modules.KnowledgeBases.Contracts;
 namespace Quorum.Modules.Agents.Tools.Lookup;
 
 /// <summary>A lookup tool to describe: the stored text and binding.</summary>
-internal sealed record LookupToolToDescribe(Guid ToolId, string Description, LookupBinding Binding);
+internal sealed record LookupToolToDescribe(Guid ToolId, string Name, string Description, LookupBinding Binding);
 
 /// <summary>A lookup tool as the model is offered it now.</summary>
 /// <param name="Lookups">The lookups the tenant can see, by the name the model was offered.</param>
@@ -102,7 +102,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 .ToList();
 
             resolved[tool.ToolId] = new ResolvedLookupTool(
-                LookupToolDefinition.Build(tool.Description, offered, queried, exposed),
+                LookupToolDefinition.Build(tool.Name, tool.Description, offered, queried, exposed),
                 offered.ToDictionary(l => l.Name, l => l.Info.Id, StringComparer.Ordinal),
                 [.. offered.Select(l => l.Info)],
                 queried.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
@@ -136,7 +136,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
         var ids = tools.Select(t => t.Tool.Id).ToList();
         var bindings = await db.LookupTools.IgnoreQueryFilters().AsNoTracking().Where(l => ids.Contains(l.ToolId)).ToListAsync(cancellationToken);
         var described = tools
-            .Join(bindings, t => t.Tool.Id, b => b.ToolId, (t, b) => new LookupToolToDescribe(t.Tool.Id, t.Tool.Description, LookupBinding.From(b)))
+            .Join(bindings, t => t.Tool.Id, b => b.ToolId, (t, b) => new LookupToolToDescribe(t.Tool.Id, t.Tool.Name, t.Tool.Description, LookupBinding.From(b)))
             .ToList();
 
         return await ResolveAsync(tenantId, assistantId, described, cancellationToken);
@@ -178,7 +178,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
 
         if (missing.Count > 0)
         {
-            var fresh = await ResolveAsync(tenantId, assistantId, [.. missing.Select(t => new LookupToolToDescribe(t.ToolId, t.Description, t.Lookup!))], cancellationToken);
+            var fresh = await ResolveAsync(tenantId, assistantId, [.. missing.Select(t => new LookupToolToDescribe(t.ToolId, t.Name, t.Description, t.Lookup!))], cancellationToken);
             foreach (var tool in missing)
             {
                 var found = fresh.GetValueOrDefault(tool.ToolId);
@@ -190,25 +190,29 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
             }
         }
 
+        // One row of configuration is offered as one function for each thing it can do: they share the policy, the activation and the audit.
         return
         [
-            .. tools.Select(tool => tool.Lookup is null
-                ? tool
+            .. tools.SelectMany(tool => tool.Lookup is null
+                ? [tool]
                 : resolved.GetValueOrDefault(tool.ToolId) is { } definition
-                    ? tool with
+                    ? definition.Definition.Functions.Select(function => tool with
                     {
-                        Description = definition.Definition.Description,
-                        InputSchema = definition.Definition.InputSchema,
+                        Name = $"{tool.Name}.{function.Operation}",
+                        ExposedName = ToolNaming.LookupFunction(tool.Name, function.Operation),
+                        Description = function.Description,
+                        InputSchema = function.InputSchema,
                         Lookup = tool.Lookup with
                         {
+                            Operation = function.Operation,
                             Lookups = definition.Lookups,
                             KnowledgeBases = definition.KnowledgeBases,
                             FilterFields = definition.FilterFields,
                             SortableAttributes = definition.SortableAttributes,
                             FilterLists = definition.FilterLists,
                         },
-                    }
-                    : null).OfType<ActiveTool>(),
+                    })
+                    : []),
         ];
     }
 

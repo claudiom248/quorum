@@ -18,6 +18,8 @@ public static class SampleCollections
     public const string Lookups = "sample_lookups";
     public const string LookupsUnindexed = "sample_lookups_unindexed";
     public const string Suppliers = "sample_suppliers";
+    public const string Company = "sample_company";
+    public const string Vendors = "sample_vendors";
 
     /// <summary>The name of the vector to choose in <see cref="NamedVectors"/>: its size matches <see cref="DeterministicEmbedding.DefaultDimensions"/>.</summary>
     public const string DenseVectorName = "dense";
@@ -51,6 +53,8 @@ public static class SampleCollections
         CreateLookups(prefix + Lookups),
         CreateLookupsUnindexed(prefix + LookupsUnindexed),
         CreateSuppliers(prefix + Suppliers),
+        CompanySampleData.CreateContracts(prefix + Company),
+        CompanySampleData.CreateVendors(prefix + Vendors),
     ];
 
     /// <summary>Flat payload, indexed filter fields: the straightforward case.</summary>
