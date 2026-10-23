@@ -80,7 +80,7 @@
 </div>
 
 @code {
-    private static readonly IReadOnlyList<FilterOption> ScopeOptions =
+    private static readonly IReadOnlyList<FilterOption> AllScopes =
     [
         new("global", "Global"),
         new("tenant", "Tenant"),
@@ -97,6 +97,10 @@
 
     [Parameter]
     public bool ShowScope { get; set; } = true;
+
+    /// <summary>The scopes this list can be filtered by; a list whose items are never scoped to assistants leaves that one out.</summary>
+    [Parameter]
+    public IReadOnlyList<FilterOption> ScopeOptions { get; set; } = AllScopes;
 
     /// <summary>The tenants of the installation; the filter shows only when there is more than one.</summary>
     [Parameter]

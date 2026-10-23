@@ -236,3 +236,20 @@ public sealed partial class ManualLookupForm
     [GeneratedRegex(@"^[a-z][a-z0-9_]{0,39}\z", RegexOptions.CultureInvariant)]
     private static partial Regex ValidName();
 }
+
+public sealed partial class ManualLookupForm
+{
+    private string _opened = string.Empty;
+
+    /// <summary>Something differs from what the form was opened with: closing the drawer asks first.</summary>
+    public bool IsDirty => !string.Equals(_opened, Snapshot(), StringComparison.Ordinal);
+
+    /// <summary>Takes the form as it is now for the starting point of <see cref="IsDirty"/>.</summary>
+    public ManualLookupForm MarkOpened()
+    {
+        _opened = Snapshot();
+        return this;
+    }
+
+    private string Snapshot() => string.Join('\u001f', Name, Description, Scope, TenantsText, ValuesText);
+}

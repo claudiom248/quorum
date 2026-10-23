@@ -55,6 +55,14 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult> SetAssistantToolsAsync(Guid assistantId, IReadOnlyList<Guid> toolIds, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, $"api/assistants/{assistantId}/tools", new { toolIds }, setupToken: null, cancellationToken);
 
+    /// <summary>The tenants of the installation (administrators only): the scope picker and the tenant filter offer them.</summary>
+    public Task<ApiResult<List<TenantSummary>>> ListTenantsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<TenantSummary>>("api/tenants", cancellationToken);
+
+    /// <summary>The tools of every origin, narrowed by state (<c>status</c>) and search; there are few, so they come whole.</summary>
+    public Task<ApiResult<List<ToolInfo>>> ListToolsAsync(ListQuery query, CancellationToken cancellationToken = default) =>
+        GetAsync<List<ToolInfo>>("api/tools" + (query ?? throw new ArgumentNullException(nameof(query))).ToQueryString(), cancellationToken);
+
     public Task<ApiResult<List<ToolInfo>>> ListToolsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<ToolInfo>>("api/tools", cancellationToken);
 

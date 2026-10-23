@@ -61,3 +61,26 @@ public sealed record ManualValueRequest(string Value, string? Label, IReadOnlyLi
 
 /// <param name="Scope"><c>Global</c> or <c>Tenant</c>.</param>
 public sealed record ManualLookupRequest(string Name, string? Description, string Scope, IReadOnlyList<Guid>? ScopeTenantIds, IReadOnlyList<ManualValueRequest> Values);
+
+public sealed record LookupKnowledgeBaseRef(Guid Id, string Name);
+
+/// <summary>A row of the list of every lookup: <c>Kind</c> is <c>Manual</c> or <c>Derived</c> (computed from a knowledge base).</summary>
+/// <param name="KnowledgeBase">Only for a derived lookup.</param>
+/// <param name="Field">The dictionary field a computed lookup lists.</param>
+/// <param name="Shared"><see langword="true"/> for a manual lookup of another tenant: it can be read, not changed.</param>
+public sealed record LookupListItem(
+    Guid Id,
+    string Name,
+    string Kind,
+    LookupKnowledgeBaseRef? KnowledgeBase,
+    string? Field,
+    string? Unit,
+    ToolScope Scope,
+    int ValueCount,
+    bool Shared);
+
+public static class LookupListKinds
+{
+    public const string Manual = "Manual";
+    public const string Derived = "Derived";
+}

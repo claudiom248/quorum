@@ -1,0 +1,120 @@
+@page "/knowledge/bases/new"
+@page "/knowledge/bases/{Id:guid}/edit"
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>@(Id is null ? "Register a knowledge base" : "Edit knowledge base") · Quorum</PageTitle>
+
+<div class="list-page" data-page="knowledge-base-editor">
+    <div class="list-page-head">
+        <div>
+            <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">@(Id is null ? "Register a knowledge base" : "Edit knowledge base")</MudText>
+            <MudLink Href="/knowledge/bases">Back to the knowledge bases</MudLink>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_problem is not null)
+    {
+        <ProblemMessage Problem="_problem" />
+        <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">Try again</MudButton>
+    }
+    else if (_draft is not null)
+    {
+        <KnowledgeBaseWizard @key="_draft" Draft="_draft" Dictionary="_dictionary" Assistants="_assistants" OnSaved="SavedAsync" OnCancel="CancelAsync" />
+    }
+</div>
+
+@code {
+    private IDisposable? _guard;
+    private bool _loading = true;
+    private bool _leaving;
+    private ApiProblem? _problem;
+    private KnowledgeBaseDraft? _draft;
+    private IReadOnlyList<DictionaryField> _dictionary = [];
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+
+    /// <summary>The knowledge base being edited; none for a new registration.</summary>
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _guard = Navigation.RegisterLocationChangingHandler(OnLocationChangingAsync);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _problem = null;
+
+        var dictionary = await Api.ListDictionaryAsync();
+        if (!dictionary.IsSuccess)
+        {
+            _problem = dictionary.Problem;
+            _loading = false;
+            return;
+        }
+
+        _dictionary = dictionary.Value;
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+
+        if (Id is { } id)
+        {
+            var detail = await Api.GetKnowledgeBaseAsync(id);
+            if (!detail.IsSuccess)
+            {
+                _problem = detail.Problem;
+                _loading = false;
+                return;
+            }
+
+            _draft = KnowledgeBaseDraft.From(detail.Value).MarkOpened();
+        }
+        else
+        {
+            _draft = new KnowledgeBaseDraft().MarkOpened();
+        }
+
+        _loading = false;
+    }
+
+    // Leaving with typed changes asks first: Back, a link in the menu or the cancel button of the wizard.
+    private async ValueTask OnLocationChangingAsync(LocationChangingContext context)
+    {
+        if (_leaving || _draft is not { IsDirty: true })
+        {
+            return;
+        }
+
+        context.PreventNavigation();
+        if (await Confirmations.ConfirmDiscardAsync(Dialogs))
+        {
+            _leaving = true;
+            Navigation.NavigateTo(context.TargetLocation);
+        }
+    }
+
+    private Task CancelAsync()
+    {
+        Navigation.NavigateTo("/knowledge/bases");
+        return Task.CompletedTask;
+    }
+
+    private Task SavedAsync(SavedKnowledgeBase saved)
+    {
+        _leaving = true;
+        var query = $"?saved={Uri.EscapeDataString(saved.Name)}&status={Uri.EscapeDataString(saved.Status)}";
+        Navigation.NavigateTo($"/knowledge/bases/{saved.Id}{query}");
+        return Task.CompletedTask;
+    }
+
+    public void Dispose() => _guard?.Dispose();
+}

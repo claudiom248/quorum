@@ -61,6 +61,9 @@
         }
     }
 
+    /// <summary>The next navigation is the page closing the drawer after a save or a delete: nothing is left to lose, so it does not ask.</summary>
+    public void SkipNextGuard() => _confirmed = true;
+
     private Task OpenChangedAsync(bool open) => open ? Task.CompletedTask : RequestCloseAsync();
 
     private async Task RequestCloseAsync()

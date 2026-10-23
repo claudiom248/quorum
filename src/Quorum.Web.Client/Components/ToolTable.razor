@@ -1,0 +1,132 @@
+@* The tools of one source (a server, or the built-in ones) with the review controls of each; shared by the server drawer and the
+   built-in page. Read-only for a server another tenant shares: its review belongs to the owner. *@
+
+<div class="tool-table" data-tool-table>
+    <div class="tool-table-bar">
+        <MudTextField T="string" Value="_query.Q" ValueChanged="SearchChangedAsync" Label="Search the tools" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" Immediate="true" DebounceInterval="SearchDebounce" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="tool-table-search" />
+        <MudChip T="string" Size="Size.Small" Variant="@(_onlyToReview ? Variant.Filled : Variant.Outlined)" Color="Color.Warning"
+                 OnClick="ToggleToReviewAsync" data-filter="to-review">To review</MudChip>
+    </div>
+
+    <ProblemMessage Problem="_problem" />
+
+    @if (_loading && _tools.Count == 0)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_tools.Count == 0 && _problem is null)
+    {
+        <div class="tool-hint mt-2" data-empty>@(_query.HasFilters ? "No tool matches." : EmptyText)</div>
+    }
+    else
+    {
+        <div class="tool-rows">
+            @foreach (var tool in _tools)
+            {
+                <ToolRow @key="(tool.Id, Generation)" Tool="tool" ReadOnly="ReadOnly || tool.Shared" Busy="Busy" OnChange="OnChange" />
+            }
+        </div>
+    }
+
+    @if (_cursor is not null)
+    {
+        <MudButton Variant="Variant.Text" Size="Size.Small" Disabled="_loading" OnClick="LoadMoreAsync" Class="mt-2">Load more</MudButton>
+    }
+</div>
+
+@code {
+    private ListQuery _query = ListQuery.Empty;
+    private List<ToolInfo> _tools = [];
+    private string? _cursor;
+    private bool _loading;
+    private bool _onlyToReview;
+    private ApiProblem? _problem;
+    private object? _source;
+    private int _loadedGeneration = -1;
+
+    /// <summary>Reads one page of tools for a search and a state filter; the cursor is <see langword="null"/> for the first page.</summary>
+    [Parameter, EditorRequired]
+    public Func<ListQuery, string?, Task<ApiResult<Page<ToolInfo>>>> Load { get; set; } = null!;
+
+    /// <summary>Identifies what the table shows (the server): another source starts again from the first page.</summary>
+    [Parameter]
+    public object? Source { get; set; }
+
+    /// <summary>Raised by the page after it changed a tool, so the rows are read again.</summary>
+    [Parameter]
+    public int Generation { get; set; }
+
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public string EmptyText { get; set; } = "The server offers no tools.";
+
+    [Parameter]
+    public int SearchDebounce { get; set; } = 300;
+
+    [Parameter]
+    public EventCallback<(ToolInfo Tool, string State, string Policy)> OnChange { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Equals(_source, Source) || _loadedGeneration != Generation)
+        {
+            if (!Equals(_source, Source))
+            {
+                _query = ListQuery.Empty;
+                _onlyToReview = false;
+            }
+
+            _source = Source;
+            _loadedGeneration = Generation;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var result = await Load(_query, null);
+        _loading = false;
+        _tools.Clear();
+        _cursor = null;
+        _problem = result.IsSuccess ? null : result.Problem;
+        if (result.IsSuccess)
+        {
+            _tools.AddRange(result.Value.Items);
+            _cursor = result.Value.Cursor;
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loading = true;
+        var result = await Load(_query, _cursor);
+        _loading = false;
+        _problem = result.IsSuccess ? null : result.Problem;
+        if (result.IsSuccess)
+        {
+            _tools.AddRange(result.Value.Items);
+            _cursor = result.Value.Cursor;
+        }
+    }
+
+    private Task SearchChangedAsync(string? text)
+    {
+        _query = _query with { Q = string.IsNullOrWhiteSpace(text) ? null : text.Trim() };
+        return ReloadAsync();
+    }
+
+    private Task ToggleToReviewAsync()
+    {
+        _onlyToReview = !_onlyToReview;
+        _query = _query with { Status = _onlyToReview ? [ToolStates.PendingReview] : [] };
+        return ReloadAsync();
+    }
+}
