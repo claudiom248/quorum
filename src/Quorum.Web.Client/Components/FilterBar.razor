@@ -1,0 +1,192 @@
+<div class="filter-bar" role="search" aria-label="Filter the list">
+    <div class="filter-bar-controls">
+        <MudTextField T="string" Value="Query.Q" ValueChanged="SearchChangedAsync" Label="Search" Placeholder="@SearchPlaceholder"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" DebounceInterval="SearchDebounce"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" Class="filter-search" />
+
+        @if (ShowScope)
+        {
+            <MudSelect T="string" Label="Scope" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.Scope" SelectedValuesChanged="values => ChangeAsync(Query with { Scope = Pick(values) })"
+                       ToStringFunc="v => LabelOf(ScopeOptions, v)">
+                @foreach (var option in ScopeOptions)
+                {
+                    <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        @if (ShowTenant)
+        {
+            <MudSelect T="string" Label="Tenant" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.Tenant.Select(id => id.ToString()).ToList()"
+                       SelectedValuesChanged="values => ChangeAsync(Query with { Tenant = PickIds(values) })"
+                       ToStringFunc="TenantName">
+                @foreach (var tenant in Tenants!)
+                {
+                    <MudSelectItem T="string" Value="@tenant.Id.ToString()">@tenant.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        @if (AgentVisible)
+        {
+            <MudSelect T="string" Label="Agent" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.Assistant.Select(id => id.ToString()).ToList()"
+                       SelectedValuesChanged="values => ChangeAsync(Query with { Assistant = PickIds(values) })"
+                       ToStringFunc="AssistantName">
+                @foreach (var assistant in Assistants)
+                {
+                    <MudSelectItem T="string" Value="@assistant.Id.ToString()">@assistant.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        @if (TypeOptions is { Count: > 0 })
+        {
+            <MudSelect T="string" Label="@TypeLabel" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.Type" SelectedValuesChanged="values => ChangeAsync(Query with { Type = Pick(values) })"
+                       ToStringFunc="v => LabelOf(TypeOptions, v)">
+                @foreach (var option in TypeOptions)
+                {
+                    <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        @if (StatusOptions is { Count: > 0 })
+        {
+            <MudSelect T="string" Label="Status" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.Status" SelectedValuesChanged="values => ChangeAsync(Query with { Status = Pick(values) })"
+                       ToStringFunc="v => LabelOf(StatusOptions, v)">
+                @foreach (var option in StatusOptions)
+                {
+                    <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </div>
+
+    @if (Query.HasFilters)
+    {
+        <div class="filter-bar-chips">
+            @foreach (var chip in Chips())
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClose="() => RemoveAsync(chip)" data-filter="@chip.Group">@chip.Label</MudChip>
+            }
+            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => ChangeAsync(ListQuery.Empty)">Clear filters</MudButton>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> ScopeOptions =
+    [
+        new("global", "Global"),
+        new("tenant", "Tenant"),
+        new("assistant", "Assistant"),
+    ];
+
+    private sealed record Chip(string Group, string Value, string Label);
+
+    [Parameter, EditorRequired]
+    public ListQuery Query { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<ListQuery> QueryChanged { get; set; }
+
+    [Parameter]
+    public bool ShowScope { get; set; } = true;
+
+    /// <summary>The tenants of the installation; the filter shows only when there is more than one.</summary>
+    [Parameter]
+    public IReadOnlyList<TenantSummary>? Tenants { get; set; }
+
+    /// <summary>The assistants to filter by; the filter shows when there is at least one.</summary>
+    [Parameter]
+    public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
+
+    [Parameter]
+    public bool ShowAgent { get; set; } = true;
+
+    [Parameter]
+    public string TypeLabel { get; set; } = "Type";
+
+    [Parameter]
+    public IReadOnlyList<FilterOption>? TypeOptions { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<FilterOption>? StatusOptions { get; set; }
+
+    [Parameter]
+    public string SearchPlaceholder { get; set; } = "Search by name";
+
+    /// <summary>How long typing pauses before the search is applied, in milliseconds; 0 applies every keystroke.</summary>
+    [Parameter]
+    public int SearchDebounce { get; set; } = 300;
+
+    private bool ShowTenant => Tenants is { Count: > 1 };
+
+    private bool AgentVisible => ShowAgent && Assistants.Count > 0;
+
+    private Task SearchChangedAsync(string? text) => ChangeAsync(Query with { Q = string.IsNullOrWhiteSpace(text) ? null : text.Trim() });
+
+    private Task ChangeAsync(ListQuery query) => QueryChanged.InvokeAsync(query);
+
+    private static List<string> Pick(IEnumerable<string>? values) => [.. values ?? []];
+
+    private static List<Guid> PickIds(IEnumerable<string>? values) =>
+        [.. (values ?? []).Select(v => Guid.TryParse(v, out var id) ? id : (Guid?)null).Where(id => id.HasValue).Select(id => id!.Value)];
+
+    private static string LabelOf(IReadOnlyList<FilterOption> options, string value) =>
+        options.FirstOrDefault(o => string.Equals(o.Value, value, StringComparison.OrdinalIgnoreCase))?.Label ?? value;
+
+    private string TenantName(string value) =>
+        Guid.TryParse(value, out var id) ? Tenants?.FirstOrDefault(t => t.Id == id)?.Name ?? value : value;
+
+    private string AssistantName(string value) =>
+        Guid.TryParse(value, out var id) ? Assistants.FirstOrDefault(a => a.Id == id)?.Name ?? value : value;
+
+    private IEnumerable<Chip> Chips()
+    {
+        foreach (var scope in Query.Scope)
+        {
+            yield return new Chip("scope", scope, $"Scope: {LabelOf(ScopeOptions, scope)}");
+        }
+
+        foreach (var tenant in Query.Tenant)
+        {
+            yield return new Chip("tenant", tenant.ToString(), $"Tenant: {TenantName(tenant.ToString())}");
+        }
+
+        foreach (var assistant in Query.Assistant)
+        {
+            yield return new Chip("assistant", assistant.ToString(), $"Agent: {AssistantName(assistant.ToString())}");
+        }
+
+        foreach (var type in Query.Type)
+        {
+            yield return new Chip("type", type, $"{TypeLabel}: {LabelOf(TypeOptions ?? [], type)}");
+        }
+
+        foreach (var status in Query.Status)
+        {
+            yield return new Chip("status", status, $"Status: {LabelOf(StatusOptions ?? [], status)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Query.Q))
+        {
+            yield return new Chip("q", Query.Q, $"Search: {Query.Q}");
+        }
+    }
+
+    private Task RemoveAsync(Chip chip) => ChangeAsync(chip.Group switch
+    {
+        "scope" => Query with { Scope = [.. Query.Scope.Where(v => v != chip.Value)] },
+        "tenant" => Query with { Tenant = [.. Query.Tenant.Where(v => v.ToString() != chip.Value)] },
+        "assistant" => Query with { Assistant = [.. Query.Assistant.Where(v => v.ToString() != chip.Value)] },
+        "type" => Query with { Type = [.. Query.Type.Where(v => v != chip.Value)] },
+        "status" => Query with { Status = [.. Query.Status.Where(v => v != chip.Value)] },
+        _ => Query with { Q = null },
+    });
+}

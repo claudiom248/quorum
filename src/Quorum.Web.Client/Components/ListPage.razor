@@ -1,0 +1,122 @@
+<div class="list-page">
+    <div class="list-page-head">
+        <div>
+            <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">@Title</MudText>
+            @if (!string.IsNullOrWhiteSpace(Description))
+            {
+                <MudText Typo="Typo.body2" Class="tools-support-hint">@Description</MudText>
+            }
+        </div>
+        @if (!string.IsNullOrWhiteSpace(AddLabel))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OnAdd">@AddLabel</MudButton>
+        }
+    </div>
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-3" role="status">@Notice</MudAlert>
+    }
+
+    @if (Problem is not null)
+    {
+        <ProblemMessage Problem="Problem" />
+        @if (OnRetry.HasDelegate)
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="OnRetry">Try again</MudButton>
+        }
+    }
+    else
+    {
+        @FilterContent
+
+        @if (Loading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mb-2" />
+        }
+
+        @if (IsEmpty && !Loading)
+        {
+            @if (HasFilters)
+            {
+                <div class="list-empty" data-empty="filtered">
+                    <MudText Typo="Typo.subtitle1">Nothing matches these filters</MudText>
+                    <MudText Typo="Typo.body2" Class="tools-support-hint mb-2">Change the filters or clear them to see everything.</MudText>
+                    <MudButton Variant="Variant.Outlined" OnClick="OnClearFilters">Clear filters</MudButton>
+                </div>
+            }
+            else
+            {
+                <div class="list-empty" data-empty="none">
+                    <MudText Typo="Typo.subtitle1">@EmptyTitle</MudText>
+                    @if (!string.IsNullOrWhiteSpace(EmptyText))
+                    {
+                        <MudText Typo="Typo.body2" Class="tools-support-hint mb-2">@EmptyText</MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(AddLabel))
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnAdd">@AddLabel</MudButton>
+                    }
+                </div>
+            }
+        }
+
+        @* The grid stays mounted when it is empty: it is what loads the rows again when the filters change. *@
+        <div hidden="@(IsEmpty && !Loading)">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    /// <summary>The label of the primary action ("Add server"); without it the page has no primary action.</summary>
+    [Parameter]
+    public string? AddLabel { get; set; }
+
+    [Parameter]
+    public EventCallback OnAdd { get; set; }
+
+    /// <summary>What was saved or deleted, shown above the list.</summary>
+    [Parameter]
+    public string? Notice { get; set; }
+
+    [Parameter]
+    public RenderFragment? FilterContent { get; set; }
+
+    /// <summary>The grid.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    /// <summary>The list could not be loaded: it replaces the list, with a way to try again.</summary>
+    [Parameter]
+    public ApiProblem? Problem { get; set; }
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    /// <summary>The grid has loaded and holds no row.</summary>
+    [Parameter]
+    public bool IsEmpty { get; set; }
+
+    /// <summary>Filters or a search are on: an empty list then means "no match", not "nothing registered".</summary>
+    [Parameter]
+    public bool HasFilters { get; set; }
+
+    [Parameter]
+    public EventCallback OnClearFilters { get; set; }
+
+    [Parameter]
+    public string EmptyTitle { get; set; } = "Nothing here yet";
+
+    [Parameter]
+    public string? EmptyText { get; set; }
+}

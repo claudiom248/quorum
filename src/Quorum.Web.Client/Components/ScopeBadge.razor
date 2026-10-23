@@ -1,0 +1,24 @@
+<span class="scope-badge" data-scope="@Scope.Kind.ToLowerInvariant()">
+    <MudTooltip Text="@ScopeView.Description(Scope, Assistants)">
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@ColorOf(Scope.Kind)">@ScopeView.Label(Scope, Assistants)</MudChip>
+    </MudTooltip>
+    @if (Shared)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">Shared with you</MudChip>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public ToolScope Scope { get; set; } = null!;
+
+    /// <summary>Names for the assistants of an Assistant scope.</summary>
+    [Parameter]
+    public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
+
+    /// <summary>The item belongs to another tenant, which shares it with this one.</summary>
+    [Parameter]
+    public bool Shared { get; set; }
+
+    private static Color ColorOf(string kind) => kind == ScopeKinds.Assistant ? Color.Primary : Color.Default;
+}

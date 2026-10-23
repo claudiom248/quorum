@@ -1,0 +1,103 @@
+@implements IDisposable
+@inject IDialogService Dialogs
+@inject NavigationManager Navigation
+
+<MudDrawer Open="Open" OpenChanged="OpenChangedAsync" Anchor="Anchor.End" Variant="DrawerVariant.Temporary" Overlay="true"
+           OverlayAutoClose="true" Width="@(Wide ? "46rem" : "28rem")" Elevation="8" Class="list-drawer" Fixed="true">
+    <div class="list-drawer-head">
+        <MudText Typo="Typo.h6" HtmlTag="h2">@Title</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Close" OnClick="RequestCloseAsync" />
+    </div>
+    <div class="list-drawer-body" tabindex="-1" @onkeydown="OnKeyDownAsync" @ref="_body">
+        @ChildContent
+    </div>
+</MudDrawer>
+
+@code {
+    private IDisposable? _guard;
+    private ElementReference _body;
+    private bool _focused;
+    private bool _confirmed;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    /// <summary>Asked to close (button, Esc, backdrop) after the admin agreed to lose any unsaved change; the page closes the drawer, usually by navigating.</summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>The large forms (rag tool, lookup tool) need more room.</summary>
+    [Parameter]
+    public bool Wide { get; set; }
+
+    /// <summary>The form was modified: leaving by any way asks first (spec 010, D-8).</summary>
+    [Parameter]
+    public bool Dirty { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnInitialized() => _guard = Navigation.RegisterLocationChangingHandler(OnLocationChangingAsync);
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _confirmed = false;
+            _focused = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Keyboard focus moves into the drawer when it opens, so Esc and Tab act on it and not on the page behind.
+        if (Open && !_focused)
+        {
+            _focused = true;
+            await _body.FocusAsync();
+        }
+    }
+
+    private Task OpenChangedAsync(bool open) => open ? Task.CompletedTask : RequestCloseAsync();
+
+    private async Task RequestCloseAsync()
+    {
+        if (Dirty && !await Confirmations.ConfirmDiscardAsync(Dialogs))
+        {
+            return;
+        }
+
+        // The navigation that closing causes must not ask a second time.
+        _confirmed = true;
+        await OnClose.InvokeAsync();
+    }
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e) => e.Key == "Escape" ? RequestCloseAsync() : Task.CompletedTask;
+
+    // Back, a link or anything else that leaves the page while the form has unsaved changes.
+    private async ValueTask OnLocationChangingAsync(LocationChangingContext context)
+    {
+        if (!Open || !Dirty)
+        {
+            return;
+        }
+
+        if (_confirmed)
+        {
+            _confirmed = false;
+            return;
+        }
+
+        context.PreventNavigation();
+        if (await Confirmations.ConfirmDiscardAsync(Dialogs))
+        {
+            _confirmed = true;
+            Navigation.NavigateTo(context.TargetLocation);
+        }
+    }
+
+    public void Dispose() => _guard?.Dispose();
+}

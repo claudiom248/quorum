@@ -9,24 +9,30 @@
 {
     <MudLayout>
         <MudAppBar Elevation="0" Dense="true" Class="app-bar">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" aria-label="Toggle the menu"
+                           OnClick="() => _menuOpen = !_menuOpen" Class="menu-toggle" />
             <MudText Typo="Typo.h6" Class="brand">Quorum</MudText>
-            <MudButton Href="/" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Chat" Class="ml-4">Chat</MudButton>
-            <MudButton Href="settings" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Tune">Settings</MudButton>
-            @* Every call behind the Tools and Knowledge pages needs tools.manage or knowledge_base.manage, which only Admin holds today. *@
-            @if (Session.User?.Role == "Admin")
-            {
-                <MudButton Href="tools" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Build">Tools</MudButton>
-                <MudButton Href="knowledge" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.LibraryBooks">Knowledge</MudButton>
-            }
-            <MudButton Href="lab/editor" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Code">Editor lab</MudButton>
             <MudSpacer />
             <MudIconButton Icon="@(Theme.IsDark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                            OnClick="ToggleTheme" title="Toggle light/dark theme" />
             <MudText Typo="Typo.body2" Class="mx-2" title="@Session.User?.Email">@Session.User?.DisplayName</MudText>
             <MudButton Variant="Variant.Text" OnClick="SignOutAsync">Sign out</MudButton>
         </MudAppBar>
+        @* Below 960 px the menu collapses behind the button of the top bar. *@
+        <MudDrawer @bind-Open="_menuOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md" ClipMode="DrawerClipMode.Always"
+                   Elevation="0" Class="app-nav" Width="15rem">
+            <NavMenu />
+        </MudDrawer>
         <MudMainContent Class="app-main">
-            @Body
+            @* The API is the real guard: a page of an admin section is not even shown to anyone else. *@
+            @if (AccessRules.CanOpen(Session.User?.Role, Navigation.ToBaseRelativePath(Navigation.Uri)))
+            {
+                @Body
+            }
+            else
+            {
+                <NoAccess />
+            }
         </MudMainContent>
     </MudLayout>
 }
@@ -47,6 +53,7 @@ else
 
 @code {
     private SessionState? _state;
+    private bool _menuOpen = true;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 

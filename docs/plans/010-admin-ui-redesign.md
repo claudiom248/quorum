@@ -41,7 +41,7 @@
 ## Steps
 
 ### PR 1 - Tenants and onboarding checklist API (`feat/010-tenants-checklist-api`)
-1. `GET /api/tenants` in Tenancy: id and name of every tenant, admin only (D-16). Integration tests: admin gets the list, a non-admin gets 403, anonymous 401.
+1. `GET /api/tenants` in Tenancy: id, name and `current` (true for the tenant of the signed-in user, which the scope picker leaves out of "other tenants") of every tenant, admin only (D-16). The web client already has `TenantSummary(Id, Name, Current)` since PR 6. Integration tests: admin gets the list, a non-admin gets 403, anonymous 401.
 2. `OnboardingChecklist` entity, configuration and migration (`dotnet ef migrations add AddOnboardingChecklist`); `GET` returns the four keys with `done` and `dismissed`; `PUT .../{key}` marks one done (idempotent, 404 for an unknown key); `PUT .../dismissed`. The setup completion sets `model`. AC-13 (server side), AC-6 (tenants).
 
 ### PR 2 - Uniform scope in the list items (`feat/010-uniform-scope`)
@@ -61,7 +61,7 @@
 10. `GET /api/tools/servers/{id}/tools` paged with `status` and `q`; `GET /api/tools` (built-in) accepts `q` and `status`. `ToolInfo` gains `serverId` and the server's scope so the UI can show the badge and the read-only rule per tool. AC-8, AC-9 (server side).
 
 ### PR 6 - Shell and shared components (`feat/010-shell`)
-11. **Spike:** two routes on one component keep the instance and the grid state; findings written under this step, and the `DrawerRoute` fallback of the Decisions table used if not.
+11. **Spike:** two routes on one component keep the instance and the grid state; findings written under this step, and the `DrawerRoute` fallback of the Decisions table used if not. **Done (2026-10-24):** a throwaway page with `@page "/spike"` and `@page "/spike/{Id}"` kept the same component instance (same GUID, same click counter) while navigating by link between `/spike`, `/spike/abc` and `/spike/new`, and back, in the real app (Blazor WebAssembly, MudBlazor 9.11). The list pages therefore declare both routes and render the drawer themselves; the `DrawerRoute` fallback is not needed. The page was removed again.
 12. `MainLayout` becomes the sidebar shell (`MudDrawer`, groups of D-1, current page highlighted, Lab at the bottom), slim top bar with theme toggle, user and sign out; collapse below 960 px behind a menu button; admin-only entries hidden for other roles; `NoAccess` component. The pending-review badge reads `PendingReviewCount` from the server list. AC-1, AC-2, AC-15.
 13. Shared components, each with bUnit tests and no page dependency: `ScopeBadge` (D-6), `ScopePicker` replacing `ScopeEditor` (scope kind, tenant multi-select fed by `GET /api/tenants`, assistant multi-select), `FilterBar` (chips, clear, only the filters the page declares, tenant filter hidden when the installation has one tenant), `ListPage` scaffold (title, primary action, grid slot, empty states for "nothing registered" and "no match", load error with retry), `ListState` (URL round trip), `ListDrawer` (right drawer, wide variant, full screen under 960 px, Esc and backdrop and back handling), `DiscardChangesDialog` and `ConfirmDeleteDialog`. AC-3, AC-4, AC-10, AC-11, AC-16.
 14. Sidebar entries for pages that do not exist yet point to the current pages (`/tools`, `/knowledge`...), so nothing is dead; each page PR repoints its entry.
