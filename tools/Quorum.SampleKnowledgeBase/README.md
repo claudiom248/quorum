@@ -48,6 +48,17 @@ the `summary` vector) stay deterministic. The walk-through is in [docs/knowledge
 | `sample_company` | About forty contracts of sixteen kinds across ten departments, from 2018 to 2025, in four states, for many audiences (a list), with `year`, `status`, `confidential`, `value_eur` and `signed_on`, all indexed: questions with more than one answer for the lookups and the lookup tool |
 | `sample_vendors` | The 18 vendors of `sample_company` as entities (`name`, `country`, `category`, `contract_count`, `supplier_since`, `rating`, `preferred`), with contract counts that match the contracts |
 
+## Trying the lookups (spec 007)
+
+Seed with a real model (see above), then register the collections and create the tools in the admin:
+
+1. Register `sample_company` (qdrant `http://qdrant:6334`). In the lookups step mark `supplier`, `department`, `nationality` and `audience` as **listable** and `is_first_chunk` as the **counted point** (the draft proposes it). The lists are computed in the background; open *Lookups* to see them become *Ready*.
+2. Register `sample_vendors` with `name` as the **entity name** and `contract_count`, `country`, `category` and `rating` as attributes: the entity lookup lists the 18 vendors with the contracts each one has.
+3. Create a lookup tool that binds the lists and both knowledge bases, exposing `department`, `nationality`, `audience` and `year` as filters, and a rag tool over `sample_company` with the `document_ids` switch on. Activate both for an assistant.
+4. Ask: "list the suppliers", "which suppliers have the most contracts", "which policies are for managers", "which teams are Italian", and "which contracts mention termination, and what does the notice period say in them" (a `documents` call followed by a `rag` call with `document_ids`).
+
+`sample_lookups_unindexed` is the failure case: marking its fields listable ends in *Failed* naming the field that needs a payload index. What a real model got right and wrong with these questions is recorded in the plan of the spec (`docs/plans/007-metadata-lookups.md`, "As built (PR 10)").
+
 `dotnet run --project tools/Quorum.SampleKnowledgeBase -- --schema flat` (or `nested`) prints the plain JSON Schema of the
 payload, to paste in the registration.
 
