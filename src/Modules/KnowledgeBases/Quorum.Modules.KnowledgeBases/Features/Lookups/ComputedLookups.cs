@@ -98,5 +98,7 @@ internal static class ComputedLookups
         storedUnit != unit
         || before.Fields.FirstOrDefault(f => f.DictionaryFieldId == field.DictionaryFieldId)?.Path != field.Path
         || before.CountedPoint != after.CountedPoint
-        || before.Roles.DocumentId != after.Roles.DocumentId;
+        || before.Roles.DocumentId != after.Roles.DocumentId
+        // The filters of a tool's slice read other mapped fields too.
+        || before.Fields.Any(b => after.Fields.Any(a => a.DictionaryFieldId == b.DictionaryFieldId && a.Path != b.Path));
 }

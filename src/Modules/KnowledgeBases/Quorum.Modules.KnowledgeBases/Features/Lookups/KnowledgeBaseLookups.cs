@@ -18,6 +18,8 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
     /// <summary>The most slices a knowledge base has, counting the one of the whole knowledge base (spec 007 D-6).</summary>
     public const int MaxSlicesPerKnowledgeBase = 50;
 
+    private const long DeclareLockKey = 7_007_002;
+
     public async Task<IReadOnlyList<LookupInfo>> ListAsync(LookupListQuery query, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
@@ -67,6 +69,9 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
         {
             return new SliceDeclaration(SliceDeclarationOutcome.InvalidFilters, Problem: key.Problem);
         }
+
+        // Declarations run one at a time: two tools with the same filters would otherwise both insert the same slice.
+        await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({DeclareLockKey})", cancellationToken);
 
         var wanted = request.LookupIds.Distinct().ToList();
         var visible = await LoadVisibleAsync(assistantId: null, wanted, cancellationToken);
@@ -318,15 +323,15 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
                 .ToListAsync(cancellationToken);
             var existing = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
                 .Where(s => lookupIds.Contains(s.LookupId))
-                .Select(s => new { s.Id, s.FilterHash })
+                .Select(s => s.Id)
                 .ToListAsync(cancellationToken);
 
             var gone = orphans.Select(s => s.Id).ToHashSet();
-            var hashes = existing.Where(s => !gone.Contains(s.Id)).Select(s => s.FilterHash)
-                .Concat(touched.Where(s => lookupIds.Contains(s.LookupId) && !gone.Contains(s.Id)).Select(s => s.FilterHash))
-                .Distinct(StringComparer.Ordinal)
+            var slices = existing.Where(id => !gone.Contains(id))
+                .Concat(touched.Where(s => lookupIds.Contains(s.LookupId) && !gone.Contains(s.Id)).Select(s => s.Id))
+                .Distinct()
                 .Count();
-            if (hashes > MaxSlicesPerKnowledgeBase)
+            if (slices > MaxSlicesPerKnowledgeBase)
             {
                 return group.First().KnowledgeBase!.Name;
             }

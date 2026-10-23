@@ -13,6 +13,9 @@ internal sealed class QdrantLookups(QdrantConnector connector) : ILookupsCapabil
     /// <summary>How many records one page of the scan that counts distinct documents reads.</summary>
     internal const int ScanPageSize = 1000;
 
+    /// <summary>The (value, document) pairs a scan keeps in memory at most; past it the list is cut and marked truncated.</summary>
+    internal const int MaxTrackedPairs = 10_000_000;
+
     public async Task<string?> CheckAsync(IStoreConnection connection, IReadOnlyCollection<string> requiredPaths, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(requiredPaths);
@@ -73,7 +76,10 @@ internal sealed class QdrantLookups(QdrantConnector connector) : ILookupsCapabil
     private async Task<DistinctValues> CountDocumentsAsync(QdrantConnection connection, DistinctValuesQuery query, string documentIdPath, CancellationToken cancellationToken)
     {
         string[] paths = [documentIdPath, query.Path];
-        var documentsOf = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        // Each document id is held once and the values refer to it by number, so memory follows documents plus pairs, not their text.
+        var documentNumbers = new Dictionary<string, int>(StringComparer.Ordinal);
+        var documentsOf = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+        var pairs = 0;
         var read = 0;
         var capped = false;
         string? cursor = null;
@@ -93,17 +99,26 @@ internal sealed class QdrantLookups(QdrantConnector connector) : ILookupsCapabil
                 {
                     if (!documentsOf.TryGetValue(value, out var documents))
                     {
-                        documents = new HashSet<string>(StringComparer.Ordinal);
+                        documents = [];
                         documentsOf[value] = documents;
                     }
 
-                    _ = documents.Add(document);
+                    if (!documentNumbers.TryGetValue(document, out var number))
+                    {
+                        number = documentNumbers.Count;
+                        documentNumbers[document] = number;
+                    }
+
+                    if (documents.Add(number))
+                    {
+                        pairs++;
+                    }
                 }
             }
 
             read += page.Rows.Count;
             cursor = page.Cursor;
-            capped = cursor is not null && read >= query.MaxRecords;
+            capped = cursor is not null && (read >= query.MaxRecords || pairs >= MaxTrackedPairs);
         }
         while (cursor is not null && !capped);
 

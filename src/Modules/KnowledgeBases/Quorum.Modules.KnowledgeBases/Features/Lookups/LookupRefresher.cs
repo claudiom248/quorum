@@ -34,9 +34,23 @@ internal sealed partial class LookupRefresher(
     /// <returns>How many slices were computed or failed.</returns>
     public async Task<int> RunDueAsync(CancellationToken cancellationToken)
     {
-        var claimed = await ClaimAsync(cancellationToken);
-        await Task.WhenAll(claimed.Select(id => ComputeAsync(id, cancellationToken)));
-        return claimed.Count;
+        // A slot that frees up is refilled at once instead of waiting for the slowest computation of the turn.
+        var running = new List<Task>();
+        var started = 0;
+        while (true)
+        {
+            var claimed = started >= LookupRefreshService.MaxClaimsPerTurn ? [] : await ClaimAsync(cancellationToken);
+            started += claimed.Count;
+            running.AddRange(claimed.Select(id => ComputeAsync(id, cancellationToken)));
+            if (running.Count == 0)
+            {
+                return started;
+            }
+
+            var finished = await Task.WhenAny(running);
+            _ = running.Remove(finished);
+            await finished;
+        }
     }
 
     /// <summary>
@@ -54,6 +68,13 @@ internal sealed partial class LookupRefresher(
 
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({ClaimLockKey})", cancellationToken);
+            // The limit is the installation's: computations other instances have running count too.
+            var free = MaxConcurrent - await db.LookupSlices.IgnoreQueryFilters().CountAsync(s => s.ComputingSince >= expired, cancellationToken);
+            if (free <= 0)
+            {
+                return [];
+            }
+
             var due = await db.LookupSlices
                 .FromSql($"""
                     SELECT s.* FROM knowledge_base.lookup_slices s
@@ -80,7 +101,7 @@ internal sealed partial class LookupRefresher(
             var claimed = new List<Guid>();
             foreach (var slice in due)
             {
-                if (claimed.Count >= MaxConcurrent)
+                if (claimed.Count >= free)
                 {
                     break;
                 }
@@ -124,16 +145,29 @@ internal sealed partial class LookupRefresher(
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
         var store = scope.ServiceProvider.GetRequiredService<LookupStore>();
 
-        var slice = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(s => s.Id == sliceId, stoppingToken);
-        if (slice is null)
+        LookupSlice? slice;
+        Lookup lookup;
+        KnowledgeBase? knowledgeBase;
+        try
         {
-            return;
+            slice = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(s => s.Id == sliceId, stoppingToken);
+            if (slice is null)
+            {
+                return;
+            }
+
+            lookup = await db.Lookups.IgnoreQueryFilters().AsNoTracking().SingleAsync(l => l.Id == slice.LookupId, stoppingToken);
+            knowledgeBase = lookup.KnowledgeBaseId is { } knowledgeBaseId
+                ? await db.KnowledgeBases.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(k => k.Id == knowledgeBaseId, stoppingToken)
+                : null;
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException or OperationCanceledException)
+        {
+            // The slice was claimed: give it back instead of leaving it leased until the lease runs out.
+            await ReleaseAsync(store, sliceId);
+            throw;
         }
 
-        var lookup = await db.Lookups.IgnoreQueryFilters().AsNoTracking().SingleAsync(l => l.Id == slice.LookupId, stoppingToken);
-        var knowledgeBase = lookup.KnowledgeBaseId is { } knowledgeBaseId
-            ? await db.KnowledgeBases.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(k => k.Id == knowledgeBaseId, stoppingToken)
-            : null;
         if (knowledgeBase is null)
         {
             await store.ReleaseAsync(sliceId, stoppingToken);

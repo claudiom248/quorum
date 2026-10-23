@@ -195,6 +195,11 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("KnowledgeBaseId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_lookups_one_entity_per_knowledge_base")
+                        .HasFilter("\"Kind\" = 'Entity'");
+
                     b.HasIndex("KnowledgeBaseId", "DictionaryFieldId")
                         .IsUnique();
 
@@ -360,6 +365,8 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                                         .ValueGeneratedOnAdd();
 
                                     b2.Property<Guid>("DictionaryFieldId");
+
+                                    b2.Property<bool>("EntityAttribute");
 
                                     b2.Property<bool>("Listable");
 
