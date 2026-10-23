@@ -2,6 +2,16 @@
 
 Backlog of things decided *not* to do yet, so they are not forgotten. An item enters here when a spec or a conversation explicitly postpones it; it leaves when a spec picks it up. Specs keep their own "Deferred Decisions" table with the fallback in force: this file is the cross-spec index.
 
+## High priority
+
+Items that hurt what users see today and should be picked up before new features.
+
+| Item | Origin | Why deferred | Revisit when |
+|---|---|---|---|
+| The text the model writes between tool calls is glued to its final answer in one message, so a conclusion drawn too early can sit in front of the correct one (seen in 2 of 7 questions with the local model, e.g. "No documents with Japanese nationality found" followed by the right suppliers; the second case announced the next calls). Show the text before a tool call as intermediate output and keep only the last step's text as the answer, or at least separate the steps | Found while testing spec 007 from chat | It is in the chat engine (Conversations/Agents streaming), not in the lookup tools, so it was left out of the lookups PRs | Next spec or fix on the chat; before any new work on the chat UI |
+
+## Other deferred work
+
 | Item | Origin | Why deferred | Revisit when |
 |---|---|---|---|
 | Keep the original uploaded file (not only the extracted text) | Spec 002 | The first iteration stores only the extracted text: less sensitive data at rest, no file storage to manage | Re-extraction, re-download of the original or knowledge base ingestion (spec 003) need it |
