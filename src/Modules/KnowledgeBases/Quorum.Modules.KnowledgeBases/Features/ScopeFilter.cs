@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.KnowledgeBases.Domain;
+using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
 
@@ -96,6 +97,48 @@ internal static class ScopeFilter
         }
 
         return Result<IQueryable<Lookup>>.Success(source);
+    }
+
+    /// <summary>The aggregate lookups list, where a derived lookup has the scope of its knowledge base; <c>kind</c> is filtered by the endpoint.</summary>
+    public static Result<IQueryable<LookupRow>> Apply(IQueryable<LookupRow> source, ListQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(query);
+
+        if (!TryParse<KnowledgeBaseScope>(query.Scope, "scope", out var scopes, out var error))
+        {
+            return error;
+        }
+
+        if (query.Type.Count + query.Status.Count > 0)
+        {
+            return Unsupported("The lookups have no type or status to filter by: use kind.");
+        }
+
+        var tenants = query.Tenant.ToList();
+        var assistants = query.Assistant.ToList();
+
+        if (scopes.Count > 0)
+        {
+            source = source.Where(r => scopes.Contains(r.Scope));
+        }
+
+        if (tenants.Count > 0)
+        {
+            source = source.Where(r => tenants.Contains(r.TenantId) || r.ScopeTenantIds.Any(t => tenants.Contains(t)));
+        }
+
+        if (assistants.Count > 0)
+        {
+            source = source.Where(r => r.Scope != KnowledgeBaseScope.Assistant || r.ScopeAssistantIds!.Any(a => assistants.Contains(a)));
+        }
+
+        if (Pattern(query.Q) is { } pattern)
+        {
+            source = source.Where(r => EF.Functions.ILike(r.Name, pattern, EscapeCharacter));
+        }
+
+        return Result<IQueryable<LookupRow>>.Success(source);
     }
 
     /// <summary>Fields are Global or Tenant, owned by one tenant and never shared with named ones; <c>type</c> is the field type.</summary>
