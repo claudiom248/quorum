@@ -133,8 +133,76 @@ public sealed class LookupToolUnitTests
         Assert.Equal(["values"], properties.GetProperty("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(["lookup"], schema.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(
-            "Reads lists.\n\nLists:\n- language: Spoken languages.\n- supplier (from contracts, counts documents)",
+            "Reads lists.\n\nLists:\n- language (typed by hand; it may hold values that occur in no document): Spoken languages.\n- supplier (from contracts; counts documents; only the values that occur in the documents)",
             first.Description);
+    }
+
+    [Fact]
+    public void AnEntityListSaysItHoldsEntitiesAndWhatItCanBeOrderedBy()
+    {
+        OfferedLookup[] lookups =
+        [
+            new("suppliers", new LookupInfo(LookupA, "suppliers", LookupKindInfo.Entity, Guid.NewGuid(), "suppliers", "One per supplier.", null, SortableAttributes: ["contract_count", "supplier_since"])),
+        ];
+
+        var definition = LookupToolDefinition.Build("Reads.", lookups, [], []);
+
+        Assert.Contains("- suppliers (the entities of suppliers, one entry each, with their attributes; can be ordered by contract_count, supplier_since): One per supplier.", definition.Description, StringComparison.Ordinal);
+        using var schema = JsonDocument.Parse(definition.InputSchema);
+        var sort = schema.RootElement.GetProperty("properties").GetProperty("sort");
+        Assert.Equal(["count", "name", "contract_count", "-contract_count", "supplier_since", "-supplier_since"], sort.GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+        Assert.Contains("suppliers: contract_count, supplier_since", sort.GetProperty("description").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithoutEntityListsTheSortOffersOnlyCountAndName()
+    {
+        OfferedLookup[] lookups = [new("supplier", new LookupInfo(LookupB, "supplier", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents"))];
+
+        var definition = LookupToolDefinition.Build("Reads.", lookups, [], []);
+
+        using var schema = JsonDocument.Parse(definition.InputSchema);
+        Assert.Equal(["count", "name"], schema.RootElement.GetProperty("properties").GetProperty("sort").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public void AFilterOnTheFieldOfAListSaysWhereItsExactValuesAre()
+    {
+        var audience = Guid.NewGuid();
+        OfferedLookup[] lookups = [new("audience", new LookupInfo(LookupA, "audience", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents", FieldId: audience))];
+        FilterFieldInfo[] fields =
+        [
+            new(audience, "audience", FilterFieldType.TextList, null),
+            new(Guid.NewGuid(), "department", FilterFieldType.Text, null),
+        ];
+
+        var definition = LookupToolDefinition.Build("Reads.", lookups, [new(Guid.NewGuid(), "contracts", "Contracts.", [])], fields);
+
+        using var schema = JsonDocument.Parse(definition.InputSchema);
+        var properties = schema.RootElement.GetProperty("properties");
+        Assert.Contains("the exact values are in the list 'audience'", properties.GetProperty("audience").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("exact values", properties.GetProperty("department").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.Equal(new Dictionary<string, string> { ["audience"] = "audience" }, LookupToolDefinition.ListsOfFilters(lookups, fields));
+    }
+
+    [Fact]
+    public void AListWithNoCountsSaysSoInsteadOfPretendingToBeRanked()
+    {
+        var page = new LookupRead(LookupReadOutcome.Ok, "suppliers", "suppliers", null, null, ValueCount: 1, Values: [Value("Acme")]);
+
+        var text = LookupResultFormat.Render(page, "suppliers", LookupSortOrder.Count, 6_000, "d").Text;
+
+        Assert.Contains("Ordered by the list's own order: it has no counts to rank by.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAttributeOrderIsNamedInTheHeader()
+    {
+        var page = new LookupRead(LookupReadOutcome.Ok, "suppliers", "suppliers", null, null, ValueCount: 1, Values: [Value("Acme")]);
+
+        var text = LookupResultFormat.Render(page, "suppliers", LookupSortOrder.Attribute, 6_000, "d", attribute: new LookupAttributeOrder("contract_count", Descending: true)).Text;
+
+        Assert.Contains("Ordered by contract_count, the largest first.", text, StringComparison.Ordinal);
     }
 
     [Fact]

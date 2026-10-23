@@ -196,8 +196,24 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             return LookupRead.Of(slice.Status == LookupStatus.Failed ? LookupReadOutcome.Failed : LookupReadOutcome.Preparing, info.Name, info.KnowledgeBaseName);
         }
 
-        var sort = request.Sort == LookupSortOrder.Name ? LookupSort.Name : LookupSort.Count;
-        var page = await cache.ReadAsync(db, lookup, slice, new LookupPageRequest(request.Search, sort, request.Limit, request.Cursor), cancellationToken);
+        var sort = request.Sort switch
+        {
+            LookupSortOrder.Name => LookupSort.Name,
+            LookupSortOrder.Attribute => LookupSort.Attribute,
+            _ => LookupSort.Count,
+        };
+        LookupAttributeSort? attribute = null;
+        if (sort == LookupSort.Attribute)
+        {
+            if (request.Attribute is not { } asked || info.SortableAttributes?.Contains(asked.Name, StringComparer.Ordinal) != true)
+            {
+                return LookupRead.Of(LookupReadOutcome.InvalidSort, info.Name, info.KnowledgeBaseName);
+            }
+
+            attribute = new LookupAttributeSort(asked.Name, asked.Descending);
+        }
+
+        var page = await cache.ReadAsync(db, lookup, slice, new LookupPageRequest(request.Search, sort, request.Limit, request.Cursor, attribute), cancellationToken);
         if (!page.IsSuccess)
         {
             return LookupRead.Of(LookupReadOutcome.InvalidCursor, info.Name, info.KnowledgeBaseName);
@@ -287,10 +303,17 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             .ToListAsync(cancellationToken);
         var manuals = await manual.ToListAsync(cancellationToken);
 
-        var fieldIds = fromBases.Select(f => f.Lookup.DictionaryFieldId).OfType<Guid>().Distinct().ToList();
-        var fieldNames = await DictionaryVisibility.Fields(db).AsNoTracking()
+        // The fields the lists are named after, and the attributes the entity lists show, which say what they can be ordered by.
+        var fieldIds = fromBases
+            .Select(f => f.Lookup.DictionaryFieldId)
+            .OfType<Guid>()
+            .Concat(fromBases.Where(f => f.Lookup.Kind == LookupKind.Entity).SelectMany(f => f.KnowledgeBase.Mapping.Fields.Where(m => m.EntityAttribute).Select(m => m.DictionaryFieldId)))
+            .Distinct()
+            .ToList();
+        var dictionary = await DictionaryVisibility.Fields(db).AsNoTracking()
             .Where(f => fieldIds.Contains(f.Id))
-            .ToDictionaryAsync(f => f.Id, f => f.Name, cancellationToken);
+            .ToDictionaryAsync(f => f.Id, cancellationToken);
+        var fieldNames = dictionary.ToDictionary(pair => pair.Key, pair => pair.Value.Name);
 
         var visible = new List<VisibleLookup>();
         foreach (var entry in fromBases)
@@ -322,7 +345,11 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
                     knowledgeBase.Id,
                     knowledgeBase.Name,
                     lookup.Description ?? (lookup.Kind == LookupKind.Entity ? knowledgeBase.Description : null),
-                    lookup.Unit?.ToString().ToLowerInvariant())));
+                    lookup.Unit?.ToString().ToLowerInvariant(),
+                    lookup.Kind == LookupKind.Computed ? lookup.DictionaryFieldId : null,
+                    lookup.Kind == LookupKind.Entity
+                        ? EntityAttributes.Sortable(knowledgeBase.Mapping.Fields.Where(m => m.EntityAttribute).Select(m => dictionary.GetValueOrDefault(m.DictionaryFieldId)).OfType<DictionaryField>())
+                        : null)));
         }
 
         visible.AddRange(manuals.Select(lookup => new VisibleLookup(

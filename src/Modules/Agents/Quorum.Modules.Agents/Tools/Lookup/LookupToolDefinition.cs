@@ -71,21 +71,33 @@ internal static class LookupToolDefinition
         foreach (var lookup in lookups)
         {
             text.Append("\n- ").Append(lookup.Name);
+            // The model must tell what kind of list it holds: the values that occur, the entities there are, or a reference vocabulary.
             var about = new List<string>();
-            if (lookup.Info.KnowledgeBaseName is { } knowledgeBase)
+            switch (lookup.Info.Kind)
             {
-                about.Add($"from {knowledgeBase}");
+                case LookupKindInfo.Computed:
+                    about.Add($"from {lookup.Info.KnowledgeBaseName}");
+                    if (lookup.Info.Unit is { } unit)
+                    {
+                        about.Add($"counts {unit}");
+                    }
+
+                    about.Add("only the values that occur in the documents");
+                    break;
+                case LookupKindInfo.Entity:
+                    about.Add($"the entities of {lookup.Info.KnowledgeBaseName}, one entry each, with their attributes");
+                    if (lookup.Info.SortableAttributes is { Count: > 0 } sortable)
+                    {
+                        about.Add($"can be ordered by {string.Join(", ", sortable)}");
+                    }
+
+                    break;
+                default:
+                    about.Add("typed by hand; it may hold values that occur in no document");
+                    break;
             }
 
-            if (lookup.Info.Unit is { } unit)
-            {
-                about.Add($"counts {unit}");
-            }
-
-            if (about.Count > 0)
-            {
-                text.Append(" (").Append(string.Join(", ", about)).Append(')');
-            }
+            text.Append(" (").Append(string.Join("; ", about)).Append(')');
 
             if (!string.IsNullOrWhiteSpace(lookup.Info.Description))
             {
@@ -157,9 +169,15 @@ internal static class LookupToolDefinition
                 writer.WriteEndObject();
             }
 
+            // A filter on a field that one of the lists holds says so: the exact values are there, and a model that guesses them gets nothing.
+            var lists = ListsOfFilters(lookups, fields);
             foreach (var field in fields)
             {
-                FilterParameters.WriteFilter(writer, field);
+                FilterParameters.WriteFilter(
+                    writer,
+                    lists.TryGetValue(field.Name, out var list)
+                        ? field with { Description = $"{(string.IsNullOrWhiteSpace(field.Description) ? field.Name : field.Description.Trim())} (the exact values are in the list '{list}')" }
+                        : field);
             }
 
             writer.WriteStartObject(SearchParameter);
@@ -169,11 +187,18 @@ internal static class LookupToolDefinition
 
             writer.WriteStartObject(SortParameter);
             writer.WriteString("type", "string");
+            var attributes = lookups.Where(l => l.Info.SortableAttributes is { Count: > 0 }).ToList();
             writer.WriteStartArray("enum");
             writer.WriteStringValue(SortByCount);
             writer.WriteStringValue(SortByName);
+            foreach (var attribute in attributes.SelectMany(l => l.Info.SortableAttributes!).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            {
+                writer.WriteStringValue(attribute);
+                writer.WriteStringValue("-" + attribute);
+            }
+
             writer.WriteEndArray();
-            writer.WriteString("description", "count: most documents first (the default). name: alphabetical.");
+            writer.WriteString("description", SortText(attributes));
             writer.WriteEndObject();
 
             writer.WriteStartObject(LimitParameter);
@@ -202,6 +227,32 @@ internal static class LookupToolDefinition
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>The list that holds the exact values of each filter parameter: the list of a computed lookup is the list of the field it filters.</summary>
+    /// <returns>List name by parameter name.</returns>
+    public static IReadOnlyDictionary<string, string> ListsOfFilters(IReadOnlyList<OfferedLookup> lookups, IReadOnlyList<FilterFieldInfo> fields)
+    {
+        ArgumentNullException.ThrowIfNull(lookups);
+        ArgumentNullException.ThrowIfNull(fields);
+
+        var byField = lookups
+            .Where(l => l.Info.Kind == LookupKindInfo.Computed && l.Info.FieldId is not null)
+            .GroupBy(l => l.Info.FieldId!.Value)
+            .ToDictionary(g => g.Key, g => g.First().Name);
+        return fields
+            .Where(f => byField.ContainsKey(f.Id))
+            .GroupBy(f => f.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => byField[g.First().Id], StringComparer.Ordinal);
+    }
+
+    private static string SortText(List<OfferedLookup> entityLists)
+    {
+        const string text = "count: most documents first, for the lists that count documents (the default). name: alphabetical.";
+        return entityLists.Count == 0
+            ? text
+            : text + " For a list of entities, one of its attributes: the name alone puts the smallest or earliest first, with a '-' in front the largest or latest first ("
+                + string.Join("; ", entityLists.Select(l => $"{l.Name}: {string.Join(", ", l.Info.SortableAttributes!)}")) + ").";
     }
 
     private static string OperationText(bool live, bool filters)

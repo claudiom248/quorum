@@ -92,8 +92,7 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
 
         var fieldIds = knowledgeBase.Mapping.Fields.Where(f => f.EntityAttribute).Select(f => f.DictionaryFieldId).ToList();
         var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => fieldIds.Contains(f.Id)).ToListAsync(cancellationToken);
-        var keys = EntityAttributes.Names(fields);
-        return fields.Any(f => keys[f.Id] == name && f.Type is DictionaryFieldType.Number or DictionaryFieldType.Date)
+        return EntityAttributes.Sortable(fields).Contains(name, StringComparer.Ordinal)
             ? new LookupAttributeSort(name, descending)
             : null;
     }

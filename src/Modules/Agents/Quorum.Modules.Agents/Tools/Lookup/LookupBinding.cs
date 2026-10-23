@@ -27,6 +27,12 @@ internal sealed record LookupBinding(
     /// <summary>The filter parameters the model was offered, by name, with the field each stands for; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, Guid> FilterFields { get; init; } = new Dictionary<string, Guid>();
 
+    /// <summary>The attributes each entity list can be ordered by, by the name the model was offered the list under; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> SortableAttributes { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <summary>The list that holds the exact values of a filter parameter, by parameter name: the list of the field it filters; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
+
     public static LookupBinding From(LookupTool row)
     {
         ArgumentNullException.ThrowIfNull(row);

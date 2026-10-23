@@ -34,7 +34,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     {
         roles = new { text = "text", documentId = "document_id", title = "title", sourceUrl = "source_url" },
         fields = MappedPaths
-            .Select(name => new { path = name, name, listable = listable && name == "supplier" })
+            .Select(name => new { path = name, name, listable = listable && name is "supplier" or "audience" })
             .ToArray(),
         countedPoint = countedPoint ? new { path = "is_first_chunk", value = true } : null,
     };
@@ -42,6 +42,10 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     private static readonly string[] MappedPaths = ["supplier", "department", "nationality", "audience"];
 
     private static readonly string[] Managers = ["managers"];
+
+    private static readonly string[] Manager = ["manager"];
+
+    private static readonly string[] Nowhere = ["nowhere"];
 
     private static readonly string[] ItAudience = ["it"];
 
@@ -81,6 +85,9 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
             var supplier = await db.Lookups.IgnoreQueryFilters().AsNoTracking()
                 .SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fields["supplier"], Ct);
             lookups.Add(LookupToolApi.Bind(supplier.Id));
+            var audience = await db.Lookups.IgnoreQueryFilters().AsNoTracking()
+                .SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fields["audience"], Ct);
+            lookups.Add(LookupToolApi.Bind(audience.Id));
         }
 
         var tool = await LookupToolApi.CreateOkAsync(
@@ -181,6 +188,48 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         Assert.DoesNotContain("cursor", result, StringComparison.Ordinal);
         var audit = Assert.Single(await ToolFixtures.AuditRowsAsync(live.Setup.App));
         Assert.Equal(3, audit.SourceCount);
+    }
+
+    [Fact]
+    public async Task AFilterValueThatMatchesNothingPointsToTheListThatHoldsTheExactValues()
+    {
+        var live = await StartAsync();
+        await using var _ = live.Setup;
+
+        var events = await AskAsync(live.Setup, Call(new { operation = "documents", audience = Manager }));
+
+        var result = ResultOf(events);
+        Assert.Equal("succeeded", StatusOf(events));
+        Assert.Contains("No document matches.", result, StringComparison.Ordinal);
+        Assert.Contains("the values of 'audience' are in the list 'audience'", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACountOfZeroPointsToTheListTooButAFilterWithoutAListGetsNoHint()
+    {
+        var live = await StartAsync();
+        await using var _ = live.Setup;
+
+        var withList = ResultOf(await AskAsync(live.Setup, Call(new { operation = "count", audience = Manager })));
+        Assert.Contains("the values of 'audience' are in the list 'audience'", withList, StringComparison.Ordinal);
+
+        live.Setup.App.ModelServer.EnqueueRounds([ChatScript.CallTools(Call(new { operation = "documents", department = Nowhere })), ChatScript.Reply("Done.")]);
+        var without = ResultOf(await AskCoreAsync(live.Setup));
+        Assert.Contains("No document matches.", without, StringComparison.Ordinal);
+        Assert.DoesNotContain("Nothing matched", without, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheDefinitionSaysWhereTheValuesOfAFilterAreAndWhatEachListIs()
+    {
+        var live = await StartAsync();
+        await using var _ = live.Setup;
+
+        var definition = (await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool)).Definition!;
+
+        Assert.Contains("the exact values are in the list 'audience'", definition.Parameter("audience").GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.Contains("(from contracts; counts documents; only the values that occur in the documents)", definition.Description, StringComparison.Ordinal);
+        Assert.Contains("typed by hand", definition.Description, StringComparison.Ordinal);
     }
 
     [Theory] // AC-29

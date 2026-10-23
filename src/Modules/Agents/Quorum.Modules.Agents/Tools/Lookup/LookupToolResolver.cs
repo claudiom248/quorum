@@ -16,7 +16,14 @@ internal sealed record ResolvedLookupTool(
     IReadOnlyDictionary<string, Guid> Lookups,
     IReadOnlyList<LookupInfo> Visible,
     IReadOnlyDictionary<string, Guid> KnowledgeBases,
-    IReadOnlyDictionary<string, Guid> FilterFields);
+    IReadOnlyDictionary<string, Guid> FilterFields)
+{
+    /// <summary>The attributes each entity list can be ordered by, by list name.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> SortableAttributes { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <summary>The list that holds the exact values of a filter parameter, by parameter name.</summary>
+    public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
+}
 
 /// <summary>
 /// Builds the definition of lookup tools from the live catalog (spec 007 D-12): at the start of each answer and not when the tool is
@@ -92,7 +99,13 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 offered.ToDictionary(l => l.Name, l => l.Info.Id, StringComparer.Ordinal),
                 [.. offered.Select(l => l.Info)],
                 queried.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
-                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal));
+                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal))
+            {
+                SortableAttributes = offered
+                    .Where(l => l.Info.SortableAttributes is { Count: > 0 })
+                    .ToDictionary(l => l.Name, l => l.Info.SortableAttributes!, StringComparer.Ordinal),
+                FilterLists = LookupToolDefinition.ListsOfFilters(offered, exposed),
+            };
         }
 
         return resolved;
@@ -179,7 +192,14 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                     {
                         Description = definition.Definition.Description,
                         InputSchema = definition.Definition.InputSchema,
-                        Lookup = tool.Lookup with { Lookups = definition.Lookups, KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields },
+                        Lookup = tool.Lookup with
+                        {
+                            Lookups = definition.Lookups,
+                            KnowledgeBases = definition.KnowledgeBases,
+                            FilterFields = definition.FilterFields,
+                            SortableAttributes = definition.SortableAttributes,
+                            FilterLists = definition.FilterLists,
+                        },
                     }
                     : null).OfType<ActiveTool>(),
         ];

@@ -54,6 +54,8 @@ public enum LookupKindInfo
 /// <param name="Name">What the model sees by default: the dictionary field's name for a computed lookup, the knowledge base's for an entity lookup, the typed name for a manual one.</param>
 /// <param name="KnowledgeBaseId"><see langword="null"/> for a manual lookup.</param>
 /// <param name="Unit"><c>documents</c> or <c>chunks</c> for a computed lookup; <see langword="null"/> for the others, which have no counts.</param>
+/// <param name="FieldId">The dictionary field a computed lookup lists; <see langword="null"/> for the others.</param>
+/// <param name="SortableAttributes">The attributes an entity lookup can be ordered by (numbers and dates), under the names it stores them with.</param>
 public sealed record LookupInfo(
     Guid Id,
     string Name,
@@ -61,7 +63,9 @@ public sealed record LookupInfo(
     Guid? KnowledgeBaseId,
     string? KnowledgeBaseName,
     string? Description,
-    string? Unit);
+    string? Unit,
+    Guid? FieldId = null,
+    IReadOnlyList<string>? SortableAttributes = null);
 
 /// <param name="TenantId">The tenant asking; it must be the tenant of the current request.</param>
 /// <param name="AssistantId">The assistant answering, or <see langword="null"/> for an administrator looking at a configuration.</param>
@@ -113,11 +117,19 @@ public enum LookupSortOrder
     Count,
 
     Name,
+
+    /// <summary>By an attribute of an entity lookup, named in <see cref="LookupReadRequest.Attribute"/>.</summary>
+    Attribute,
 }
+
+/// <param name="Name">One of <see cref="LookupInfo.SortableAttributes"/>.</param>
+/// <param name="Descending">The largest or the latest first.</param>
+public sealed record LookupAttributeOrder(string Name, bool Descending);
 
 /// <param name="Search">A case-insensitive substring of a value, its label or one of its synonyms.</param>
 /// <param name="Limit">Values in the page; the reader keeps it between 1 and 200.</param>
 /// <param name="Cursor">The opaque cursor the previous page returned.</param>
+/// <param name="Attribute">With <see cref="LookupSortOrder.Attribute"/>: the attribute to order by.</param>
 public sealed record LookupReadRequest(
     Guid TenantId,
     Guid? AssistantId,
@@ -126,7 +138,8 @@ public sealed record LookupReadRequest(
     string? Search,
     LookupSortOrder Sort,
     int Limit,
-    string? Cursor);
+    string? Cursor,
+    LookupAttributeOrder? Attribute = null);
 
 public enum LookupReadOutcome
 {
@@ -149,6 +162,9 @@ public enum LookupReadOutcome
 
     /// <summary>The cursor is not one this lookup issued.</summary>
     InvalidCursor,
+
+    /// <summary>The lookup cannot be ordered by the attribute asked for.</summary>
+    InvalidSort,
 }
 
 public sealed record LookupReadValue(string Value, string? Label, IReadOnlyList<string> Synonyms, int? Count, string? Attributes);
