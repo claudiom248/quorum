@@ -171,7 +171,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* Knowledge: registration steps, mapping rows, filters and search results. */
-.knowledge-nav { display: flex; gap: .5rem; margin: .25rem 0 1rem; }
+.knowledge-nav { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 1rem; }
 .wizard-steps { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem .75rem; font-size: .85rem; }
 .wizard-steps button { background: none; border: 0; padding: .15rem 0; font: inherit; color: var(--mud-palette-text-secondary); cursor: pointer; }
 .wizard-steps button:disabled { cursor: default; opacity: .6; }
