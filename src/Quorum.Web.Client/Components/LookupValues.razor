@@ -14,6 +14,20 @@
                 </select>
             </label>
         }
+        else if (Entity)
+        {
+            <label class="tool-policy">Sort by
+                <select aria-label="Sort" @bind="_sort">
+                    <option value="">List order</option>
+                    <option value="name">Name</option>
+                    @foreach (var name in _sortable)
+                    {
+                        <option value="@("-" + name)">@name, largest first</option>
+                        <option value="@name">@name, smallest first</option>
+                    }
+                </select>
+            </label>
+        }
         <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SearchAsync" Disabled="_busy">Show</MudButton>
         <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => OnClose.InvokeAsync()">Close</MudButton>
     </MudStack>
@@ -101,6 +115,7 @@
     private LookupValuesPage? _page;
     private List<LookupValueInfo> _values = [];
     private bool _hasAttributes;
+    private IReadOnlyList<string> _sortable = [];
     private ApiProblem? _problem;
     private bool _busy;
 
@@ -114,6 +129,10 @@
     /// <summary>Whether the lookup has counts, so it can be ordered by them.</summary>
     [Parameter]
     public bool Counted { get; set; }
+
+    /// <summary>An entity list: it can be ordered by its number and date attributes.</summary>
+    [Parameter]
+    public bool Entity { get; set; }
 
     [Parameter]
     public EventCallback OnClose { get; set; }
@@ -143,7 +162,8 @@
         try
         {
             var search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
-            var result = await Api.ReadLookupValuesAsync(LookupId, Slice, search, _sort, PageSize, cursor);
+            var sort = string.IsNullOrEmpty(_sort) ? null : _sort;
+            var result = await Api.ReadLookupValuesAsync(LookupId, Slice, search, sort, PageSize, cursor);
             if (!result.IsSuccess)
             {
                 _problem = result.Problem;
@@ -158,6 +178,10 @@
 
             _values.AddRange(result.Value.Values);
             _hasAttributes = _values.Any(v => v.Attributes is { ValueKind: System.Text.Json.JsonValueKind.Object });
+            if (Entity && _sortable.Count == 0)
+            {
+                _sortable = LookupAdminView.SortableAttributes(_values);
+            }
             _page = result.Value;
             _applied = search;
         }

@@ -89,7 +89,7 @@
                             </div>
                             @if (_viewing is { } viewing && viewing.LookupId == lookup.Id && viewing.Slice == slice.Hash)
                             {
-                                <LookupValues @key="viewing" LookupId="lookup.Id" Slice="@slice.Hash" Counted="@(lookup.Unit is not null)" OnClose="() => _viewing = null" />
+                                <LookupValues @key="viewing" LookupId="lookup.Id" Slice="@slice.Hash" Counted="@(lookup.Unit is not null)" Entity="@(lookup.Kind == LookupKinds.Entity)" OnClose="() => _viewing = null" />
                             }
                         }
                     </div>
