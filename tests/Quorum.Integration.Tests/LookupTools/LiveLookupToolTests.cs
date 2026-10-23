@@ -237,7 +237,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         var definition = (await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool)).Definition!;
 
         Assert.Contains("the exact values are in the list 'audience'", definition.Parameter("audience").GetProperty("description").GetString(), StringComparison.Ordinal);
-        Assert.Contains("(from contracts; counts documents; only the values that occur in the documents)", definition.Description, StringComparison.Ordinal);
+        Assert.Contains("(from contracts; counts documents; only the values that occur in the documents; can be filtered by audience, department)", definition.Description, StringComparison.Ordinal);
         Assert.Contains("typed by hand", definition.Description, StringComparison.Ordinal);
     }
 

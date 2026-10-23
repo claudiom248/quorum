@@ -16,7 +16,7 @@ internal sealed class LookupComputer(StoreAdapters adapters) : ILookupComputer
     internal const int MaxScannedRecords = 5_000_000;
 
     /// <summary>How many entities one page of the scan reads.</summary>
-    private const int EntityPageSize = 1000;
+    internal const int EntityPageSize = 1000;
 
     public async Task<LookupComputation> ComputeAsync(LookupComputationRequest request, CancellationToken cancellationToken)
     {

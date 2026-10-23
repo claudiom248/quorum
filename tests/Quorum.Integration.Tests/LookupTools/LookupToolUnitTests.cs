@@ -17,7 +17,7 @@ public sealed class LookupToolUnitTests
         AllOf(description, lookups, knowledgeBases, fields).Functions.Single(f => f.Operation == "values");
 
     private static GeneratedLookupDefinition AllOf(string description, IReadOnlyList<OfferedLookup> lookups, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields) =>
-        LookupToolDefinition.Build("lists", description, lookups, knowledgeBases, fields);
+        LookupToolDefinition.Build("lists", description, lookups, knowledgeBases, fields, fields);
 
     private static LookupRead Page(params LookupReadValue[] values) => new(
         LookupReadOutcome.Ok,
@@ -141,7 +141,7 @@ public sealed class LookupToolUnitTests
         Assert.Equal(["lookup", "search", "sort", "limit", "cursor"], properties.EnumerateObject().Select(p => p.Name));
         Assert.Equal(["lookup"], schema.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(
-            "Reads lists.\n\nReads a list of values: the values that exist, with the number of documents of each when the list has counts.\n\nLists:\n- language (typed by hand; it may hold values that occur in no document): Spoken languages.\n- supplier (from contracts; counts documents; only the values that occur in the documents)",
+            "Reads lists.\n\nReads a list of values: the values that exist, with the number of documents of each when the list has counts.\n\nLists:\n- language (typed by hand; it may hold values that occur in no document; cannot be filtered: read it whole): Spoken languages.\n- supplier (from contracts; counts documents; only the values that occur in the documents; cannot be filtered: read it whole)",
             first.Description);
     }
 
@@ -169,6 +169,50 @@ public sealed class LookupToolUnitTests
         Assert.DoesNotContain("Knowledge bases:", all.Functions.Single(f => f.Operation == "values").Description, StringComparison.Ordinal);
     }
 
+    [Fact] // AC-31
+    public void TheFiltersOfTheListsAndOfTheDocumentsAreOfferedApartAndEachListSaysWhichItTakes()
+    {
+        var audience = new FilterFieldInfo(Guid.NewGuid(), "audience", FilterFieldType.TextList, null);
+        var country = new FilterFieldInfo(Guid.NewGuid(), "country", FilterFieldType.Text, null);
+        OfferedLookup[] lookups =
+        [
+            new("audience", new LookupInfo(LookupA, "audience", LookupKindInfo.Computed, Guid.NewGuid(), "contracts", null, "documents", FieldId: audience.Id), ["audience"]),
+            new("vendors", new LookupInfo(LookupB, "vendors", LookupKindInfo.Entity, Guid.NewGuid(), "vendors", null, null), ["country"]),
+            new("language", new LookupInfo(Guid.NewGuid(), "language", LookupKindInfo.Manual, null, null, null, null)),
+        ];
+        KnowledgeBaseInfo[] knowledgeBases = [new(Guid.NewGuid(), "contracts", "Contracts.", [])];
+
+        var all = LookupToolDefinition.Build("lists", "Reads.", lookups, knowledgeBases, [audience, country], [audience]);
+
+        string[] Parameters(string operation)
+        {
+            using var schema = JsonDocument.Parse(all.Functions.Single(f => f.Operation == operation).InputSchema);
+            return [.. schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name)];
+        }
+
+        // `country` belongs to the vendors, which the documents do not have; `audience` is on the documents and on the list computed from them.
+        Assert.Equal(["lookup", "audience", "country", "search", "sort", "limit", "cursor"], Parameters("values"));
+        Assert.Equal(["audience", "limit", "cursor"], Parameters("documents"));
+        Assert.DoesNotContain("country", Parameters("count"));
+
+        var description = all.Functions.Single(f => f.Operation == "values").Description;
+        Assert.Contains("- audience (from contracts; counts documents; only the values that occur in the documents; can be filtered by audience)", description, StringComparison.Ordinal);
+        Assert.Contains("with their attributes; can be filtered by country)", description, StringComparison.Ordinal);
+        Assert.Contains("- language (typed by hand; it may hold values that occur in no document; cannot be filtered: read it whole)", description, StringComparison.Ordinal);
+        Assert.Contains("worked out now", description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithNoFilterForTheListsTheValuesFunctionDoesNotSpeakOfFiltering()
+    {
+        OfferedLookup[] lookups = [new("language", new LookupInfo(LookupA, "language", LookupKindInfo.Manual, null, null, null, null))];
+
+        var values = AllOf("Reads.", lookups, [], []).Functions.Single();
+
+        Assert.DoesNotContain("With filters", values.Description, StringComparison.Ordinal);
+        Assert.DoesNotContain("audience", values.InputSchema, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TheFunctionsAreNamedAfterWhatTheyDo()
     {
@@ -188,7 +232,7 @@ public sealed class LookupToolUnitTests
 
         var definition = ValuesOf("Reads.", lookups, [], []);
 
-        Assert.Contains("- suppliers (the entities of suppliers, one entry each, with their attributes; can be ordered by contract_count, supplier_since): One per supplier.", definition.Description, StringComparison.Ordinal);
+        Assert.Contains("- suppliers (the entities of suppliers, one entry each, with their attributes; can be ordered by contract_count, supplier_since; cannot be filtered: read it whole): One per supplier.", definition.Description, StringComparison.Ordinal);
         using var schema = JsonDocument.Parse(definition.InputSchema);
         var sort = schema.RootElement.GetProperty("properties").GetProperty("sort");
         Assert.Equal(["count", "name", "contract_count", "-contract_count", "supplier_since", "-supplier_since"], sort.GetProperty("enum").EnumerateArray().Select(e => e.GetString()));

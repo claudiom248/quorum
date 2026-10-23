@@ -186,7 +186,7 @@ Errors use ProblemDetails with a stable `code`; routes are under `/api`, authent
 - **AC-28** Given `operation = values`, When called, Then the result carries the lookup name, the unit, the number of values, the `as of` timestamp, `stale` and `truncated`, then the rows, and fits the result cap with whole rows only.
 - **AC-29** Given `operation = documents` with the filter `audience = managers`, When called, Then it returns the matching documents (id, title, URL and exposed fields) in pages of 50 with a cursor, each document once.
 - **AC-30** Given `operation = count`, When called, Then the number is exact, the unit is stated, and the fixed filters of the tool are included.
-- **AC-31** Given `operation = values` with a filter, When called, Then the values are computed live among the matching documents, exact, within the 15 s timeout; it works for a computed lookup only and returns an error result for a manual or entity one.
+- **AC-31** Given `operation = values` with a filter, When called, Then the values are computed live among the matching documents, exact, within the 15 s timeout; it works for a computed lookup (facet) and for an entity lookup (scan of the entity collection with the filter, A1); it returns an error result for a manual one.
 - **AC-32** Given a live filter on a field without payload index, When the tool is configured, Then a warning says it may be slow; When called, Then it runs until the timeout and the result suggests a narrower filter.
 - **AC-33** Given an invalid filter value or an unknown lookup, When called, Then the model receives an error result and the round counts (spec 004 D-11).
 - **AC-34** Given a value that contains the delimiter or instructions, When it is sent to the model, Then the block cannot be closed from inside and it is labelled as data.
@@ -238,7 +238,7 @@ Decision: a lookup tool is still **one configuration, one tool row, one activati
 
 Alternatives not taken: three tool rows (three activations and policies to keep in step for one configuration), and a policy per function (deferred: no case yet).
 
-Also, from the same questions: a list of entities can be ordered by its number and date attributes (offered in `sort`); a list of entities cannot be filtered, so the fields only its knowledge base maps are not offered as filters; and each list says what it is (values that occur, entities, typed by hand).
+Also, from the same questions: a list of entities can be ordered by its number and date attributes (offered in `sort`); each list says what it is (values that occur, entities, typed by hand) and whether it can be filtered ("can be filtered by …" or "cannot be filtered: read it whole"); a model-chosen filter is always computed live against the store (D-7), so a list of entities is filtered by scanning its entity collection with the filter, and a filter that does not apply to the chosen list gets an error result that names the filters the list accepts. Each function offers only the filters it can apply: `lookup_values` those of the fields held by a computed or entity list, `documents` and `count` those of the knowledge bases they query.
 
 ## Appendix: cost evidence
 Benchmark run on 2026-10-22 with `tools/Quorum.QdrantMetadataBench` (a throwaway tool of the investigation, not part of the product): Qdrant 1.12.0, 5,000,000 points of 8-dimension vectors, payload on disk, about 10 chunks per document, `supplier` with about 5,000 values. Medians in milliseconds.

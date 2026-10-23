@@ -281,7 +281,8 @@ public sealed record LiveCount(
 
 /// <param name="Search">A case-insensitive substring of a value.</param>
 /// <param name="Limit">Values in the answer; 1 to 200.</param>
-public sealed record LiveValuesRequest(LiveScope Scope, Guid LookupId, string? Search, LookupSortOrder Sort, int Limit);
+/// <param name="Attribute">With <see cref="LookupSortOrder.Attribute"/>: the attribute of an entity list to order by.</param>
+public sealed record LiveValuesRequest(LiveScope Scope, Guid LookupId, string? Search, LookupSortOrder Sort, int Limit, LookupAttributeOrder? Attribute = null);
 
 /// <param name="Truncated">There are more values than the answer holds, or the scan stopped at its cap.</param>
 /// <param name="ValueCount">Values among the matching documents, before the limit.</param>

@@ -21,6 +21,9 @@ internal sealed record ResolvedLookupTool(
     /// <summary>The attributes each entity list can be ordered by, by list name.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> SortableAttributes { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
 
+    /// <summary>The fields each list can be filtered by, by list name.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ListFilters { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
     /// <summary>The list that holds the exact values of a filter parameter, by parameter name.</summary>
     public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
 }
@@ -68,41 +71,51 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
         {
             // In the order of the names so the definition does not depend on the order the administrator picked them in. Two lookups that
             // came to share a name since the tool was saved (a field renamed) keep the first: the model must tell them apart by name.
-            var offered = tool.Binding.LookupIds.Distinct()
+            var offeredByName = tool.Binding.LookupIds.Distinct()
                 .Where(byId.ContainsKey)
                 .Select(id => new OfferedLookup(tool.Binding.LookupAliases.GetValueOrDefault(id) ?? byId[id].Name, byId[id]))
                 .OrderBy(l => l.Name, StringComparer.Ordinal)
                 .ThenBy(l => l.Info.Id)
                 .DistinctBy(l => l.Name, StringComparer.Ordinal)
                 .ToList();
-            if (offered.Count == 0)
+            if (offeredByName.Count == 0)
             {
                 continue;
             }
 
             // The live operations query only the knowledge bases the tool names that the tenant sees; a tool with none keeps its lists.
             var queried = tool.Binding.KnowledgeBaseIds.Distinct().Where(basesById.ContainsKey).Select(id => basesById[id]).OrderBy(k => k.Name, StringComparer.Ordinal).ToList();
-            // Only the knowledge bases a filter can reach: the ones the tool asks and those of the lists computed from a field. A list of
-            // entities cannot be filtered, so the fields only its knowledge base maps would be parameters nothing applies.
-            var mapping = queried
-                .SelectMany(k => k.FieldIds)
-                .Concat(offered
-                    .Where(l => l.Info.Kind == LookupKindInfo.Computed)
-                    .Select(l => l.Info.KnowledgeBaseId)
-                    .OfType<Guid>()
-                    .Where(basesById.ContainsKey)
-                    .SelectMany(id => basesById[id].FieldIds))
+
+            // A filter is offered where something can apply it. The documents and the count look at the knowledge bases the tool asks; a
+            // list computed from a field, and a list of entities, look at the knowledge base they come from. A list typed by hand has none.
+            var queriedFields = queried.SelectMany(k => k.FieldIds).ToHashSet();
+            var listFields = offeredByName
+                .Where(l => l.Info.Kind is LookupKindInfo.Computed or LookupKindInfo.Entity)
+                .Select(l => l.Info.KnowledgeBaseId)
+                .OfType<Guid>()
+                .Where(basesById.ContainsKey)
+                .SelectMany(id => basesById[id].FieldIds)
                 .ToHashSet();
 
             // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.
             var exposed = tool.Binding.ExposedFieldIds.Distinct()
-                .Where(id => fieldsById.ContainsKey(id) && mapping.Contains(id))
+                .Where(id => fieldsById.ContainsKey(id) && (queriedFields.Contains(id) || listFields.Contains(id)))
                 .Select(id => Named(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
+            // And each list says which of them it can be filtered by.
+            var offered = offeredByName
+                .Select(l => l with
+                {
+                    Filters = l.Info.Kind != LookupKindInfo.Manual && l.Info.KnowledgeBaseId is { } baseId && basesById.TryGetValue(baseId, out var source)
+                        ? [.. exposed.Where(f => source.FieldIds.Contains(f.Id)).Select(f => f.Name)]
+                        : [],
+                })
+                .ToList();
+
             resolved[tool.ToolId] = new ResolvedLookupTool(
-                LookupToolDefinition.Build(tool.Name, tool.Description, offered, queried, exposed),
+                LookupToolDefinition.Build(tool.Name, tool.Description, offered, queried, exposed.Where(f => listFields.Contains(f.Id)).ToList(), exposed.Where(f => queriedFields.Contains(f.Id)).ToList()),
                 offered.ToDictionary(l => l.Name, l => l.Info.Id, StringComparer.Ordinal),
                 [.. offered.Select(l => l.Info)],
                 queried.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
@@ -112,6 +125,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                     .Where(l => l.Info.SortableAttributes is { Count: > 0 })
                     .ToDictionary(l => l.Name, l => l.Info.SortableAttributes!, StringComparer.Ordinal),
                 FilterLists = LookupToolDefinition.ListsOfFilters(offered, exposed),
+                ListFilters = offered.ToDictionary(l => l.Name, l => l.Filters ?? [], StringComparer.Ordinal),
             };
         }
 
@@ -210,6 +224,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                             FilterFields = definition.FilterFields,
                             SortableAttributes = definition.SortableAttributes,
                             FilterLists = definition.FilterLists,
+                            ListFilters = definition.ListFilters,
                         },
                     })
                     : []),
