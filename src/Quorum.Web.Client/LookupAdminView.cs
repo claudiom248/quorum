@@ -55,8 +55,12 @@ public static class LookupAdminView
             return "Whole knowledge base";
         }
 
-        return "Filtered: " + string.Join(", ", slice.Filters.EnumerateObject().Select(p => $"{p.Name} = {p.Value.ToString()}"));
+        return "Filtered: " + string.Join(", ", slice.Filters.EnumerateObject().Select(p => $"{p.Name} = {Plain(p.Value)}"));
     }
+
+    /// <summary>A value as it reads in the data: a text as it is, a boolean as true or false, a number as written.</summary>
+    private static string Plain(System.Text.Json.JsonElement value) =>
+        value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
 
     public static string When(DateTimeOffset? at) => at is { } value ? value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : "never";
 
@@ -77,7 +81,7 @@ public static class LookupAdminView
             return string.Empty;
         }
 
-        return string.Join(", ", attributes.EnumerateObject().Select(p => $"{p.Name}: {p.Value.ToString()}"));
+        return string.Join(", ", attributes.EnumerateObject().Select(p => $"{p.Name}: {Plain(p.Value)}"));
     }
 
     /// <summary>

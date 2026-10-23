@@ -167,6 +167,14 @@ public sealed class LookupDraftTests
         Assert.Equal(["contract_count", "supplier_since"], attributes);
     }
 
+    [Fact]
+    public void TheAttributesOfAnEntityReadAsTheyAreInTheData()
+    {
+        var value = new LookupValueInfo("Acme", null, null, null, JsonDocument.Parse("""{"country":"IT","rating":4.4,"preferred":true,"supplier_since":"2019-03-01"}""").RootElement.Clone());
+
+        Assert.Equal("country: IT, rating: 4.4, preferred: true, supplier_since: 2019-03-01", LookupAdminView.Attributes(value));
+    }
+
     // --- Manual lookup form ---
 
     [Fact]

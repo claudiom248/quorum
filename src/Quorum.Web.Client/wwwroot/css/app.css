@@ -194,3 +194,6 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .lookup-field-row { padding: .1rem 0; }
 .lookup-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .lookup-table th, .lookup-table td { text-align: left; padding: .25rem .5rem; border-bottom: 1px solid var(--mud-palette-lines-default); }
+
+.lookup-values-controls .lookup-search { flex: 1 1 12rem; min-width: 10rem; }
+.lookup-table { display: block; overflow-x: auto; }

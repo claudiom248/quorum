@@ -2,8 +2,8 @@
 @inject QuorumApi Api
 
 <div class="lookup-values" data-lookup-values="@LookupId">
-    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End" Class="mb-2">
-        <MudTextField @bind-Value="_search" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.End" Class="mb-2 lookup-values-controls">
+        <MudTextField @bind-Value="_search" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Class="lookup-search"
                       OnKeyUp="OnKey" aria-label="Search the values" />
         @if (Counted)
         {
