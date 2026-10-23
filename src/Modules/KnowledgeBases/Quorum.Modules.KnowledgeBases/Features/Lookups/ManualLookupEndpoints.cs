@@ -155,9 +155,11 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         {
             var users = (await lookupTools.ListAsync(cancellationToken)).Where(t => t.LookupIds.Contains(id)).ToList();
             var own = users.Where(t => t.TenantId == db.CurrentTenantId).Select(t => t.ToolName).Order(StringComparer.Ordinal).ToList();
-            var others = users.Count(t => t.TenantId != db.CurrentTenantId);
-            var names = own.Count > 0 ? string.Join(", ", own) + (others > 0 ? $" and {others} of other tenants" : string.Empty) : $"{others} lookup tools of other tenants";
-            return Error.Conflict("lookup.in_use", $"The lookup is used by lookup tools {names}: remove it from their configuration first.").ToProblem();
+            // Tools of other tenants are not named or counted: a tenant learns nothing about what it cannot see.
+            var message = own.Count > 0
+                ? $"The lookup is used by lookup tools {string.Join(", ", own)}: remove it from their configuration first."
+                : "The lookup is in use: remove it from the lookup tools that use it first.";
+            return Error.Conflict("lookup.in_use", message).ToProblem();
         }
 
         // The slice and its values go with the lookup, by the cascade of the foreign keys.

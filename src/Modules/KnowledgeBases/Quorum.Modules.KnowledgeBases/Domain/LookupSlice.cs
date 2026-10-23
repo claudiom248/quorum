@@ -81,7 +81,8 @@ internal sealed class LookupSlice
         Stale = false;
         LastError = null;
         ComputedAt = now;
-        NextRefreshAt = nextRefreshAt;
+        // A refresh asked for after the computation began (the mapping changed meanwhile) is later than its claim and must survive.
+        NextRefreshAt = ComputingSince is { } started && NextRefreshAt > started ? NextRefreshAt : nextRefreshAt;
         ComputingSince = null;
     }
 

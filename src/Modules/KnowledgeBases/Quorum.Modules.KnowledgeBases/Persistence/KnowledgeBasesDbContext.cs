@@ -96,6 +96,8 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
             lookup.HasIndex(l => new { l.TenantId, l.Name }).IsUnique();
             // One lookup per listable field of a knowledge base, whatever the number of times it is saved.
             lookup.HasIndex(l => new { l.KnowledgeBaseId, l.DictionaryFieldId }).IsUnique();
+            // The entity lookup has no dictionary field (NULLs are distinct), so it gets its own index: one per knowledge base.
+            lookup.HasIndex(l => l.KnowledgeBaseId).IsUnique().HasDatabaseName("ix_lookups_one_entity_per_knowledge_base").HasFilter("\"Kind\" = 'Entity'");
             lookup.HasQueryFilter(l => l.TenantId == CurrentTenantId);
         });
 
