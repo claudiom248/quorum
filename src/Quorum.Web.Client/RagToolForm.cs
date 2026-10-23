@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Quorum.Web.Client.Api;
 
 namespace Quorum.Web.Client;
@@ -44,6 +43,32 @@ public static class RagToolView
         return complete
             ? new FieldChoices([.. dictionary.Where(f => mapped.Contains(f.Id)).OrderBy(f => f.Name, StringComparer.Ordinal)], Complete: true)
             : new FieldChoices([.. dictionary.OrderBy(f => f.Name, StringComparer.Ordinal)], Complete: false);
+    }
+
+    /// <summary>
+    /// Whether a selected knowledge base maps the document id, so a tool can search within given documents (spec 007 D-17).
+    /// <see langword="null"/> when a selected knowledge base belongs to another tenant and none of the visible ones does: its mapping
+    /// is not shown, so this editor cannot tell.
+    /// </summary>
+    public static bool? SupportsDocumentIds(IEnumerable<Guid> selectedKnowledgeBaseIds, IReadOnlyDictionary<Guid, KnowledgeBaseDetail> details)
+    {
+        ArgumentNullException.ThrowIfNull(selectedKnowledgeBaseIds);
+        ArgumentNullException.ThrowIfNull(details);
+
+        var unknown = false;
+        foreach (var id in selectedKnowledgeBaseIds)
+        {
+            if (!details.TryGetValue(id, out var detail) || detail.Mapping is not { } mapping)
+            {
+                unknown = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(mapping.Roles.DocumentId))
+            {
+                return true;
+            }
+        }
+
+        return unknown ? null : false;
     }
 
     /// <summary>The parameters the model will see for these exposed fields, as the server generates them (D-11): a local preview, the saved definition is the real one.</summary>
@@ -94,46 +119,25 @@ public static class RagToolView
 }
 
 /// <summary>The rag tool being created or edited: what the admin typed, and its conversion into the request.</summary>
-public sealed partial class RagToolForm
+public sealed class RagToolForm : FilteredToolForm
 {
-    private readonly HashSet<Guid> _knownCandidates = [];
-
-    /// <summary>The tool being edited; <see langword="null"/> for a new one.</summary>
-    public Guid? Id { get; init; }
-
-    public string OriginalName { get; init; } = string.Empty;
-
-    public string Name { get; set; } = string.Empty;
-
-    public string Description { get; set; } = string.Empty;
-
-    public string Policy { get; set; } = ToolPolicies.Auto;
-
-    public List<Guid> KnowledgeBaseIds { get; } = [];
-
-    public HashSet<Guid> ExposedFieldIds { get; } = [];
-
-    /// <summary>The alias given to an exposed field, by field id: the parameter name the model sees. A field without one is known by its name.</summary>
-    public Dictionary<Guid, string> Aliases { get; } = [];
-
-    /// <summary>Fields with a fixed filter, in the order they were added.</summary>
-    public List<Guid> FixedFilterFieldIds { get; } = [];
-
-    /// <summary>What was typed for each filter parameter (<c>year_min</c>...).</summary>
-    public Dictionary<string, string> FilterValues { get; } = [];
-
-    /// <summary>Stored filter parameters this editor cannot show (their field is gone): saving drops them.</summary>
-    public List<string> UnshownFilters { get; } = [];
-
     public int TopK { get; set; } = RagToolLimits.DefaultTopK;
 
     public string ScoreThreshold { get; set; } = string.Empty;
 
     public int MaxResultCharacters { get; set; } = RagToolLimits.DefaultMaxResultCharacters;
 
-    public ScopeForm Scope { get; set; } = new();
+    /// <summary>The model may search within given documents (<c>document_ids</c>); needs a knowledge base that maps the document id (spec 007 D-17).</summary>
+    public bool AllowDocumentIds { get; set; }
 
-    public bool IsNew => Id is null;
+    /// <summary>The admin decided about <see cref="AllowDocumentIds"/>: what the knowledge bases map no longer changes it.</summary>
+    public bool DocumentIdsChosen { get; private set; }
+
+    protected override string Prefix => "rag";
+
+    protected override int MaxExposedFields => RagToolLimits.MaxExposedFields;
+
+    protected override IReadOnlyList<string> ReservedNames { get; } = ["query", "knowledge_base", "document_ids"];
 
     /// <param name="mapped">The fields the tool's knowledge bases map, which its fixed filters may name; every dictionary field when not given.</param>
     public static RagToolForm From(RagToolDetail detail, IReadOnlyList<DictionaryField> dictionary, IReadOnlyList<DictionaryField>? mapped = null)
@@ -152,137 +156,34 @@ public sealed partial class RagToolForm
             ScoreThreshold = detail.ScoreThreshold?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             MaxResultCharacters = detail.MaxResultCharacters,
             Scope = ScopeForm.From(detail.Scope),
+            AllowDocumentIds = detail.AllowDocumentIds,
+            DocumentIdsChosen = true,
         };
         form.KnowledgeBaseIds.AddRange(detail.KnowledgeBaseIds);
-        form.ExposedFieldIds.UnionWith(detail.ExposedFields.Select(e => e.FieldId));
-        foreach (var exposed in detail.ExposedFields)
-        {
-            // The detail gives the name the model sees; an alias is kept only when it is not the field's own name.
-            if (exposed.Alias is { Length: > 0 } alias && dictionary.FirstOrDefault(f => f.Id == exposed.FieldId) is { } field && alias != field.Name)
-            {
-                form.Aliases[exposed.FieldId] = alias;
-            }
-        }
-
-        var stored = FilterInputs.Show(detail.FixedFilters);
-        foreach (var field in mapped ?? dictionary)
-        {
-            var parameters = form.ParametersOf(field);
-            if (parameters.Any(p => stored.ContainsKey(p.Name)))
-            {
-                form.FixedFilterFieldIds.Add(field.Id);
-                foreach (var parameter in parameters.Where(p => stored.ContainsKey(p.Name)))
-                {
-                    form.FilterValues[parameter.Name] = stored[parameter.Name];
-                }
-            }
-        }
-
-        var shown = form.FixedFilterFieldIds
-            .SelectMany(id => form.ParametersOf(dictionary.First(f => f.Id == id)))
-            .Select(p => p.Name)
-            .ToHashSet(StringComparer.Ordinal);
-        form.UnshownFilters.AddRange(stored.Keys.Where(k => !shown.Contains(k)));
+        form.LoadFilters(detail.ExposedFields, detail.FixedFilters, dictionary, mapped);
         return form;
     }
 
+    /// <summary>The admin switches <c>document_ids</c> on or off.</summary>
+    public void ChooseDocumentIds(bool allow)
+    {
+        AllowDocumentIds = allow;
+        DocumentIdsChosen = true;
+    }
+
     /// <summary>
-    /// Brings exposed and fixed-filter fields in line with the fields the selected knowledge bases map: the ones no longer offered
-    /// go, and the ones newly offered are exposed (the default of D-11) while there is room.
+    /// Follows the knowledge bases: a tool whose knowledge bases cannot filter by document has the switch off, and a new tool gets it
+    /// on as soon as one can, until the admin decides (the server's default for a tool that leaves it out).
     /// </summary>
-    public void ApplyCandidates(IReadOnlyList<DictionaryField> candidates, bool exposeNew)
+    public void ApplyDocumentIds(bool? supported)
     {
-        ArgumentNullException.ThrowIfNull(candidates);
-
-        var offered = candidates.Select(f => f.Id).ToHashSet();
-        ExposedFieldIds.RemoveWhere(id => !offered.Contains(id));
-        foreach (var gone in Aliases.Keys.Where(id => !offered.Contains(id)).ToList())
+        if (supported == false)
         {
-            Aliases.Remove(gone);
+            AllowDocumentIds = false;
         }
-
-        foreach (var removed in FixedFilterFieldIds.Where(id => !offered.Contains(id)).ToList())
+        else if (supported == true && IsNew && !DocumentIdsChosen)
         {
-            RemoveFixedFilter(removed, candidates);
-        }
-
-        if (exposeNew)
-        {
-            foreach (var field in candidates.Where(f => !_knownCandidates.Contains(f.Id)))
-            {
-                if (ExposedFieldIds.Count < RagToolLimits.MaxExposedFields)
-                {
-                    ExposedFieldIds.Add(field.Id);
-                }
-            }
-        }
-
-        _knownCandidates.UnionWith(offered);
-    }
-
-    /// <summary>Marks the fields as known without exposing them (a tool loaded for editing: its exposure is what it was).</summary>
-    public void KnowCandidates(IReadOnlyList<DictionaryField> candidates)
-    {
-        ArgumentNullException.ThrowIfNull(candidates);
-        _knownCandidates.UnionWith(candidates.Select(f => f.Id));
-    }
-
-    /// <summary>The name a filter on the field uses: its alias when the field is exposed, otherwise its own name.</summary>
-    public string FilterNameOf(DictionaryField field)
-    {
-        ArgumentNullException.ThrowIfNull(field);
-        return ExposedFieldIds.Contains(field.Id) ? Aliases.GetValueOrDefault(field.Id) ?? field.Name : field.Name;
-    }
-
-    /// <summary>The parameters of a filter on the field, under the name the model (or the fixed filter) uses for it.</summary>
-    public IReadOnlyList<FilterParameter> ParametersOf(DictionaryField field) => FilterInputs.ParametersOf(FilterNameOf(field), field.Type);
-
-    /// <summary>Gives an exposed field an alias, or takes it back with an empty one. What was typed for a fixed filter on the field follows its new name.</summary>
-    public void SetAlias(DictionaryField field, string? alias)
-    {
-        ArgumentNullException.ThrowIfNull(field);
-
-        var before = ParametersOf(field);
-        var clean = alias?.Trim();
-        if (string.IsNullOrEmpty(clean) || clean == field.Name)
-        {
-            Aliases.Remove(field.Id);
-        }
-        else
-        {
-            Aliases[field.Id] = clean;
-        }
-
-        var after = ParametersOf(field);
-        for (var i = 0; i < before.Count; i++)
-        {
-            if (FilterValues.Remove(before[i].Name, out var value))
-            {
-                FilterValues[after[i].Name] = value;
-            }
-        }
-    }
-
-    private string? AliasToSend(Guid id, IReadOnlyList<DictionaryField> dictionary) =>
-        Aliases.TryGetValue(id, out var alias) && alias.Trim() is { Length: > 0 } clean && dictionary.FirstOrDefault(f => f.Id == id)?.Name != clean ? clean : null;
-
-    public void AddFixedFilter(Guid fieldId)
-    {
-        if (!FixedFilterFieldIds.Contains(fieldId))
-        {
-            FixedFilterFieldIds.Add(fieldId);
-        }
-    }
-
-    public void RemoveFixedFilter(Guid fieldId, IReadOnlyList<DictionaryField> dictionary)
-    {
-        FixedFilterFieldIds.Remove(fieldId);
-        if (dictionary.FirstOrDefault(f => f.Id == fieldId) is { } field)
-        {
-            foreach (var parameter in ParametersOf(field))
-            {
-                FilterValues.Remove(parameter.Name);
-            }
+            AllowDocumentIds = true;
         }
     }
 
@@ -290,15 +191,7 @@ public sealed partial class RagToolForm
     public IReadOnlyList<string> Problems(IReadOnlyList<DictionaryField> dictionary)
     {
         var problems = new List<string>();
-        if (!ValidName().IsMatch(Name.Trim()))
-        {
-            problems.Add($"The name is 1 to {RagToolLimits.MaxNameLength} characters: lower-case letters, digits, \"-\" and \"_\", starting with a letter or digit. The model sees it as rag__name.");
-        }
-
-        if (Description.Trim().Length == 0 || Description.Length > RagToolLimits.MaxDescriptionLength)
-        {
-            problems.Add($"The description is required, up to {RagToolLimits.MaxDescriptionLength} characters: the model reads it to decide when to search.");
-        }
+        problems.AddRange(new[] { NameProblem(RagToolLimits.MaxNameLength), DescriptionProblem(RagToolLimits.MaxDescriptionLength, "when to search") }.OfType<string>());
 
         if (KnowledgeBaseIds.Count == 0)
         {
@@ -309,9 +202,9 @@ public sealed partial class RagToolForm
             problems.Add($"A rag tool can search up to {RagToolLimits.MaxKnowledgeBases} knowledge bases.");
         }
 
-        if (ExposedFieldIds.Count > RagToolLimits.MaxExposedFields)
+        if (ExposedCountProblem() is { } exposed)
         {
-            problems.Add($"A rag tool can expose up to {RagToolLimits.MaxExposedFields} fields to the model.");
+            problems.Add(exposed);
         }
 
         if (TopK is < 1 or > RagToolLimits.MaxTopK)
@@ -331,7 +224,7 @@ public sealed partial class RagToolForm
 
         problems.AddRange(AliasProblems(dictionary));
 
-        if (Scope.Build().Error is { } scope)
+        if (ScopeProblem() is { } scope)
         {
             problems.Add(scope);
         }
@@ -359,85 +252,10 @@ public sealed partial class RagToolForm
             ParseThreshold(),
             MaxResultCharacters,
             Scope.Build().Scope!,
-            Policy);
+            Policy,
+            AllowDocumentIds);
     }
-
-    private static readonly string[] ReservedAliasSuffixes = ["_min", "_max", "_from", "_to"];
-
-    // The parameters of a tool must all be distinct (spec 003 A1-3): the server checks the same, this says it before saving.
-    private List<string> AliasProblems(IReadOnlyList<DictionaryField> dictionary)
-    {
-        var problems = new List<string>();
-        var parameters = new HashSet<string>(StringComparer.Ordinal) { "query" };
-        if (KnowledgeBaseIds.Count > 1)
-        {
-            parameters.Add("knowledge_base");
-        }
-
-        var aliases = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var field in dictionary.Where(f => ExposedFieldIds.Contains(f.Id)).OrderBy(f => f.Name, StringComparer.Ordinal))
-        {
-            var alias = FilterNameOf(field);
-            if (Aliases.ContainsKey(field.Id) && !AliasPattern().IsMatch(alias))
-            {
-                problems.Add($"The alias \"{alias}\" is not allowed: 1 to 40 lower-case letters, digits and \"_\", starting with a letter.");
-                continue;
-            }
-
-            if (Aliases.ContainsKey(field.Id) && (alias is "query" or "knowledge_base" || ReservedAliasSuffixes.Any(s => alias.EndsWith(s, StringComparison.Ordinal))))
-            {
-                problems.Add($"The alias \"{alias}\" is reserved: tools use \"query\", \"knowledge_base\" and the endings \"_min\", \"_max\", \"_from\", \"_to\".");
-                continue;
-            }
-
-            var generated = FilterInputs.ParametersOf(alias, field.Type).Select(p => p.Name).ToList();
-            if (!aliases.Add(alias) || generated.Any(name => !parameters.Add(name)))
-            {
-                problems.Add($"Two exposed fields would both be called \"{alias}\" for the model. Give one of them an alias.");
-                continue;
-            }
-        }
-
-        return problems;
-    }
-
-    [GeneratedRegex(@"^[a-z][a-z0-9_]{0,39}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex AliasPattern();
 
     private double? ParseThreshold() =>
         double.TryParse(ScoreThreshold, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : null;
-
-    // A fixed filter with no value would restrict nothing, and the server refuses it: it must be filled or removed.
-    private (Dictionary<string, object>? Filters, string? Error) ReadFixedFilters(IReadOnlyList<DictionaryField> dictionary)
-    {
-        var all = new Dictionary<string, object>();
-        foreach (var id in FixedFilterFieldIds)
-        {
-            if (dictionary.FirstOrDefault(f => f.Id == id) is not { } field)
-            {
-                continue;
-            }
-
-            var (filters, error) = FilterInputs.Read(FilterValues, ParametersOf(field));
-            if (error is not null)
-            {
-                return (null, error);
-            }
-
-            if (filters!.Count == 0)
-            {
-                return (null, $"The fixed filter on {field.Name} has no value: fill it or remove it.");
-            }
-
-            foreach (var (key, value) in filters)
-            {
-                all[key] = value;
-            }
-        }
-
-        return (all, null);
-    }
-
-    [GeneratedRegex(@"^[a-z0-9][a-z0-9_-]{0,39}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex ValidName();
 }

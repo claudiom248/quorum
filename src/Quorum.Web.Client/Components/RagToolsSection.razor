@@ -208,6 +208,31 @@ else
                                              Min="RagToolLimits.MinMaxResultCharacters" Max="RagToolLimits.MaxMaxResultCharacters" Variant="Variant.Outlined"
                                              HelperText="Whole chunks only: never cut." />
                         </MudStack>
+
+                        <MudText Typo="Typo.subtitle2">Search within documents</MudText>
+                        var supportsDocumentIds = RagToolView.SupportsDocumentIds(form.KnowledgeBaseIds, _details);
+                        <div data-document-ids>
+                            <MudCheckBox T="bool" Value="form.AllowDocumentIds" ValueChanged="on => form.ChooseDocumentIds(on)" Dense="true"
+                                         Disabled="@(supportsDocumentIds == false)"
+                                         Label="Let the model restrict a search to given documents (document_ids)" />
+                            <div class="tool-hint">
+                                @if (supportsDocumentIds == false)
+                                {
+                                    <span data-document-ids-unsupported>None of the selected knowledge bases maps the document id, so the model cannot be offered this. Map it in Knowledge.</span>
+                                }
+                                else if (supportsDocumentIds is null)
+                                {
+                                    <span>A knowledge base shared with you does not show its mapping: the server refuses this if none of the knowledge bases maps the document id.</span>
+                                }
+                                else
+                                {
+                                    <span>
+                                        After a lookup tool lists documents, the model can search inside only those. It can name up to 50 at a time.
+                                        Knowledge bases that do not map the document id are skipped, and the answer says so.
+                                    </span>
+                                }
+                            </div>
+                        </div>
                     }
 
                     <label class="tool-policy">Policy
@@ -246,6 +271,11 @@ else
                         <MudButton Variant="Variant.Text" OnClick="CancelForm" Disabled="_busy">Close</MudButton>
                         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
                     </MudStack>
+
+                    @foreach (var warning in _formWarnings)
+                    {
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" data-warning="@warning.Code">@warning.Message</MudAlert>
+                    }
 
                     @if (_definition is { } definition)
                     {
@@ -291,6 +321,7 @@ else
     private IReadOnlyList<string> _formProblems = [];
     private ApiProblem? _formProblem;
     private RagToolDefinition? _definition;
+    private IReadOnlyList<ToolWarning> _formWarnings = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -426,6 +457,7 @@ else
         form.KnowCandidates(mapped.Fields);
         _form = form;
         _definition = detail.Definition;
+        _formWarnings = detail.Warnings;
         _formProblems = [];
         _formProblem = null;
     }
@@ -449,6 +481,7 @@ else
 
         var choices = RagToolView.Candidates(form.KnowledgeBaseIds, _details, _dictionary);
         form.ApplyCandidates(choices.Fields, exposeNew: choices.Complete);
+        form.ApplyDocumentIds(RagToolView.SupportsDocumentIds(form.KnowledgeBaseIds, _details));
     }
 
     private void ToggleExposed(DictionaryField field, bool on)
@@ -477,6 +510,7 @@ else
         _formProblems = [];
         _formProblem = null;
         _definition = null;
+        _formWarnings = [];
     }
 
     private async Task SaveAsync()

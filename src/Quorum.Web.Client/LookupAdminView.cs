@@ -55,8 +55,12 @@ public static class LookupAdminView
             return "Whole knowledge base";
         }
 
-        return "Filtered: " + string.Join(", ", slice.Filters.EnumerateObject().Select(p => $"{p.Name} = {p.Value.ToString()}"));
+        return "Filtered: " + string.Join(", ", slice.Filters.EnumerateObject().Select(p => $"{p.Name} = {Plain(p.Value)}"));
     }
+
+    /// <summary>A value as it reads in the data: a text as it is, a boolean as true or false, a number as written.</summary>
+    private static string Plain(System.Text.Json.JsonElement value) =>
+        value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
 
     public static string When(DateTimeOffset? at) => at is { } value ? value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : "never";
 
@@ -77,7 +81,29 @@ public static class LookupAdminView
             return string.Empty;
         }
 
-        return string.Join(", ", attributes.EnumerateObject().Select(p => $"{p.Name}: {p.Value.ToString()}"));
+        return string.Join(", ", attributes.EnumerateObject().Select(p => $"{p.Name}: {Plain(p.Value)}"));
+    }
+
+    /// <summary>
+    /// The attributes an entity list can be ordered by: the ones whose values are all numbers or dates, since the server refuses to
+    /// order by a text. Read from what is on screen, in the order the attributes first appear.
+    /// </summary>
+    public static IReadOnlyList<string> SortableAttributes(IEnumerable<LookupValueInfo> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        var kinds = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var attribute in values.Where(v => v.Attributes is { ValueKind: System.Text.Json.JsonValueKind.Object }).SelectMany(v => v.Attributes!.Value.EnumerateObject()))
+        {
+            var orderable = attribute.Value.ValueKind == System.Text.Json.JsonValueKind.Number
+                || (attribute.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                    && DateTimeOffset.TryParse(attribute.Value.GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _)
+                    && attribute.Value.GetString()!.Length >= 8
+                    && char.IsDigit(attribute.Value.GetString()![0]));
+            kinds[attribute.Name] = kinds.GetValueOrDefault(attribute.Name, true) && orderable;
+        }
+
+        return [.. kinds.Where(k => k.Value).Select(k => k.Key)];
     }
 
     public static string ScopeLabel(ManualLookupInfo lookup)

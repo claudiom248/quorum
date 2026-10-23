@@ -93,7 +93,7 @@ public sealed class RagToolsSectionTests : BunitContext
 
             if (method == HttpMethod.Get && path == $"/api/knowledge-bases/{OtherBase}")
             {
-                return FakeApiHandler.Json(KnowledgeBase(OtherBase, "manuals", YearId, "year"));
+                return FakeApiHandler.Json(KnowledgeBase(OtherBase, "manuals", YearId, "year", documentId: "doc_id"));
             }
 
             if (path == "/api/assistants")
@@ -134,7 +134,7 @@ public sealed class RagToolsSectionTests : BunitContext
         };
     }
 
-    private static object KnowledgeBase(Guid id, string name, Guid fieldId, string fieldName) => new
+    private static object KnowledgeBase(Guid id, string name, Guid fieldId, string fieldName, string? documentId = null) => new
     {
         id,
         name,
@@ -147,7 +147,7 @@ public sealed class RagToolsSectionTests : BunitContext
         queryPrefix = (string?)null,
         mapping = new
         {
-            roles = new { text = "text", documentId = (string?)null, title = (string?)null, position = (string?)null, sourceUrl = (string?)null },
+            roles = new { text = "text", documentId, title = (string?)null, position = (string?)null, sourceUrl = (string?)null },
             fields = new[] { new { path = fieldName, dictionaryFieldId = fieldId, name = fieldName } },
         },
         scope = new { kind = "Tenant", tenantIds = Array.Empty<Guid>(), assistantIds = Array.Empty<Guid>() },
@@ -436,6 +436,80 @@ public sealed class RagToolsSectionTests : BunitContext
 
         section.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Delete, $"/api/tools/rag/{ToolId}")));
         section.WaitForAssertion(() => Assert.Contains("rag__company was deleted", section.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheDocumentIdsSwitchIsOffAndExplainedWhenNoKnowledgeBaseMapsTheDocumentId()
+    {
+        var section = RenderSection();
+        Click(section, "Add rag tool");
+        Input(section, "Name").Change("support");
+        Input(section, "Description").Change("Searches the support knowledge.");
+
+        Tick(section, "policies", true);
+
+        var switchBox = section.Find("[data-document-ids] input[type=checkbox]");
+        Assert.True(switchBox.HasAttribute("disabled"));
+        Assert.False(switchBox.HasAttribute("checked"));
+        Assert.NotEmpty(section.FindAll("[data-document-ids-unsupported]"));
+        section.Find("[data-form=rag] form").Submit();
+
+        section.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/tools/rag")));
+        Assert.False(Body(_api, HttpMethod.Post, "/api/tools/rag").GetProperty("allowDocumentIds").GetBoolean());
+    }
+
+    [Fact] // AC-37
+    public void ANewToolGetsTheDocumentIdsSwitchOnAsSoonAsAKnowledgeBaseCanFilterByDocument()
+    {
+        var section = RenderSection();
+        Click(section, "Add rag tool");
+        Input(section, "Name").Change("support");
+        Input(section, "Description").Change("Searches the support knowledge.");
+
+        Tick(section, "manuals", true);
+
+        var switchBox = section.Find("[data-document-ids] input[type=checkbox]");
+        Assert.False(switchBox.HasAttribute("disabled"));
+        Assert.True(switchBox.HasAttribute("checked"));
+        Assert.Empty(section.FindAll("[data-document-ids-unsupported]"));
+        section.Find("[data-form=rag] form").Submit();
+
+        section.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/tools/rag")));
+        Assert.True(Body(_api, HttpMethod.Post, "/api/tools/rag").GetProperty("allowDocumentIds").GetBoolean());
+    }
+
+    [Fact] // AC-37
+    public void TurningTheDocumentIdsSwitchOffIsKeptWhenAnotherKnowledgeBaseIsAdded()
+    {
+        var section = RenderSection();
+        Click(section, "Add rag tool");
+        Input(section, "Name").Change("support");
+        Input(section, "Description").Change("Searches the support knowledge.");
+        Tick(section, "manuals", true);
+
+        section.Find("[data-document-ids] input[type=checkbox]").Change(false);
+        Tick(section, "policies", true);
+
+        Assert.False(section.Find("[data-document-ids] input[type=checkbox]").HasAttribute("checked"));
+        section.Find("[data-form=rag] form").Submit();
+        section.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/tools/rag")));
+        Assert.False(Body(_api, HttpMethod.Post, "/api/tools/rag").GetProperty("allowDocumentIds").GetBoolean());
+    }
+
+    [Fact] // AC-37
+    public void RemovingTheOnlyKnowledgeBaseThatMapsTheDocumentIdSwitchesItOff()
+    {
+        var section = RenderSection();
+        Click(section, "Add rag tool");
+        Tick(section, "manuals", true);
+        Tick(section, "policies", true);
+        Assert.True(section.Find("[data-document-ids] input[type=checkbox]").HasAttribute("checked"));
+
+        Tick(section, "manuals", false);
+
+        var switchBox = section.Find("[data-document-ids] input[type=checkbox]");
+        Assert.False(switchBox.HasAttribute("checked"));
+        Assert.True(switchBox.HasAttribute("disabled"));
     }
 
     [Fact]

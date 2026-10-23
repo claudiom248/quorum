@@ -58,6 +58,23 @@ public sealed partial class QuorumApi
     public Task<ApiResult> DeleteRagToolAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, $"api/tools/rag/{id}", body: null, setupToken: null, cancellationToken);
 
+    // Lookup tools (spec 007 D-12).
+
+    public Task<ApiResult<List<LookupToolListItem>>> ListLookupToolsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<LookupToolListItem>>("api/tools/lookup", cancellationToken);
+
+    public Task<ApiResult<LookupToolDetail>> GetLookupToolAsync(Guid id, CancellationToken cancellationToken = default) =>
+        GetAsync<LookupToolDetail>($"api/tools/lookup/{id}", cancellationToken);
+
+    public Task<ApiResult<CreatedLookupTool>> CreateLookupToolAsync(LookupToolRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<CreatedLookupTool>(HttpMethod.Post, "api/tools/lookup", request, setupToken: null, cancellationToken);
+
+    public Task<ApiResult> UpdateLookupToolAsync(Guid id, LookupToolRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/tools/lookup/{id}", request, setupToken: null, cancellationToken);
+
+    public Task<ApiResult> DeleteLookupToolAsync(Guid id, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Delete, $"api/tools/lookup/{id}", body: null, setupToken: null, cancellationToken);
+
     // Lookups (spec 007).
 
     public Task<ApiResult<List<KnowledgeBaseLookupInfo>>> ListKnowledgeBaseLookupsAsync(Guid knowledgeBaseId, CancellationToken cancellationToken = default) =>
