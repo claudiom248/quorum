@@ -79,6 +79,21 @@
 22. The section for data owners in `docs/knowledge-bases.md` (indexes, counted point, entity collection), `docs/deferred.md`, `docs/database-schema.md` (see Details to confirm), the README of the sample project. AC-44.
 23. End-to-end check with the sample collections and a real model through the LiteLLM proxy (project memory), covering "list the suppliers", "suppliers with the most contracts", "policies for managers", "Italian teams" and a `documents` then `rag` with `document_ids` sequence; record what the model got wrong.
 
+**As built (PR 10):** the guide for data owners has the section "Lists and counts: lookups" (kinds, which fields to index, the counted point, values as stored, the collection of entities, what is stored, failures); `docs/database-schema.md` is added to the repository with the lookup tables, `lookup_tools`, `rag_tools."AllowDocumentIds"` and the lookup refresh column; `docs/deferred.md` gets the high priority item on the intermediate text glued to the answer; the README of the sample project has a walk-through.
+
+**End-to-end check (step 23)**, 2026-10-23, `Qwen/Qwen3-32B-AWQ` through the LiteLLM proxy, an assistant with the `company` lookup tool (lists `supplier`, `department`, `nationality`, `audience`, the `vendors` entity list) and the `company_search` rag tool over `sample_company` and `sample_vendors`, one conversation per question:
+
+| Question | What the model did | Verdict |
+|---|---|---|
+| "list the suppliers" | `values` of `supplier`, sorted by name; all 18 with their counts, stated the total | Right |
+| "which suppliers have the most contracts" | `values` of the `vendors` entity list sorted by `-contract_count`; Acme (4) then the five with 3 | Right |
+| "which policies are for managers" | `values` of `audience`, a `rag` search, then `documents` with `audience=managers`; listed the 13 contracts and said the data holds contracts, not policies | Right, with two calls more than needed |
+| "which teams are Italian" | `values` of `vendors` filtered by `country: "Italy"` (the store holds `IT`) and `search: "Italy"`, both empty; then `nationality` values and `documents` with `nationality=IT`; answered Acme and asked whether "teams" meant something else | Right after wasted calls |
+| "which contracts are signed with Italian suppliers, and what does the notice period say" | `values` of `nationality`, the same failed `country: "Italy"`, `documents` with `IT`, then a `rag` search with the `nationality` filter, not `document_ids`; the answer was not stored within the 280 s the check allowed | Not concluded |
+| "List the contracts for managers signed in 2024, then search inside exactly those contracts and tell me the notice period each one gives" | `values` of `audience`, `documents` with `audience` and `year_min`/`year_max` 2024 (4 documents), then `rag` with `document_ids` of exactly those four; a table with the notice period of each, with sources | Right |
+
+What the model got wrong: it passes a country by its English name where the data holds codes (`IT`), twice in a row, because the entity list does not show the values of `country` before a filter is used (a `values` call on `nationality` fixes it, which it does only after two empty answers); it searches with `rag` plus a filter when the question does not say "inside those documents", so `document_ids` is used only when the question asks for it; and a question that says "teams" in a data set without teams is answered for the nearest thing and the model asks, which is the wanted behaviour. A follow-up for the tool description (say that filter values are the stored ones and name `values` as the way to see them) is not part of this PR.
+
 ## Acceptance criteria by PR
 | PR | Acceptance criteria |
 |---|---|

@@ -15,6 +15,7 @@ Before handing a collection to the administrator, check that:
 - You can tell the administrator **which embedding model** (and which prefix, if the model needs one) made the vectors, and that model is served by the model endpoint of the Quorum installation ([embeddings](#same-embedding-model-and-prefix-as-the-ingestion)).
 - Everything in the collection may be read by **every user of the assistants** that will use it ([access](#who-can-read-what)).
 - Optionally, the **JSON Schema** of the payload ([the schema to hand over](#the-schema-to-hand-to-the-administrator)).
+- If assistants should **list values or count** ("list the suppliers", "which teams are Italian"): indexed listable fields, a counted point or a document id, Qdrant 1.12 or later, and optionally a collection of entities ([lookups](#lists-and-counts-lookups)).
 
 ## Payload conventions
 
@@ -132,6 +133,73 @@ A question is turned into a vector with the model named in the knowledge base re
 - The registration **checks the dimension**: it embeds a probe text and compares its size with the vector of the collection. A mismatch is reported as a warning, the knowledge base is saved as *unavailable*, and searches on it would fail.
 - **It cannot detect two different models with the same dimension.** The symptom is silent: answers come back with plausible scores and the wrong passages. After registering, run the administrator's **test search** (Knowledge → Test search) with a question whose answer you know and check that the right chunk comes first with a high score.
 
+## Lists and counts: lookups
+
+A semantic search returns a handful of chunks, so it cannot answer "list the suppliers", "which suppliers have the most contracts" or "which teams are Italian": the model would present a sample as the whole list. **Lookups** answer those questions from the metadata you already keep ([spec 007](specs/007-metadata-lookups.md)). Quorum only reads, as before; what changes is that it also **keeps a copy of the values** it lists (see [what is stored](#what-quorum-stores-about-your-data)).
+
+There are three kinds, and the administrator picks them while registering the collection (the step after the mapping).
+
+| Kind | What it lists | You provide |
+|---|---|---|
+| **Computed** | The distinct values of one **listable** field, with the number of documents for each | A text or list-of-texts field, indexed |
+| **Entity** | The points of a collection whose points are *entities* (one per supplier, department, team), with up to 10 attributes | A collection of entities, with a name field |
+| **Manual** | Values the administrator types, pastes or imports from a CSV, with labels and synonyms | Nothing |
+
+The model reads them through a **lookup tool**. Besides `values` (the stored list, answered at once) the tool can run two **live** operations with the filters of the dictionary, exact and limited to 15 seconds: `documents` (which documents match, paginated) and `count`. Live operations need the filter fields to be indexed too. The model can then pass the ids it got from `documents` to the `document_ids` parameter of a rag tool to search *inside* those documents.
+
+### Which fields to index
+
+Computing a list uses Qdrant's facet API, which **refuses a field without a payload index** (and needs Qdrant **1.12 or later**; older servers still answer `documents` and `count`). A lookup on an unindexed field is saved as *Failed* and the message names the field. Create an index for:
+
+- every **listable** field (`keyword` for text and lists of texts);
+- the **counted point** field, if you use one ([below](#the-counted-point-what-a-count-counts));
+- every field that a lookup tool uses as a **fixed filter** (a slice of the list is computed for those filters) or exposes as a filter to the model;
+- the **document id**, if rag tools should accept `document_ids`.
+
+A live filter on an unindexed field is allowed but can take 12 to 15 seconds on millions of points; the call then ends and tells the model to try a narrower filter. The tool editor warns about such fields.
+
+### The counted point: what a count counts
+
+The "number of documents" next to a value only means something if Quorum knows how to count documents rather than chunks. It takes the first of these that applies:
+
+1. **A counted point**: a payload field that is `true` (for example `is_first_chunk`) or equal to a value (for example `chunk_index = 0`) on **exactly one point of each document**. Quorum counts only those points. This is the cheapest and the most exact, and **you guarantee** the "exactly one": a document with two such points counts twice, and one with none is missing. The draft mapping proposes `is_first_chunk`, `first_chunk` and `is_primary` as `true`, and `chunk_index` equal to `0`; the administrator confirms.
+2. **The document id**, when there is no counted point: Quorum counts the distinct ids by scanning the payloads. This is heavy (up to 5 million points, minutes) and runs only in the background; past the cap the list is marked *truncated*.
+3. **Neither**: Quorum counts **chunks** and says so (`unit: chunks`), so the model does not report chunk counts as contract counts.
+
+Counts of different knowledge bases are never added.
+
+### Values are stored as they are
+
+- **No normalisation.** `IT`, `Italy` and `italiana` are three values. Normalise at ingestion; use a *manual* lookup when you need synonyms (`IT (Italy, Italia, italiana)`).
+- Only **text** and **list of texts** fields can be listable. A value is at most 200 characters (longer ones are skipped and counted), empty values are ignored and a document counts once per distinct value.
+- A list holds at most **5,000 values** by default (`Quorum:Lookups:MaxValuesPerLookup`, up to 50,000). Beyond it the values with the most documents are kept and the list is marked *truncated*; the model is told not to present it as complete. Fields with thousands of distinct values (ids, free text) are not good lookups.
+- Lists are recomputed in the background every **24 hours** (1 hour to 7 days per knowledge base), when the mapping changes, and on **Refresh now**. A failed computation keeps the last good list and marks it *stale*. The data your ETL writes therefore reaches the model within the interval, not at once.
+
+### A collection of entities
+
+When the questions are about *things* (suppliers, teams, policies) rather than the chunks of their documents, keep **one point per entity** in a collection of its own and register it as an entity lookup:
+
+- the payload has the entity's **name** in one field (the entity name) and up to **10 attributes** the model should see, each mapped as a metadata field;
+- put precomputed figures in attributes (`contract_count`, `supplier_since`, `rating`): they are what "the suppliers with the most contracts" is sorted on. A number or date attribute can be used to sort;
+- the list is read with a scan, so it needs **no payload index**, up to the ceiling of values;
+- one entity lookup per knowledge base.
+
+Prefer this to a computed lookup when the entity has attributes beyond its name, when the same value is spelled differently across chunks, or when counts must come from your own system of record. Keep the attributes in step with the documents: Quorum reads both and does not reconcile them.
+
+### What Quorum stores about your data
+
+Until lookups, the platform database held only the registration. Now it also holds, for each lookup, **the listed values, their counts and the chosen entity attributes**, and never chunk text, titles, urls or document ids. These values are **your data in the platform database** and in its backups: mark as listable only fields whose values every user of the assistants may see (the rule of [who can read what](#who-can-read-what) applies to them), and expect deletion to follow the knowledge base (they go with it). The tables are described in [database-schema.md](database-schema.md).
+
+### When a lookup fails
+
+| Status says | Cause |
+|---|---|
+| *Failed*, naming a field | The field has no payload index |
+| *Failed*, "needs Qdrant 1.12" | The server is older than 1.12 |
+| *Stale* with an error | The last refresh failed; the previous list is still served |
+| "being prepared" | Registered or changed minutes ago; the first computation has not ended |
+| *Truncated* | More distinct values than the ceiling, or the scan stopped at its cap |
+
 ## Who can read what
 
 Access control is **at the knowledge base level**. Anyone who can use an assistant that has the rag tool can retrieve **any chunk** of the knowledge bases that tool points to. There are no per-user or per-document permissions yet.
@@ -186,7 +254,7 @@ dotnet run --project tools/Quorum.SampleKnowledgeBase -- \
   --document-prefix "search_document: "
 ```
 
-Register `sample_flat` as `http://qdrant:6334` (or `http://host.docker.internal:6334` when Qdrant is not in the compose network), embedding model `nomic-embed-text`, query prefix `search_query: `. The inspection proposes the mapping and the metadata fields `confidential`, `department`, `published_on` and `year`, with no warnings. The others show the cases: `sample_nested` dot notation (`meta.year`), `sample_tags` a list of texts, `sample_unindexed` the index warning on every field, `sample_named_vectors` the choice of the vector, `sample_other_vector_size` the dimension warning and `sample_empty` the advice to paste a schema. Add `--api-key <key>` for a Qdrant with a key, `--prefix <text>` to name the collections differently, and `--embedding-key <key>` for an endpoint that needs one.
+Register `sample_flat` as `http://qdrant:6334` (or `http://host.docker.internal:6334` when Qdrant is not in the compose network), embedding model `nomic-embed-text`, query prefix `search_query: `. The inspection proposes the mapping and the metadata fields `confidential`, `department`, `published_on` and `year`, with no warnings. The others show the cases: `sample_nested` dot notation (`meta.year`), `sample_tags` a list of texts, `sample_unindexed` the index warning on every field, `sample_named_vectors` the choice of the vector, `sample_other_vector_size` the dimension warning and `sample_empty` the advice to paste a schema. The lookup cases are `sample_company` (about forty contracts: mark `supplier`, `department`, `nationality` and `audience` as listable, `is_first_chunk` as the counted point), `sample_vendors` (the same suppliers as entities: `name` as the entity name, `contract_count` and `rating` as attributes), `sample_lookups` and `sample_lookups_unindexed` (the second one makes the computation fail and name the field) and `sample_suppliers`; the [README](../tools/Quorum.SampleKnowledgeBase/README.md) lists them all. Add `--api-key <key>` for a Qdrant with a key, `--prefix <text>` to name the collections differently, and `--embedding-key <key>` for an endpoint that needs one.
 
 **Without a model**, the default: vectors are a deterministic 64-dimension fake, enough to register every collection and to see each warning, but a real model cannot search them. The integration tests use this mode with a fake embedding endpoint that returns the same vectors.
 
