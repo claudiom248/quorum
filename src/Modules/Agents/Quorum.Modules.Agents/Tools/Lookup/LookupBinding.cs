@@ -21,6 +21,12 @@ internal sealed record LookupBinding(
     /// <summary>The lookups the tenant can see now, by the name the model was offered, as of the start of the answer; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, Guid> Lookups { get; init; } = new Dictionary<string, Guid>();
 
+    /// <summary>The knowledge bases the live operations may query that the tenant can see now, by the name the model was offered; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, Guid> KnowledgeBases { get; init; } = new Dictionary<string, Guid>();
+
+    /// <summary>The filter parameters the model was offered, by name, with the field each stands for; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, Guid> FilterFields { get; init; } = new Dictionary<string, Guid>();
+
     public static LookupBinding From(LookupTool row)
     {
         ArgumentNullException.ThrowIfNull(row);

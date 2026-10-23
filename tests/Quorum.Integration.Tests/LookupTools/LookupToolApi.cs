@@ -130,7 +130,7 @@ internal static class LookupToolApi
         public JsonElement Parameter(string name) => InputSchema.GetProperty("properties").GetProperty(name);
     }
 
-    public sealed record CreatedBody(Guid Id, PreviewBody? Definition);
+    public sealed record CreatedBody(Guid Id, PreviewBody? Definition, List<WarningBody> Warnings);
 
     public sealed record NamedBody(Guid Id, string Name);
 

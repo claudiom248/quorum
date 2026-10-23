@@ -151,7 +151,7 @@ internal sealed class LookupComputer(StoreAdapters adapters) : ILookupComputer
         return mapping.CountedPoint is not null || mapping.Roles.DocumentId is not null ? LookupUnit.Documents : LookupUnit.Chunks;
     }
 
-    private static FilterCondition CountedCondition(CountedPoint counted)
+    internal static FilterCondition CountedCondition(CountedPoint counted)
     {
         var value = counted.ToJsonElement();
         return value.ValueKind switch

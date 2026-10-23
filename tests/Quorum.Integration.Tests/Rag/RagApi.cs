@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Time.Testing;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.KnowledgeBases;
 using Quorum.Integration.Tests.Tools;
@@ -126,9 +127,9 @@ internal static class RagApi
 
         public string Url { get; }
 
-        public static async Task<Setup> StartAsync(PostgresFixture postgres, QdrantFixture qdrant)
+        public static async Task<Setup> StartAsync(PostgresFixture postgres, QdrantFixture qdrant, FakeTimeProvider? clock = null)
         {
-            var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+            var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
             var admin = await app.SetUpAsync();
             KnowledgeBaseApi.ServeEmbeddings(app);
             return new Setup(

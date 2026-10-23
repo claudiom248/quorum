@@ -13,7 +13,7 @@ namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 /// <see cref="IKnowledgeBaseLookups"/>. Like the catalog and the search, it answers for the tenant of the request only: for any other
 /// it behaves as if that tenant could see nothing, which also tells a caller nothing about what exists.
 /// </summary>
-internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantContext tenant, LookupCache cache, TimeProvider clock) : IKnowledgeBaseLookups
+internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantContext tenant, LookupCache cache, LiveLookupOperations live, TimeProvider clock) : IKnowledgeBaseLookups
 {
     /// <summary>The most slices a knowledge base has, counting the one of the whole knowledge base (spec 007 D-6).</summary>
     public const int MaxSlicesPerKnowledgeBase = 50;
@@ -216,6 +216,53 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             page.Value.Cursor,
             page.Value.CursorRestarted);
     }
+
+    public async Task<LiveDocuments> DocumentsAsync(LiveDocumentsRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return IsCurrentTenant(request.Scope.TenantId)
+            ? await live.DocumentsAsync(request, cancellationToken)
+            : new LiveDocuments(LiveOutcome.NotAvailable, NoKnowledgeBase);
+    }
+
+    public async Task<LiveCount> CountAsync(LiveCountRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return IsCurrentTenant(request.Scope.TenantId)
+            ? await live.CountAsync(request, cancellationToken)
+            : new LiveCount(LiveOutcome.NotAvailable, NoKnowledgeBase);
+    }
+
+    public async Task<LiveValues> LiveValuesAsync(LiveValuesRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!IsCurrentTenant(request.Scope.TenantId)
+            || (await LoadVisibleAsync(request.Scope.AssistantId, [request.LookupId], cancellationToken)).FirstOrDefault() is not { } found)
+        {
+            return new LiveValues(LiveOutcome.NotAvailable, "The list is not available.");
+        }
+
+        if (found.Lookup.Kind != LookupKind.Computed || found.KnowledgeBase is null)
+        {
+            return new LiveValues(
+                LiveOutcome.NotComputed,
+                $"The list '{found.Info.Name}' cannot be filtered: only the lists computed from a field of a knowledge base can be. Read it without filters.");
+        }
+
+        return await live.ValuesAsync(found.Lookup, found.KnowledgeBase, found.Info.Name, request, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<UnindexedFilter>> UnindexedFiltersAsync(UnindexedFiltersQuery query, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        return IsCurrentTenant(query.TenantId) ? await live.UnindexedAsync(query, cancellationToken) : [];
+    }
+
+    private const string NoKnowledgeBase = "None of the knowledge bases can be queried.";
 
     private bool IsCurrentTenant(Guid tenantId) => tenant.TenantId == tenantId && tenantId != Guid.Empty;
 

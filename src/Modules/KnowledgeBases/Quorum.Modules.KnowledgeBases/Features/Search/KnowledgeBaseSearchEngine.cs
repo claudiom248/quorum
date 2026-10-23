@@ -158,58 +158,8 @@ internal sealed partial class KnowledgeBaseSearchEngine(
         return (kept, kept.Count == 0 && chunks.Count > 0);
     }
 
-    private async Task<Result<IReadOnlyList<FieldFilter>>> ParseFiltersAsync(SearchInput input, IReadOnlyList<KnowledgeBase> bases, CancellationToken cancellationToken)
-    {
-        var visible = await DictionaryVisibility.Fields(db).AsNoTracking().ToListAsync(cancellationToken);
-
-        // The model's filters use the parameters the caller named (a rag tool's aliases); without them, the names of the fields themselves.
-        IReadOnlyDictionary<string, FilterField> fields;
-        IReadOnlyDictionary<string, FilterField> fixedFields;
-        FixedFilterNames? names = null;
-        if (input.FilterFields is { } named)
-        {
-            fields = named
-                .Select(pair => (pair.Key, Field: visible.FirstOrDefault(f => f.Id == pair.Value)))
-                .Where(entry => entry.Field is not null)
-                .ToDictionary(entry => entry.Key, entry => new FilterField(entry.Field!.Id, entry.Key, entry.Field.Type), StringComparer.Ordinal);
-
-            // A fixed filter may also name the other fields it was saved with, by their own name (spec 003 A1-4): the tool's, not the ones of
-            // the knowledge bases this search was narrowed to, or narrowing would turn a filter into an error instead of skipping a knowledge base.
-            var mapped = input.FixedFilterFieldIds?.ToHashSet() ?? bases.SelectMany(k => k.Mapping.Fields.Select(f => f.DictionaryFieldId)).ToHashSet();
-            names = FixedFilterNames.Build(
-                named.Where(pair => visible.Any(f => f.Id == pair.Value)).ToDictionary(pair => pair.Key, pair => visible.First(f => f.Id == pair.Value), StringComparer.Ordinal),
-                visible.Where(f => mapped.Contains(f.Id)));
-            fixedFields = names.Fields;
-        }
-        else
-        {
-            fields = visible
-                .OrderBy(f => f.Cluster ?? string.Empty, StringComparer.Ordinal)
-                .GroupBy(f => f.Name, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => new FilterField(g.First().Id, g.Key, g.First().Type), StringComparer.Ordinal);
-            fixedFields = fields;
-        }
-
-        var fixedFilters = names?.AmbiguityProblem(input.FixedFilters.Keys) is not null
-            ? Result<IReadOnlyList<FieldFilter>>.Failure(Error.Validation(KnowledgeBaseSearchErrors.InvalidFixedFilter, "ambiguous"))
-            : SearchFilterParser.Parse(input.FixedFilters, fixedFields, KnowledgeBaseSearchErrors.InvalidFixedFilter, ignoreEmpty: false);
-        if (!fixedFilters.IsSuccess)
-        {
-            // The fixed filters are never shown to the model, so what is wrong with them is not said either.
-            return Error.Validation(
-                KnowledgeBaseSearchErrors.InvalidFixedFilter,
-                "A filter that the tool always applies is not valid for the knowledge bases. An administrator has to correct the tool.");
-        }
-
-        var modelFilters = SearchFilterParser.Parse(input.Filters, fields, KnowledgeBaseSearchErrors.InvalidFilter, ignoreEmpty: true);
-        if (!modelFilters.IsSuccess)
-        {
-            return modelFilters.Error;
-        }
-
-        // Both always apply: a value the model gives for a field the binding fixed can only narrow the fixed one, never replace it.
-        return Result<IReadOnlyList<FieldFilter>>.Success([.. fixedFilters.Value, .. modelFilters.Value]);
-    }
+    private Task<Result<IReadOnlyList<FieldFilter>>> ParseFiltersAsync(SearchInput input, IReadOnlyList<KnowledgeBase> bases, CancellationToken cancellationToken) =>
+        SearchFilterInputs.ParseAsync(db, input.Filters, input.FixedFilters, input.FilterFields, input.FixedFilterFieldIds, bases, cancellationToken);
 
     private async Task<Outcome> SearchOneAsync(
         KnowledgeBase knowledgeBase,

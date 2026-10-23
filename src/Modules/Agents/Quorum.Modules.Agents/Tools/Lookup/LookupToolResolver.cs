@@ -11,14 +11,19 @@ internal sealed record LookupToolToDescribe(Guid ToolId, string Description, Loo
 
 /// <summary>A lookup tool as the model is offered it now.</summary>
 /// <param name="Lookups">The lookups the tenant can see, by the name the model was offered.</param>
-internal sealed record ResolvedLookupTool(GeneratedLookupDefinition Definition, IReadOnlyDictionary<string, Guid> Lookups, IReadOnlyList<LookupInfo> Visible);
+internal sealed record ResolvedLookupTool(
+    GeneratedLookupDefinition Definition,
+    IReadOnlyDictionary<string, Guid> Lookups,
+    IReadOnlyList<LookupInfo> Visible,
+    IReadOnlyDictionary<string, Guid> KnowledgeBases,
+    IReadOnlyDictionary<string, Guid> FilterFields);
 
 /// <summary>
 /// Builds the definition of lookup tools from the live catalog (spec 007 D-12): at the start of each answer and not when the tool is
 /// saved, so a renamed or deleted lookup never leaves a stale enum, and one the tenant can no longer see is simply absent. A tool left
 /// with no visible lookup is dropped: it is not offered.
 /// </summary>
-internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLookups lookups, IMemoryCache cache)
+internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLookups lookups, IKnowledgeBaseCatalog catalog, IMemoryCache cache)
 {
     private static readonly TimeSpan RecentFor = TimeSpan.FromSeconds(30);
 
@@ -42,6 +47,15 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
             cancellationToken);
         var byId = seen.ToDictionary(l => l.Id);
 
+        // The knowledge bases of the live operations and those the lists come from: a filter is offered for a field either maps.
+        var fieldIds = tools.SelectMany(t => t.Binding.ExposedFieldIds).Distinct().ToList();
+        var basesWanted = tools.SelectMany(t => t.Binding.KnowledgeBaseIds).Concat(seen.Select(l => l.KnowledgeBaseId).OfType<Guid>()).Distinct().ToList();
+        var description = fieldIds.Count == 0 && basesWanted.Count == 0
+            ? new BindingDescription([], [])
+            : await catalog.DescribeAsync(new BindingQuery(tenantId, assistantId, basesWanted, fieldIds), cancellationToken);
+        var basesById = description.KnowledgeBases.ToDictionary(k => k.Id);
+        var fieldsById = description.Fields.ToDictionary(f => f.Id);
+
         var resolved = new Dictionary<Guid, ResolvedLookupTool>();
         foreach (var tool in tools)
         {
@@ -59,10 +73,26 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 continue;
             }
 
+            // The live operations query only the knowledge bases the tool names that the tenant sees; a tool with none keeps its lists.
+            var queried = tool.Binding.KnowledgeBaseIds.Distinct().Where(basesById.ContainsKey).Select(id => basesById[id]).OrderBy(k => k.Name, StringComparer.Ordinal).ToList();
+            var mapping = queried
+                .SelectMany(k => k.FieldIds)
+                .Concat(offered.Select(l => l.Info.KnowledgeBaseId).OfType<Guid>().Where(basesById.ContainsKey).SelectMany(id => basesById[id].FieldIds))
+                .ToHashSet();
+
+            // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.
+            var exposed = tool.Binding.ExposedFieldIds.Distinct()
+                .Where(id => fieldsById.ContainsKey(id) && mapping.Contains(id))
+                .Select(id => Named(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
+                .OrderBy(f => f.Name, StringComparer.Ordinal)
+                .ToList();
+
             resolved[tool.ToolId] = new ResolvedLookupTool(
-                LookupToolDefinition.Build(tool.Description, offered),
+                LookupToolDefinition.Build(tool.Description, offered, queried, exposed),
                 offered.ToDictionary(l => l.Name, l => l.Info.Id, StringComparer.Ordinal),
-                [.. offered.Select(l => l.Info)]);
+                [.. offered.Select(l => l.Info)],
+                queried.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
+                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal));
         }
 
         return resolved;
@@ -149,11 +179,19 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                     {
                         Description = definition.Definition.Description,
                         InputSchema = definition.Definition.InputSchema,
-                        Lookup = tool.Lookup with { Lookups = definition.Lookups },
+                        Lookup = tool.Lookup with { Lookups = definition.Lookups, KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields },
                     }
                     : null).OfType<ActiveTool>(),
         ];
     }
+
+    // The model knows the field by its alias. A field with no description of its own says which cluster it is from, so two fields that
+    // share a name (hr/year, finance/year) are not told apart only by their aliases.
+    private static FilterFieldInfo Named(FilterFieldInfo field, string? alias) => field with
+    {
+        Name = alias ?? field.Name,
+        Description = field.Description ?? (field.Cluster is null ? null : $"{field.Name} ({field.Cluster})"),
+    };
 
     /// <summary>A cached outcome; <see langword="null"/> inside means the tool had no visible lookup.</summary>
     private sealed record Recent(ResolvedLookupTool? Tool);
