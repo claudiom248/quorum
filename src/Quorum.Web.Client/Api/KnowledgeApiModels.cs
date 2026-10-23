@@ -190,7 +190,8 @@ public sealed record RagToolDetail(
     string State,
     string Policy,
     RagToolDefinition? Definition,
-    IReadOnlyList<ToolWarning> Warnings);
+    IReadOnlyList<ToolWarning> Warnings,
+    bool AllowDocumentIds = false);
 
 /// <param name="FixedFilters">Filters the model never sees, in the shape of the tool's parameters: <c>{"department": ["hr"], "year_min": 2024}</c>.</param>
 public sealed record RagToolRequest(
@@ -203,7 +204,8 @@ public sealed record RagToolRequest(
     double? ScoreThreshold,
     int? MaxResultCharacters,
     ToolScope Scope,
-    string? Policy);
+    string? Policy,
+    bool? AllowDocumentIds = null);
 
 public sealed record CreatedRagTool(Guid Id, RagToolDefinition? Definition);
 

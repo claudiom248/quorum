@@ -153,6 +153,28 @@ public sealed class LookupDraftTests
         Assert.Equal(72, KnowledgeBaseDraft.From(detail with { LookupRefreshHours = 72 }).LookupRefreshHours);
     }
 
+    [Fact]
+    public void AnEntityListCanBeOrderedByItsNumberAndDateAttributesOnly()
+    {
+        LookupValueInfo Entity(string json) => new("e", null, null, null, JsonDocument.Parse(json).RootElement.Clone());
+
+        var attributes = LookupAdminView.SortableAttributes(
+        [
+            Entity("""{"country":"IT","contract_count":12,"supplier_since":"2019-03-01","code":"1"}"""),
+            Entity("""{"country":"US","contract_count":5,"supplier_since":"2021-06-15","code":"2"}"""),
+        ]);
+
+        Assert.Equal(["contract_count", "supplier_since"], attributes);
+    }
+
+    [Fact]
+    public void TheAttributesOfAnEntityReadAsTheyAreInTheData()
+    {
+        var value = new LookupValueInfo("Acme", null, null, null, JsonDocument.Parse("""{"country":"IT","rating":4.4,"preferred":true,"supplier_since":"2019-03-01"}""").RootElement.Clone());
+
+        Assert.Equal("country: IT, rating: 4.4, preferred: true, supplier_since: 2019-03-01", LookupAdminView.Attributes(value));
+    }
+
     // --- Manual lookup form ---
 
     [Fact]
