@@ -130,7 +130,11 @@ internal static class LookupToolApi
         public JsonElement Parameter(string name) => InputSchema.GetProperty("properties").GetProperty(name);
     }
 
-    public sealed record CreatedBody(Guid Id, PreviewBody? Definition, List<WarningBody> Warnings);
+    public sealed record CreatedBody(Guid Id, PreviewBody? Definition, List<PreviewBody> Definitions, List<WarningBody> Warnings)
+    {
+        /// <summary>The function the model is offered for one operation: <c>values</c>, <c>documents</c> or <c>count</c>.</summary>
+        public PreviewBody Function(string operation) => Definitions.Single(d => d.Name.StartsWith($"lookup_{operation}__", StringComparison.Ordinal));
+    }
 
     public sealed record NamedBody(Guid Id, string Name);
 
@@ -153,5 +157,9 @@ internal static class LookupToolApi
         string State,
         string Policy,
         PreviewBody? Definition,
-        List<WarningBody> Warnings);
+        List<PreviewBody> Definitions,
+        List<WarningBody> Warnings)
+    {
+        public PreviewBody Function(string operation) => Definitions.Single(d => d.Name.StartsWith($"lookup_{operation}__", StringComparison.Ordinal));
+    }
 }

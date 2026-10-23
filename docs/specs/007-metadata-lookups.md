@@ -224,6 +224,22 @@ The last one was `values` with filters (AC-31): confirmed, computed live among t
 
 _None._
 
+## Amendments
+
+### A1 - One function for each thing a lookup tool does (2026-10-23)
+Context: asked real questions through a model, the single `lookup__<name>` tool made the model choose between `values`, `documents` and `count` with an `operation` argument, and every definition carried the arguments of all three.
+
+Decision: a lookup tool is still **one configuration, one tool row, one activation, one policy and one audit identity** (`ToolId`), but the model is offered up to three functions, named `lookup_values__<name>`, `lookup_documents__<name>` and `lookup_count__<name>`. They are made when the answer starts, like the definition itself (D-12):
+- **`lookup_values`** is always offered. Arguments: `lookup`, `search`, `sort`, `limit`, `cursor`, and the filters when the tool queries knowledge bases (a computed list is then worked out among the matching documents, D-7). It lists the lists with what each is.
+- **`lookup_documents`** and **`lookup_count`** are offered only when the tool queries at least one knowledge base. Arguments: `knowledge_base` (with several), the filters, and for `documents` also `limit` and `cursor`. They list the knowledge bases, not the lists.
+- A filter on a field that one of the lists holds says, in the description of the function, that its exact values are in that list and which function reads it; a `documents` or `count` that matches nothing points to the list.
+- The `operation` argument is gone. The audit log records the tool as `<name>.<operation>` (server `lookup`). The context a tool takes is the sum of its functions.
+- The tool API keeps `definition` (the `values` function) and adds `definitions` (all of them, each with its size). The tool pool lists the tool once, as `lookup__<name>`, and its activation covers its functions.
+
+Alternatives not taken: three tool rows (three activations and policies to keep in step for one configuration), and a policy per function (deferred: no case yet).
+
+Also, from the same questions: a list of entities can be ordered by its number and date attributes (offered in `sort`); a list of entities cannot be filtered, so the fields only its knowledge base maps are not offered as filters; and each list says what it is (values that occur, entities, typed by hand).
+
 ## Appendix: cost evidence
 Benchmark run on 2026-10-22 with `tools/Quorum.QdrantMetadataBench` (a throwaway tool of the investigation, not part of the product): Qdrant 1.12.0, 5,000,000 points of 8-dimension vectors, payload on disk, about 10 chunks per document, `supplier` with about 5,000 values. Medians in milliseconds.
 

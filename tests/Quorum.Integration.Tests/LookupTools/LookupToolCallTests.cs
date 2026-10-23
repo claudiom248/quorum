@@ -17,8 +17,14 @@ namespace Quorum.Integration.Tests.LookupTools;
 /// <summary>A lookup tool in an answer: the model calls it and reads a page of a list (spec 007, AC-10, AC-19, AC-22, AC-26, AC-28, AC-33, AC-35).</summary>
 public sealed partial class LookupToolCallTests(PostgresFixture postgres, QdrantFixture qdrant)
 {
-    private static FakeToolCall Call(object arguments, string id = "call_1", string tool = "lookup__lists") =>
-        new(tool, JsonSerializer.Serialize(arguments), id);
+    // Each thing the tool does is a function of its own: an `operation` in the arguments says which one the call is for.
+    private static FakeToolCall Call(object arguments, string id = "call_1", string? tool = null)
+    {
+        var node = JsonSerializer.SerializeToNode(arguments)!.AsObject();
+        var operation = node["operation"]?.GetValue<string>() ?? "values";
+        node.Remove("operation");
+        return new(tool ?? $"lookup_{operation}__lists", node.ToJsonString(), id);
+    }
 
     private static string ResultOf(IEnumerable<SseEvent> events, int index = 0) =>
         events.Where(e => e.Type == "tool_result").ElementAt(index).Data.GetProperty("content").GetString()!;
@@ -148,7 +154,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         await AskAsync(setup, Call(new { }));
 
         var entry = Assert.Single(await ToolFixtures.AuditRowsAsync(setup.App));
-        Assert.Equal("lists", entry.ToolName);
+        Assert.Equal("lists.values", entry.ToolName);
         Assert.Equal("lookup", entry.ServerName);
         Assert.Equal("Succeeded", entry.Outcome);
         Assert.Equal(2, entry.SourceCount);
