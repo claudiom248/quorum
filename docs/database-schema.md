@@ -262,7 +262,7 @@ erDiagram
         uuid AssistantId "kept after deletion"
         uuid ConversationId "kept after deletion"
         uuid CallId "id of the model tool call"
-        varchar(64) ServerName "NULL, null for Builtin, Rag and Lookup"
+        varchar(64) ServerName "NULL, null for Builtin and Rag; lookup for a lookup tool (its ToolName is <name>.<operation>)"
         varchar(128) ToolName
         varchar(20) Decision "NULL, Auto, Approved, Denied, TimedOut"
         varchar(20) Outcome "Started, Succeeded, Failed, Denied, Cancelled, TimedOut"
