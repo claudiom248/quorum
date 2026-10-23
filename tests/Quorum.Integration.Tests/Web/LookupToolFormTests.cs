@@ -162,6 +162,16 @@ public sealed class LookupToolFormTests
     }
 
     [Fact]
+    public void TheKnowledgeBaseOfAListOfEntitiesIsNotOneWhoseFieldsAreOffered()
+    {
+        var computed = Choice("supplier", BaseId);
+        var entities = new LookupChoice(Guid.NewGuid(), "vendors", LookupKinds.Entity, OtherBaseId, "vendors");
+        var form = Valid(computed, entities);
+
+        Assert.Equal([BaseId], LookupToolView.KnowledgeBasesInUse(form, [computed, entities]));
+    }
+
+    [Fact]
     public void TheChoicesNameEachListByWhereItComesFromAndLeaveOutSharedKnowledgeBases()
     {
         var own = new KnowledgeBaseListItem(BaseId, "contracts", "d", "Available", false, "Qdrant", "Tenant", null, null);

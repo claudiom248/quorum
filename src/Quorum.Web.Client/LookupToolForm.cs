@@ -51,10 +51,15 @@ public static class LookupToolView
         ArgumentNullException.ThrowIfNull(form);
         ArgumentNullException.ThrowIfNull(choices);
 
+        // A list of entities cannot be filtered, so the fields only its knowledge base maps are not offered: nothing would apply them.
         return
         [
             .. form.KnowledgeBaseIds
-                .Concat(form.Lookups.Select(l => choices.FirstOrDefault(c => c.Id == l.LookupId)?.KnowledgeBaseId).OfType<Guid>())
+                .Concat(form.Lookups
+                    .Select(l => choices.FirstOrDefault(c => c.Id == l.LookupId))
+                    .Where(c => c is { Kind: not LookupKinds.Entity })
+                    .Select(c => c!.KnowledgeBaseId)
+                    .OfType<Guid>())
                 .Distinct(),
         ];
     }
