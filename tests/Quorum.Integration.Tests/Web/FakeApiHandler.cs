@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace Quorum.Integration.Tests.Web;
 
 /// <summary>Stands in for the Quorum API for component tests: answers requests from a script and remembers them.</summary>
-internal sealed class FakeApiHandler : HttpMessageHandler
+public sealed class FakeApiHandler : HttpMessageHandler
 {
     private readonly List<(HttpMethod Method, string Path)> _requests = [];
     private readonly List<(HttpMethod Method, string Path, string Body)> _bodies = [];

@@ -59,10 +59,6 @@
 
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
                     <MudButton Variant="Variant.Text" OnClick="Cancel" Disabled="_busy">Cancel</MudButton>
-                    @if (!Draft.IsNew && Draft.Mapping is not null)
-                    {
-                        <MudButton Variant="Variant.Outlined" OnClick="SkipInspection" Disabled="_busy">Keep the mapping</MudButton>
-                    }
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="InspectAsync" Disabled="_busy"
                                StartIcon="@Icons.Material.Filled.Search">@(Draft.IsNew ? "Inspect collection" : "Inspect again")</MudButton>
                 </MudStack>
@@ -390,7 +386,9 @@
     ];
 
     private WizardStep _step;
+    // Editing a registration that has a mapping: every step can be opened, the admin may care about any of them.
     private WizardStep _reached;
+    private bool _openedAll;
     private InspectResult? _inspection;
     private string? _inspected;
     private ApiProblem? _problem;
@@ -463,19 +461,16 @@
         }
     }
 
-    private void Cancel() => OnCancel.InvokeAsync();
-
-    private void SkipInspection()
+    protected override void OnParametersSet()
     {
-        if (Draft.ConnectionProblems() is { Count: > 0 })
+        if (!_openedAll && !Draft.IsNew && Draft.Mapping is not null)
         {
-            _showProblems = true;
-            return;
+            _openedAll = true;
+            _reached = WizardStep.Review;
         }
-
-        _problem = null;
-        Reach(WizardStep.Mapping);
     }
+
+    private void Cancel() => OnCancel.InvokeAsync();
 
     private async Task InspectAsync()
     {

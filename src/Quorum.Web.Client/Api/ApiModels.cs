@@ -172,3 +172,31 @@ public sealed record ToolRefresh(string Status, IReadOnlyList<string> Added, IRe
 
 /// <summary>One page of a list. <paramref name="Cursor"/> is set when there is a next one.</summary>
 public sealed record Page<T>(IReadOnlyList<T> Items, string? Cursor);
+
+/// <summary>One recorded tool call. The audit log is read-only.</summary>
+public sealed record ToolAuditItem(
+    Guid Id,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt,
+    Guid UserId,
+    Guid AssistantId,
+    Guid ConversationId,
+    Guid CallId,
+    string? ServerName,
+    string ToolName,
+    string? Decision,
+    string Outcome,
+    string Arguments,
+    bool ArgumentsTruncated,
+    int? ResultCharacters,
+    int? SourceCount,
+    int? DurationMs,
+    string? ErrorCode);
+
+/// <param name="Total">The entries that match the filters, across all pages.</param>
+public sealed record ToolAuditPage(IReadOnlyList<ToolAuditItem> Items, int Total);
+
+public static class AuditOutcomes
+{
+    public static readonly IReadOnlyList<string> All = ["Started", "Succeeded", "Failed", "Denied", "Cancelled", "TimedOut"];
+}

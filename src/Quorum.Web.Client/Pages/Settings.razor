@@ -5,7 +5,7 @@
 <PageTitle>Settings · Quorum</PageTitle>
 
 <div class="settings">
-    <MudText Typo="Typo.h5" Class="mb-4">Assistant settings</MudText>
+    <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-4">Assistant settings</MudText>
 
     @if (Unverified is not null)
     {
@@ -18,139 +18,120 @@
     {
         <MudProgressLinear Indeterminate="true" />
     }
-    else if (_form is not null)
+    else if (_model is not null)
     {
-        <form @onsubmit="SaveAsync">
-            <MudStack Spacing="3">
-                <MudText Typo="Typo.subtitle1">Model</MudText>
-                <MudTextField @bind-Value="_form.BaseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true"
-                              HelperText="Include the version segment, e.g. http://ollama:11434/v1" />
-                <MudTextField @bind-Value="_apiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined"
-                              autocomplete="off"
-                              HelperText="@(_hasApiKey ? "A key is stored. Leave empty to keep it." : "No key is stored.")" />
-                @if (_hasApiKey)
-                {
-                    <MudCheckBox T="bool" @bind-Value="_removeKey" Label="Remove the stored key" />
-                }
-                <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="_busy"
-                           StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
-                @if (_models is not null)
-                {
-                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Connected. @_models.Count model(s) available.</MudAlert>
-                }
-
-                @if (_models is { Count: > 0 })
-                {
-                    <MudSelect T="string" @bind-Value="_form.ModelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
-                        @foreach (var model in _models)
+        @* Each tab saves on its own and says so; the others keep what was last saved. *@
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
+            <MudTabPanel Text="Model" data-tab="model">
+                <form @onsubmit="SaveModelAsync">
+                    <MudStack Spacing="3">
+                        <ModelConnectionForm Value="_model" HasApiKey="_hasApiKey" Busy="_busy" Test="TestModelAsync" />
+                        <ProblemMessage Problem="_modelProblem" />
+                        @if (_modelSaved)
                         {
-                            <MudSelectItem Value="@model">@model</MudSelectItem>
+                            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Model settings saved.</MudAlert>
                         }
-                    </MudSelect>
-                }
-                else
-                {
-                    <MudTextField @bind-Value="_form.ModelName" Label="Model" Variant="Variant.Outlined" Required="true" />
-                }
 
-                <MudSwitch T="bool" @bind-Value="_form.SupportsTools" Color="Color.Primary" Label="The model supports tools"
-                           aria-describedby="tools-support-hint" />
-                <MudText id="tools-support-hint" Typo="Typo.caption" Class="tools-support-hint">@ToolSupportHint</MudText>
-
-                <MudNumericField T="int" @bind-Value="_form.ContextTokenBudget" Label="Context budget (tokens)"
-                                 Variant="Variant.Outlined" Min="256" Max="1000000"
-                                 HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
-
-                <MudText Typo="Typo.subtitle1" Class="mt-2">Behaviour</MudText>
-                <MudTextField @bind-Value="_form.SystemPrompt" Label="System prompt" Variant="Variant.Outlined" Lines="8" />
-
-                <ProblemMessage Problem="_problem" />
-                @if (_saved)
-                {
-                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Settings saved.</MudAlert>
-                }
-
-                <MudStack Row="true" Justify="Justify.FlexEnd">
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
-                </MudStack>
-            </MudStack>
-        </form>
-
-        @if (_pool is { Count: > 0 })
-        {
-            <MudDivider Class="my-6" />
-            <form @onsubmit="SaveToolsAsync">
-                <MudStack Spacing="2">
-                    <MudText Typo="Typo.subtitle1">Tools</MudText>
-                    <MudText Typo="Typo.body2" Class="tools-support-hint">
-                        The tools the assistant may call. Each one runs under its own policy; those that need confirmation ask the person chatting before they run.
-                    </MudText>
-
-                    @if (!_form.SupportsTools)
-                    {
-                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                            The model is marked as not supporting tools, so none of these are offered to it.
-                        </MudAlert>
-                    }
-
-                    @foreach (var tool in _pool)
-                    {
-                        <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
-                    }
-
-                    @foreach (var warning in _warnings)
-                    {
-                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@warning.Message</MudAlert>
-                    }
-
-                    <ProblemMessage Problem="_toolsProblem" />
-                    @if (_toolsSaved)
-                    {
-                        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Tools saved.</MudAlert>
-                    }
-
-                    <MudStack Row="true" Justify="Justify.FlexEnd">
-                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save tools</MudButton>
+                        <MudStack Row="true" Justify="Justify.FlexEnd">
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save model</MudButton>
+                        </MudStack>
                     </MudStack>
-                </MudStack>
-            </form>
-        }
+                </form>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Behaviour" data-tab="behaviour">
+                <form @onsubmit="SaveBehaviourAsync">
+                    <MudStack Spacing="3">
+                        <MudTextField @bind-Value="_prompt" Label="System prompt" Variant="Variant.Outlined" Lines="10" />
+                        <ProblemMessage Problem="_behaviourProblem" />
+                        @if (_behaviourSaved)
+                        {
+                            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Behaviour saved.</MudAlert>
+                        }
+
+                        <MudStack Row="true" Justify="Justify.FlexEnd">
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save behaviour</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </form>
+            </MudTabPanel>
+
+            @if (_pool is { Count: > 0 })
+            {
+                <MudTabPanel Text="Tools" data-tab="tools">
+                    <form @onsubmit="SaveToolsAsync">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.body2" Class="tools-support-hint">
+                                The tools the assistant may call. Each one runs under its own policy; those that need confirmation ask the person chatting before they run.
+                            </MudText>
+
+                            @if (!_model.SupportsTools)
+                            {
+                                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                    The model is marked as not supporting tools, so none of these are offered to it.
+                                </MudAlert>
+                            }
+
+                            <MudTextField T="string" @bind-Value="_toolSearch" Label="Search the tools" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                                          Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+
+                            @foreach (var group in Groups())
+                            {
+                                <MudText Typo="Typo.subtitle2" Class="mt-2" data-source="@group.Source">@group.Source</MudText>
+                                @foreach (var tool in group.Tools)
+                                {
+                                    <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
+                                }
+                            }
+
+                            @foreach (var warning in _warnings)
+                            {
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@warning.Message</MudAlert>
+                            }
+
+                            <ProblemMessage Problem="_toolsProblem" />
+                            @if (_toolsSaved)
+                            {
+                                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Tools saved.</MudAlert>
+                            }
+
+                            <MudStack Row="true" Justify="Justify.FlexEnd">
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save tools</MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </form>
+                </MudTabPanel>
+            }
+        </MudTabs>
     }
     else
     {
-        <ProblemMessage Problem="_problem" />
+        <ProblemMessage Problem="_loadProblem" />
     }
 </div>
 
 @code {
-    private SettingsForm? _form;
-    private IReadOnlyList<string>? _models;
-    private ApiProblem? _problem;
-    private string? _apiKey;
+    private ModelConnectionFields? _model;
+    private ModelConnectionFields _savedModel = new();
+    private string _prompt = string.Empty;
+    private string _savedPrompt = string.Empty;
     private bool _hasApiKey;
-    private bool _removeKey;
     private bool _loading = true;
     private bool _busy;
-    private bool _saved;
-    private bool? _detectedToolSupport;
-    private bool _toolSupportChecked;
+    private ApiProblem? _loadProblem;
+    private ApiProblem? _modelProblem;
+    private bool _modelSaved;
+    private ApiProblem? _behaviourProblem;
+    private bool _behaviourSaved;
     private Guid? _assistantId;
     private List<PoolEntry>? _pool;
     private IReadOnlyList<ToolWarning> _warnings = [];
     private ApiProblem? _toolsProblem;
     private bool _toolsSaved;
+    private string? _toolSearch;
 
     [SupplyParameterFromQuery]
     public string? Unverified { get; set; }
-
-    private string ToolSupportHint => !_toolSupportChecked
-        ? "Use \"Test connection\" to let Quorum check it, or set it by hand."
-        : _detectedToolSupport switch
-        {
-            true => "The server reports that this model supports tools.",
-            false => "The server reports that this model does not support tools.",
-            null => "The server does not say whether this model supports tools; the setting is yours to make.",
-        };
 
     protected override async Task OnInitializedAsync()
     {
@@ -159,20 +140,21 @@
 
         if (!result.IsSuccess)
         {
-            _problem = result.Problem;
+            _loadProblem = result.Problem;
             return;
         }
 
         var s = result.Value;
         _hasApiKey = s.HasApiKey;
-        _form = new SettingsForm
+        _model = new ModelConnectionFields
         {
             BaseUrl = s.BaseUrl,
             ModelName = s.ModelName,
             ContextTokenBudget = s.ContextTokenBudget,
-            SystemPrompt = s.SystemPrompt,
             SupportsTools = s.SupportsTools,
         };
+        _savedModel = _model.Copy();
+        _prompt = _savedPrompt = s.SystemPrompt;
 
         await LoadToolsAsync();
     }
@@ -189,57 +171,97 @@
         var tools = await Api.GetAssistantToolsAsync(_assistantId.Value);
         if (!tools.IsSuccess)
         {
-            // Not everyone who may change the model may manage tools: the section is simply absent.
+            // Not everyone who may change the model may manage tools: the tab is simply absent.
             return;
         }
 
-        _pool = tools.Value.Pool.Select(t => new PoolEntry(t.ToolId, ToolCallView.DisplayNameOf(t.Name)) { Active = t.Active }).ToList();
+        _pool = tools.Value.Pool.Select(t => new PoolEntry(t.ToolId, ToolCallView.DisplayNameOf(t.Name), SourceOf(t.Name)) { Active = t.Active }).ToList();
         _warnings = tools.Value.Warnings;
     }
 
-    private async Task TestAsync()
+    // "files__read" comes from the server files, "builtin__calculator" is built in: the part before the double underscore.
+    private static string SourceOf(string exposedName)
+    {
+        var split = exposedName.IndexOf("__", StringComparison.Ordinal);
+        return split > 0 ? exposedName[..split] : "other";
+    }
+
+    private IEnumerable<(string Source, List<PoolEntry> Tools)> Groups() =>
+        _pool!
+            .Where(t => string.IsNullOrWhiteSpace(_toolSearch) || t.Label.Contains(_toolSearch.Trim(), StringComparison.OrdinalIgnoreCase))
+            .GroupBy(t => t.Source)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => (g.Key, g.ToList()));
+
+    private Task<ApiResult<ModelConnection>> TestModelAsync(string baseUrl, string? key, string? model) => Api.TestAssistantModelAsync(baseUrl, key, model);
+
+    private Task SaveModelAsync() => SaveAsync(model: true);
+
+    private Task SaveBehaviourAsync() => SaveAsync(model: false);
+
+    // The tab that saves sends its own part and the other part as last saved, so an unsaved edit elsewhere is not saved by accident.
+    private async Task SaveAsync(bool model)
     {
         _busy = true;
-        _problem = null;
-        _models = null;
+        _modelProblem = null;
+        _behaviourProblem = null;
+        _modelSaved = false;
+        _behaviourSaved = false;
 
-        // A null key makes the server test with the stored one.
-        var result = await Api.TestAssistantModelAsync(_form!.BaseUrl.Trim(), KeyToSend(), ModelToCheck());
+        var connection = model ? _model! : _savedModel;
+        var prompt = model ? _savedPrompt : _prompt;
+        var request = new UpdateAssistantSettingsRequest(
+            connection.BaseUrl.Trim(),
+            connection.ModelName.Trim(),
+            model ? _model!.KeyToSend() : null,
+            connection.ContextTokenBudget,
+            prompt,
+            connection.SupportsTools);
+        var result = await Api.UpdateAssistantSettingsAsync(request);
         _busy = false;
 
-        if (result.IsSuccess)
+        if (!result.IsSuccess)
         {
-            _models = result.Value.Models;
-            ApplyToolSupport(result.Value.SupportsTools);
+            if (model)
+            {
+                _modelProblem = result.Problem;
+            }
+            else
+            {
+                _behaviourProblem = result.Problem;
+            }
+
+            return;
+        }
+
+        if (model)
+        {
+            if (!string.IsNullOrWhiteSpace(_model!.ApiKey))
+            {
+                _hasApiKey = true;
+            }
+
+            if (_model.RemoveKey && string.IsNullOrWhiteSpace(_model.ApiKey))
+            {
+                _hasApiKey = false;
+            }
+
+            _model.ApiKey = null;
+            _model.RemoveKey = false;
+            _savedModel = _model.Copy();
+            _modelSaved = true;
         }
         else
         {
-            _problem = result.Problem;
+            _savedPrompt = _prompt;
+            _behaviourSaved = true;
         }
-    }
 
-    /// <summary>The chosen model may differ from the one tested: ask again, so the flag follows the model.</summary>
-    private async Task DetectToolSupportAsync()
-    {
-        var result = await Api.TestAssistantModelAsync(_form!.BaseUrl.Trim(), KeyToSend(), ModelToCheck());
-        if (result.IsSuccess)
+        if (Unverified is not null && model)
         {
-            ApplyToolSupport(result.Value.SupportsTools);
+            Navigation.NavigateTo("settings", replace: true);
         }
     }
-
-    // What the server reports pre-fills the flag; when it does not say, the admin's value stays.
-    private void ApplyToolSupport(bool? reported)
-    {
-        _toolSupportChecked = true;
-        _detectedToolSupport = reported;
-        if (reported is { } value)
-        {
-            _form!.SupportsTools = value;
-        }
-    }
-
-    private string? ModelToCheck() => string.IsNullOrWhiteSpace(_form!.ModelName) ? null : _form.ModelName.Trim();
 
     private async Task SaveToolsAsync()
     {
@@ -268,63 +290,7 @@
         }
     }
 
-    private async Task SaveAsync()
-    {
-        _busy = true;
-        _problem = null;
-        _saved = false;
-
-        var request = new UpdateAssistantSettingsRequest(
-            _form!.BaseUrl.Trim(),
-            _form.ModelName.Trim(),
-            _removeKey ? string.Empty : KeyToSend(),
-            _form.ContextTokenBudget,
-            _form.SystemPrompt,
-            _form.SupportsTools);
-        var result = await Api.UpdateAssistantSettingsAsync(request);
-        _busy = false;
-
-        if (!result.IsSuccess)
-        {
-            _problem = result.Problem;
-            return;
-        }
-
-        _saved = true;
-        if (!string.IsNullOrWhiteSpace(_apiKey))
-        {
-            _hasApiKey = true;
-        }
-
-        if (_removeKey)
-        {
-            _hasApiKey = false;
-        }
-
-        _apiKey = null;
-        _removeKey = false;
-        if (Unverified is not null)
-        {
-            Navigation.NavigateTo("settings", replace: true);
-        }
-    }
-
-    private string? KeyToSend() => string.IsNullOrWhiteSpace(_apiKey) ? null : _apiKey.Trim();
-
-    private sealed class SettingsForm
-    {
-        public string BaseUrl { get; set; } = string.Empty;
-
-        public string ModelName { get; set; } = string.Empty;
-
-        public int ContextTokenBudget { get; set; }
-
-        public string SystemPrompt { get; set; } = string.Empty;
-
-        public bool SupportsTools { get; set; }
-    }
-
-    private sealed record PoolEntry(Guid ToolId, string Label)
+    private sealed record PoolEntry(Guid ToolId, string Label, string Source)
     {
         public bool Active { get; set; }
     }

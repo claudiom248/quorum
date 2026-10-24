@@ -1,0 +1,364 @@
+@page "/knowledge/bases"
+@page "/knowledge/bases/{Id}"
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>Knowledge bases · Quorum</PageTitle>
+
+<ListPage Title="Knowledge bases"
+          Description="Register collections that already hold your documents, so assistants can answer from them through a rag tool (configured in Tools). Quorum only reads them: whoever owns the data fills and updates them."
+          AddLabel="Register knowledge base" OnAdd="() => Navigation.NavigateTo(WizardUri)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No knowledge base is registered yet" EmptyText="Register a collection that already holds your documents.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+                   TypeLabel="Kind" TypeOptions="KindOptions" StatusOptions="StatusOptions" SearchPlaceholder="Search by name or description" />
+    </FilterContent>
+    <ChildContent>
+        @if (_noticeWarnings.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-3">
+                @foreach (var warning in _noticeWarnings)
+                {
+                    <div data-warning="@warning.Code">@warning.Message</div>
+                }
+            </MudAlert>
+        }
+
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        <MudTable T="KnowledgeBaseListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="knowledge-bases">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Kind</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>Verified</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="knowledgeBase">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(knowledgeBase.Id.ToString())" Class="tool-name" data-kb="@knowledgeBase.Name">@knowledgeBase.Name</MudLink>
+                    <div class="tool-hint">@knowledgeBase.Description</div>
+                </MudTd>
+                <MudTd DataLabel="Kind">@knowledgeBase.Kind</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                             Color="@(knowledgeBase.Status == KnowledgeBaseStatuses.Available ? Color.Success : Color.Warning)">@knowledgeBase.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Scope">
+                    @if (knowledgeBase.Scope is { } scope)
+                    {
+                        <ScopeBadge Scope="scope" Assistants="_assistants" Shared="knowledgeBase.Shared" />
+                    }
+                    else if (knowledgeBase.Shared)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">Shared with you</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Verified">@(knowledgeBase.LastVerifiedAt is { } at ? at.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : knowledgeBase.Shared ? string.Empty : "not yet")</MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_screen.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="_screen.Loading" OnClick="_screen.LoadMoreAsync">Load more</MudButton>
+        }
+    </ChildContent>
+</ListPage>
+
+<ListDrawer Open="Id is not null" Title="@(_detail?.Name ?? "Knowledge base")" Wide="true" OnClose="_screen.CloseDrawer">
+    @if (_detail is null)
+    {
+        @if (_drawerProblem is not null)
+        {
+            <ProblemMessage Problem="_drawerProblem" />
+        }
+        else
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+    }
+    else
+    {
+        var detail = _detail;
+        <div data-detail="knowledge-base">
+            <MudStack Spacing="3">
+                <div class="tool-row-description">@detail.Description</div>
+                <div class="tool-row-head">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                             Color="@(detail.Status == KnowledgeBaseStatuses.Available ? Color.Success : Color.Warning)">@detail.Status</MudChip>
+                    @if (detail.Scope is { } scope)
+                    {
+                        <ScopeBadge Scope="scope" Assistants="_assistants" Shared="detail.Shared" />
+                    }
+                    else if (detail.Shared)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Shared with you</MudChip>
+                    }
+                </div>
+
+                @if (detail.Status == KnowledgeBaseStatuses.Unavailable)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                        Searches on this knowledge base fail, so a rag tool that uses it gets errors until it is fixed.
+                        @if (!string.IsNullOrWhiteSpace(detail.Warning))
+                        {
+                            <span> @detail.Warning</span>
+                        }
+                    </MudAlert>
+                }
+
+                @if (!detail.Shared)
+                {
+                    <div class="tool-hint">
+                        @detail.Kind · @(detail.Connection?.Url) · collection @(detail.Connection?.Collection) · embeddings @detail.EmbeddingModel ·
+                        @(detail.LastVerifiedAt is { } at ? $"verified {at.ToLocalTime():yyyy-MM-dd HH:mm}" : "not verified yet")
+                    </div>
+                    @if (detail.Mapping is { } mapping)
+                    {
+                        <div class="tool-hint">
+                            Text in <span class="tool-name">@mapping.Roles.Text</span>@(mapping.Fields.Count > 0 ? $", {mapping.Fields.Count} mapped field(s): {string.Join(", ", mapping.Fields.Select(f => f.Name ?? f.Path))}" : ", no mapped field").
+                        </div>
+                    }
+
+                    @if (_verified is { } verified)
+                    {
+                        <MudAlert Severity="@(verified.Status == KnowledgeBaseStatuses.Available ? Severity.Success : Severity.Warning)" Variant="Variant.Outlined" role="status">
+                            Verified: @KnowledgeAdminView.StatusLabel(verified.Status).ToLowerInvariant().
+                            @foreach (var warning in verified.Warnings)
+                            {
+                                <div data-warning="@warning.Code">@warning.Message</div>
+                            }
+                        </MudAlert>
+                    }
+
+                    <ProblemMessage Problem="_actionProblem" />
+
+                    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                        <MudButton Variant="Variant.Outlined" Disabled="_busy" OnClick="VerifyAsync" StartIcon="@Icons.Material.Filled.VerifiedUser">Verify</MudButton>
+                        <MudButton Variant="Variant.Outlined" Disabled="_busy" OnClick="ToggleSearchAsync" StartIcon="@Icons.Material.Filled.Search">Test search</MudButton>
+                        <MudButton Variant="Variant.Outlined" Href="@EditUri(detail.Id)" StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy" OnClick="DeleteAsync"
+                                   StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                    </MudStack>
+
+                    @if (_searching)
+                    {
+                        <KnowledgeBaseSearch Id="detail.Id" Name="@detail.Name" Detail="detail" Dictionary="_dictionary" OnClose="() => _searching = false" />
+                    }
+
+                    <MudDivider />
+                    <MudText Typo="Typo.subtitle1">Lookups</MudText>
+                    @if (_lookups is null)
+                    {
+                        <div class="tool-hint">The lookups could not be loaded.</div>
+                    }
+                    else if (_lookups.Count == 0)
+                    {
+                        <div class="tool-hint">This knowledge base has no lookup yet.</div>
+                    }
+                    else
+                    {
+                        <ul class="problem-list" data-lookups>
+                            @foreach (var lookup in _lookups)
+                            {
+                                <li><span class="tool-name">@lookup.Name</span> <span class="tool-hint">@lookup.Kind@(lookup.Field is null ? string.Empty : $" · {lookup.Field}")</span></li>
+                            }
+                        </ul>
+                    }
+                }
+            </MudStack>
+        </div>
+    }
+</ListDrawer>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> KindOptions = [new("Qdrant", "Qdrant")];
+
+    private static readonly IReadOnlyList<FilterOption> StatusOptions =
+    [
+        new(KnowledgeBaseStatuses.Available, "Available"),
+        new(KnowledgeBaseStatuses.Unavailable, "Unavailable"),
+    ];
+
+    private ListScreen<KnowledgeBaseListItem> _screen = null!;
+    private IReadOnlyList<DictionaryField> _dictionary = [];
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<TenantSummary>? _tenants;
+    private ApiProblem? _drawerProblem;
+    private ApiProblem? _actionProblem;
+    private bool _busy;
+    private string? _notice;
+    private IReadOnlyList<KnowledgeBaseWarning> _noticeWarnings = [];
+    private string? _openedId;
+
+    private KnowledgeBaseDetail? _detail;
+    private IReadOnlyList<KnowledgeBaseLookupInfo>? _lookups;
+    private KnowledgeBaseVerification? _verified;
+    private bool _searching;
+
+    /// <summary>The drawer: the id of the knowledge base. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private static string WizardUri => "/knowledge/bases/new";
+
+    private static string EditUri(Guid id) => $"/knowledge/bases/{id}/edit";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screen = new ListScreen<KnowledgeBaseListItem>(Navigation, "/knowledge/bases", (query, cursor) => Api.ListKnowledgeBasesPageAsync(query, ListScreen<KnowledgeBaseListItem>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var tenants = await Api.ListTenantsAsync();
+        _tenants = tenants.IsSuccess ? tenants.Value : null;
+        ReadSavedNotice();
+
+        await _screen.ReloadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _detail = null;
+        _lookups = null;
+        _verified = null;
+        _searching = false;
+        _drawerProblem = null;
+        _actionProblem = null;
+
+        if (Id is null)
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(Id, out var id))
+        {
+            _drawerProblem = new ApiProblem(404, "knowledge_base.not_found", "There is no such knowledge base.", new Dictionary<string, string[]>());
+            return;
+        }
+
+        var detail = await Api.GetKnowledgeBaseAsync(id);
+        if (!detail.IsSuccess)
+        {
+            _drawerProblem = detail.Problem;
+            return;
+        }
+
+        _detail = detail.Value;
+        if (!detail.Value.Shared)
+        {
+            var lookups = await Api.ListKnowledgeBaseLookupsAsync(id);
+            _lookups = lookups.IsSuccess ? lookups.Value : null;
+        }
+    }
+
+    // The editor page leaves what it saved in the address, so the list can say it after the wizard closes.
+    private void ReadSavedNotice()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (query["saved"] is { Length: > 0 } name)
+        {
+            var status = query["status"] ?? KnowledgeBaseStatuses.Available;
+            _notice = KnowledgeAdminView.Outcome(name, status);
+        }
+    }
+
+    private async Task VerifyAsync()
+    {
+        _busy = true;
+        _actionProblem = null;
+        try
+        {
+            var result = await Api.VerifyKnowledgeBaseAsync(_detail!.Id);
+            if (result.IsSuccess)
+            {
+                _verified = result.Value;
+                var detail = await Api.GetKnowledgeBaseAsync(_detail.Id);
+                if (detail.IsSuccess)
+                {
+                    _detail = detail.Value;
+                }
+
+                await _screen.ReloadAsync();
+            }
+            else
+            {
+                _actionProblem = result.Problem;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleSearchAsync()
+    {
+        if (_searching)
+        {
+            _searching = false;
+            return;
+        }
+
+        if (_dictionary.Count == 0)
+        {
+            var dictionary = await Api.ListDictionaryAsync();
+            if (!dictionary.IsSuccess)
+            {
+                _actionProblem = dictionary.Problem;
+                return;
+            }
+
+            _dictionary = dictionary.Value;
+        }
+
+        _searching = true;
+    }
+
+    private async Task DeleteAsync()
+    {
+        var detail = _detail!;
+        if (!await Confirmations.ConfirmDeleteAsync(
+                Dialogs,
+                $"Delete the registration of {detail.Name}?",
+                "The data in the store is not touched. Rag tools stop using it.",
+                "Delete registration"))
+        {
+            return;
+        }
+
+        _busy = true;
+        _actionProblem = null;
+        try
+        {
+            var result = await Api.DeleteKnowledgeBaseAsync(detail.Id);
+            if (!result.IsSuccess)
+            {
+                _actionProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"The registration of {detail.Name} was deleted. The data in the store was not touched.";
+            _detail = null;
+            _screen.CloseDrawer();
+            await _screen.ReloadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => _screen.Dispose();
+}

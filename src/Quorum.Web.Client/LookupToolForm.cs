@@ -45,6 +45,23 @@ public static class LookupToolView
         return choices;
     }
 
+    /// <summary>The same choices from the list of every lookup: one read instead of one per knowledge base.</summary>
+    public static IReadOnlyList<LookupChoice> Choices(IEnumerable<LookupListItem> lookups)
+    {
+        ArgumentNullException.ThrowIfNull(lookups);
+
+        return
+        [
+            .. lookups
+                .Where(l => l.Kind == LookupListKinds.Manual || l.KnowledgeBase is not null)
+                .Select(l => l.Kind == LookupListKinds.Manual
+                    ? new LookupChoice(l.Id, l.Name, LookupKinds.Manual, null, null, l.Shared)
+                    : new LookupChoice(l.Id, l.Name, l.Field is null ? LookupKinds.Entity : LookupKinds.Computed, l.KnowledgeBase!.Id, l.KnowledgeBase.Name))
+                .OrderBy(c => c.KnowledgeBaseName ?? "￿", StringComparer.Ordinal)
+                .ThenBy(c => c.Name, StringComparer.Ordinal),
+        ];
+    }
+
     /// <summary>The knowledge bases whose mapping the editor needs: the ones the tool queries and the ones its lists come from.</summary>
     public static IReadOnlyList<Guid> KnowledgeBasesInUse(LookupToolForm form, IReadOnlyList<LookupChoice> choices)
     {
