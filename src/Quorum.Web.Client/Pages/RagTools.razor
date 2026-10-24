@@ -332,6 +332,9 @@
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 
         await _screen.ReloadAsync();
+
+        // Started now so that the drawer, when it opens, finds what it needs.
+        _ = EnsureLookupsAsync();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -381,30 +384,30 @@
         }
     }
 
-    // The knowledge bases and the dictionary are read when the drawer first opens: the list does not need them.
-    private async Task<bool> EnsureLookupsAsync()
+    private Task<bool>? _lookupsTask;
+
+    // The knowledge bases and the dictionary are read once, both at the same time, and started as soon as the list is on screen:
+    // by the time the drawer opens they are usually there.
+    private Task<bool> EnsureLookupsAsync() => _lookupsLoaded ? Task.FromResult(true) : _lookupsTask ??= LoadLookupsAsync();
+
+    private async Task<bool> LoadLookupsAsync()
     {
-        if (_lookupsLoaded)
+        var basesTask = Api.ListKnowledgeBasesAsync();
+        var dictionaryTask = Api.ListDictionaryAsync();
+        await Task.WhenAll(basesTask, dictionaryTask);
+
+        foreach (ApiResult result in new ApiResult[] { basesTask.Result, dictionaryTask.Result })
         {
-            return true;
+            if (!result.IsSuccess)
+            {
+                _drawerProblem = result.Problem;
+                _lookupsTask = null;
+                return false;
+            }
         }
 
-        var bases = await Api.ListKnowledgeBasesAsync();
-        if (!bases.IsSuccess)
-        {
-            _drawerProblem = bases.Problem;
-            return false;
-        }
-
-        var dictionary = await Api.ListDictionaryAsync();
-        if (!dictionary.IsSuccess)
-        {
-            _drawerProblem = dictionary.Problem;
-            return false;
-        }
-
-        _bases = bases.Value;
-        _dictionary = dictionary.Value;
+        _bases = basesTask.Result.Value;
+        _dictionary = dictionaryTask.Result.Value;
         _lookupsLoaded = true;
         return true;
     }
@@ -454,10 +457,7 @@
 
     private async Task OpenAsync(RagToolDetail detail)
     {
-        foreach (var knowledgeBase in _bases.Where(b => detail.KnowledgeBaseIds.Contains(b.Id)))
-        {
-            await LoadDetailAsync(knowledgeBase);
-        }
+        await Task.WhenAll(_bases.Where(b => detail.KnowledgeBaseIds.Contains(b.Id)).Select(LoadDetailAsync));
 
         var mapped = RagToolView.Candidates(detail.KnowledgeBaseIds, _details, _dictionary);
         var form = RagToolForm.From(detail, _dictionary, mapped.Fields);

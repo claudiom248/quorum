@@ -335,6 +335,9 @@
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 
         await _screen.ReloadAsync();
+
+        // Started now so that the drawer, when it opens, finds what it needs.
+        _ = EnsureLookupsAsync();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -384,51 +387,32 @@
         }
     }
 
-    // What the form chooses from is read when the drawer first opens: the list does not need it.
-    private async Task<bool> EnsureLookupsAsync()
+    private Task<bool>? _lookupsTask;
+
+    // What the form chooses from is read once, all at the same time, and started as soon as the list is on screen:
+    // by the time the drawer opens it is usually there.
+    private Task<bool> EnsureLookupsAsync() => _lookupsLoaded ? Task.FromResult(true) : _lookupsTask ??= LoadLookupsAsync();
+
+    private async Task<bool> LoadLookupsAsync()
     {
-        if (_lookupsLoaded)
-        {
-            return true;
-        }
+        var basesTask = Api.ListKnowledgeBasesAsync();
+        var dictionaryTask = Api.ListDictionaryAsync();
+        var lookupsTask = Api.ListLookupsAsync();
+        await Task.WhenAll(basesTask, dictionaryTask, lookupsTask);
 
-        var bases = await Api.ListKnowledgeBasesAsync();
-        if (!bases.IsSuccess)
+        foreach (ApiResult result in new ApiResult[] { basesTask.Result, dictionaryTask.Result, lookupsTask.Result })
         {
-            _drawerProblem = bases.Problem;
-            return false;
-        }
-
-        var dictionary = await Api.ListDictionaryAsync();
-        if (!dictionary.IsSuccess)
-        {
-            _drawerProblem = dictionary.Problem;
-            return false;
-        }
-
-        var manual = await Api.ListManualLookupsAsync();
-        if (!manual.IsSuccess)
-        {
-            _drawerProblem = manual.Problem;
-            return false;
-        }
-
-        var lookups = new Dictionary<Guid, IReadOnlyList<KnowledgeBaseLookupInfo>>();
-        foreach (var knowledgeBase in bases.Value.Where(k => !k.Shared))
-        {
-            var listed = await Api.ListKnowledgeBaseLookupsAsync(knowledgeBase.Id);
-            if (!listed.IsSuccess)
+            if (!result.IsSuccess)
             {
-                _drawerProblem = listed.Problem;
+                _drawerProblem = result.Problem;
+                _lookupsTask = null;
                 return false;
             }
-
-            lookups[knowledgeBase.Id] = listed.Value;
         }
 
-        _bases = bases.Value;
-        _dictionary = dictionary.Value;
-        _choices = LookupToolView.Choices(bases.Value, lookups, manual.Value);
+        _bases = basesTask.Result.Value;
+        _dictionary = dictionaryTask.Result.Value;
+        _choices = LookupToolView.Choices(lookupsTask.Result.Value);
         _lookupsLoaded = true;
         return true;
     }
@@ -478,10 +462,7 @@
 
     private async Task LoadDetailsInUseAsync(LookupToolForm form)
     {
-        foreach (var id in LookupToolView.KnowledgeBasesInUse(form, _choices))
-        {
-            await LoadDetailAsync(id);
-        }
+        await Task.WhenAll(LookupToolView.KnowledgeBasesInUse(form, _choices).Select(LoadDetailAsync));
     }
 
     // The fields the tool may expose follow the knowledge bases it queries and those its lists come from.

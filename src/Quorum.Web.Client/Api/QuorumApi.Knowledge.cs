@@ -126,6 +126,10 @@ public sealed partial class QuorumApi
         GetAsync<Page<ManualLookupInfo>>(PageRoute("api/knowledge-bases/manual-lookups", query, limit, cursor), cancellationToken);
 
     /// <summary>One page of every lookup, manual and derived. The query's type filter is the kind (<c>Manual</c> or <c>Derived</c>).</summary>
+    /// <summary>Every lookup, manual and derived, in one read: what a lookup tool chooses from.</summary>
+    public Task<ApiResult<List<LookupListItem>>> ListLookupsAsync(CancellationToken cancellationToken = default) =>
+        ListAllAsync<LookupListItem>("api/knowledge-bases/lookups", cancellationToken);
+
     public Task<ApiResult<Page<LookupListItem>>> ListLookupsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);

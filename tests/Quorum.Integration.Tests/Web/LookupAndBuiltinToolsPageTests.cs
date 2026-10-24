@@ -57,6 +57,11 @@ public sealed class LookupAndBuiltinToolsPageTests : ListPageTestContext
                 return Page();
             }
 
+            if (method == HttpMethod.Get && path == "/api/knowledge-bases/lookups")
+            {
+                return Page(new { id = LookupId, name = "nationality", kind = "Manual", knowledgeBase = (object?)null, field = (string?)null, unit = (string?)null, scope = NoScopeIds("Tenant"), valueCount = 2, shared = false });
+            }
+
             if (method == HttpMethod.Get && path == "/api/knowledge-bases/manual-lookups")
             {
                 return Page(new { id = LookupId, name = "nationality", description = (string?)null, scope = NoScopeIds("Tenant"), valueCount = 2, shared = false });
