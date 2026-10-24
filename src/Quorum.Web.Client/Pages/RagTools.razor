@@ -367,7 +367,7 @@
         else if (Guid.TryParse(Id, out var id))
         {
             _form = null;
-            var detail = await Api.GetRagToolAsync(id);
+            var detail = await Api.GetRagToolAsync(id, live: false);
             if (!detail.IsSuccess)
             {
                 _drawerProblem = detail.Problem;
@@ -466,8 +466,21 @@
         _initial = Snapshot();
         _definition = detail.Definition;
         _formWarnings = detail.Warnings;
+        _ = AddLiveWarningsAsync(detail.Id);
         _formProblems = [];
         _formProblem = null;
+    }
+
+
+    // What only the store can tell takes a while: the editor is already usable when it arrives, and adds it if still on this tool.
+    private async Task AddLiveWarningsAsync(Guid toolId)
+    {
+        var result = await Api.GetRagToolLiveWarningsAsync(toolId);
+        if (result.IsSuccess && _form?.Id == toolId && result.Value.Count > 0)
+        {
+            _formWarnings = [.. _formWarnings, .. result.Value.Where(w => _formWarnings.All(known => known.Code != w.Code || known.Message != w.Message))];
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task ToggleKnowledgeBaseAsync(KnowledgeBaseListItem knowledgeBase, bool on)
@@ -550,7 +563,7 @@
             }
 
             // The drawer stays open on the saved tool, with the definition the model gets and what it takes of the context.
-            var saved = await Api.GetRagToolAsync(id);
+            var saved = await Api.GetRagToolAsync(id, live: false);
             if (saved.IsSuccess)
             {
                 await OpenAsync(saved.Value);

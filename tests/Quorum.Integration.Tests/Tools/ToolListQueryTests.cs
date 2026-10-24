@@ -321,6 +321,28 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
         await db.SaveChangesAsync(Ct);
     }
 
+
+    [Fact] // AC-3
+    public async Task TheLiveWarningsOfAToolAreReadApartFromItsDetail()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        var mine = await TenantScope.TenantIdAsync(app);
+        await AddRagToolAsync(app, mine, "docs", ToolScopeKind.Tenant);
+        await AddLookupToolAsync(app, mine, "lists", ToolScopeKind.Tenant);
+        var ragId = (await GetPageAsync<IdBody>(admin, Rag)).Items.Single().Id;
+        var lookupId = (await GetPageAsync<IdBody>(admin, Lookup)).Items.Single().Id;
+
+        var rag = await admin.GetFromJsonAsync<List<object>>(new Uri($"{Rag}/{ragId}/live-warnings", UriKind.Relative), Ct);
+        var lookup = await admin.GetFromJsonAsync<List<object>>(new Uri($"{Lookup}/{lookupId}/live-warnings", UriKind.Relative), Ct);
+        using var missing = await admin.GetAsync(new Uri($"{Rag}/{Guid.NewGuid()}/live-warnings", UriKind.Relative), Ct);
+
+        Assert.Empty(rag!);
+        Assert.Empty(lookup!);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    private sealed record IdBody(Guid Id);
     private sealed record NamedBody(string Name);
 
     private sealed record ServerBody(Guid Id, string Name, int ToolCount, int PendingReviewCount);

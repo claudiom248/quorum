@@ -37,6 +37,7 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
         rag.MapGet("/", ListAsync).WithName("ListRagTools");
         rag.MapPost("/", CreateAsync).WithName("CreateRagTool");
         rag.MapGet("/{id:guid}", GetAsync).WithName("GetRagTool");
+        rag.MapGet("/{id:guid}/live-warnings", LiveWarningsAsync).WithName("GetRagToolLiveWarnings");
         rag.MapPut("/{id:guid}", UpdateAsync).WithName("UpdateRagTool");
         rag.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteRagTool");
     }
@@ -96,6 +97,7 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
 
     private static async Task<Results<Ok<RagToolDetail>, ProblemHttpResult>> GetAsync(
         Guid id,
+        bool? live,
         AgentsDbContext db,
         ITenantContext tenant,
         RagToolResolver resolver,
@@ -132,9 +134,30 @@ internal sealed partial class RagToolEndpoints : IEndpointGroup
             await PreviewAsync(resolver, tenantId, view.Tool, view.Binding, cancellationToken),
             [
                 .. RagToolWarnings.Evaluate(view.Binding, seen),
-                .. await RagToolWarnings.UnindexedDocumentIdAsync(lookups, tenantId, view.Binding, cancellationToken),
+                .. (live == false ? [] : await RagToolWarnings.UnindexedDocumentIdAsync(lookups, tenantId, view.Binding, cancellationToken)),
             ],
             seen));
+    }
+
+    /// <summary>
+    /// What only the store can tell (an unindexed field): it asks the store, which can take seconds, so the editor reads the tool
+    /// without it (<c>live=false</c>) and asks for this after it is on screen.
+    /// </summary>
+    private static async Task<Results<Ok<IReadOnlyList<ToolWarning>>, ProblemHttpResult>> LiveWarningsAsync(
+        Guid id,
+        AgentsDbContext db,
+        ITenantContext tenant,
+        IKnowledgeBaseLookups lookups,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
+        var binding = await db.RagTools.AsNoTracking().SingleOrDefaultAsync(b => b.ToolId == id, cancellationToken);
+        if (binding is null)
+        {
+            return NotFound.ToProblem();
+        }
+
+        return TypedResults.Ok(await RagToolWarnings.UnindexedDocumentIdAsync(lookups, tenantId, binding, cancellationToken));
     }
 
     private static async Task<Results<CreatedAtRoute<CreatedRagTool>, ProblemHttpResult>> CreateAsync(

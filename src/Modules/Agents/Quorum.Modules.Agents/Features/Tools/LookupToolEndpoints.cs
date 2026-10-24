@@ -38,6 +38,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         tools.MapGet("/", ListAsync).WithName("ListLookupTools");
         tools.MapPost("/", CreateAsync).WithName("CreateLookupTool");
         tools.MapGet("/{id:guid}", GetAsync).WithName("GetLookupTool");
+        tools.MapGet("/{id:guid}/live-warnings", LiveWarningsAsync).WithName("GetLookupToolLiveWarnings");
         tools.MapPut("/{id:guid}", UpdateAsync).WithName("UpdateLookupTool");
         tools.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteLookupTool");
     }
@@ -104,6 +105,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
 
     private static async Task<Results<Ok<LookupToolDetail>, ProblemHttpResult>> GetAsync(
         Guid id,
+        bool? live,
         AgentsDbContext db,
         ITenantContext tenant,
         LookupToolResolver resolver,
@@ -141,9 +143,31 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
             await PreviewAsync(resolver, tenantId, view.Tool, view.Binding, cancellationToken),
             [
                 .. LookupToolWarnings.Evaluate(view.Binding, seenLookups, seen),
-                .. await LookupToolWarnings.UnindexedAsync(lookups, tenantId, view.Binding, seenLookups, cancellationToken),
+                .. (live == false ? [] : await LookupToolWarnings.UnindexedAsync(lookups, tenantId, view.Binding, seenLookups, cancellationToken)),
             ],
             seen));
+    }
+
+    /// <summary>
+    /// What only the store can tell (an unindexed field): it asks the store, which can take seconds, so the editor reads the tool
+    /// without it (<c>live=false</c>) and asks for this after it is on screen.
+    /// </summary>
+    private static async Task<Results<Ok<IReadOnlyList<ToolWarning>>, ProblemHttpResult>> LiveWarningsAsync(
+        Guid id,
+        AgentsDbContext db,
+        ITenantContext tenant,
+        IKnowledgeBaseLookups lookups,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
+        var binding = await db.LookupTools.AsNoTracking().SingleOrDefaultAsync(b => b.ToolId == id, cancellationToken);
+        if (binding is null)
+        {
+            return NotFound.ToProblem();
+        }
+
+        var seenLookups = await lookups.ListAsync(new LookupListQuery(tenantId, AssistantId: null, binding.LookupIds), cancellationToken);
+        return TypedResults.Ok(await LookupToolWarnings.UnindexedAsync(lookups, tenantId, binding, seenLookups, cancellationToken));
     }
 
     private static async Task<Results<CreatedAtRoute<CreatedLookupTool>, ProblemHttpResult>> CreateAsync(
