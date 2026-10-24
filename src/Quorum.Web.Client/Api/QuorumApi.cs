@@ -70,6 +70,10 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult> UpdateToolAsync(Guid toolId, string state, string policy, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, $"api/tools/{toolId}", new { state, policy }, setupToken: null, cancellationToken);
 
+    /// <summary>One page of the audit log of tool calls, newest first.</summary>
+    public Task<ApiResult<ToolAuditPage>> ListToolAuditAsync(AuditQuery query, CancellationToken cancellationToken = default) =>
+        GetAsync<ToolAuditPage>("api/tools/audit" + (query ?? throw new ArgumentNullException(nameof(query))).ToApiQuery(), cancellationToken);
+
     public Task<ApiResult<List<ToolServer>>> ListToolServersAsync(CancellationToken cancellationToken = default) =>
         ListAllAsync<ToolServer>("api/tools/servers", cancellationToken);
 

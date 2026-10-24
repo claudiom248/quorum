@@ -41,7 +41,7 @@
 </nav>
 
 @code {
-    internal const string McpServersHref = "tools";
+    internal const string McpServersHref = "tools/mcp";
 
     /// <summary>One entry of a group. An entry whose page does not exist yet points at the page of its area; the first of those entries that share an address is the one highlighted.</summary>
     internal sealed record Entry(string Title, string Href, NavLinkMatch Match = NavLinkMatch.Prefix);
@@ -49,14 +49,15 @@
     private static readonly Entry[] ToolEntries =
     [
         new("MCP servers", McpServersHref),
-        new("RAG tools", McpServersHref),
-        new("Lookup tools", McpServersHref),
-        new("Built-in", McpServersHref),
+        new("RAG tools", "tools/rag"),
+        new("Lookup tools", "tools/lookup"),
+        new("Built-in", "tools/builtin"),
+        new("Audit log", "tools/audit"),
     ];
 
     private static readonly Entry[] KnowledgeEntries =
     [
-        new("Knowledge bases", "knowledge", NavLinkMatch.All),
+        new("Knowledge bases", "knowledge/bases"),
         new("Lookups", "knowledge/lookups"),
         new("Dictionary", "knowledge/dictionary"),
     ];
