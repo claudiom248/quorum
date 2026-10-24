@@ -335,4 +335,14 @@ public sealed class KnowledgeListPagesTests : ListPageTestContext
 
         page.WaitForAssertion(() => Assert.Contains("The field is used by knowledge bases policies", page.Markup, StringComparison.Ordinal));
     }
+
+    [Fact] // AC-19
+    public void TheKnowledgeBaseFilterIsOfferedAndTravelsToTheServer()
+    {
+        var page = Visit<Lookups>($"/knowledge/lookups?knowledgeBase={OwnId}");
+
+        Assert.Contains(Api.Queries, q => q.Contains($"knowledgeBase={OwnId}", StringComparison.Ordinal));
+        Assert.Contains(page.FindAll("label"), l => l.TextContent == "Knowledge base");
+        Assert.Contains("Knowledge base: policies", page.Find("[data-filter=knowledgeBase]").TextContent, StringComparison.Ordinal);
+    }
 }

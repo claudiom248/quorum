@@ -15,7 +15,7 @@
           EmptyTitle="No lookup yet" EmptyText="Type a list by hand, or mark the fields to list in the registration of a knowledge base.">
     <FilterContent>
         <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
-                   TypeLabel="Kind" TypeOptions="KindOptions" SearchPlaceholder="Search by name" />
+                   TypeLabel="Kind" TypeOptions="KindOptions" KnowledgeBases="_knowledgeBases" SearchPlaceholder="Search by name" />
     </FilterContent>
     <ChildContent>
         <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
@@ -181,6 +181,7 @@
     private ListScreen<LookupListItem> _screen = null!;
     private IReadOnlyList<AssistantSummary> _assistants = [];
     private IReadOnlyList<TenantSummary>? _tenants;
+    private IReadOnlyList<LookupKnowledgeBaseRef> _knowledgeBases = [];
     private ApiProblem? _drawerProblem;
     private ApiProblem? _formProblem;
     private bool _busy;
@@ -204,6 +205,8 @@
 
         var assistants = await Api.ListAssistantsAsync();
         _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var bases = await Api.ListKnowledgeBasesAsync();
+        _knowledgeBases = bases.IsSuccess ? [.. bases.Value.Where(b => !b.Shared).Select(b => new LookupKnowledgeBaseRef(b.Id, b.Name))] : [];
         var tenants = await Api.ListTenantsAsync();
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 

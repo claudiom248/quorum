@@ -93,20 +93,22 @@
                     </MudAlert>
                 }
 
-                @foreach (var choice in _choices)
-                {
-                    var binding = form.Lookups.FirstOrDefault(l => l.LookupId == choice.Id);
-                    <div class="exposed-field" data-lookup-choice="@choice.Label">
-                        <MudCheckBox T="bool" Value="binding is not null" ValueChanged="on => ToggleLookupAsync(choice, on)" Dense="true"
-                                     Disabled="@(binding is null && form.Lookups.Count >= LookupToolLimits.MaxLookups)" Label="@choice.Label" />
-                        @if (binding is not null)
-                        {
+                <ChoicePicker Name="lookups" TItem="LookupChoice" Items="_choices" IsSelected="c => form.Lookups.Any(l => l.LookupId == c.Id)" Label="c => c.Label"
+                              Group='c => c.KnowledgeBaseName ?? "Typed by hand"' GroupLabel="Source" SearchLabel="Search the lookups"
+                              IsDisabled="c => form.Lookups.Count >= LookupToolLimits.MaxLookups"
+                              OnToggle="t => ToggleLookupAsync(t.Item, t.On)">
+                    <SelectedTemplate Context="choice">
+                        @{
+                            var binding = form.Lookups.First(l => l.LookupId == choice.Id);
+                        }
+                        <div class="exposed-field" data-lookup-choice="@choice.Label">
+                            <MudCheckBox T="bool" Value="true" ValueChanged="on => ToggleLookupAsync(choice, on)" Dense="true" Label="@choice.Label" />
                             <MudTextField T="string" @bind-Value="binding.Alias" Label="@($"Alias of {choice.Label}")" Placeholder="@choice.Name"
                                           Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Class="alias-input"
                                           HelperText="The name the model sees. Leave empty to use the list's own name; needed when two lists have the same name." />
-                        }
-                    </div>
-                }
+                        </div>
+                    </SelectedTemplate>
+                </ChoicePicker>
 
                 <div class="tool-hint">
                     Lists of a knowledge base shared with you are not shown here: bind the manual lookups instead, or ask its owner to share the tool.
@@ -117,13 +119,10 @@
                     Optional. With one, the model can also ask which documents match some filters, and how many, straight from the store. Without
                     any, it only reads the saved lists.
                 </div>
-                @foreach (var knowledgeBase in _bases)
-                {
-                    var selected = form.KnowledgeBaseIds.Contains(knowledgeBase.Id);
-                    <MudCheckBox T="bool" Value="selected" ValueChanged="on => ToggleKnowledgeBaseAsync(knowledgeBase, on)" Dense="true"
-                                 Disabled="@(!selected && form.KnowledgeBaseIds.Count >= LookupToolLimits.MaxKnowledgeBases)"
-                                 Label="@(knowledgeBase.Shared ? $"{knowledgeBase.Name} (shared with you)" : knowledgeBase.Name)" />
-                }
+                <ChoicePicker Name="knowledge-bases" TItem="KnowledgeBaseListItem" Items="_bases" IsSelected="k => form.KnowledgeBaseIds.Contains(k.Id)"
+                              Label='k => k.Shared ? $"{k.Name} (shared with you)" : k.Name' SearchLabel="Search the knowledge bases"
+                              IsDisabled="k => form.KnowledgeBaseIds.Count >= LookupToolLimits.MaxKnowledgeBases"
+                              OnToggle="t => ToggleKnowledgeBaseAsync(t.Item, t.On)" />
 
                 @if (inUse.Count > 0)
                 {

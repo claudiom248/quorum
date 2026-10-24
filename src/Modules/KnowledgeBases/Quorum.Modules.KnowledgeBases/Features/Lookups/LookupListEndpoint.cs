@@ -19,6 +19,8 @@ internal sealed class LookupListEndpoint : IEndpointGroup
 {
     private static readonly Error InvalidKind = Error.Validation("list.invalid_filter", "The kind must be Manual or Derived.");
 
+    private static readonly Error InvalidKnowledgeBase = Error.Validation("list.invalid_filter", "The knowledgeBase filter takes ids.");
+
     public void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/api/knowledge-bases/lookups", ListAsync)
             .WithTags("Knowledge bases")
@@ -44,7 +46,24 @@ internal sealed class LookupListEndpoint : IEndpointGroup
             kinds.Add(kind);
         }
 
+        var knowledgeBases = new List<Guid>();
+        foreach (var text in request.Query["knowledgeBase"].SelectMany(v => (v ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
+        {
+            if (!Guid.TryParse(text, out var knowledgeBaseId))
+            {
+                return InvalidKnowledgeBase.ToProblem();
+            }
+
+            knowledgeBases.Add(knowledgeBaseId);
+        }
+
         var rows = Rows(db);
+        if (knowledgeBases.Count > 0)
+        {
+            // A manual lookup comes from no knowledge base: it is left out when the list is narrowed to some.
+            rows = rows.Where(r => r.KnowledgeBaseId != null && knowledgeBases.Contains(r.KnowledgeBaseId.Value));
+        }
+
         if (kinds.Count > 0)
         {
             rows = rows.Where(r => kinds.Contains(r.Kind));

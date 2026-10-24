@@ -88,13 +88,10 @@
                     </MudAlert>
                 }
 
-                @foreach (var knowledgeBase in _bases)
-                {
-                    var selected = form.KnowledgeBaseIds.Contains(knowledgeBase.Id);
-                    <MudCheckBox T="bool" Value="selected" ValueChanged="on => ToggleKnowledgeBaseAsync(knowledgeBase, on)" Dense="true"
-                                 Disabled="@(!selected && form.KnowledgeBaseIds.Count >= RagToolLimits.MaxKnowledgeBases)"
-                                 Label="@(knowledgeBase.Shared ? $"{knowledgeBase.Name} (shared with you)" : knowledgeBase.Name)" />
-                }
+                <ChoicePicker Name="knowledge-bases" TItem="KnowledgeBaseListItem" Items="_bases" IsSelected="k => form.KnowledgeBaseIds.Contains(k.Id)"
+                              Label='k => k.Shared ? $"{k.Name} (shared with you)" : k.Name' SearchLabel="Search the knowledge bases"
+                              IsDisabled="k => form.KnowledgeBaseIds.Count >= RagToolLimits.MaxKnowledgeBases"
+                              OnToggle="t => ToggleKnowledgeBaseAsync(t.Item, t.On)" />
 
                 @if (form.KnowledgeBaseIds.Count > 0)
                 {
