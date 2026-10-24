@@ -213,4 +213,36 @@ public sealed class AuditAndEditorPagesTests : ListPageTestContext
         Assert.True(fields.IsDirty(fields.Copy()));
         Assert.False(JsonSerializer.Serialize(fields.Copy()).Contains("sk-new", StringComparison.Ordinal));
     }
+
+    [Fact] // AC-20
+    public void EditingARegistrationWithAMappingOpensEveryStepAndHasNoKeepTheMappingButton()
+    {
+        var script = Api.Respond;
+        Api.Respond = (method, path) => method == HttpMethod.Get && path == $"/api/knowledge-bases/{BaseId}"
+            ? FakeApiHandler.Json(new
+            {
+                id = BaseId,
+                name = "vendors",
+                description = "Vendors.",
+                status = "Available",
+                shared = false,
+                kind = "Qdrant",
+                connection = new { url = "http://qdrant:6334", collection = "vendors", vectorName = (string?)null, hasApiKey = false },
+                embeddingModel = "nomic-embed-text",
+                queryPrefix = (string?)null,
+                mapping = new
+                {
+                    roles = new { text = "text", documentId = (string?)null, title = (string?)null, position = (string?)null, sourceUrl = (string?)null },
+                    fields = Array.Empty<object>(),
+                },
+                scope = NoScopeIds("Tenant"),
+            })
+            : script(method, path);
+
+        var page = Visit<KnowledgeBaseEditor>($"/knowledge/bases/{BaseId}/edit", p => p.Add(c => c.Id, BaseId));
+
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".wizard-steps button")));
+        Assert.All(page.FindAll(".wizard-steps button"), b => Assert.False(b.HasAttribute("disabled")));
+        Assert.DoesNotContain("Keep the mapping", page.Markup, StringComparison.Ordinal);
+    }
 }
