@@ -110,7 +110,7 @@ public sealed class LookupCacheTests(PostgresFixture postgres)
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
         var (lookup, slice) = await LoadAsync(db, seeded.LookupId, seeded.SliceId);
-        var broken = new LookupCache(new ThrowingHybridCache(), NullLogger<LookupCache>.Instance);
+        var broken = new LookupCache(new ThrowingHybridCache(), app.Services.GetRequiredService<IServiceScopeFactory>(), NullLogger<LookupCache>.Instance);
 
         var page = await broken.ReadAsync(db, lookup, slice, new LookupPageRequest(null, LookupSort.Count, 3, null), Ct);
         await broken.EvictSliceAsync(slice.Id, Ct);

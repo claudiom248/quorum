@@ -27,6 +27,12 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
     /// <summary>The records one page of documents reads when it has to tell documents apart itself (spec 007 "Edge Cases").</summary>
     internal const int MaxRecordsPerCall = 1000;
 
+    /// <summary>
+    /// The points a live list scans at most when the knowledge base has no counted point: the full scan of the background computation
+    /// (spec 007 D-10) would not fit the timeout and holds its pairs in memory. A list cut here is marked truncated.
+    /// </summary>
+    internal const int MaxLiveScannedRecords = 50_000;
+
     internal const int MaxLimit = 200;
 
     private const int MaxFieldTextLength = 300;
@@ -254,7 +260,7 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
                 counted.Conditions,
                 mapping.CountedPoint is null ? mapping.Roles.DocumentId : null,
                 options.Value.MaxValuesPerLookup,
-                LookupComputer.MaxScannedRecords);
+                MaxLiveScannedRecords);
             var found = await target.Capability.DistinctValuesAsync(target.Connection!, query, linked.Token);
 
             var values = found.Values.Where(v => request.Search is not { Length: > 0 } search || v.Value.Contains(search, StringComparison.OrdinalIgnoreCase));

@@ -33,8 +33,9 @@ internal sealed class ToolEndpoints : IEndpointGroup
             return query.Error.ToProblem();
         }
 
-        // The tools are few and kept whole: only the state and the search narrow them, so a scope is refused instead of ignored.
-        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Assistant.Count + query.Value.Type.Count > 0)
+        // The tools are few and kept whole: only the state and the search narrow them, so a scope or a page is refused instead of ignored.
+        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Assistant.Count + query.Value.Type.Count > 0
+            || request.Query.ContainsKey("limit") || request.Query.ContainsKey("cursor"))
         {
             return ScopeFilter.NotForTools.ToProblem();
         }

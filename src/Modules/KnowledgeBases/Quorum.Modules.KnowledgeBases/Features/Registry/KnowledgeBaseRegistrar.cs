@@ -101,6 +101,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
         var input = prepared.Value;
         var now = clock.GetUtcNow();
         var before = registration.Mapping;
+        var (kindBefore, connectionBefore) = (registration.Kind, registration.Connection.Members.ToJsonString());
         registration.Edit(
             input.Name,
             input.Description,
@@ -116,7 +117,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
             input.LookupRefreshHours);
         Apply(registration, input.Verdict, now);
 
-        var sync = await ComputedLookups.SyncAsync(db, registration, before, now, cancellationToken);
+        var storeChanged = registration.Kind != kindBefore || registration.Connection.Members.ToJsonString() != connectionBefore;
+        var sync = await ComputedLookups.SyncAsync(db, registration, before, now, cancellationToken, storeChanged);
         if (await SaveAsync(input, cancellationToken) is { } conflict)
         {
             return conflict;

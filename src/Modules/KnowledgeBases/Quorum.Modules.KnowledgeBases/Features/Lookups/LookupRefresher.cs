@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -238,7 +239,9 @@ internal sealed partial class LookupRefresher(
         exception switch
         {
             OperationCanceledException => !stoppingToken.IsCancellationRequested,
-            LookupComputationException or DbException or DbUpdateException or InvalidOperationException or TimeoutException => true,
+            // The last four are what a stored filter that cannot be read raises: a failed slice, not a turn that ends for the others.
+            LookupComputationException or DbException or DbUpdateException or InvalidOperationException or TimeoutException
+                or JsonException or FormatException or KeyNotFoundException or ArgumentException => true,
             _ => false,
         };
 

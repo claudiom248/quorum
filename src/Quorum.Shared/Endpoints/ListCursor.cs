@@ -11,6 +11,9 @@ namespace Quorum.Shared.Endpoints;
 /// </summary>
 public static class ListCursor
 {
+    /// <summary>Longer than a name of any list plus the rest of the position, base64url encoded: refused before it is decoded.</summary>
+    public const int MaxLength = 1024;
+
     public static Error Invalid { get; } =
         Error.Validation("list.invalid_cursor", "The cursor is not valid for this list: start again from the first page.");
 
@@ -23,6 +26,11 @@ public static class ListCursor
         if (cursor is null)
         {
             return Result<(string Name, Guid Id)?>.Success(null);
+        }
+
+        if (cursor.Length > MaxLength)
+        {
+            return Invalid;
         }
 
         try

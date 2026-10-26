@@ -78,6 +78,11 @@ internal static class ScopeFilter
             return Unsupported("The lookups have no type or status to filter by.");
         }
 
+        if (query.Assistant.Count > 0)
+        {
+            return Unsupported("Manual lookups are not scoped to assistants, so there is no assistant to filter by.");
+        }
+
         var tenants = query.Tenant.ToList();
 
         if (scopes.Count > 0)
@@ -158,6 +163,11 @@ internal static class ScopeFilter
             return Unsupported("The dictionary fields have no status to filter by.");
         }
 
+        if (query.Assistant.Count > 0)
+        {
+            return Unsupported("The dictionary fields are not scoped to assistants, so there is no assistant to filter by.");
+        }
+
         var tenants = query.Tenant.ToList();
 
         if (scopes.Count > 0)
@@ -183,15 +193,12 @@ internal static class ScopeFilter
         return Result<IQueryable<DictionaryField>>.Success(source);
     }
 
-    private const string EscapeCharacter = "\\";
+    private const string EscapeCharacter = LikePattern.EscapeCharacter;
 
     private static Error Unsupported(string description) => Error.Validation("list.invalid_filter", description);
 
     // The text is data, not a pattern: its wildcards are escaped.
-    private static string? Pattern(string? text) =>
-        string.IsNullOrWhiteSpace(text)
-            ? null
-            : "%" + text.Trim().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
+    private static string? Pattern(string? text) => string.IsNullOrWhiteSpace(text) ? null : LikePattern.Contains(text);
 
     private static bool TryParse<TEnum>(IReadOnlyList<string> values, string filter, out List<TEnum> parsed, out Error error)
         where TEnum : struct, Enum

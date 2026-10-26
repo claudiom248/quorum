@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
@@ -48,7 +49,7 @@ internal static class LookupReader
 
     public const int MaxLimit = 200;
 
-    private const string EscapeCharacter = "\\";
+    private const string EscapeCharacter = LikePattern.EscapeCharacter;
 
     public static async Task<Result<LookupPage>> ReadAsync(KnowledgeBasesDbContext db, LookupSlice slice, LookupPageRequest request, CancellationToken cancellationToken)
     {
@@ -119,8 +120,5 @@ internal static class LookupReader
         return values.OrderBy(v => v.Value).ThenBy(v => v.Position);
     }
 
-    private static string Escape(string text) => text
-        .Replace(EscapeCharacter, EscapeCharacter + EscapeCharacter, StringComparison.Ordinal)
-        .Replace("%", EscapeCharacter + "%", StringComparison.Ordinal)
-        .Replace("_", EscapeCharacter + "_", StringComparison.Ordinal);
+    private static string Escape(string text) => LikePattern.Escape(text);
 }

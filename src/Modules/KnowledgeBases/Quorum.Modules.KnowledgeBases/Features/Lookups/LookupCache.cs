@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Persistence;
@@ -31,7 +32,7 @@ internal sealed record CachedLookupValue(int Position, LookupPageValue Value);
 /// so a new generation is a new entry and no reader can mix two; the tag of the old one is removed when the generation changes.
 /// The service is memory only: no distributed cache is registered, so every instance holds its own.
 /// </summary>
-internal sealed partial class LookupCache(HybridCache cache, ILogger<LookupCache> logger)
+internal sealed partial class LookupCache(HybridCache cache, IServiceScopeFactory scopes, ILogger<LookupCache> logger)
 {
     private static readonly HybridCacheEntryOptions EntryOptions = new()
     {
@@ -117,10 +118,15 @@ internal sealed partial class LookupCache(HybridCache cache, ILogger<LookupCache
 
         var sliceId = slice.Id;
         var generation = slice.CurrentGeneration;
+        // The load is shared by every caller waiting for the key, so it uses a scope of its own and not the first caller's context.
         return cache.GetOrCreateAsync(
             KeyFor(sliceId, generation),
-            (db, sliceId, generation),
-            static (state, token) => LoadAsync(state.db, state.sliceId, state.generation, token),
+            (scopes, sliceId, generation),
+            static async (state, token) =>
+            {
+                await using var scope = state.scopes.CreateAsyncScope();
+                return await LoadAsync(scope.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>(), state.sliceId, state.generation, token);
+            },
             EntryOptions,
             tags,
             cancellationToken);

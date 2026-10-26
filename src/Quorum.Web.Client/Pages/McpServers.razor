@@ -210,12 +210,16 @@
     {
         _screen = new ListScreen<ToolServer>(Navigation, "/tools/mcp", (query, cursor) => Api.ListToolServersPageAsync(query, ListScreen<ToolServer>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
 
-        var assistants = await Api.ListAssistantsAsync();
+        var assistantsTask = Api.ListAssistantsAsync();
+        var tenantsTask = Api.ListTenantsAsync();
+        var reloadTask = _screen.ReloadAsync();
+        await Task.WhenAll(assistantsTask, tenantsTask, reloadTask);
+
+        var assistants = await assistantsTask;
         _assistants = assistants.IsSuccess ? assistants.Value : [];
-        var tenants = await Api.ListTenantsAsync();
+        var tenants = await tenantsTask;
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 
-        await _screen.ReloadAsync();
         _ = Onboarding.MarkAsync("tools");
     }
 

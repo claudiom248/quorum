@@ -21,7 +21,8 @@ internal static class ComputedLookups
         KnowledgeBase knowledgeBase,
         KnowledgeBaseMapping? before,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool storeChanged = false)
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(knowledgeBase);
@@ -69,6 +70,18 @@ internal static class ComputedLookups
         else if (mapping.EntityName is not null && entities is not null && before is not null && EntitiesChange(before, mapping))
         {
             foreach (var slice in await db.LookupSlices.IgnoreQueryFilters().Where(s => s.LookupId == entities.Id).ToListAsync(cancellationToken))
+            {
+                slice.RequestRefresh(now);
+            }
+
+            due = true;
+        }
+
+        // Another kind, server or collection holds other values: what was computed from the old one must not wait for the next interval.
+        if (storeChanged && existing.Count > 0)
+        {
+            var existingIds = existing.Select(l => l.Id).ToList();
+            foreach (var slice in await db.LookupSlices.IgnoreQueryFilters().Where(s => existingIds.Contains(s.LookupId)).ToListAsync(cancellationToken))
             {
                 slice.RequestRefresh(now);
             }

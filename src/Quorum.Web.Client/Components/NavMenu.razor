@@ -72,10 +72,10 @@
         await LoadPendingAsync();
     }
 
-    // The count changes when the admin reviews a tool, so it is read again whenever the admin moves around the tools.
+    // The count changes only when the admin reviews a tool, which happens on the MCP servers page: other pages do not read it again.
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        if (AccessRules.IsAdminOnly(Navigation.ToBaseRelativePath(e.Location)))
+        if (Navigation.ToBaseRelativePath(e.Location).StartsWith(McpServersHref, StringComparison.OrdinalIgnoreCase))
         {
             _ = InvokeAsync(async () =>
             {

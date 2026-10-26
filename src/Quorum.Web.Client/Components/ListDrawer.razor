@@ -83,14 +83,15 @@
     // Back, a link or anything else that leaves the page while the form has unsaved changes.
     private async ValueTask OnLocationChangingAsync(LocationChangingContext context)
     {
-        if (!Open || !Dirty)
-        {
-            return;
-        }
-
+        // The flag belongs to the navigation it was set for, dirty or not, so it never outlives it.
         if (_confirmed)
         {
             _confirmed = false;
+            return;
+        }
+
+        if (!Open || !Dirty)
+        {
             return;
         }
 
