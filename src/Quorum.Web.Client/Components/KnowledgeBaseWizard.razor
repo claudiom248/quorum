@@ -5,11 +5,11 @@
     <MudText Typo="Typo.subtitle1" Class="mb-2">@(Draft.IsNew ? "Register a knowledge base" : $"Edit {Draft.Name}")</MudText>
 
     <ol class="wizard-steps" aria-label="Steps">
-        @foreach (var (step, label) in Steps.Where(s => s.Step != WizardStep.Lookups || !Draft.IsPgVector))
+        @foreach (var (step, label, number) in VisibleSteps)
         {
             var current = step == _step;
             <li class="@(current ? "current" : step <= _reached ? "reached" : "pending")" aria-current="@(current ? "step" : null)">
-                <button type="button" disabled="@(step > _reached || _busy)" @onclick="() => GoTo(step)">@((int)step + 1). @label</button>
+                <button type="button" disabled="@(step > _reached || _busy)" @onclick="() => GoTo(step)">@number. @label</button>
             </li>
         }
     </ol>
@@ -96,7 +96,7 @@
                             {
                                 var selected = relation.Name == Draft.Table && relation.Schema == (Draft.DatabaseSchema.Trim().Length > 0 ? Draft.DatabaseSchema.Trim() : relation.Schema);
                                 <div class="mapping-row @(selected ? "current" : string.Empty)" data-relation="@(relation.Schema + "." + relation.Name)">
-                                    <MudButton Variant="@(selected ? Variant.Filled : Variant.Text)" Size="Size.Small" OnClick="() => Draft.UseRelation(relation)">
+                                    <MudButton Variant="@(selected ? Variant.Filled : Variant.Text)" Size="Size.Small" Style="text-transform: none" OnClick="() => Draft.UseRelation(relation)">
                                         @relation.Schema.@relation.Name
                                     </MudButton>
                                     <span class="tool-hint">@KnowledgeAdminView.DescribeRelation(relation)</span>
@@ -243,8 +243,8 @@
                     }
                 }
 
-                <MudTextField @bind-Value="Draft.Schema" Label="Payload schema (optional)" Variant="Variant.Outlined" Lines="6" Class="schema-input"
-                              HelperText="Paste a plain JSON Schema of the payload, if the data owner gave you one, instead of sampling points. Up to 100 KB." />
+                <MudTextField @bind-Value="Draft.Schema" Label="@(Draft.IsPgVector ? "Row schema (optional)" : "Payload schema (optional)")" Variant="Variant.Outlined" Lines="6" Class="schema-input"
+                              HelperText="@(Draft.IsPgVector ? "Paste a plain JSON Schema of a row (columns as properties, json columns as objects), if the data owner gave you one, instead of sampling rows. Up to 100 KB." : "Paste a plain JSON Schema of the payload, if the data owner gave you one, instead of sampling points. Up to 100 KB.")" />
                 @if (Draft.SchemaProblem() is { } schemaProblem)
                 {
                     <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@schemaProblem</MudAlert>
@@ -272,7 +272,7 @@
 
                 <MudText Typo="Typo.subtitle2">What the model reads and cites</MudText>
                 <MudTextField @bind-Value="mapping.Text" Label="Text (required)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
-                              HelperText="The payload field with the text of the chunk." />
+                              HelperText="@(Draft.IsPgVector ? "The column with the text of the chunk." : "The payload field with the text of the chunk.")" />
                 <MudTextField @bind-Value="mapping.DocumentId" Label="Document id" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                 <MudTextField @bind-Value="mapping.Title" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                 <MudTextField @bind-Value="mapping.Position" Label="Position (page or section)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
@@ -288,7 +288,7 @@
                     var row = review.Row;
                     <div class="mapping-row @(review.Problems.Count > 0 ? "has-problems" : string.Empty)" data-path="@row.Path">
                         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start" Class="mapping-row-fields">
-                            <MudTextField @bind-Value="row.Path" Label="Payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                            <MudTextField @bind-Value="row.Path" Label="@(Draft.IsPgVector ? "Column" : "Payload path")" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudTextField @bind-Value="row.Name" Label="Dictionary field" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudTextField @bind-Value="row.Cluster" Label="Cluster (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="@($"Remove {row.Path}")" OnClick="() => mapping.RemoveRow(row)" />
@@ -540,6 +540,11 @@
     [Parameter]
     public EventCallback OnCancel { get; set; }
 
+    // The steps this kind goes through, numbered as the admin sees them: a PostgreSQL knowledge base has no lookups step.
+    private IEnumerable<(WizardStep Step, string Label, int Number)> VisibleSteps => Steps
+        .Where(s => s.Step != WizardStep.Lookups || !Draft.IsPgVector)
+        .Select((s, index) => (s.Step, s.Label, index + 1));
+
     private RelationsResult? _relations;
     private string? _relationFilter;
 
@@ -709,7 +714,7 @@
     private async Task ListRelationsAsync()
     {
         _problem = null;
-        _showProblems = true;
+        _showProblems = false;
         if (Draft.PgVectorServerProblems() is { Count: > 0 } problems)
         {
             _problem = new ApiProblem(0, "client.invalid_connection", string.Join(' ', problems), new Dictionary<string, string[]>());
