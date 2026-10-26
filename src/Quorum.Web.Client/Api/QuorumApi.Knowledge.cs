@@ -23,6 +23,10 @@ public sealed partial class QuorumApi
     public Task<ApiResult<InspectResult>> InspectKnowledgeBaseAsync(InspectRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<InspectResult>(HttpMethod.Post, "api/knowledge-bases/inspect", request, setupToken: null, cancellationToken);
 
+    /// <summary>The tables and views of a database that hold a vector, to choose the source of a knowledge base from (spec 008 D-5).</summary>
+    public Task<ApiResult<RelationsResult>> ListRelationsAsync(RelationsRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<RelationsResult>(HttpMethod.Post, "api/knowledge-bases/relations", request, setupToken: null, cancellationToken);
+
     public Task<ApiResult<List<KnowledgeBaseListItem>>> ListKnowledgeBasesAsync(CancellationToken cancellationToken = default) =>
         ListAllAsync<KnowledgeBaseListItem>("api/knowledge-bases", cancellationToken);
 

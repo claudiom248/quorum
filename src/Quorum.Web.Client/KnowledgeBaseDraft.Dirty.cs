@@ -30,5 +30,18 @@ public sealed partial class KnowledgeBaseDraft
         Scope.Kind,
         Scope.TenantsText,
         string.Join(',', Scope.AssistantIds.Order()),
-        Mapping is not null);
+        Mapping is not null,
+        Kind,
+        UseConnectionString,
+        Host,
+        Port,
+        Database,
+        Username,
+        Password,
+        SslMode,
+        ConnectionString,
+        DatabaseSchema,
+        Table,
+        VectorColumn,
+        Distance);
 }

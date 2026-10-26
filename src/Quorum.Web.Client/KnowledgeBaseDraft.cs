@@ -58,26 +58,39 @@ public sealed partial class KnowledgeBaseDraft
         ArgumentNullException.ThrowIfNull(detail);
 
         var connection = detail.Connection ?? throw new ArgumentException("A knowledge base of another tenant cannot be edited.", nameof(detail));
-        return new KnowledgeBaseDraft
+        if (detail.Kind == KnowledgeBaseKinds.PgVector)
+        {
+            return FromPgVector(detail, connection);
+        }
+
+        var draft = new KnowledgeBaseDraft
         {
             Id = detail.Id,
             OriginalUrl = connection.Url,
             HadApiKey = connection.HasApiKey,
-            Name = detail.Name,
-            Description = detail.Description,
             Url = connection.Url,
             Collection = connection.Collection,
             VectorName = connection.VectorName ?? string.Empty,
-            EmbeddingModel = detail.EmbeddingModel ?? string.Empty,
-            QueryPrefix = detail.QueryPrefix ?? string.Empty,
-            LookupRefreshHours = detail.LookupRefreshHours ?? LookupLimits.DefaultRefreshHours,
-            Scope = detail.Scope is { } scope ? ScopeForm.From(scope) : new ScopeForm(),
-            Mapping = detail.Mapping is { } mapping ? MappingDraft.From(mapping) : null,
         };
+        draft.FillCommon(detail);
+        return draft;
+    }
+
+    private void FillCommon(KnowledgeBaseDetail detail)
+    {
+        Name = detail.Name;
+        Description = detail.Description;
+        EmbeddingModel = detail.EmbeddingModel ?? string.Empty;
+        QueryPrefix = detail.QueryPrefix ?? string.Empty;
+        LookupRefreshHours = detail.LookupRefreshHours ?? LookupLimits.DefaultRefreshHours;
+        Scope = detail.Scope is { } scope ? ScopeForm.From(scope) : new ScopeForm();
+        Mapping = detail.Mapping is { } mapping ? MappingDraft.From(mapping) : null;
     }
 
     /// <summary>What is wrong with the connection step: the same limits the server applies.</summary>
-    public IReadOnlyList<string> ConnectionProblems()
+    public IReadOnlyList<string> ConnectionProblems() => IsPgVector ? PgVectorConnectionProblems() : QdrantConnectionProblems();
+
+    private List<string> CommonProblems()
     {
         var problems = new List<string>();
         if (!ValidName().IsMatch(Name.Trim()))
@@ -88,16 +101,6 @@ public sealed partial class KnowledgeBaseDraft
         if (Description.Trim().Length == 0 || Description.Length > MaxDescriptionLength)
         {
             problems.Add($"The description is required, up to {MaxDescriptionLength} characters: the model reads it to choose where to search.");
-        }
-
-        if (Url.Trim().Length == 0)
-        {
-            problems.Add("The address of the Qdrant server is required.");
-        }
-
-        if (Collection.Trim().Length == 0)
-        {
-            problems.Add("The collection is required.");
         }
 
         if (EmbeddingModel.Trim().Length == 0)
@@ -113,12 +116,28 @@ public sealed partial class KnowledgeBaseDraft
         return problems;
     }
 
+    private List<string> QdrantConnectionProblems()
+    {
+        var problems = CommonProblems();
+        if (Url.Trim().Length == 0)
+        {
+            problems.Add("The address of the Qdrant server is required.");
+        }
+
+        if (Collection.Trim().Length == 0)
+        {
+            problems.Add("The collection is required.");
+        }
+
+        return problems;
+    }
+
     /// <summary>What is wrong with the pasted schema, before it is sent.</summary>
     public string? SchemaProblem() =>
         System.Text.Encoding.UTF8.GetByteCount(Schema) > MaxSchemaBytes ? "The schema can have up to 100 KB." : null;
 
     public InspectRequest ToInspectRequest() => new(
-        KnowledgeBaseKinds.Qdrant,
+        Kind,
         ToConnection(),
         EmbeddingModel.Trim(),
         Clean(QueryPrefix, trim: false),
@@ -133,6 +152,12 @@ public sealed partial class KnowledgeBaseDraft
         ArgumentNullException.ThrowIfNull(result);
 
         Mapping = MappingDraft.From(result.DraftMapping);
+        if (IsPgVector)
+        {
+            UseInspectionPgVector(result);
+            return;
+        }
+
         if (VectorName.Trim().Length == 0 && result.Vectors.Count == 1 && result.Vectors[0].Name is { Length: > 0 } only)
         {
             VectorName = only;
@@ -149,6 +174,12 @@ public sealed partial class KnowledgeBaseDraft
     /// <summary>What blocks the lookups step: the counted point, the entity attributes, the listed fields and the refresh interval.</summary>
     public IReadOnlyList<string> LookupProblems(IReadOnlyList<DictionaryField> dictionary)
     {
+        // A PostgreSQL knowledge base has no lookups (spec 008 A1-1).
+        if (IsPgVector)
+        {
+            return [];
+        }
+
         var problems = new List<string>(Mapping?.LookupProblems(dictionary) ?? []);
         if (LookupRefreshHours is < LookupLimits.MinRefreshHours or > LookupLimits.MaxRefreshHours)
         {
@@ -167,7 +198,7 @@ public sealed partial class KnowledgeBaseDraft
         var problems = new List<string>(ConnectionProblems());
         if (Mapping is null)
         {
-            problems.Add("Review the mapping first: inspect the collection to get a draft.");
+            problems.Add(IsPgVector ? "Review the mapping first: inspect the relation to get a draft." : "Review the mapping first: inspect the collection to get a draft.");
         }
         else
         {
@@ -190,7 +221,7 @@ public sealed partial class KnowledgeBaseDraft
         return new KnowledgeBaseRequest(
             Name.Trim(),
             Description.Trim(),
-            KnowledgeBaseKinds.Qdrant,
+            Kind,
             ToConnection(),
             EmbeddingModel.Trim(),
             Clean(QueryPrefix, trim: false),
@@ -203,11 +234,10 @@ public sealed partial class KnowledgeBaseDraft
     /// <summary>A short account of what will be saved, for the last step.</summary>
     public IReadOnlyList<string> Summary(IReadOnlyList<DictionaryField> dictionary, IReadOnlyList<AssistantSummary> assistants)
     {
-        var lines = new List<string>
-        {
-            $"{Name.Trim()} · {Url.Trim()} · collection {Collection.Trim()}{(VectorName.Trim().Length > 0 ? $" · vector {VectorName.Trim()}" : string.Empty)}",
-            $"Embedding model {EmbeddingModel.Trim()}{(QueryPrefix.Length > 0 ? $" with the prefix \"{QueryPrefix}\"" : string.Empty)}",
-        };
+        var lines = IsPgVector
+            ? new List<string>(PgVectorSummary())
+            : [$"{Name.Trim()} · {Url.Trim()} · collection {Collection.Trim()}{(VectorName.Trim().Length > 0 ? $" · vector {VectorName.Trim()}" : string.Empty)}"];
+        lines.Add($"Embedding model {EmbeddingModel.Trim()}{(QueryPrefix.Length > 0 ? $" with the prefix \"{QueryPrefix}\"" : string.Empty)}");
 
         if (Mapping is { } mapping)
         {
@@ -218,7 +248,7 @@ public sealed partial class KnowledgeBaseDraft
                 lines.Add($"New dictionary field(s): {string.Join(", ", created.Select(f => f.Cluster is null ? f.Name : $"{f.Cluster}/{f.Name}"))}");
             }
 
-            if (mapping.LookupSummary(LookupRefreshHours) is { } lookups)
+            if (!IsPgVector && mapping.LookupSummary(LookupRefreshHours) is { } lookups)
             {
                 lines.Add(lookups);
             }
@@ -233,11 +263,13 @@ public sealed partial class KnowledgeBaseDraft
         return lines;
     }
 
-    private ConnectionRequest ToConnection() => new(
-        Url.Trim(),
-        Clean(ApiKey, trim: false),
-        Collection.Trim(),
-        Clean(VectorName, trim: true));
+    private object ToConnection() => IsPgVector
+        ? PgVectorConnection()
+        : new ConnectionRequest(
+            Url.Trim(),
+            Clean(ApiKey, trim: false),
+            Collection.Trim(),
+            Clean(VectorName, trim: true));
 
     private static string? Clean(string text, bool trim)
     {

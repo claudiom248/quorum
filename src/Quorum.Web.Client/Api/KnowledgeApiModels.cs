@@ -24,6 +24,9 @@ public static class KnowledgeBaseStatuses
 public static class KnowledgeBaseKinds
 {
     public const string Qdrant = "Qdrant";
+    public const string PgVector = "PgVector";
+
+    public static IReadOnlyList<string> All { get; } = [Qdrant, PgVector];
 }
 
 /// <param name="Scope"><c>Global</c> or <c>Tenant</c>.</param>
@@ -40,13 +43,52 @@ public sealed record CreatedId(Guid Id);
 public sealed record ConnectionRequest(string Url, string? ApiKey, string Collection, string? VectorName);
 
 /// <param name="HasApiKey">Whether a key is stored. The key itself is never returned.</param>
-public sealed record ConnectionInfo(string Url, string Collection, string? VectorName, bool HasApiKey);
+/// <remarks>A Qdrant knowledge base fills the first four members, a PgVector one the others: the server returns what its kind has.</remarks>
+public sealed record ConnectionInfo(
+    string Url,
+    string Collection,
+    string? VectorName,
+    bool HasApiKey,
+    string? Host = null,
+    int? Port = null,
+    string? Database = null,
+    string? Username = null,
+    string? SslMode = null,
+    bool HasPassword = false,
+    bool HasConnectionString = false,
+    string? Schema = null,
+    string? Table = null,
+    string? VectorColumn = null,
+    string? Distance = null);
+
+/// <summary>Where a PostgreSQL knowledge base lives: separate fields or a connection string, never both. On an update an omitted secret keeps the stored one.</summary>
+public sealed record PgVectorConnectionRequest(
+    string? Host,
+    int? Port,
+    string? Database,
+    string? Username,
+    string? Password,
+    string? SslMode,
+    string? ConnectionString,
+    string? Schema,
+    string? Table,
+    string? VectorColumn,
+    string? Distance);
+
+/// <param name="Connection">A <see cref="ConnectionRequest"/> or a <see cref="PgVectorConnectionRequest"/>, by the kind.</param>
+public sealed record RelationsRequest(string Kind, object Connection, string? Filter);
+
+public sealed record RelationVector(string Name, string Type, int? Dimensions);
+
+public sealed record RelationInfo(string Schema, string Name, string Type, long? ApproximateRows, IReadOnlyList<RelationVector> VectorColumns);
+
+public sealed record RelationsResult(bool Reachable, IReadOnlyList<RelationInfo> Relations, bool Truncated, IReadOnlyList<KnowledgeBaseWarning> Warnings);
 
 /// <summary>The payload paths that carry the meaning Quorum needs; <c>Text</c> is the only required one.</summary>
 public sealed record MappingRoles(string? Text, string? DocumentId, string? Title, string? Position, string? SourceUrl);
 
 /// <param name="Schema">A pasted JSON Schema of the payload, as text. Omitted, the server samples the collection.</param>
-public sealed record InspectRequest(string Kind, ConnectionRequest Connection, string EmbeddingModel, string? QueryPrefix, string? Schema);
+public sealed record InspectRequest(string Kind, object Connection, string EmbeddingModel, string? QueryPrefix, string? Schema);
 
 public sealed record VectorInfo(string? Name, int Size, string Distance);
 
@@ -97,7 +139,7 @@ public sealed record KnowledgeBaseRequest(
     string Name,
     string Description,
     string Kind,
-    ConnectionRequest Connection,
+    object Connection,
     string EmbeddingModel,
     string? QueryPrefix,
     MappingRequest Mapping,

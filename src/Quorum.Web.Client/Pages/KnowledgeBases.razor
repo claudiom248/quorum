@@ -114,7 +114,7 @@
                 @if (!detail.Shared)
                 {
                     <div class="tool-hint">
-                        @detail.Kind · @(detail.Connection?.Url) · collection @(detail.Connection?.Collection) · embeddings @detail.EmbeddingModel ·
+                        @KnowledgeAdminView.DescribeConnection(detail) · embeddings @detail.EmbeddingModel ·
                         @(detail.LastVerifiedAt is { } at ? $"verified {at.ToLocalTime():yyyy-MM-dd HH:mm}" : "not verified yet")
                     </div>
                     @if (detail.Mapping is { } mapping)
@@ -177,7 +177,7 @@
 </ListDrawer>
 
 @code {
-    private static readonly IReadOnlyList<FilterOption> KindOptions = [new("Qdrant", "Qdrant")];
+    private static readonly IReadOnlyList<FilterOption> KindOptions = [new("Qdrant", "Qdrant"), new("PgVector", "PostgreSQL (pgvector)")];
 
     private static readonly IReadOnlyList<FilterOption> StatusOptions =
     [
