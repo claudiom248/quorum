@@ -141,6 +141,9 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             return;
         }
 
+        // The same lock as a declaration: both rewrite the list of tools of a slice, and the later write would undo the earlier one.
+        await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({DeclareLockKey})", cancellationToken);
+
         var slices = await db.LookupSlices.IgnoreQueryFilters().Where(s => s.ToolIds.Contains(toolId)).ToListAsync(cancellationToken);
         foreach (var slice in slices)
         {

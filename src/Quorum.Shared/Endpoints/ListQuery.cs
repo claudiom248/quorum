@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Quorum.Shared.Results;
 
@@ -27,6 +28,12 @@ public sealed record ListQuery(
 
     public const int MaxSearchLength = 200;
 
+    /// <summary>The most values one filter takes; each becomes an element of a <c>Contains</c> list in SQL.</summary>
+    public const int MaxFilterValues = 50;
+
+    private static readonly Error TooManyValues =
+        Error.Validation("list.invalid_filter", $"A filter takes at most {MaxFilterValues} values.");
+
     private static readonly Error InvalidLimit =
         Error.Validation("list.invalid_limit", $"The limit must be a whole number from 1 to {MaxLimit}.");
 
@@ -45,7 +52,7 @@ public sealed record ListQuery(
 
         var limit = DefaultLimit;
         if (query.TryGetValue("limit", out var limitText) && limitText.Count > 0
-            && (!int.TryParse(limitText[0], out limit) || limit is < 1 or > MaxLimit))
+            && (!int.TryParse(limitText[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out limit) || limit is < 1 or > MaxLimit))
         {
             return InvalidLimit;
         }
@@ -53,6 +60,14 @@ public sealed record ListQuery(
         if (!TryIds(query, "tenant", out var tenants) || !TryIds(query, "assistant", out var assistants))
         {
             return InvalidIds;
+        }
+
+        var scopes = Values(query, "scope");
+        var types = Values(query, "type");
+        var statuses = Values(query, "status");
+        if (new[] { scopes.Count, tenants.Count, assistants.Count, types.Count, statuses.Count }.Any(count => count > MaxFilterValues))
+        {
+            return TooManyValues;
         }
 
         var q = query.TryGetValue("q", out var qText) ? qText.ToString().Trim() : null;
@@ -63,7 +78,7 @@ public sealed record ListQuery(
 
         var cursor = query.TryGetValue("cursor", out var cursorText) && !string.IsNullOrEmpty(cursorText) ? cursorText.ToString() : null;
 
-        return new ListQuery(Values(query, "scope"), tenants, assistants, Values(query, "type"), Values(query, "status"), string.IsNullOrEmpty(q) ? null : q, limit, cursor);
+        return new ListQuery(scopes, tenants, assistants, types, statuses, string.IsNullOrEmpty(q) ? null : q, limit, cursor);
     }
 
     private static List<string> Values(IQueryCollection query, string key) =>

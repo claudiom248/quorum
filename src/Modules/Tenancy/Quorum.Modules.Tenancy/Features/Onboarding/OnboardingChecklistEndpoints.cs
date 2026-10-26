@@ -30,7 +30,10 @@ internal sealed class OnboardingChecklistEndpoints : IEndpointGroup
             .RequireAuthorization(TenancyModule.AdminPolicy);
 
         checklist.MapGet("", GetAsync).WithName("GetOnboardingChecklist");
-        checklist.MapPut("/dismissed", DismissAsync).WithName("DismissOnboardingChecklist");
+        checklist.MapPut("/dismissed", (TenancyDbContext db, TimeProvider clock, CancellationToken ct) => SetDismissedAsync(true, db, clock, ct))
+            .WithName("DismissOnboardingChecklist");
+        checklist.MapDelete("/dismissed", (TenancyDbContext db, TimeProvider clock, CancellationToken ct) => SetDismissedAsync(false, db, clock, ct))
+            .WithName("RestoreOnboardingChecklist");
         checklist.MapPut("/{key}", CompleteStepAsync).WithName("CompleteOnboardingStep");
     }
 
@@ -66,12 +69,12 @@ internal sealed class OnboardingChecklistEndpoints : IEndpointGroup
         return TypedResults.NoContent();
     }
 
-    private static async Task<NoContent> DismissAsync(TenancyDbContext db, TimeProvider clock, CancellationToken cancellationToken)
+    private static async Task<NoContent> SetDismissedAsync(bool dismissed, TenancyDbContext db, TimeProvider clock, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
         await EnsureRowAsync(db, now, cancellationToken);
         await db.OnboardingChecklists.ExecuteUpdateAsync(
-            set => set.SetProperty(c => c.Dismissed, true).SetProperty(c => c.UpdatedAt, now),
+            set => set.SetProperty(c => c.Dismissed, dismissed).SetProperty(c => c.UpdatedAt, now),
             cancellationToken);
 
         return TypedResults.NoContent();

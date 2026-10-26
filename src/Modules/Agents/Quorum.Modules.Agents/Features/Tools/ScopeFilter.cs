@@ -15,7 +15,7 @@ namespace Quorum.Modules.Agents.Features.Tools;
 /// </summary>
 internal static class ScopeFilter
 {
-    private const string EscapeCharacter = "\\";
+    private const string EscapeCharacter = LikePattern.EscapeCharacter;
 
     public static Error NotForTools { get; } =
         Error.Validation("list.invalid_filter", "The built-in tools list is filtered by status and search only.");
@@ -127,7 +127,7 @@ internal static class ScopeFilter
             return source;
         }
 
-        var pattern = "%" + query.Q.Trim().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
+        var pattern = LikePattern.Contains(query.Q);
         var row = Expression.Parameter(typeof(T), "row");
         var like = typeof(NpgsqlDbFunctionsExtensions).GetMethod(nameof(NpgsqlDbFunctionsExtensions.ILike), [typeof(DbFunctions), typeof(string), typeof(string), typeof(string)])!;
 
