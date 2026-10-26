@@ -6,6 +6,9 @@ namespace Quorum.Modules.KnowledgeBases.Storage;
 internal static class StoreLimits
 {
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>What the search of a store may take: the engine cancels it at the same moment.</summary>
+    public static readonly TimeSpan SearchTimeout = TimeSpan.FromSeconds(15);
 }
 
 /// <param name="Name">The vector's name, or <see langword="null"/> for the source's single unnamed vector.</param>

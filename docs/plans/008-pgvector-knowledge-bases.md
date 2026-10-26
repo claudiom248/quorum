@@ -65,6 +65,13 @@ _(PR 2, the compose profile, was folded into this PR on 2026-10-22: it is small 
 
 ### PR 5 - Search (`feat/008-pgvector-search`)
 12. Prototype of the search query (CTE with `MATERIALIZED`, `relaxed_order` against `strict_order`, filters on a selective condition over an HNSW and an IVFFlat index, thresholds, the score expressions); findings written below this step.
+
+**Findings of the step 12 prototype** (pgvector 0.8 image of the compose file, tests in `PgVectorSearchAdapterTests`):
+- One query: a `MATERIALIZED` CTE selects the nearest `LIMIT K` rows with the filters and the threshold in its `WHERE`, and the outer query sorts them again by the distance, because `relaxed_order` returns rows only roughly in order. The vector is a `real[]` parameter cast to the column's own type (`vector` or `halfvec`), so the column is never cast and its index can be used.
+- `SET LOCAL hnsw.iterative_scan` / `ivfflat.iterative_scan = relaxed_order` only when the extension is 0.8 or later (the setting does not exist before); `hnsw.ef_search` is raised to the limit (at least 40) on every version. A 1% selective filter over 4000 HNSW rows returns the 10 rows asked for.
+- Score from the operator `d`: cosine `1 - d`, inner product `-d` (the operator is the negative), L2 `d`. The threshold becomes `d <= 1 - t`, `-t` and `t`, inside the CTE, so the iterative scan keeps going until K rows pass it.
+- A `jsonb` key is compared inside `CASE jsonb_typeof(...)`, never with `AND`, because PostgreSQL does not promise the order in which an `AND` is evaluated. A date in a key is cast only when it starts like a calendar date; an impossible one (`2024-02-30`) still raises a data exception, which is mapped to a rejection.
+
 13. The condition translation: text, number, date, boolean and list over plain columns and over `jsonb` keys (extraction only when the JSON type fits), the typed `DocumentIds` condition (text, integer, `uuid` and `jsonb` key; an unconvertible id matches nothing), parameters only. AC-23, AC-24, AC-25, AC-40, AC-41.
 14. `PgVectorStoreAdapter.Search`: read-only transaction, statement timeout from the engine's limit, iterative scan settings, the native score and the threshold, mapped columns only. AC-21, AC-22, AC-26, AC-27.
 15. Failures and status: every outcome of D-14 reaches the model as a safe error result (no connection string, host, SQL or driver text), the KB goes `Unavailable` and comes back; a rag tool over a Qdrant and a PgVector KB interleaves with sources naming their KB; unusable rows counted. AC-28, AC-29, AC-30, AC-33 (search half).

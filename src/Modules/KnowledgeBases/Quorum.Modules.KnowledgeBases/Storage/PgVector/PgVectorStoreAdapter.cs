@@ -354,7 +354,7 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
         Path: null);
 
     public Task<IReadOnlyList<StoreHit>> SearchAsync(IStoreConnection connection, StoreQuery query, CancellationToken cancellationToken) =>
-        throw new StoreException(StoreFailure.Unexpected, "Searching a PgVector knowledge base is not available yet.");
+        connector.SearchAsync(Own(connection), query, cancellationToken);
 
     public T? Capability<T>()
         where T : class, IStoreCapability => listing as T;
