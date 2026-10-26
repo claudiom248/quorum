@@ -1,6 +1,6 @@
 # Plan 008: pgvector Knowledge Bases
 
-**Spec:** `docs/specs/008-pgvector-knowledge-bases.md` (Approved 2026-10-22, Amendment 1 approved 2026-10-22)
+**Spec:** `docs/specs/008-pgvector-knowledge-bases.md` (Approved 2026-10-22, Amendment 1 approved 2026-10-22, Amendment 2 drafted 2026-10-27, waiting for approval)
 **Architecture:** Modular Monolith; Vertical Slice inside the KnowledgeBases module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
 **Status:** Approved (2026-10-22)
@@ -11,7 +11,7 @@
 | Where the coupling is today | `KnowledgeBase.Connection` is a `QdrantConnectionSettings`; `ConnectionRules`, `StoreProbe`, `KnowledgeBaseInspector`, `KnowledgeBaseRegistrar`, `KnowledgeBaseSearchEngine`, `FilterTranslator`, `MappingValidation.Vector` and the DTOs of `KnowledgeBaseContracts` / `InspectContracts` name Qdrant types (`QdrantConnection`, `QdrantException`, `QdrantCollectionInfo`, `QdrantCondition`). Everything else (mapping, discovery, `ChunkReader`, `PayloadSampler`, `JsonSchemaReader`, dictionary, visibility, rag tool) already works on JSON rows and dictionary types and is reused as it is |
 | The contract (PR 1) | An internal `IStoreAdapter` per `KnowledgeBaseKind`, found through a `StoreAdapters` registry. It owns what is kind-specific and nothing else: reading and validating the `connection` object of a request (`JsonElement`), the rule that keeps a stored secret, turning input into stored settings (secrets protected) and stored settings into an open connection (secrets read), the probe of the source (reachability, existence, vectors, indexed paths, record count, sample), the check of the chosen vector, the search, the mapping of failures to neutral outcomes and codes, the description of the connection for responses, and the sample size. The shared parts stay shared: the dimension check against an embedding, discovery, mapping, the search engine's interleaving, thresholds and status handling |
 | Neutral types | Moved out of `Storage/Qdrant` into `Storage`: `StoreFailure` and `StoreException` (the six outcomes of D-14 plus rate limiting for kinds that need it), `VectorInfo`, `SourceInfo` (vectors, indexed paths, record count), `StoreHit` (score and a `JsonObject` row), and the filter conditions (`MatchAny`, `Boolean`, `NumberRange`, `DateRange`, and the new `DocumentIds`). `QdrantConnector` keeps its code and returns the neutral types. The Qdrant warning and error codes (`WarningCodes.Qdrant*` and the rest) are kept as they are, because AC-1 says nothing observable changes |
-| Capabilities | `IStoreCapability` is a marker; an adapter returns `Capability<T>()` or `null`. Qdrant and PgVector declare none in this plan. Spec 007 adds the lookups capability on top; its mapping validation turns a missing capability into `knowledge_base.lookups_not_supported` (007 AC-3), so the refusal of 008 A1-4 needs no code of its own here, only the adapter declaring nothing |
+| Capabilities | `IStoreCapability` is a marker; an adapter returns `Capability<T>()` or `null`. Qdrant and PgVector declare none in this plan (PgVector declares the lookups since Amendment 2). Spec 007 adds the lookups capability on top; its mapping validation turns a missing capability into `knowledge_base.lookups_not_supported` (007 AC-3), so the refusal of 008 A1-4 needs no code of its own here, only the adapter declaring nothing |
 | Stored settings | The `Connection` column is already `jsonb NOT NULL` holding `{ Url, Collection, VectorName, ProtectedApiKey }`. `KnowledgeBase.Connection` becomes a small `ConnectionSettings` wrapper over a `JsonObject` with a value converter to the same `jsonb`; each adapter reads and writes its typed record from it. **No data migration:** rows keep their shape, and a PgVector row simply holds other members. The EF model snapshot changes (the owned `ToJson` goes away), so `dotnet ef migrations add` runs once and the migration must come out empty; a test starts from a row inserted in the old shape and reads, verifies and searches it |
 | Request and response shape | `connection` in requests is a `JsonElement` that the kind's adapter reads; in responses it is the adapter's description (for Qdrant the same members as today, so the Web client does not change in PR 1; the golden JSON of the existing responses is pinned by a test before the move) |
 | Row as JSON | The PgVector connector turns a row into a `JsonObject` (a column is a property; a `json`/`jsonb` column becomes a nested object; `uuid`, `date` and `timestamp` become strings; `numeric` a number; arrays lists), so `PayloadSampler`, `MappingValidation`, `ChunkReader` and the draft mapping are reused unchanged and paths are `column` or `column.key` as the spec says. A column whose name has a dot is reported as not mappable at this step, because the shared readers split paths on dots |
@@ -26,6 +26,7 @@
 - After PR 1 merges: PR 3 to PR 5 are one chain (same files, no parallel writers); **spec 007's backend can run in parallel** with them (it touches the Qdrant adapter, the mapping and Agents); the UI (PR 6) starts when PR 5 is merged.
 - The compose profile is not a PR of its own: it is the first two steps of PR 3. The numbers of the other PRs are kept, because plan 009 and plan 007 refer to them.
 - Spec 009 (Pinecone) is planned after this plan's PR 1 merges, because its adapter is written against the contract.
+- Amendment 2 adds PR 8 and PR 9 (lookups for PgVector). They come after PR 6 (PR 8 reuses the condition translation of PR 5, PR 9 the wizard of PR 6), and PR 7 stays last so that it documents them.
 
 ## Steps
 
@@ -79,9 +80,30 @@ _(PR 2, the compose profile, was folded into this PR on 2026-10-22: it is small 
 ### PR 6 - Admin UI (`feat/008-ui-pgvector`)
 16. API client models for the per-kind `connection`; the registration wizard becomes kind-aware: connection (fields or string), list of relations with a filter, vector column and distance, mapping review by columns and keys, verify, test search. Logic in plain view classes covered by bUnit, as in plan 003 PR 7. The Qdrant flow is untouched. AC-34, AC-35.
 
+### Amendment 2: lookups for PgVector (added 2026-10-27)
+Spec 008 Amendment 2 gives the PgVector kind the lookups capability of spec 007. The contract and the callers do not change, so the work is the adapter's side plus the places that said "PgVector has none". Two PRs come before the closing PR 7, which then documents them.
+
+| Topic | Choice |
+|---|---|
+| Shared translation | The translation of a `FilterCondition` into SQL (text, number, date, boolean, list, `jsonb` keys by JSON type, `DocumentIds` by column type) is today inside `PgVectorSearchStatement`. PR 8 moves it into one class used by the search and by the lookups, so a filter means the same in both (A2-2); the search tests are the guard of that move. |
+| Statements | One builder per operation (`GROUP BY`, `count(DISTINCT)`, `count(*)`, keyset scan) that composes its `WHERE` from that class; none has text from outside. Statement timeout of 10 minutes; the caller's cancellation token is what limits a live call (A2-2). |
+| Order of a scan | Read from the catalog with the relation: the primary key, else the first unique index without nulls, else `ctid` for a table, else an offset over the paths asked for for a view (A2-6). The cursor is a small JSON of the last key or the offset, encoded as opaque text. |
+| Check and warning | `CheckAsync` finds the relation and the type of every required column in the catalog and says which is missing; it never needs an index (A2-7). The advice about indexes is the warning of A2-8, from the inspection and the verification, with the existing code `knowledge_base.lookup_field_unindexed`. |
+| What changes elsewhere | `PgVectorStoreAdapter.Capability<T>()` returns the lookups for `ILookupsCapability` (and the listing for `ISourceListingCapability`); `KnowledgeBaseDraft.LookupProblems`, the wizard's skip of the lookups step and the detail page's hidden section go away for PgVector; the tests that said "PgVector has no lookups" are changed to a kind that really has none (the fake adapter of the tests). |
+
+### PR 8 - Lookups backend (`feat/008-pgvector-lookups`)
+19. Prototype of the statements on the sample database: `GROUP BY` over a text column, an enum, a `uuid`, a `text[]` (`unnest`) and a `jsonb` key (string and array, other types ignored); distinct documents against rows; the order of ties; a keyset scan over a primary key, a unique index, a table with neither (`ctid`) and a view (offset); cancelling a long statement through the token. Findings written below this step.
+20. Move the condition translation out of `PgVectorSearchStatement` into a shared class; the existing search tests pass untouched.
+21. `PgVectorLookups : ILookupsCapability` with the five operations and the catalog queries for the order of a scan; the adapter declares it. AC-44, AC-45, AC-46, AC-47 (adapter level: filters, `document_ids`, timeout and cancellation), AC-48 (check), AC-49 (read-only, no value in a log).
+
+### PR 9 - Lookups in the registry, the wizard and the samples (`feat/008-ui-lookups-pgvector`)
+22. Registry and inspection: a PgVector mapping with `listable`, `countedPoint` or `entityName` is accepted and validated as 007 says; the inspection and the verification add the warning of A2-8; AC-39 and AC-42 are tested with a kind that has no capability, and AC-51 stays. AC-48 (warning).
+23. Wizard and pages: the lookups step for PgVector with the wording of columns, the advice about indexes, the detail page with its Lookups section; checked in the browser as in PR 6. AC-50.
+24. Samples and scenarios: the relations of A2-10 in `tools/Quorum.SampleKnowledgeBase` (README), and the lookup scenarios of spec 007 (computation, live operations, entity lookups, lookup tools) run against both kinds. AC-47 (engine level), AC-49.
+
 ### PR 7 - Documentation and verification (`docs/008-closing`)
-17. The pgvector section of the guide for data owners (shape of a relation, recommended indexes, a read-only role, choosing the distance, what Quorum reads), `docs/database-schema.md`, README mention. AC-37.
-18. Final pass: Release build, full suite, `get_diagnostics`, and a manual run through the LiteLLM proxy with a pgvector sample relation (memory rule: manual tests go through LiteLLM).
+17. The pgvector section of the guide for data owners (shape of a relation, recommended indexes, a read-only role, choosing the distance, what Quorum reads, and the lookups: which columns can be listed, the counted point, the entity name, indexes as advice), `docs/database-schema.md`, README mention, the sample README. AC-37.
+18. Final pass: Release build, full suite, `get_diagnostics`, and a manual run through the LiteLLM proxy with a pgvector sample relation, lookups included (memory rule: manual tests go through LiteLLM).
 
 ## Acceptance criteria by PR
 | PR | Criteria |
@@ -91,6 +113,8 @@ _(PR 2, the compose profile, was folded into this PR on 2026-10-22: it is small 
 | 4 | AC-4, AC-5, AC-8 (save half), AC-16 to AC-20, AC-31 to AC-33 (registration half), AC-39 (PgVector), AC-42 (by the capability absence, see Decisions), AC-43 |
 | 5 | AC-21 to AC-30, AC-33 (search half), AC-40, AC-41 |
 | 6 | AC-34, AC-35 |
+| 8 | AC-44 to AC-49 (adapter level) |
+| 9 | AC-39 and AC-42 (as read for the kinds without the capability), AC-47 (engine level), AC-48 (warning), AC-49, AC-50, AC-51 |
 | 7 | AC-36 (documentation and manual run), AC-37 |
 
 ## Risks
