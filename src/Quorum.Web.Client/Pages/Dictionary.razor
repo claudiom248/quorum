@@ -1,0 +1,352 @@
+@page "/knowledge/dictionary"
+@page "/knowledge/dictionary/{Id}"
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>Dictionary · Quorum</PageTitle>
+
+<ListPage Title="Dictionary"
+          Description="The metadata dictionary: typed fields defined once and reused by knowledge bases and rag tools. Models filter on them. A name and a type cannot change once the field exists; the description can. A field in use cannot be deleted."
+          AddLabel="Add field" OnAdd="() => _screen.OpenDrawer(ListScreen<DictionaryField>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="The dictionary is empty" EmptyText="Fields are added here, or while registering a knowledge base.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" ShowAgent="false" ScopeOptions="ScopeOptions"
+                   TypeLabel="Type" TypeOptions="TypeOptions" SearchPlaceholder="Search by name, cluster or description" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        <MudTable T="DictionaryField" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="dictionary">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Cluster</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>Used by</MudTh>
+                <MudTh>Description</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="field">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(field.Id.ToString())" Class="tool-name" data-field="@field.Name">@field.Name</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Cluster">@field.Cluster</MudTd>
+                <MudTd DataLabel="Type"><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@KnowledgeAdminView.TypeLabel(field.Type)</MudChip></MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="field.Scope" Shared="field.Shared" /></MudTd>
+                <MudTd DataLabel="Used by">@field.UsedByCount</MudTd>
+                <MudTd DataLabel="Description"><span class="tool-hint">@(string.IsNullOrWhiteSpace(field.Description) ? "No description." : field.Description)</span></MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_screen.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="_screen.Loading" OnClick="_screen.LoadMoreAsync">Load more</MudButton>
+        }
+    </ChildContent>
+</ListPage>
+
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Dirty="IsDirty" OnClose="_screen.CloseDrawer">
+    @if (_new is not null)
+    {
+        <form @onsubmit="CreateAsync" data-form="field">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_new.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
+                              HelperText="Lower-case letters, digits and '_', starting with a letter. Not 'query' or 'knowledge_base', and not ending in _min, _max, _from or _to." />
+                <MudTextField @bind-Value="_new.Cluster" Label="Cluster" Variant="Variant.Outlined" MaxLength="40"
+                              HelperText="Optional. Groups related fields, such as hr or finance; with the name it identifies the field. Leave it empty for none." />
+                @if (ExistingClusters.Count > 0)
+                {
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                        <span class="tool-hint">Existing:</span>
+                        @foreach (var existing in ExistingClusters)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="() => _new.Cluster = existing">@existing</MudChip>
+                        }
+                    </MudStack>
+                }
+                <label class="tool-policy">Type
+                    <select aria-label="Type" @bind="_new.Type">
+                        @foreach (var type in DictionaryFieldTypes.All)
+                        {
+                            <option value="@type">@KnowledgeAdminView.TypeLabel(type)</option>
+                        }
+                    </select>
+                </label>
+                <label class="tool-policy">Who can use it
+                    <select aria-label="Scope" @bind="_new.Scope">
+                        <option value="@ScopeKinds.Tenant">This tenant</option>
+                        <option value="@ScopeKinds.Global">Every tenant</option>
+                    </select>
+                </label>
+                <MudTextField @bind-Value="_new.Description" Label="Description" Variant="Variant.Outlined" MaxLength="500" Lines="2"
+                              HelperText="Optional. The model reads it to know what to filter on." />
+                <ProblemMessage Problem="_formProblem" />
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                </MudStack>
+            </MudStack>
+        </form>
+    }
+    else if (_field is { } field)
+    {
+        <div data-detail="field">
+            <MudStack Spacing="3">
+                <div class="tool-row-head">
+                    <span class="tool-name">@KnowledgeAdminView.FieldLabel(field, _screen.Items)</span>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@KnowledgeAdminView.TypeLabel(field.Type)</MudChip>
+                    <ScopeBadge Scope="field.Scope" Shared="field.Shared" />
+                    <span class="tool-hint">Used by @field.UsedByCount</span>
+                </div>
+
+                @if (field.Shared)
+                {
+                    <div class="tool-row-description">@(string.IsNullOrWhiteSpace(field.Description) ? "No description." : field.Description)</div>
+                    <div class="tool-hint">This field belongs to another tenant, which shares it with you. You can use it but not change it.</div>
+                }
+                else
+                {
+                    <form @onsubmit="SaveDescriptionAsync">
+                        <MudStack Spacing="3">
+                            <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" MaxLength="500" Lines="2"
+                                          HelperText="The model reads it to know what to filter on." />
+                            <ProblemMessage Problem="_formProblem" />
+                            <MudStack Row="true" Spacing="2">
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                                <MudSpacer />
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy" OnClick="DeleteAsync"
+                                           StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </form>
+                }
+            </MudStack>
+        </div>
+    }
+    else if (_drawerProblem is not null)
+    {
+        <ProblemMessage Problem="_drawerProblem" />
+    }
+    else
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+</ListDrawer>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> ScopeOptions =
+    [
+        new("global", "Global"),
+        new("tenant", "Tenant"),
+    ];
+
+    private static readonly IReadOnlyList<FilterOption> TypeOptions =
+    [
+        .. DictionaryFieldTypes.All.Select(t => new FilterOption(t, KnowledgeAdminView.TypeLabel(t))),
+    ];
+
+    private ListDrawer? _drawer;
+    private ListScreen<DictionaryField> _screen = null!;
+    private IReadOnlyList<TenantSummary>? _tenants;
+    private ApiProblem? _drawerProblem;
+    private ApiProblem? _formProblem;
+    private bool _busy;
+    private string? _notice;
+    private string? _openedId;
+    private string _description = string.Empty;
+    private string _openedDescription = string.Empty;
+    private DictionaryField? _field;
+    private NewField? _new;
+
+    /// <summary>The drawer: <c>new</c> or the id of the field. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _new is not null ? "Add field" : _field is { } current ? current.Name : "Field";
+
+    private bool IsDirty => (_new is { IsEmpty: false }) || (_field is { Shared: false } && !string.Equals(_description, _openedDescription, StringComparison.Ordinal));
+
+    private List<string> ExistingClusters => [.. _screen.Items.Select(f => f.Cluster).OfType<string>().Distinct().Order(StringComparer.Ordinal)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screen = new ListScreen<DictionaryField>(Navigation, "/knowledge/dictionary", (query, cursor) => Api.ListDictionaryPageAsync(query, ListScreen<DictionaryField>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
+
+        var tenants = await Api.ListTenantsAsync();
+        _tenants = tenants.IsSuccess ? tenants.Value : null;
+
+        await _screen.ReloadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _field = null;
+        _new = null;
+        _drawerProblem = null;
+        _formProblem = null;
+
+        if (Id is null)
+        {
+            return;
+        }
+
+        if (Id == ListScreen<DictionaryField>.NewId)
+        {
+            _new = new NewField();
+            return;
+        }
+
+        if (!Guid.TryParse(Id, out var id))
+        {
+            _drawerProblem = NotFound;
+            return;
+        }
+
+        // The row is on screen when the list was opened first; a link or a reload finds it by its id.
+        _field = _screen.Items.FirstOrDefault(f => f.Id == id) ?? await FindAsync(id);
+        if (_field is null)
+        {
+            _drawerProblem ??= NotFound;
+            return;
+        }
+
+        _description = _openedDescription = _field.Description ?? string.Empty;
+    }
+
+    private static readonly ApiProblem NotFound = new(404, "knowledge_base.field_not_found", "There is no such field.", new Dictionary<string, string[]>());
+
+    private async Task<DictionaryField?> FindAsync(Guid id)
+    {
+        string? cursor = null;
+        do
+        {
+            var page = await Api.ListDictionaryPageAsync(ListQuery.Empty, 200, cursor);
+            if (!page.IsSuccess)
+            {
+                _drawerProblem = page.Problem;
+                return null;
+            }
+
+            if (page.Value.Items.FirstOrDefault(f => f.Id == id) is { } found)
+            {
+                return found;
+            }
+
+            cursor = page.Value.Cursor;
+        }
+        while (cursor is not null);
+
+        return null;
+    }
+
+    private async Task CreateAsync()
+    {
+        var form = _new!;
+        await RunAsync(async () =>
+        {
+            var result = await Api.CreateDictionaryFieldAsync(new DictionaryFieldRequest(
+                form.Name.Trim(),
+                form.Type,
+                string.IsNullOrWhiteSpace(form.Description) ? null : form.Description.Trim(),
+                form.Scope,
+                string.IsNullOrWhiteSpace(form.Cluster) ? null : form.Cluster.Trim()));
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"The field {form.Name.Trim()} was added.";
+            await CloseAfterAsync();
+        });
+    }
+
+    private async Task SaveDescriptionAsync()
+    {
+        var field = _field!;
+        await RunAsync(async () =>
+        {
+            var result = await Api.UpdateDictionaryFieldAsync(field.Id, string.IsNullOrWhiteSpace(_description) ? null : _description.Trim());
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"The description of {field.Name} was saved.";
+            await CloseAfterAsync();
+        });
+    }
+
+    private async Task DeleteAsync()
+    {
+        var field = _field!;
+        if (!await Confirmations.ConfirmDeleteAsync(Dialogs, $"Delete the field {field.Name}?", "Models can no longer filter on it.", "Delete field"))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await Api.DeleteDictionaryFieldAsync(field.Id);
+            if (!result.IsSuccess)
+            {
+                // A field in use answers 409 and names the knowledge bases and tools that use it.
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"The field {field.Name} was deleted.";
+            await CloseAfterAsync();
+        });
+    }
+
+    // Saved or deleted: nothing is left to lose, so the drawer closes without asking.
+    private async Task CloseAfterAsync()
+    {
+        _new = null;
+        _field = null;
+        _drawer?.SkipNextGuard();
+        _screen.CloseDrawer();
+        await _screen.ReloadAsync();
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _notice = null;
+        _formProblem = null;
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => _screen.Dispose();
+
+    private sealed class NewField
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string Cluster { get; set; } = string.Empty;
+
+        public string Type { get; set; } = DictionaryFieldTypes.Text;
+
+        public string Scope { get; set; } = ScopeKinds.Tenant;
+
+        public string Description { get; set; } = string.Empty;
+
+        public bool IsEmpty => Name.Length + Cluster.Length + Description.Length == 0;
+    }
+}

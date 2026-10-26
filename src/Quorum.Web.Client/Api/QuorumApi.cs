@@ -55,12 +55,34 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult> SetAssistantToolsAsync(Guid assistantId, IReadOnlyList<Guid> toolIds, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, $"api/assistants/{assistantId}/tools", new { toolIds }, setupToken: null, cancellationToken);
 
+    public Task<ApiResult<Checklist>> GetChecklistAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<Checklist>("api/onboarding/checklist", cancellationToken);
+
+    /// <summary>Marks a step of the getting-started checklist done (<c>model</c>, <c>prompt</c>, <c>tools</c> or <c>knowledge</c>); idempotent.</summary>
+    public Task<ApiResult> CompleteChecklistStepAsync(string key, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/onboarding/checklist/{Uri.EscapeDataString(key)}", body: null, setupToken: null, cancellationToken);
+
+    public Task<ApiResult> DismissChecklistAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, "api/onboarding/checklist/dismissed", body: null, setupToken: null, cancellationToken);
+
+    /// <summary>The tenants of the installation (administrators only): the scope picker and the tenant filter offer them.</summary>
+    public Task<ApiResult<List<TenantSummary>>> ListTenantsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<TenantSummary>>("api/tenants", cancellationToken);
+
+    /// <summary>The tools of every origin, narrowed by state (<c>status</c>) and search; there are few, so they come whole.</summary>
+    public Task<ApiResult<List<ToolInfo>>> ListToolsAsync(ListQuery query, CancellationToken cancellationToken = default) =>
+        GetAsync<List<ToolInfo>>("api/tools" + (query ?? throw new ArgumentNullException(nameof(query))).ToQueryString(), cancellationToken);
+
     public Task<ApiResult<List<ToolInfo>>> ListToolsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<ToolInfo>>("api/tools", cancellationToken);
 
     /// <summary>Enables or disables a tool and sets its policy. Enabling a tool pending review is how the admin approves it.</summary>
     public Task<ApiResult> UpdateToolAsync(Guid toolId, string state, string policy, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, $"api/tools/{toolId}", new { state, policy }, setupToken: null, cancellationToken);
+
+    /// <summary>One page of the audit log of tool calls, newest first.</summary>
+    public Task<ApiResult<ToolAuditPage>> ListToolAuditAsync(AuditQuery query, CancellationToken cancellationToken = default) =>
+        GetAsync<ToolAuditPage>("api/tools/audit" + (query ?? throw new ArgumentNullException(nameof(query))).ToApiQuery(), cancellationToken);
 
     public Task<ApiResult<List<ToolServer>>> ListToolServersAsync(CancellationToken cancellationToken = default) =>
         ListAllAsync<ToolServer>("api/tools/servers", cancellationToken);

@@ -112,6 +112,26 @@ public sealed class LookupListTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+
+    [Fact] // AC-19
+    public async Task TheKnowledgeBaseFilterKeepsTheLookupsComputedFromThoseKnowledgeBases()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        var mine = await TenantScope.TenantIdAsync(app);
+        await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody(name: "typed"));
+        var department = await DictionaryApi.CreateOkAsync(admin, "department");
+        var region = await DictionaryApi.CreateOkAsync(admin, "region");
+        var (first, _) = await SeedDerivedAsync(app, mine, "contracts", department, [("hr", 1)], KnowledgeBaseScope.Tenant);
+        var (second, _) = await SeedDerivedAsync(app, mine, "company", region, [("eu", 1)], KnowledgeBaseScope.Tenant);
+
+        Assert.Equal(["department"], await NamesAsync(admin, "knowledgeBase=" + first));
+        Assert.Equal(["department", "region"], await NamesAsync(admin, $"knowledgeBase={first},{second}"));
+        Assert.Equal(["region"], await NamesAsync(admin, $"knowledgeBase={second}&q=reg"));
+        using var invalid = await admin.GetAsync(new Uri($"{Route}?knowledgeBase=nope", UriKind.Relative), Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
     [Fact] // AC-19
     public async Task OnlyAnAdministratorCanList()
     {

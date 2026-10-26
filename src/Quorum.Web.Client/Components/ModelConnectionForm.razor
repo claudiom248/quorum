@@ -1,0 +1,129 @@
+@* How to reach the model: address, key, model, tool support and context budget. It takes the test as a delegate, so the
+   settings page (which tests with the stored key) and the setup (which tests with the setup token) share it. *@
+
+<MudStack Spacing="3" data-form="model">
+    <MudTextField @bind-Value="Value.BaseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true"
+                  HelperText="Include the version segment, e.g. http://ollama:11434/v1" />
+    <MudTextField @bind-Value="Value.ApiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
+                  HelperText="@(HasApiKey ? "A key is stored. Leave empty to keep it." : "Optional. Stored encrypted and never shown again.")" />
+    @if (HasApiKey)
+    {
+        <MudCheckBox T="bool" @bind-Value="Value.RemoveKey" Label="Remove the stored key" />
+    }
+
+    <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="Busy || _testing" StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
+    @if (_models is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Connected. @_models.Count model(s) available.</MudAlert>
+    }
+
+    <ProblemMessage Problem="_problem" />
+
+    @if (_models is { Count: > 0 })
+    {
+        <MudSelect T="string" @bind-Value="Value.ModelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
+            @foreach (var model in _models)
+            {
+                <MudSelectItem Value="@model">@model</MudSelectItem>
+            }
+        </MudSelect>
+    }
+    else
+    {
+        <MudTextField @bind-Value="Value.ModelName" Label="Model" Variant="Variant.Outlined" Required="true" />
+    }
+
+    <MudSwitch T="bool" @bind-Value="Value.SupportsTools" Color="Color.Primary" Label="The model supports tools" aria-describedby="tools-support-hint" />
+    <MudText id="tools-support-hint" Typo="Typo.caption" Class="tools-support-hint">@ToolSupportHint</MudText>
+
+    <MudNumericField T="int" @bind-Value="Value.ContextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined" Min="256" Max="1000000"
+                     HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
+</MudStack>
+
+@code {
+    private IReadOnlyList<string>? _models;
+    private bool _testing;
+    private bool _toolSupportChecked;
+    private bool? _detectedToolSupport;
+    private ApiProblem? _problem;
+
+    [Parameter, EditorRequired]
+    public ModelConnectionFields Value { get; set; } = null!;
+
+    /// <summary>A key is stored: it can be kept (leave the field empty) or removed.</summary>
+    [Parameter]
+    public bool HasApiKey { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Tests the address and the key, and says whether the chosen model supports tools: (base URL, key or null for the stored one, model or null).</summary>
+    [Parameter, EditorRequired]
+    public Func<string, string?, string?, Task<ApiResult<ModelConnection>>> Test { get; set; } = null!;
+
+    private string ToolSupportHint => !_toolSupportChecked
+        ? "Use \"Test connection\" to let Quorum check it, or set it by hand."
+        : _detectedToolSupport switch
+        {
+            true => "The server reports that this model supports tools.",
+            false => "The server reports that this model does not support tools.",
+            null => "The server does not say whether this model supports tools; the setting is yours to make.",
+        };
+
+    private string? KeyToSend() => string.IsNullOrWhiteSpace(Value.ApiKey) ? null : Value.ApiKey.Trim();
+
+    private string? ModelToCheck() => string.IsNullOrWhiteSpace(Value.ModelName) ? null : Value.ModelName.Trim();
+
+    private async Task TestAsync()
+    {
+        _testing = true;
+        _problem = null;
+        _models = null;
+        try
+        {
+            // A null key makes the server test with the stored one.
+            var result = await Test(Value.BaseUrl.Trim(), KeyToSend(), ModelToCheck());
+            if (result.IsSuccess)
+            {
+                _models = result.Value.Models;
+                ApplyToolSupport(result.Value.SupportsTools);
+
+                // The first model was only just picked (a fresh form has none): ask about it, the test could not know it.
+                if (string.IsNullOrWhiteSpace(Value.ModelName) && _models.Count > 0)
+                {
+                    Value.ModelName = _models[0];
+                    await DetectToolSupportAsync();
+                }
+            }
+            else
+            {
+                _problem = result.Problem;
+            }
+        }
+        finally
+        {
+            _testing = false;
+        }
+    }
+
+    /// <summary>The chosen model may differ from the one tested: ask again, so the flag follows the model.</summary>
+    private async Task DetectToolSupportAsync()
+    {
+        var result = await Test(Value.BaseUrl.Trim(), KeyToSend(), ModelToCheck());
+        if (result.IsSuccess)
+        {
+            ApplyToolSupport(result.Value.SupportsTools);
+        }
+    }
+
+    // What the server reports pre-fills the flag; when it does not say, the admin's value stays.
+    private void ApplyToolSupport(bool? reported)
+    {
+        _toolSupportChecked = true;
+        _detectedToolSupport = reported;
+        if (reported is { } supported)
+        {
+            Value.SupportsTools = supported;
+        }
+    }
+}

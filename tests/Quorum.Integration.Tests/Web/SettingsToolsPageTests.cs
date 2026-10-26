@@ -27,6 +27,9 @@ public sealed class SettingsToolsPageTests : BunitContext
         Services.AddMudServices();
         var client = new QuorumApi(_api.CreateClient());
         Services.AddSingleton(client);
+        var session = new Session(client);
+        Services.AddSingleton(session);
+        Services.AddSingleton(new OnboardingProgress(client, session));
 
         _api.Respond = (method, path) =>
         {
@@ -86,6 +89,9 @@ public sealed class SettingsToolsPageTests : BunitContext
         page.WaitForAssertion(() => page.Find("form"));
         return page;
     }
+
+    private static void OpenTools(IRenderedComponent<Quorum.Web.Client.Pages.Settings> page) =>
+        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Tools", StringComparison.Ordinal)).Click();
 
     private static bool SwitchIsOn(IRenderedComponent<Quorum.Web.Client.Pages.Settings> page) =>
         page.Find("input[type=checkbox][role=switch], .mud-switch input").HasAttribute("checked")
@@ -152,6 +158,7 @@ public sealed class SettingsToolsPageTests : BunitContext
     public void ThePoolIsListedWithFriendlyNamesAndItsActiveState()
     {
         var page = RenderPage();
+        OpenTools(page);
 
         page.WaitForAssertion(() =>
         {
@@ -164,12 +171,13 @@ public sealed class SettingsToolsPageTests : BunitContext
     public void SavingTheToolsSendsExactlyTheActiveOnes()
     {
         var page = RenderPage();
+        OpenTools(page);
         page.WaitForAssertion(() => Assert.Equal(2, page.FindAll(".mud-checkbox input").Count));
 
         // Calculator is active, the clock is not: swap them.
         page.FindAll(".mud-checkbox input")[0].Change(false);
         page.FindAll(".mud-checkbox input")[1].Change(true);
-        page.FindAll("form")[1].Submit();
+        page.Find("form").Submit();
 
         page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Put, $"/api/assistants/{AssistantId}/tools")));
         using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Put, $"/api/assistants/{AssistantId}/tools")!);
@@ -183,6 +191,7 @@ public sealed class SettingsToolsPageTests : BunitContext
         _warnings = [new { code = "tool.too_many", message = "More than 15 tools are active: small models choose worse among many." }];
 
         var page = RenderPage();
+        OpenTools(page);
 
         page.WaitForAssertion(() => Assert.Contains("More than 15 tools are active", page.Markup, StringComparison.Ordinal));
     }
@@ -193,6 +202,7 @@ public sealed class SettingsToolsPageTests : BunitContext
         _supportsToolsStored = false;
 
         var page = RenderPage();
+        OpenTools(page);
 
         page.WaitForAssertion(() => Assert.Contains("none of these are offered", page.Markup, StringComparison.Ordinal));
     }
@@ -210,5 +220,49 @@ public sealed class SettingsToolsPageTests : BunitContext
 
         Assert.DoesNotContain("Save tools", page.Markup, StringComparison.Ordinal);
         Assert.Contains("The model supports tools", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact] // AC-14
+    public void TheBehaviourTabSavesOnItsOwnAndKeepsTheModelAsSaved()
+    {
+        var page = RenderPage();
+        page.Find("[data-form=model] input[type=text]").Change("http://other:11434/v1");
+        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Behaviour", StringComparison.Ordinal)).Click();
+        page.Find("textarea").Change("Be formal.");
+
+        page.Find("form").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Put, "/api/settings/assistant")));
+        using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Put, "/api/settings/assistant")!);
+        Assert.Equal("Be formal.", body.RootElement.GetProperty("systemPrompt").GetString());
+        Assert.Equal("http://ollama:11434/v1", body.RootElement.GetProperty("baseUrl").GetString());
+        page.WaitForAssertion(() => Assert.Contains("Behaviour saved.", page.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact] // AC-14
+    public void TheModelTabSavesTheModelAndKeepsThePromptAsSaved()
+    {
+        var page = RenderPage();
+        page.Find("[data-form=model] input[type=text]").Change("http://other:11434/v1");
+
+        page.Find("form").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Put, "/api/settings/assistant")));
+        using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Put, "/api/settings/assistant")!);
+        Assert.Equal("http://other:11434/v1", body.RootElement.GetProperty("baseUrl").GetString());
+        Assert.Equal("Be brief.", body.RootElement.GetProperty("systemPrompt").GetString());
+        page.WaitForAssertion(() => Assert.Contains("Model settings saved.", page.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheToolsTabGroupsThePoolBySourceAndSearches()
+    {
+        var page = RenderPage();
+        OpenTools(page);
+
+        Assert.Equal(["builtin"], page.FindAll("[data-source]").Select(s => s.GetAttribute("data-source")).ToArray());
+        page.Find("input[type=text]").Input("calc");
+
+        page.WaitForAssertion(() => Assert.Equal(["calculator"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).ToArray()));
     }
 }

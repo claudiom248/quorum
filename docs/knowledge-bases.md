@@ -131,7 +131,7 @@ A question is turned into a vector with the model named in the knowledge base re
 - Tell them the **prefix** the model expects on queries. Many models want one on documents and a different one on questions (`search_document: ` while ingesting and `search_query: ` while searching for nomic, e5 and bge families). Quorum adds the query prefix; the document prefix is yours, at ingestion.
 - Use the **same distance** the model was trained for. Quorum reads it from the collection and lets Qdrant apply it, including the score threshold.
 - The registration **checks the dimension**: it embeds a probe text and compares its size with the vector of the collection. A mismatch is reported as a warning, the knowledge base is saved as *unavailable*, and searches on it would fail.
-- **It cannot detect two different models with the same dimension.** The symptom is silent: answers come back with plausible scores and the wrong passages. After registering, run the administrator's **test search** (Knowledge → Test search) with a question whose answer you know and check that the right chunk comes first with a high score.
+- **It cannot detect two different models with the same dimension.** The symptom is silent: answers come back with plausible scores and the wrong passages. After registering, run the administrator's **test search** (Knowledge → Knowledge bases → open the knowledge base → Test search) with a question whose answer you know and check that the right chunk comes first with a high score.
 
 ## Lists and counts: lookups
 

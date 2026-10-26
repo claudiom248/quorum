@@ -1,0 +1,448 @@
+@page "/tools/mcp"
+@page "/tools/mcp/{Id}"
+@implements IDisposable
+@inject QuorumApi Api
+@inject OnboardingProgress Onboarding
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>MCP servers · Quorum</PageTitle>
+
+<ListPage Title="MCP servers" Description="Register MCP servers, review the tools they offer and decide which ones may run and whether they ask first. Which tools an assistant uses is chosen in Settings."
+          AddLabel="Add server" OnAdd="() => _screen.OpenDrawer(ListScreen<ToolServer>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No MCP server is registered yet" EmptyText="Add one to give the assistants tools beyond the built-in ones.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+                   StatusOptions="StatusOptions" SearchPlaceholder="Search by name or address" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        <MudTable T="ToolServer" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="servers">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Address</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Tools</MudTh>
+                <MudTh>Last refreshed</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="server">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(server.Id.ToString())" Class="tool-name" data-server="@server.Name">@server.Name</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Address"><span class="tool-hint">@server.Url</span></MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="server.Scope" Assistants="_assistants" Shared="server.Shared" /></MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                             Color="@(server.Status == ServerStatuses.Available ? Color.Success : Color.Warning)">@server.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Tools">
+                    @server.ToolCount
+                    @if (server.PendingReviewCount > 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@server.PendingReviewCount to review</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Last refreshed">@(server.LastRefreshedAt is { } at ? at.ToLocalTime().ToString("g") : "never")</MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_screen.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="_screen.Loading" OnClick="_screen.LoadMoreAsync">Load more</MudButton>
+        }
+    </ChildContent>
+</ListPage>
+
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="_form?.IsDirty == true" OnClose="_screen.CloseDrawer">
+    @if (_form is null)
+    {
+        @if (_drawerProblem is not null)
+        {
+            <ProblemMessage Problem="_drawerProblem" />
+        }
+        else
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+    }
+    else
+    {
+        <form @onsubmit="SaveAsync" data-form="server">
+            <MudStack Spacing="3">
+                @if (_server is { Status: ServerStatuses.Unavailable })
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                        The server is unavailable, so none of its tools are offered to a model.
+                        @if (!string.IsNullOrWhiteSpace(_server.LastError))
+                        {
+                            <span> Last error: @_server.LastError</span>
+                        }
+                    </MudAlert>
+                }
+
+                @if (_server is { Shared: true })
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                        This server belongs to another tenant, which shares it with you. You can read it; only its owner can change it.
+                    </MudAlert>
+                }
+
+                <MudTextField @bind-Value="_form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="32"
+                              ReadOnly="ReadOnly" HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tools as name__tool." />
+                <MudTextField @bind-Value="_form.Url" Label="URL" Variant="Variant.Outlined" Required="true" ReadOnly="ReadOnly"
+                              HelperText="Streamable HTTP endpoint, e.g. http://host:3001/mcp. Put credentials in the headers, not in the URL." />
+                @if (!ReadOnly)
+                {
+                    <MudTextField @bind-Value="_form.HeadersText" Label="Headers" Variant="Variant.Outlined" Lines="3" autocomplete="off"
+                                  HelperText="@HeadersHint" />
+                    @if (_form.HadHeaders)
+                    {
+                        <MudCheckBox T="bool" @bind-Value="_form.RemoveHeaders" Label="Remove the stored headers" Dense="true" />
+                    }
+
+                    <ScopePicker Form="_form.Scope" Assistants="_assistants" Tenants="_tenants" Subject="server"
+                                 GlobalWarning="Every tenant of this installation will see the server and its enabled tools." />
+                }
+                else if (_server is not null)
+                {
+                    <div><ScopeBadge Scope="_server.Scope" Assistants="_assistants" Shared="true" /></div>
+                }
+
+                <ProblemMessage Problem="_formProblem" />
+                @if (_formError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@_formError</MudAlert>
+                }
+
+                @if (_test is not null)
+                {
+                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">
+                        Connected. The server offers @_test.Tools.Count tool(s)@(_test.Tools.Count > 0 ? ": " + string.Join(", ", _test.Tools.Select(t => t.Name)) : ".")
+                    </MudAlert>
+                    @foreach (var tested in _test.Tools.Where(t => ToolAdminView.DescribeAnnotations(t.Annotations).Count > 0))
+                    {
+                        <div class="tool-hint">@tested.Name claims: @string.Join(", ", ToolAdminView.DescribeAnnotations(tested.Annotations))</div>
+                    }
+                }
+
+                @if (_form.HadHeaders && !ReadOnly)
+                {
+                    <div class="tool-hint">Test connection uses only the headers typed above, not the stored ones.</div>
+                }
+
+                @if (_refreshed is not null)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" role="status">
+                        Refreshed. @Describe("Added", _refreshed.Added) @Describe("Changed", _refreshed.Changed) @Describe("Removed", _refreshed.Removed)
+                        @if (_refreshed.Added.Count + _refreshed.Changed.Count + _refreshed.Removed.Count == 0)
+                        {
+                            <span>Nothing changed.</span>
+                        }
+                    </MudAlert>
+                }
+
+                @if (!ReadOnly)
+                {
+                    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="_busy" StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
+                        @if (_server is not null)
+                        {
+                            <MudButton Variant="Variant.Outlined" OnClick="RefreshAsync" Disabled="_busy" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy"
+                                       StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                        }
+                    </MudStack>
+                }
+            </MudStack>
+        </form>
+
+        @if (_server is not null)
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Tools</MudText>
+            <ToolTable Source="_server.Id" Generation="_toolsGeneration" Load="LoadToolsAsync" ReadOnly="ReadOnly" Busy="_busy" OnChange="ChangeToolAsync" />
+        }
+    }
+</ListDrawer>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> StatusOptions =
+    [
+        new(ServerStatuses.Available, "Available"),
+        new(ServerStatuses.Unavailable, "Unavailable"),
+    ];
+
+    private ListDrawer? _drawer;
+    private ListScreen<ToolServer> _screen = null!;
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<TenantSummary>? _tenants;
+    private string? _notice;
+    private bool _busy;
+
+    private ServerForm? _form;
+    private ToolServer? _server;
+    private ApiProblem? _drawerProblem;
+    private ApiProblem? _formProblem;
+    private string? _formError;
+    private ToolServerTest? _test;
+    private ToolRefresh? _refreshed;
+    private int _toolsGeneration;
+    private string? _openedId;
+
+    /// <summary>The drawer: <c>new</c> or the id of the server. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private bool ReadOnly => _server is { Shared: true };
+
+    private string DrawerTitle => _form is null ? "Server" : _form.Id is null ? "Add server" : ReadOnly ? _form.OriginalName : $"Edit {_form.OriginalName}";
+
+    private string HeadersHint => _form is { HadHeaders: true }
+        ? "Stored headers are kept as they are. Type new ones, one per line as Name: value, to replace them."
+        : "Optional, one per line as Name: value, e.g. Authorization: Bearer … They are stored encrypted and never shown again.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screen = new ListScreen<ToolServer>(Navigation, "/tools/mcp", (query, cursor) => Api.ListToolServersPageAsync(query, ListScreen<ToolServer>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var tenants = await Api.ListTenantsAsync();
+        _tenants = tenants.IsSuccess ? tenants.Value : null;
+
+        await _screen.ReloadAsync();
+        _ = Onboarding.MarkAsync("tools");
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _formProblem = null;
+        _formError = null;
+        _test = null;
+        _refreshed = null;
+        _drawerProblem = null;
+
+        if (Id is null)
+        {
+            _form = null;
+            _server = null;
+        }
+        else if (Id == ListScreen<ToolServer>.NewId)
+        {
+            _server = null;
+            _form = ServerForm.New();
+        }
+        else if (Guid.TryParse(Id, out var id))
+        {
+            _form = null;
+            _server = null;
+            var result = await Api.GetToolServerAsync(id);
+            if (result.IsSuccess)
+            {
+                _server = result.Value;
+                _form = ServerForm.From(result.Value);
+            }
+            else
+            {
+                _drawerProblem = result.Problem;
+            }
+        }
+        else
+        {
+            _form = null;
+            _drawerProblem = new ApiProblem(404, "tool.server_not_found", "There is no such server.", new Dictionary<string, string[]>());
+        }
+    }
+
+    private Task<ApiResult<Page<ToolInfo>>> LoadToolsAsync(ListQuery query, string? cursor) =>
+        Api.ListToolServerToolsPageAsync(_server!.Id, query, ListScreen<ToolInfo>.PageSize, cursor);
+
+    private async Task TestAsync()
+    {
+        _formProblem = null;
+        _formError = null;
+        _test = null;
+
+        var form = _form!;
+        var (headers, error) = form.ParseHeaders();
+        if (error is not null)
+        {
+            _formError = error;
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await Api.TestToolServerAsync(form.Url.Trim(), headers);
+            if (result.IsSuccess)
+            {
+                _test = result.Value;
+            }
+            else
+            {
+                _formProblem = result.Problem;
+            }
+        });
+    }
+
+    private async Task SaveAsync()
+    {
+        _formProblem = null;
+        _formError = null;
+        var form = _form!;
+
+        var (request, error) = form.Build();
+        if (request is null)
+        {
+            _formError = error;
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            if (form.Id is { } id)
+            {
+                var updated = await Api.UpdateToolServerAsync(id, request);
+                if (!updated.IsSuccess)
+                {
+                    _formProblem = updated.Problem;
+                    return;
+                }
+
+                _notice = string.Equals(form.OriginalUrl, request.Url, StringComparison.Ordinal)
+                    ? $"{request.Name} was saved."
+                    : $"{request.Name} was saved. The address changed, so the server is unavailable until you refresh it.";
+            }
+            else
+            {
+                var created = await Api.CreateToolServerAsync(request);
+                if (!created.IsSuccess)
+                {
+                    _formProblem = created.Problem;
+                    return;
+                }
+
+                var pending = created.Value.Tools.Count(t => t.State == ToolStates.PendingReview);
+                _notice = created.Value.Warning
+                    ?? (pending > 0
+                        ? $"{request.Name} was registered. Review its {pending} tool(s) before any model can use them."
+                        : $"{request.Name} was registered.");
+            }
+
+            await CloseAfterAsync();
+        });
+    }
+
+    private async Task RefreshAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.RefreshToolServerAsync(_server!.Id);
+            if (result.IsSuccess)
+            {
+                _refreshed = result.Value;
+            }
+            else
+            {
+                // A failed refresh marks the server unavailable: show that, along with why.
+                _formProblem = result.Problem;
+            }
+
+            var reloaded = await Api.GetToolServerAsync(_server.Id);
+            if (reloaded.IsSuccess)
+            {
+                _server = reloaded.Value;
+            }
+
+            _toolsGeneration++;
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task DeleteAsync()
+    {
+        var server = _server!;
+        if (!await Confirmations.ConfirmDeleteAsync(
+                Dialogs,
+                $"Delete {server.Name}?",
+                $"Its {server.ToolCount} tool(s) are removed from every assistant. The audit log keeps their names.",
+                "Delete server"))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await Api.DeleteToolServerAsync(server.Id);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"{server.Name} was deleted.";
+            await CloseAfterAsync();
+        });
+    }
+
+    private async Task ChangeToolAsync((ToolInfo Tool, string State, string Policy) change)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.UpdateToolAsync(change.Tool.Id, change.State, change.Policy);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+            }
+
+            var reloaded = await Api.GetToolServerAsync(_server!.Id);
+            if (reloaded.IsSuccess)
+            {
+                _server = reloaded.Value;
+            }
+
+            _toolsGeneration++;
+            await _screen.ReloadAsync();
+        });
+    }
+
+    // The form saved or the server went away: nothing is left to lose, so the drawer closes without asking.
+    private async Task CloseAfterAsync()
+    {
+        _form = null;
+        _server = null;
+        _drawer?.SkipNextGuard();
+        _screen.CloseDrawer();
+        await _screen.ReloadAsync();
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _notice = null;
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Describe(string what, IReadOnlyList<string> names) =>
+        names.Count == 0 ? string.Empty : $"{what}: {string.Join(", ", names)}.";
+
+    public void Dispose() => _screen.Dispose();
+}

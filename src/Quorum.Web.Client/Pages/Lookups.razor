@@ -1,0 +1,418 @@
+@page "/knowledge/lookups"
+@page "/knowledge/lookups/{Id}"
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>Lookups · Quorum</PageTitle>
+
+<ListPage Title="Lookups"
+          Description="Lookups are lists of values that models read to know what exists: the suppliers, the departments, the audiences. Quorum computes them in the background from the knowledge bases (choose the fields in the registration of each) and keeps them in its own database; you can also type a list by hand. A lookup tool, configured in Tools, hands them to an assistant."
+          AddLabel="New manual lookup" OnAdd="() => _screen.OpenDrawer(ListScreen<LookupListItem>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No lookup yet" EmptyText="Type a list by hand, or mark the fields to list in the registration of a knowledge base.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+                   TypeLabel="Kind" TypeOptions="KindOptions" KnowledgeBases="_knowledgeBases" SearchPlaceholder="Search by name" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        <MudTable T="LookupListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="lookups">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Kind</MudTh>
+                <MudTh>Source</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>Values</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="lookup">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(lookup.Id.ToString())" Class="tool-name" data-lookup="@lookup.Name">@lookup.Name</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Kind"><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@lookup.Kind</MudChip></MudTd>
+                <MudTd DataLabel="Source">
+                    @if (lookup.KnowledgeBase is { } knowledgeBase)
+                    {
+                        <span>@knowledgeBase.Name@(lookup.Field is null ? string.Empty : $" · {lookup.Field}")</span>
+                    }
+                    else
+                    {
+                        <span class="tool-hint">typed by hand</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="lookup.Scope" Assistants="_assistants" Shared="lookup.Shared" /></MudTd>
+                <MudTd DataLabel="Values">@lookup.ValueCount</MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_screen.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="_screen.Loading" OnClick="_screen.LoadMoreAsync">Load more</MudButton>
+        }
+    </ChildContent>
+</ListPage>
+
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="_form?.IsDirty == true" OnClose="_screen.CloseDrawer">
+    @if (_form is null && _item is null)
+    {
+        @if (_drawerProblem is not null)
+        {
+            <ProblemMessage Problem="_drawerProblem" />
+        }
+        else
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+    }
+    else if (_form is not null)
+    {
+        <div data-form="manual-lookup">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@LookupLimits.MaxNameLength" Immediate="true"
+                              HelperText="Lower-case letters, digits and '_'. The model sees it, and a lookup tool needs it to be different from the other lookups it uses." />
+                <MudTextField @bind-Value="_form.Description" Label="Description" Variant="Variant.Outlined" Lines="2" MaxLength="@LookupLimits.MaxDescriptionLength"
+                              HelperText="What the list is. The model reads this to choose which list to ask for." />
+                <label class="tool-policy">Who can use it
+                    <select aria-label="Scope" @bind="_form.Scope">
+                        <option value="@ScopeKinds.Tenant">This tenant</option>
+                        <option value="@ScopeKinds.Global">Every tenant</option>
+                    </select>
+                </label>
+                @if (_form.Scope == ScopeKinds.Tenant)
+                {
+                    <MudTextField @bind-Value="_form.TenantsText" Label="Other tenants (ids, optional)" Variant="Variant.Outlined" Lines="2"
+                                  HelperText="Tenants that may use the lookup besides this one, read-only." />
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">Every tenant of this installation will be able to read these values.</MudAlert>
+                }
+
+                <MudTextField @bind-Value="_form.ValuesText" Label="Values" Variant="Variant.Outlined" Lines="10" Immediate="true" Class="schema-input" aria-label="Values"
+                              HelperText="One per line, pasted or typed: value | label | synonym; synonym. The label and the synonyms are optional; the order is kept." />
+                <div>
+                    <label class="tool-policy">Add from a CSV file
+                        <InputFile OnChange="ImportAsync" accept=".csv,text/csv,text/plain" aria-label="CSV file" />
+                    </label>
+                    <div class="tool-hint">
+                        Columns: value, label, synonyms (separated by ";" or "|"). A first row reading "value" is skipped. The values are added to the list above for you to check.
+                    </div>
+                    @if (_imported is not null)
+                    {
+                        <div class="tool-hint" role="status" data-imported>@_imported</div>
+                    }
+                </div>
+
+                @if (_showFormProblems && _form.Problems() is { Count: > 0 } problems)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                        <ul class="problem-list">
+                            @foreach (var message in problems.Take(10))
+                            {
+                                <li>@message</li>
+                            }
+                            @if (problems.Count > 10)
+                            {
+                                <li>and @(problems.Count - 10) more.</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+
+                <ProblemMessage Problem="_formProblem" />
+
+                <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy">@(_form.IsNew ? "Create" : "Save changes")</MudButton>
+                    @if (!_form.IsNew)
+                    {
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy"
+                                   StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                    }
+                </MudStack>
+            </MudStack>
+        </div>
+    }
+    else if (_item is { } item)
+    {
+        @* A derived lookup follows its knowledge base, and a manual one of another tenant is only readable: both are shown, not edited. *@
+        <div data-detail="lookup">
+            <MudStack Spacing="3">
+                <div class="tool-row-head">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@item.Kind</MudChip>
+                    <ScopeBadge Scope="item.Scope" Assistants="_assistants" Shared="item.Shared" />
+                    @if (item.Unit is not null)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Counts @LookupAdminView.UnitLabel(item.Unit)</MudChip>
+                    }
+                </div>
+
+                @if (item.KnowledgeBase is { } source)
+                {
+                    <div class="tool-hint">
+                        Computed from <MudLink Href="@($"/knowledge/bases/{source.Id}")">@source.Name</MudLink>@(item.Field is null ? string.Empty : $", field {item.Field}").
+                        Refreshing and the fields it lists are set in the registration of the knowledge base.
+                    </div>
+                }
+                else if (item.Shared)
+                {
+                    <div class="tool-hint">This list belongs to another tenant, which shares it with you. Only its owner can change it.</div>
+                }
+
+                <LookupValues @key="item.Id" LookupId="item.Id" Counted="@(item.Unit is not null)" Entity="@(item.Kind == LookupListKinds.Derived && item.Field is null)"
+                              OnClose="_screen.CloseDrawer" />
+            </MudStack>
+        </div>
+    }
+</ListDrawer>
+
+@code {
+    private const long MaxImportBytes = 2 * 1024 * 1024;
+
+    private static readonly IReadOnlyList<FilterOption> KindOptions =
+    [
+        new(LookupListKinds.Manual, "Typed by hand"),
+        new(LookupListKinds.Derived, "Computed from a knowledge base"),
+    ];
+
+    private ListDrawer? _drawer;
+    private ListScreen<LookupListItem> _screen = null!;
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<TenantSummary>? _tenants;
+    private IReadOnlyList<LookupKnowledgeBaseRef> _knowledgeBases = [];
+    private ApiProblem? _drawerProblem;
+    private ApiProblem? _formProblem;
+    private bool _busy;
+    private string? _notice;
+    private string? _imported;
+    private string? _openedId;
+    private bool _showFormProblems;
+
+    private LookupListItem? _item;
+    private ManualLookupForm? _form;
+
+    /// <summary>The drawer: <c>new</c> or the id of the lookup. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _form is not null ? (_form.IsNew ? "New manual lookup" : $"Edit {_form.Name}") : _item?.Name ?? "Lookup";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screen = new ListScreen<LookupListItem>(Navigation, "/knowledge/lookups", (query, cursor) => Api.ListLookupsPageAsync(query, ListScreen<LookupListItem>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var bases = await Api.ListKnowledgeBasesAsync();
+        _knowledgeBases = bases.IsSuccess ? [.. bases.Value.Where(b => !b.Shared).Select(b => new LookupKnowledgeBaseRef(b.Id, b.Name))] : [];
+        var tenants = await Api.ListTenantsAsync();
+        _tenants = tenants.IsSuccess ? tenants.Value : null;
+
+        await _screen.ReloadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _item = null;
+        _form = null;
+        _drawerProblem = null;
+        _formProblem = null;
+        _showFormProblems = false;
+        _imported = null;
+
+        if (Id is null)
+        {
+            return;
+        }
+
+        if (Id == ListScreen<LookupListItem>.NewId)
+        {
+            _form = new ManualLookupForm().MarkOpened();
+            return;
+        }
+
+        if (!Guid.TryParse(Id, out var id))
+        {
+            _drawerProblem = NotFound;
+            return;
+        }
+
+        // The row is on screen when the list was opened first; a link or a reload finds it by its id.
+        var item = _screen.Items.FirstOrDefault(l => l.Id == id) ?? await FindAsync(id);
+        if (item is null)
+        {
+            _drawerProblem = NotFound;
+            return;
+        }
+
+        if (item.Kind == LookupListKinds.Manual && !item.Shared)
+        {
+            await OpenFormAsync(item);
+        }
+        else
+        {
+            _item = item;
+        }
+    }
+
+    private static readonly ApiProblem NotFound = new(404, "lookup.not_found", "There is no such lookup.", new Dictionary<string, string[]>());
+
+    // Reads the lists until the lookup shows up; a lookup that cannot be seen is not found.
+    private async Task<LookupListItem?> FindAsync(Guid id)
+    {
+        string? cursor = null;
+        do
+        {
+            var page = await Api.ListLookupsPageAsync(ListQuery.Empty, 200, cursor);
+            if (!page.IsSuccess)
+            {
+                _drawerProblem = page.Problem;
+                return null;
+            }
+
+            if (page.Value.Items.FirstOrDefault(l => l.Id == id) is { } found)
+            {
+                return found;
+            }
+
+            cursor = page.Value.Cursor;
+        }
+        while (cursor is not null);
+
+        return null;
+    }
+
+    private async Task OpenFormAsync(LookupListItem item)
+    {
+        // The values come in pages of at most 200, in the order they were typed.
+        var values = new List<LookupValueInfo>();
+        string? cursor = null;
+        do
+        {
+            var page = await Api.ReadLookupValuesAsync(item.Id, limit: 200, cursor: cursor);
+            if (!page.IsSuccess)
+            {
+                _drawerProblem = page.Problem;
+                return;
+            }
+
+            values.AddRange(page.Value.Values);
+            cursor = page.Value.Cursor;
+        }
+        while (cursor is not null);
+
+        // The list of every lookup leaves the description out; the manual lookups carry it.
+        var manual = await Api.ListManualLookupsAsync();
+        if (!manual.IsSuccess)
+        {
+            _drawerProblem = manual.Problem;
+            return;
+        }
+
+        var info = manual.Value.FirstOrDefault(m => m.Id == item.Id) ?? new ManualLookupInfo(item.Id, item.Name, null, item.Scope, item.ValueCount, item.Shared);
+        _form = ManualLookupForm.From(info, values).MarkOpened();
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        _imported = null;
+        if (_form is null || e.FileCount == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = e.File.OpenReadStream(MaxImportBytes);
+            using var reader = new StreamReader(stream);
+            var added = _form.ImportCsv(await reader.ReadToEndAsync());
+            _imported = added == 0 ? "The file has no value." : $"{added} value(s) added from {e.File.Name}.";
+        }
+        catch (IOException)
+        {
+            _imported = $"The file could not be read; it can have up to {MaxImportBytes / 1024 / 1024} MB.";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _showFormProblems = true;
+        _formProblem = null;
+        if (_form is null || _form.Problems().Count > 0)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var request = _form.ToRequest();
+            var result = _form.Id is { } id
+                ? await Api.UpdateManualLookupAsync(id, request)
+                : (ApiResult)await Api.CreateManualLookupAsync(request);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"{request.Name} was saved.";
+            await CloseAfterAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var form = _form!;
+        if (!await Confirmations.ConfirmDeleteAsync(
+                Dialogs,
+                $"Delete {form.Name}?",
+                "Its values go with it. A lookup tool that uses it must drop it first.",
+                "Delete lookup"))
+        {
+            return;
+        }
+
+        _busy = true;
+        _formProblem = null;
+        try
+        {
+            var result = await Api.DeleteManualLookupAsync(form.Id!.Value);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"{form.Name} was deleted.";
+            await CloseAfterAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Saved or deleted: nothing is left to lose, so the drawer closes without asking.
+    private async Task CloseAfterAsync()
+    {
+        _form = null;
+        _drawer?.SkipNextGuard();
+        _screen.CloseDrawer();
+        await _screen.ReloadAsync();
+    }
+
+    public void Dispose() => _screen.Dispose();
+}

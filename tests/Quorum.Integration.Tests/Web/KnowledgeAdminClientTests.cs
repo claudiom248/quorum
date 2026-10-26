@@ -156,7 +156,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
         Assert.True(created.Definition.EstimatedTokens > 0);
 
         // The editor reads the saved tool back into the same form, with the definition preview.
-        var saved = (await api.GetRagToolAsync(created.Id, Ct)).Value;
+        var saved = (await api.GetRagToolAsync(created.Id, cancellationToken: Ct)).Value;
         var reloaded = RagToolForm.From(saved, dictionary);
         Assert.Equal(form.ExposedFieldIds.Order(), reloaded.ExposedFieldIds.Order());
         Assert.Equal([department.Id], reloaded.FixedFilterFieldIds);
@@ -171,7 +171,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
         reloaded.Policy = ToolPolicies.Confirm;
         reloaded.TopK = 3;
         Assert.True((await api.UpdateRagToolAsync(created.Id, reloaded.ToRequest(dictionary), Ct)).IsSuccess);
-        var updated = (await api.GetRagToolAsync(created.Id, Ct)).Value;
+        var updated = (await api.GetRagToolAsync(created.Id, cancellationToken: Ct)).Value;
         Assert.Equal((ToolPolicies.Confirm, 3), (updated.Policy, updated.TopK));
 
         // It is listed with its knowledge base, and the server refuses a second tool with the same name.
@@ -258,7 +258,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
         Assert.Contains("year_hr", parameters);
         Assert.Contains("year_min", parameters);
         Assert.Contains("year_max", parameters);
-        var saved = (await api.GetRagToolAsync(created.Id, Ct)).Value;
+        var saved = (await api.GetRagToolAsync(created.Id, cancellationToken: Ct)).Value;
         var reloaded = RagToolForm.From(saved, dictionary, choices.Fields);
         Assert.Equal("year_hr", Assert.Single(reloaded.Aliases).Value);
     }

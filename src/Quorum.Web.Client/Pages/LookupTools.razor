@@ -1,0 +1,667 @@
+@page "/tools/lookup"
+@page "/tools/lookup/{Id}"
+@using System.Text.Json
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>Lookup tools · Quorum</PageTitle>
+
+<ListPage Title="Lookup tools"
+          Description="A lookup tool lets an assistant read lists of values (the suppliers, the departments, the audiences) so it knows what exists before it searches. Choose the lists here, and the knowledge bases it may also ask about live. Create the lists in Knowledge; activate a tool on an assistant in Settings."
+          AddLabel="Add lookup tool" OnAdd="() => _screen.OpenDrawer(ListScreen<LookupToolListItem>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No lookup tool is configured yet" EmptyText="Add one to let an assistant read lists of values.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+                   StatusOptions="StatusOptions" SearchPlaceholder="Search by name or description" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem ?? _problem : _problem" />
+        <MudTable T="LookupToolListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="lookup">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Lists</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>State</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="tool">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-lookup-tool="@tool.Name">lookup__@tool.Name</MudLink>
+                    @foreach (var warning in tool.Warnings)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" data-warning="@warning.Code">@warning.Code</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Lists">
+                    @foreach (var lookup in tool.Lookups)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@lookup.Name</MudChip>
+                    }
+                    @if (tool.KnowledgeBases.Count > 0)
+                    {
+                        <span class="tool-hint"> also asks live: @string.Join(", ", tool.KnowledgeBases.Select(k => k.Name))</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Assistants="_assistants" Shared="tool.Shared" /></MudTd>
+                <MudTd DataLabel="State">
+                    <ToolStateCell @key="(tool.Id, _rowGeneration)" Tool="AsToolInfo(tool)" ReadOnly="tool.Shared" Busy="_busy" OnChange="ChangeToolAsync" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_screen.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="_screen.Loading" OnClick="_screen.LoadMoreAsync">Load more</MudButton>
+        }
+    </ChildContent>
+</ListPage>
+
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="IsDirty" OnClose="_screen.CloseDrawer">
+    @if (_form is null)
+    {
+        @if (_drawerProblem is not null)
+        {
+            <ProblemMessage Problem="_drawerProblem" />
+        }
+        else
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+    }
+    else
+    {
+        var form = _form;
+        var inUse = LookupToolView.KnowledgeBasesInUse(form, _choices);
+        var fields = RagToolView.Candidates(inUse, _details, _dictionary);
+        var exposed = fields.Fields.Where(f => form.ExposedFieldIds.Contains(f.Id)).ToList();
+        <div data-form="lookup">
+        <form @onsubmit="SaveAsync">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@LookupToolLimits.MaxNameLength"
+                              HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as lookup__name." />
+                <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="@LookupToolLimits.MaxDescriptionLength"
+                              HelperText="For the model: when to read these lists. Each list's own description is added to it." />
+
+                <MudText Typo="Typo.subtitle2">Lookups (@form.Lookups.Count of @LookupToolLimits.MaxLookups)</MudText>
+                @if (_choices.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                        No lookup exists yet. <MudLink Href="knowledge/lookups">Create one</MudLink> first.
+                    </MudAlert>
+                }
+
+                <ChoicePicker Name="lookups" TItem="LookupChoice" Items="_choices" IsSelected="c => form.Lookups.Any(l => l.LookupId == c.Id)" Label="c => c.Label"
+                              Group='c => c.KnowledgeBaseName ?? "Typed by hand"' GroupLabel="Source" SearchLabel="Search the lookups"
+                              IsDisabled="c => form.Lookups.Count >= LookupToolLimits.MaxLookups"
+                              OnToggle="t => ToggleLookupAsync(t.Item, t.On)">
+                    <SelectedTemplate Context="choice">
+                        @{
+                            var binding = form.Lookups.First(l => l.LookupId == choice.Id);
+                        }
+                        <div class="exposed-field" data-lookup-choice="@choice.Label">
+                            <MudCheckBox T="bool" Value="true" ValueChanged="on => ToggleLookupAsync(choice, on)" Dense="true" Label="@choice.Label" />
+                            <MudTextField T="string" @bind-Value="binding.Alias" Label="@($"Alias of {choice.Label}")" Placeholder="@choice.Name"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Class="alias-input"
+                                          HelperText="The name the model sees. Leave empty to use the list's own name; needed when two lists have the same name." />
+                        </div>
+                    </SelectedTemplate>
+                </ChoicePicker>
+
+                <div class="tool-hint">
+                    Lists of a knowledge base shared with you are not shown here: bind the manual lookups instead, or ask its owner to share the tool.
+                </div>
+
+                <MudText Typo="Typo.subtitle2">Knowledge bases to ask live (@form.KnowledgeBaseIds.Count of @LookupToolLimits.MaxKnowledgeBases)</MudText>
+                <div class="tool-hint">
+                    Optional. With one, the model can also ask which documents match some filters, and how many, straight from the store. Without
+                    any, it only reads the saved lists.
+                </div>
+                <ChoicePicker Name="knowledge-bases" TItem="KnowledgeBaseListItem" Items="_bases" IsSelected="k => form.KnowledgeBaseIds.Contains(k.Id)"
+                              Label='k => k.Shared ? $"{k.Name} (shared with you)" : k.Name' SearchLabel="Search the knowledge bases"
+                              IsDisabled="k => form.KnowledgeBaseIds.Count >= LookupToolLimits.MaxKnowledgeBases"
+                              OnToggle="t => ToggleKnowledgeBaseAsync(t.Item, t.On)" />
+
+                @if (inUse.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2">Fields the model can filter on (@form.ExposedFieldIds.Count of @LookupToolLimits.MaxExposedFields)</MudText>
+                    @if (!fields.Complete)
+                    {
+                        <div class="tool-hint">
+                            A knowledge base shared with you does not show its mapping, so every dictionary field is offered.
+                            The server refuses fields that none of the knowledge bases maps.
+                        </div>
+                    }
+
+                    @if (fields.Fields.Count == 0)
+                    {
+                        <div class="tool-hint">These knowledge bases map no metadata field: the model cannot filter.</div>
+                    }
+
+                    @foreach (var (cluster, group) in KnowledgeAdminView.GroupByCluster(fields.Fields))
+                    {
+                        @if (cluster is not null)
+                        {
+                            <div class="tool-hint cluster-heading" data-cluster="@cluster">@cluster</div>
+                        }
+
+                        @foreach (var field in group)
+                        {
+                            var on = form.ExposedFieldIds.Contains(field.Id);
+                            var label = KnowledgeAdminView.FieldLabel(field, fields.Fields);
+                            <div class="exposed-field">
+                                <MudCheckBox T="bool" Value="on" ValueChanged="value => ToggleExposed(field, value)" Dense="true"
+                                             Disabled="@(!on && form.ExposedFieldIds.Count >= LookupToolLimits.MaxExposedFields)"
+                                             Label="@($"{label} ({KnowledgeAdminView.TypeLabel(field.Type).ToLowerInvariant()})")" />
+                                @if (on)
+                                {
+                                    <MudTextField T="string" Value="@(form.Aliases.GetValueOrDefault(field.Id) ?? string.Empty)" ValueChanged="alias => form.SetAlias(field, alias)"
+                                                  Label="@($"Alias of {label}")" Placeholder="@field.Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  Immediate="true" Class="alias-input" HelperText="The name the model sees. Leave empty to use the field's name." />
+                                }
+                            </div>
+                        }
+                    }
+
+                    <MudText Typo="Typo.subtitle2">Fixed filters</MudText>
+                    <div class="tool-hint">
+                        Always applied, combined with AND, never visible to the model and never overridden by it. They cut a slice out of
+                        the lists, such as one department; each different slice is computed on its own.
+                    </div>
+                    @foreach (var id in form.FixedFilterFieldIds.ToList())
+                    {
+                        @if (_dictionary.FirstOrDefault(f => f.Id == id) is { } filterField)
+                        {
+                            <div class="fixed-filter" data-filter="@filterField.Name">
+                                <div class="tool-row-head">
+                                    <span class="tool-name">@KnowledgeAdminView.FieldLabel(filterField, _dictionary)</span>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" aria-label="@($"Remove the filter on {filterField.Name}")"
+                                                   OnClick="() => form.RemoveFixedFilter(id, _dictionary)" />
+                                </div>
+                                <FilterEditor Parameters="form.ParametersOf(filterField)" Values="form.FilterValues" />
+                            </div>
+                        }
+                    }
+
+                    @if (form.UnshownFilters.Count > 0)
+                    {
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                            The stored filters include @string.Join(", ", form.UnshownFilters), which this editor cannot show (the field is gone).
+                            Saving drops them.
+                        </MudAlert>
+                    }
+
+                    @if (fields.Fields.Where(f => !form.FixedFilterFieldIds.Contains(f.Id)).ToList() is { Count: > 0 } available)
+                    {
+                        <label class="tool-policy">Add a fixed filter on
+                            <select @key="form.FixedFilterFieldIds.Count" aria-label="Add a fixed filter" value="" @onchange="e => AddFixedFilter(e.Value?.ToString())">
+                                <option value="">Choose a field…</option>
+                                @foreach (var field in available)
+                                {
+                                    <option value="@field.Id">@KnowledgeAdminView.FieldLabel(field, fields.Fields)</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                }
+
+                <label class="tool-policy">Policy
+                    <select aria-label="Policy" @bind="form.Policy">
+                        <option value="@ToolPolicies.Auto">Run without asking</option>
+                        <option value="@ToolPolicies.Confirm">Ask before running</option>
+                    </select>
+                </label>
+
+                <ScopePicker Form="form.Scope" Assistants="_assistants" Tenants="_tenants" Subject="tool"
+                             GlobalWarning="Every tenant of this installation will see the tool. All its lookups and knowledge bases must be visible to every tenant too." />
+
+                <div class="tool-hint" data-operations>
+                    Operations the model will get: <span class="tool-name">@string.Join(", ", LookupToolView.Operations(form.KnowledgeBaseIds.Count > 0))</span>
+                    (the saved definition below is the real one).
+                </div>
+
+                @if (_formProblems.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                        <ul class="problem-list">
+                            @foreach (var message in _formProblems)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+
+                <ProblemMessage Problem="_formProblem" />
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    @if (!form.IsNew)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy" OnClick="DeleteAsync" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                        <MudSpacer />
+                    }
+
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                </MudStack>
+
+                @foreach (var warning in _formWarnings)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" data-warning="@warning.Code">@warning.Message</MudAlert>
+                }
+
+                @if (_definitions.Count > 0)
+                {
+                    <MudDivider />
+                    <MudText Typo="Typo.subtitle2">
+                        @(_definitions.Count == 1 ? "Definition the model gets" : $"Definitions the model gets ({_definitions.Count} functions)")
+                    </MudText>
+                    @if (_definitions.Count > 1)
+                    {
+                        <div class="tool-hint" data-definitions-total>@RagToolView.SizeText(_definitions.Sum(d => d.EstimatedTokens)) in all</div>
+                    }
+
+                    @foreach (var definition in _definitions)
+                    {
+                        <div data-definition="@definition.Name" class="mb-2">
+                            <div class="tool-hint">
+                                <span class="tool-name">@definition.Name</span> · @RagToolView.SizeText(definition.EstimatedTokens)
+                            </div>
+                            <div class="tool-row-description">@definition.Description</div>
+                            <details class="tool-detail" open="@(_definitions.Count == 1)">
+                                <summary>Input schema</summary>
+                                <pre class="tool-pre">@RagToolView.FormatSchema(definition.InputSchema)</pre>
+                            </details>
+                        </div>
+                    }
+                }
+                else if (!form.IsNew)
+                {
+                    <div class="tool-hint">No lookup of this tool is visible, so it is not offered to any model.</div>
+                }
+            </MudStack>
+        </form>
+        </div>
+    }
+</ListDrawer>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> StatusOptions =
+    [
+        new(ToolStates.Enabled, "Enabled"),
+        new(ToolStates.Disabled, "Disabled"),
+        new(ToolStates.PendingReview, "To review"),
+    ];
+
+    private ListDrawer? _drawer;
+    private ListScreen<LookupToolListItem> _screen = null!;
+    private List<KnowledgeBaseListItem> _bases = [];
+    private IReadOnlyList<LookupChoice> _choices = [];
+    private IReadOnlyList<DictionaryField> _dictionary = [];
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<TenantSummary>? _tenants;
+    private readonly Dictionary<Guid, KnowledgeBaseDetail> _details = [];
+    private ApiProblem? _problem;
+    private ApiProblem? _drawerProblem;
+    private bool _busy;
+    private int _rowGeneration;
+    private string? _notice;
+    private bool _lookupsLoaded;
+    private string? _openedId;
+
+    private LookupToolForm? _form;
+    private string _initial = string.Empty;
+    private IReadOnlyList<string> _formProblems = [];
+    private ApiProblem? _formProblem;
+    private IReadOnlyList<LookupToolDefinitionInfo> _definitions = [];
+    private IReadOnlyList<ToolWarning> _formWarnings = [];
+
+    /// <summary>The drawer: <c>new</c> or the id of the tool. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _form is null ? "Lookup tool" : _form.IsNew ? "Add lookup tool" : $"Edit lookup__{_form.OriginalName}";
+
+    private bool IsDirty => _form is not null && !string.Equals(_initial, Snapshot(), StringComparison.Ordinal);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screen = new ListScreen<LookupToolListItem>(Navigation, "/tools/lookup", (query, cursor) => Api.ListLookupToolsPageAsync(query, ListScreen<LookupToolListItem>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var tenants = await Api.ListTenantsAsync();
+        _tenants = tenants.IsSuccess ? tenants.Value : null;
+
+        await _screen.ReloadAsync();
+
+        // Started now so that the drawer, when it opens, finds what it needs.
+        _ = EnsureLookupsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _formProblems = [];
+        _formProblem = null;
+        _drawerProblem = null;
+        _definitions = [];
+        _formWarnings = [];
+
+        if (Id is null)
+        {
+            _form = null;
+        }
+        else if (Id == ListScreen<LookupToolListItem>.NewId)
+        {
+            _form = null;
+            if (await EnsureLookupsAsync())
+            {
+                _form = new LookupToolForm();
+                _initial = Snapshot();
+            }
+        }
+        else if (Guid.TryParse(Id, out var id))
+        {
+            _form = null;
+            var detail = await Api.GetLookupToolAsync(id, live: false);
+            if (!detail.IsSuccess)
+            {
+                _drawerProblem = detail.Problem;
+            }
+            else if (await EnsureLookupsAsync())
+            {
+                await OpenAsync(detail.Value);
+            }
+        }
+        else
+        {
+            _form = null;
+            _drawerProblem = new ApiProblem(404, "tool.not_found", "There is no such tool.", new Dictionary<string, string[]>());
+        }
+    }
+
+    private Task<bool>? _lookupsTask;
+
+    // What the form chooses from is read once, all at the same time, and started as soon as the list is on screen:
+    // by the time the drawer opens it is usually there.
+    private Task<bool> EnsureLookupsAsync() => _lookupsLoaded ? Task.FromResult(true) : _lookupsTask ??= LoadLookupsAsync();
+
+    private async Task<bool> LoadLookupsAsync()
+    {
+        var basesTask = Api.ListKnowledgeBasesAsync();
+        var dictionaryTask = Api.ListDictionaryAsync();
+        var lookupsTask = Api.ListLookupsAsync();
+        await Task.WhenAll(basesTask, dictionaryTask, lookupsTask);
+
+        foreach (ApiResult result in new ApiResult[] { basesTask.Result, dictionaryTask.Result, lookupsTask.Result })
+        {
+            if (!result.IsSuccess)
+            {
+                _drawerProblem = result.Problem;
+                _lookupsTask = null;
+                return false;
+            }
+        }
+
+        _bases = basesTask.Result.Value;
+        _dictionary = dictionaryTask.Result.Value;
+        _choices = LookupToolView.Choices(lookupsTask.Result.Value);
+        _lookupsLoaded = true;
+        return true;
+    }
+
+    private string Snapshot() => JsonSerializer.Serialize(_form!.ToRequest(_dictionary));
+
+    // The tool row lets the admin enable, disable and set the policy like for any other tool.
+    private static ToolInfo AsToolInfo(LookupToolListItem tool) => new(
+        tool.Id,
+        "Lookup",
+        null,
+        tool.Name,
+        tool.Lookups.Count > 0 ? $"Reads {string.Join(", ", tool.Lookups.Select(l => l.Name))}." : string.Empty,
+        tool.State,
+        tool.Policy,
+        null);
+
+    private async Task ChangeToolAsync((ToolInfo Tool, string State, string Policy) change)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.UpdateToolAsync(change.Tool.Id, change.State, change.Policy);
+            if (!result.IsSuccess)
+            {
+                // The control already shows what the admin chose: draw the rows again from what the server has.
+                _problem = result.Problem;
+                _rowGeneration++;
+            }
+
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task LoadDetailAsync(Guid knowledgeBaseId)
+    {
+        if (_details.ContainsKey(knowledgeBaseId) || _bases.FirstOrDefault(b => b.Id == knowledgeBaseId) is not { Shared: false })
+        {
+            return;
+        }
+
+        var detail = await Api.GetKnowledgeBaseAsync(knowledgeBaseId);
+        if (detail.IsSuccess)
+        {
+            _details[knowledgeBaseId] = detail.Value;
+        }
+    }
+
+    private async Task LoadDetailsInUseAsync(LookupToolForm form)
+    {
+        await Task.WhenAll(LookupToolView.KnowledgeBasesInUse(form, _choices).Select(LoadDetailAsync));
+    }
+
+    // The fields the tool may expose follow the knowledge bases it queries and those its lists come from.
+    private void FollowCandidates(LookupToolForm form)
+    {
+        var choices = RagToolView.Candidates(LookupToolView.KnowledgeBasesInUse(form, _choices), _details, _dictionary);
+        form.ApplyCandidates(choices.Fields, exposeNew: choices.Complete);
+    }
+
+    private async Task OpenAsync(LookupToolDetail detail)
+    {
+        var probe = new LookupToolForm();
+        probe.KnowledgeBaseIds.AddRange(detail.KnowledgeBaseIds);
+        probe.Lookups.AddRange(detail.Lookups.Select(l => new LookupBindingForm(l.LookupId)));
+        await LoadDetailsInUseAsync(probe);
+
+        var mapped = RagToolView.Candidates(LookupToolView.KnowledgeBasesInUse(probe, _choices), _details, _dictionary);
+        var form = LookupToolForm.From(detail, _dictionary, mapped.Fields);
+        form.KnowCandidates(mapped.Fields);
+        _form = form;
+        _initial = Snapshot();
+        // One function for each thing the tool does; a server that sends only one definition still shows it.
+        _definitions = detail.Definitions is { Count: > 0 } ? detail.Definitions : detail.Definition is null ? [] : [detail.Definition];
+        _formWarnings = detail.Warnings;
+        _ = AddLiveWarningsAsync(detail.Id);
+        _formProblems = [];
+        _formProblem = null;
+    }
+
+
+    // What only the store can tell takes a while: the editor is already usable when it arrives, and adds it if still on this tool.
+    private async Task AddLiveWarningsAsync(Guid toolId)
+    {
+        var result = await Api.GetLookupToolLiveWarningsAsync(toolId);
+        if (result.IsSuccess && _form?.Id == toolId && result.Value.Count > 0)
+        {
+            _formWarnings = [.. _formWarnings, .. result.Value.Where(w => _formWarnings.All(known => known.Code != w.Code || known.Message != w.Message))];
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ToggleLookupAsync(LookupChoice choice, bool on)
+    {
+        var form = _form!;
+        if (on)
+        {
+            form.AddLookup(choice.Id);
+            await LoadDetailsInUseAsync(form);
+        }
+        else
+        {
+            form.RemoveLookup(choice.Id);
+        }
+
+        FollowCandidates(form);
+    }
+
+    private async Task ToggleKnowledgeBaseAsync(KnowledgeBaseListItem knowledgeBase, bool on)
+    {
+        var form = _form!;
+        if (on)
+        {
+            if (!form.KnowledgeBaseIds.Contains(knowledgeBase.Id))
+            {
+                form.KnowledgeBaseIds.Add(knowledgeBase.Id);
+            }
+
+            await LoadDetailAsync(knowledgeBase.Id);
+        }
+        else
+        {
+            form.KnowledgeBaseIds.Remove(knowledgeBase.Id);
+        }
+
+        FollowCandidates(form);
+    }
+
+    private void ToggleExposed(DictionaryField field, bool on)
+    {
+        if (on)
+        {
+            _form!.ExposedFieldIds.Add(field.Id);
+        }
+        else
+        {
+            _form!.ExposedFieldIds.Remove(field.Id);
+        }
+    }
+
+    private void AddFixedFilter(string? value)
+    {
+        if (Guid.TryParse(value, out var id))
+        {
+            _form!.AddFixedFilter(id);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var form = _form!;
+        _formProblem = null;
+        _formProblems = form.Problems(_dictionary, _choices);
+        if (_formProblems.Count > 0)
+        {
+            return;
+        }
+
+        var request = form.ToRequest(_dictionary);
+        await RunAsync(async () =>
+        {
+            Guid id;
+            if (form.Id is { } existing)
+            {
+                var updated = await Api.UpdateLookupToolAsync(existing, request);
+                if (!updated.IsSuccess)
+                {
+                    _formProblem = updated.Problem;
+                    return;
+                }
+
+                id = existing;
+            }
+            else
+            {
+                var created = await Api.CreateLookupToolAsync(request);
+                if (!created.IsSuccess)
+                {
+                    _formProblem = created.Problem;
+                    return;
+                }
+
+                id = created.Value.Id;
+            }
+
+            // The drawer stays open on the saved tool, with the definition the model gets, what it takes of the context and the warnings.
+            var saved = await Api.GetLookupToolAsync(id, live: false);
+            if (saved.IsSuccess)
+            {
+                await OpenAsync(saved.Value);
+                _notice = $"lookup__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                if (form.Id is null)
+                {
+                    _openedId = id.ToString();
+                    _drawer?.SkipNextGuard();
+                    Navigation.NavigateTo(_screen.DrawerUri(id.ToString()), replace: true);
+                }
+            }
+            else
+            {
+                _problem = saved.Problem;
+            }
+
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task DeleteAsync()
+    {
+        var form = _form!;
+        if (!await Confirmations.ConfirmDeleteAsync(
+                Dialogs,
+                $"Delete lookup__{form.OriginalName}?",
+                "It is removed from every assistant. The audit log keeps its name.",
+                "Delete tool"))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await Api.DeleteLookupToolAsync(form.Id!.Value);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"lookup__{form.OriginalName} was deleted.";
+            _form = null;
+            _drawer?.SkipNextGuard();
+            _screen.CloseDrawer();
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _problem = null;
+        _notice = null;
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => _screen.Dispose();
+}

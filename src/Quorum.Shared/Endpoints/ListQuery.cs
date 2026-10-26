@@ -25,8 +25,13 @@ public sealed record ListQuery(
 
     public const int MaxLimit = 200;
 
+    public const int MaxSearchLength = 200;
+
     private static readonly Error InvalidLimit =
         Error.Validation("list.invalid_limit", $"The limit must be a whole number from 1 to {MaxLimit}.");
+
+    private static readonly Error SearchTooLong =
+        Error.Validation("list.invalid_filter", $"The search text must be at most {MaxSearchLength} characters.");
 
     private static readonly Error InvalidIds =
         Error.Validation("list.invalid_filter", "The tenant and assistant filters take ids.");
@@ -51,6 +56,11 @@ public sealed record ListQuery(
         }
 
         var q = query.TryGetValue("q", out var qText) ? qText.ToString().Trim() : null;
+        if (q is { Length: > MaxSearchLength })
+        {
+            return SearchTooLong;
+        }
+
         var cursor = query.TryGetValue("cursor", out var cursorText) && !string.IsNullOrEmpty(cursorText) ? cursorText.ToString() : null;
 
         return new ListQuery(Values(query, "scope"), tenants, assistants, Values(query, "type"), Values(query, "status"), string.IsNullOrEmpty(q) ? null : q, limit, cursor);

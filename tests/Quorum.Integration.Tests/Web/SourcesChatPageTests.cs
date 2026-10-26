@@ -27,7 +27,9 @@ public sealed class SourcesChatPageTests : BunitContext
         Services.AddSingleton(TimeProvider.System);
         var client = new QuorumApi(_api.CreateClient());
         Services.AddSingleton(client);
-        Services.AddSingleton(new Session(client));
+        var session = new Session(client);
+        Services.AddSingleton(session);
+        Services.AddSingleton(new OnboardingProgress(client, session));
 
         _api.Respond = (method, path) =>
         {

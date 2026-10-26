@@ -15,7 +15,7 @@ public sealed record AdminAccount(string Email, string DisplayName, string Passw
 
 public sealed record ModelEndpointSettings(string BaseUrl, string ModelName, string? ApiKey, int ContextTokenBudget, bool? SupportsTools = null);
 
-public sealed record CompleteSetupRequest(AdminAccount Admin, ModelEndpointSettings Model, string SystemPrompt);
+public sealed record CompleteSetupRequest(AdminAccount Admin, ModelEndpointSettings Model, string? SystemPrompt = null);
 
 public sealed record AssistantSettings(string BaseUrl, string ModelName, bool HasApiKey, int ContextTokenBudget, string SystemPrompt, bool SupportsTools = true);
 
@@ -88,6 +88,14 @@ public sealed record ConversationContext(
 public sealed record AssistantSummary(Guid Id, string Name);
 
 /// <param name="Current">Whether this is the tenant of the signed-in user: the one a scope never lists as "another tenant".</param>
+public sealed record ChecklistItem(string Key, bool Done);
+
+public sealed record Checklist(List<ChecklistItem> Items, bool Dismissed)
+{
+    /// <summary>The checklist shows until every step is done or an admin dismisses it.</summary>
+    public bool IsVisible => !Dismissed && !Items.All(i => i.Done);
+}
+
 public sealed record TenantSummary(Guid Id, string Name, bool Current = false);
 
 /// <summary>A tool an assistant may use, and whether it is activated on it.</summary>
@@ -172,3 +180,31 @@ public sealed record ToolRefresh(string Status, IReadOnlyList<string> Added, IRe
 
 /// <summary>One page of a list. <paramref name="Cursor"/> is set when there is a next one.</summary>
 public sealed record Page<T>(IReadOnlyList<T> Items, string? Cursor);
+
+/// <summary>One recorded tool call. The audit log is read-only.</summary>
+public sealed record ToolAuditItem(
+    Guid Id,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt,
+    Guid UserId,
+    Guid AssistantId,
+    Guid ConversationId,
+    Guid CallId,
+    string? ServerName,
+    string ToolName,
+    string? Decision,
+    string Outcome,
+    string Arguments,
+    bool ArgumentsTruncated,
+    int? ResultCharacters,
+    int? SourceCount,
+    int? DurationMs,
+    string? ErrorCode);
+
+/// <param name="Total">The entries that match the filters, across all pages.</param>
+public sealed record ToolAuditPage(IReadOnlyList<ToolAuditItem> Items, int Total);
+
+public static class AuditOutcomes
+{
+    public static readonly IReadOnlyList<string> All = ["Started", "Succeeded", "Failed", "Denied", "Cancelled", "TimedOut"];
+}

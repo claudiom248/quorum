@@ -200,7 +200,7 @@ internal static class ScopeFilter
         error = null!;
         foreach (var value in values)
         {
-            if (!Enum.TryParse<TEnum>(value, ignoreCase: true, out var member) || !Enum.IsDefined(member))
+            if (!Enum.TryParse<TEnum>(value, ignoreCase: true, out var member) || !Enum.IsDefined(member) || int.TryParse(value, out _))
             {
                 error = Unsupported($"'{value}' is not a value of the {filter} filter: use {string.Join(", ", Enum.GetNames<TEnum>())}.");
                 return false;

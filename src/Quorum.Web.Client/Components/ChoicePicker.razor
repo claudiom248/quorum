@@ -1,0 +1,137 @@
+@typeparam TItem
+
+@* Chooses some of many: what is chosen stays on top where it can be edited, the rest is searched, narrowed by source and shown a
+   few at a time, so a long list never has to be scrolled. *@
+<div class="choice-picker" data-picker="@Name">
+    @if (Chosen.Count > 0)
+    {
+        <div class="picker-selected" data-picker-selected>
+            @foreach (var item in Chosen)
+            {
+                @if (SelectedTemplate is not null)
+                {
+                    @SelectedTemplate(item)
+                }
+                else
+                {
+                    <MudCheckBox T="bool" Value="true" ValueChanged="_ => ToggleAsync(item, false)" Dense="true" Label="@Label(item)" />
+                }
+            }
+        </div>
+    }
+
+    @if (Items.Count > PageSize || _search.Length > 0 || _group is not null)
+    {
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="mt-2">
+            <MudTextField T="string" Value="_search" ValueChanged="SearchChanged" Label="@SearchLabel" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="picker-search" />
+            @if (Groups.Count > 1)
+            {
+                <MudSelect T="string" Value="_group" ValueChanged="GroupChanged" Label="@GroupLabel" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="picker-group">
+                    @foreach (var group in Groups)
+                    {
+                        <MudSelectItem T="string" Value="@group">@group</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudStack>
+    }
+
+    <div class="picker-available" data-picker-available>
+        @foreach (var item in Visible)
+        {
+            <MudCheckBox T="bool" Value="false" ValueChanged="_ => ToggleAsync(item, true)" Dense="true" Label="@Label(item)"
+                         Disabled="@(IsDisabled?.Invoke(item) ?? false)" />
+        }
+
+        @if (Matching.Count == 0 && Items.Count > Chosen.Count)
+        {
+            <div class="tool-hint" data-picker-empty>Nothing matches.</div>
+        }
+    </div>
+
+    @if (Matching.Count > _shown)
+    {
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _shown += PageSize">Show more (@(Matching.Count - _shown) left)</MudButton>
+    }
+</div>
+
+@code {
+    private string _search = string.Empty;
+    private string? _group;
+    private int _shown;
+
+    /// <summary>Every choice there is.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<TItem> Items { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public Func<TItem, bool> IsSelected { get; set; } = _ => false;
+
+    [Parameter, EditorRequired]
+    public Func<TItem, string> Label { get; set; } = item => item?.ToString() ?? string.Empty;
+
+    /// <summary>Where a choice comes from (a knowledge base); with more than one, the list can be narrowed to one.</summary>
+    [Parameter]
+    public Func<TItem, string?>? Group { get; set; }
+
+    [Parameter]
+    public string GroupLabel { get; set; } = "Source";
+
+    [Parameter]
+    public string SearchLabel { get; set; } = "Search";
+
+    /// <summary>For the tests and the page: tells the pickers of a form apart.</summary>
+    [Parameter]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>A choice that cannot be added now (a limit was reached).</summary>
+    [Parameter]
+    public Func<TItem, bool>? IsDisabled { get; set; }
+
+    /// <summary>How a chosen item shows: the label and whatever else it takes (an alias); a plain checkbox when left out.</summary>
+    [Parameter]
+    public RenderFragment<TItem>? SelectedTemplate { get; set; }
+
+    [Parameter]
+    public EventCallback<(TItem Item, bool On)> OnToggle { get; set; }
+
+    [Parameter]
+    public int PageSize { get; set; } = 10;
+
+    private List<TItem> Chosen => [.. Items.Where(IsSelected)];
+
+    private List<string> Groups => Group is null
+        ? []
+        : [.. Items.Select(Group).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+    private List<TItem> Matching => [.. Items.Where(i => !IsSelected(i) && Fits(i))];
+
+    private IEnumerable<TItem> Visible => Matching.Take(Math.Max(_shown, PageSize));
+
+    private bool Fits(TItem item) =>
+        (_search.Length == 0 || Label(item).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
+        && (_group is null || string.Equals(Group?.Invoke(item), _group, StringComparison.Ordinal));
+
+    protected override void OnParametersSet()
+    {
+        if (_shown < PageSize)
+        {
+            _shown = PageSize;
+        }
+    }
+
+    private void SearchChanged(string? text)
+    {
+        _search = text ?? string.Empty;
+        _shown = PageSize;
+    }
+
+    private void GroupChanged(string? group)
+    {
+        _group = string.IsNullOrEmpty(group) ? null : group;
+        _shown = PageSize;
+    }
+
+    private Task ToggleAsync(TItem item, bool on) => OnToggle.InvokeAsync((item, on));
+}

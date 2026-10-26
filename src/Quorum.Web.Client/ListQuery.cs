@@ -19,9 +19,12 @@ public sealed record ListQuery
 
     public IReadOnlyList<string> Status { get; init; } = [];
 
+    /// <summary>Only the lookups computed from these knowledge bases.</summary>
+    public IReadOnlyList<Guid> KnowledgeBase { get; init; } = [];
+
     public string? Q { get; init; }
 
-    public bool HasFilters => Scope.Count + Tenant.Count + Assistant.Count + Type.Count + Status.Count > 0 || !string.IsNullOrWhiteSpace(Q);
+    public bool HasFilters => Scope.Count + Tenant.Count + Assistant.Count + Type.Count + Status.Count + KnowledgeBase.Count > 0 || !string.IsNullOrWhiteSpace(Q);
 
     public static ListQuery Empty => new();
 
@@ -45,7 +48,7 @@ public sealed record ListQuery
         foreach (var pair in text.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var separator = pair.IndexOf('=', StringComparison.Ordinal);
-            var key = Decode(separator < 0 ? pair : pair[..separator]);
+            var key = Decode(separator < 0 ? pair : pair[..separator]).ToLowerInvariant();
             var value = separator < 0 ? string.Empty : pair[(separator + 1)..];
 
             query = key switch
@@ -55,6 +58,7 @@ public sealed record ListQuery
                 "status" => query with { Status = Merge(query.Status, Values(value)) },
                 "tenant" => query with { Tenant = Merge(query.Tenant, Ids(value)) },
                 "assistant" => query with { Assistant = Merge(query.Assistant, Ids(value)) },
+                "knowledgebase" => query with { KnowledgeBase = Merge(query.KnowledgeBase, Ids(value)) },
                 "q" => query with { Q = string.IsNullOrWhiteSpace(Decode(value)) ? null : Decode(value).Trim() },
                 _ => query,
             };
@@ -72,6 +76,7 @@ public sealed record ListQuery
         Add(parts, "assistant", Assistant.Select(id => id.ToString()));
         Add(parts, "type", Type);
         Add(parts, "status", Status);
+        Add(parts, "knowledgeBase", KnowledgeBase.Select(id => id.ToString()));
         if (!string.IsNullOrWhiteSpace(Q))
         {
             parts.Add($"q={Uri.EscapeDataString(Q.Trim())}");

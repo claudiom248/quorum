@@ -42,6 +42,19 @@
             </MudSelect>
         }
 
+        @if (KnowledgeBases is { Count: > 0 })
+        {
+            <MudSelect T="string" Label="Knowledge base" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.KnowledgeBase.Select(id => id.ToString()).ToList()"
+                       SelectedValuesChanged="values => ChangeAsync(Query with { KnowledgeBase = PickIds(values) })"
+                       ToStringFunc="KnowledgeBaseName">
+                @foreach (var knowledgeBase in KnowledgeBases)
+                {
+                    <MudSelectItem T="string" Value="@knowledgeBase.Id.ToString()">@knowledgeBase.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
         @if (TypeOptions is { Count: > 0 })
         {
             <MudSelect T="string" Label="@TypeLabel" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
@@ -80,7 +93,7 @@
 </div>
 
 @code {
-    private static readonly IReadOnlyList<FilterOption> ScopeOptions =
+    private static readonly IReadOnlyList<FilterOption> AllScopes =
     [
         new("global", "Global"),
         new("tenant", "Tenant"),
@@ -98,6 +111,10 @@
     [Parameter]
     public bool ShowScope { get; set; } = true;
 
+    /// <summary>The scopes this list can be filtered by; a list whose items are never scoped to assistants leaves that one out.</summary>
+    [Parameter]
+    public IReadOnlyList<FilterOption> ScopeOptions { get; set; } = AllScopes;
+
     /// <summary>The tenants of the installation; the filter shows only when there is more than one.</summary>
     [Parameter]
     public IReadOnlyList<TenantSummary>? Tenants { get; set; }
@@ -111,6 +128,10 @@
 
     [Parameter]
     public string TypeLabel { get; set; } = "Type";
+
+    /// <summary>The knowledge bases a list can be narrowed to (the lookups, by where they come from); the filter shows when there are some.</summary>
+    [Parameter]
+    public IReadOnlyList<LookupKnowledgeBaseRef>? KnowledgeBases { get; set; }
 
     [Parameter]
     public IReadOnlyList<FilterOption>? TypeOptions { get; set; }
@@ -144,6 +165,9 @@
     private string TenantName(string value) =>
         Guid.TryParse(value, out var id) ? Tenants?.FirstOrDefault(t => t.Id == id)?.Name ?? value : value;
 
+    private string KnowledgeBaseName(string value) =>
+        Guid.TryParse(value, out var id) ? KnowledgeBases?.FirstOrDefault(k => k.Id == id)?.Name ?? value : value;
+
     private string AssistantName(string value) =>
         Guid.TryParse(value, out var id) ? Assistants.FirstOrDefault(a => a.Id == id)?.Name ?? value : value;
 
@@ -162,6 +186,11 @@
         foreach (var assistant in Query.Assistant)
         {
             yield return new Chip("assistant", assistant.ToString(), $"Agent: {AssistantName(assistant.ToString())}");
+        }
+
+        foreach (var knowledgeBase in Query.KnowledgeBase)
+        {
+            yield return new Chip("knowledgeBase", knowledgeBase.ToString(), $"Knowledge base: {KnowledgeBaseName(knowledgeBase.ToString())}");
         }
 
         foreach (var type in Query.Type)
@@ -187,6 +216,7 @@
         "assistant" => Query with { Assistant = [.. Query.Assistant.Where(v => v.ToString() != chip.Value)] },
         "type" => Query with { Type = [.. Query.Type.Where(v => v != chip.Value)] },
         "status" => Query with { Status = [.. Query.Status.Where(v => v != chip.Value)] },
+        "knowledgeBase" => Query with { KnowledgeBase = [.. Query.KnowledgeBase.Where(v => v.ToString() != chip.Value)] },
         _ => Query with { Q = null },
     });
 }
