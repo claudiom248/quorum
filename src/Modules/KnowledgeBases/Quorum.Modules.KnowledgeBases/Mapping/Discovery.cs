@@ -70,6 +70,11 @@ internal static class WarningCodes
     public const string PgVectorColumnNameUnsupported = "knowledge_base.pgvector_column_name_unsupported";
     public const string PgVectorDistanceDefaulted = "knowledge_base.pgvector_distance_defaulted";
     public const string PgVectorFieldUnindexed = "knowledge_base.pgvector_field_unindexed";
+    public const string PgVectorVectorUnindexed = "knowledge_base.pgvector_vector_unindexed";
+    public const string PgVectorOldVersion = "knowledge_base.pgvector_old_version";
+    public const string PgVectorWritable = "knowledge_base.pgvector_writable";
+    public const string PgVectorColumnMissing = "knowledge_base.pgvector_column_missing";
+    public const string MappedValuesMismatch = "knowledge_base.mapped_values_mismatch";
     public const string VectorColumnRequired = "knowledge_base.vector_column_required";
     public const string VectorColumnNotFound = "knowledge_base.vector_column_not_found";
 }

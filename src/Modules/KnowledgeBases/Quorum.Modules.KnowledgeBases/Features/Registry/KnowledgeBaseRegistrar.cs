@@ -149,7 +149,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
         }
 
         var found = await probe.RunAsync(adapter, connection, registration.EmbeddingModel, sample: true, cancellationToken);
-        var verdict = Evaluate(found, registration.Mapping);
+        var verdict = Evaluate(adapter, found, registration.Mapping, await TypesOfAsync(registration.Mapping, cancellationToken));
         Apply(registration, verdict, now);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -238,7 +238,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
             settings,
             mapping,
             resolved.Value.Created,
-            Evaluate(found, mapping),
+            Evaluate(adapter, found, mapping, resolved.Value.Types),
             request.LookupRefreshHours ?? existing?.LookupRefreshHours ?? KnowledgeBase.DefaultLookupRefreshHours);
     }
 
@@ -371,11 +371,31 @@ internal sealed partial class KnowledgeBaseRegistrar(
     /// What the store says about the knowledge base. It is available when nothing stops a search; every problem the probe found does,
     /// while a mapped path missing from the sample only warns.
     /// </summary>
-    private static Verdict Evaluate(StoreProbeResult found, KnowledgeBaseMapping mapping)
+    private static Verdict Evaluate(IStoreAdapter adapter, StoreProbeResult found, KnowledgeBaseMapping mapping, IReadOnlyList<(string Path, DictionaryFieldType Type)> types)
     {
-        var warnings = found.Warnings.Concat(found.Notes).Concat(MappingValidation.MissingPaths(found.Sample, mapping)).ToList();
-        var error = found.Warnings.Count == 0 ? null : string.Join(' ', found.Warnings.Select(w => w.Message));
+        var check = found.Info is { } info ? adapter.CheckMapping(info, found.Declared, mapping) : MappingCheck.None;
+        var misfit = MappingValidation.Values(found.Sample, types) is { } mismatch
+            ? new InspectWarning(WarningCodes.MappedValuesMismatch, $"{mismatch.Description} The mapping no longer fits the data.", Path: null)
+            : null;
+
+        var warnings = found.Warnings
+            .Concat(found.Notes)
+            .Concat(check.Problems)
+            .Concat(check.Notes)
+            .Concat(MappingValidation.MissingPaths(found.Sample, mapping).Where(w => w.Path is null || !check.Covered.Contains(w.Path)))
+            .Concat(misfit is null ? [] : [misfit])
+            .ToList();
+        var problems = found.Warnings.Concat(check.Problems).ToList();
+        var error = problems.Count == 0 ? null : string.Join(' ', problems.Select(w => w.Message));
         return new Verdict(error, warnings);
+    }
+
+    /// <summary>The dictionary types of the mapped fields, to check a saved mapping against what the source holds now.</summary>
+    private async Task<List<(string Path, DictionaryFieldType Type)>> TypesOfAsync(KnowledgeBaseMapping mapping, CancellationToken cancellationToken)
+    {
+        var ids = mapping.Fields.Select(f => f.DictionaryFieldId).ToList();
+        var types = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking().Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => f.Type, cancellationToken);
+        return [.. mapping.Fields.Where(f => types.ContainsKey(f.DictionaryFieldId)).Select(f => (f.Path, types[f.DictionaryFieldId]))];
     }
 
     private static void Apply(KnowledgeBase registration, Verdict verdict, DateTimeOffset now)

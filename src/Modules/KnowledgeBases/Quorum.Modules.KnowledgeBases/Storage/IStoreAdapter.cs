@@ -33,6 +33,14 @@ internal sealed record SourceProbe(
     IReadOnlyList<InspectWarning>? Notes = null,
     DeclaredProperties? Declared = null);
 
+/// <param name="Problems">What stops a search: the knowledge base is saved unavailable.</param>
+/// <param name="Notes">What the administrator should fix but does not stop a search.</param>
+/// <param name="Covered">The mapped paths the check already reported, so that the sample does not report them again.</param>
+internal sealed record MappingCheck(IReadOnlyList<InspectWarning> Problems, IReadOnlyList<InspectWarning> Notes, IReadOnlySet<string> Covered)
+{
+    public static MappingCheck None { get; } = new([], [], new HashSet<string>());
+}
+
 /// <summary>The vector that will be searched, or the warning that says why it cannot be told yet.</summary>
 internal sealed record VectorSelection(VectorInfo? Vector, InspectWarning? Warning);
 
@@ -86,6 +94,12 @@ internal interface IStoreAdapter
 
     /// <summary>The warning for a mapped path the source has no index for, or <see langword="null"/> when it has one or when the store cannot tell.</summary>
     InspectWarning? UnindexedPathWarning(SourceInfo source, string path);
+
+    /// <summary>
+    /// What verification adds about a saved mapping that the source can contradict (D-13): <paramref name="Problems"/> make the
+    /// knowledge base unavailable, <paramref name="Notes"/> only warn. A kind with nothing to add says nothing.
+    /// </summary>
+    MappingCheck CheckMapping(SourceInfo source, DeclaredProperties? declared, KnowledgeBaseMapping mapping) => MappingCheck.None;
 
     InspectWarning DimensionMismatchWarning(VectorInfo vector, int embeddingSize);
 

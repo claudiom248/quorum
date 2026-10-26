@@ -10,8 +10,9 @@ namespace Quorum.Modules.KnowledgeBases.Storage.PgVector;
 internal sealed record PgVectorIndex(string Column, string Method, string OperatorClass);
 
 /// <param name="Kind">The catalog's letter: <c>r</c> table, <c>p</c> partitioned table, <c>v</c> view, <c>m</c> materialized view.</param>
+/// <param name="CanWrite">Whether the connecting user may change the relation: Quorum never does, so a read-only role is advised.</param>
 /// <param name="ApproximateRows">What the catalog estimates; negative when the relation was never analysed or has no rows of its own (a view).</param>
-internal sealed record PgVectorRelation(string Schema, string Name, string Kind, long ApproximateRows, IReadOnlyList<PgVectorColumn> Columns, IReadOnlyList<PgVectorIndex> Indexes)
+internal sealed record PgVectorRelation(string Schema, string Name, string Kind, long ApproximateRows, IReadOnlyList<PgVectorColumn> Columns, IReadOnlyList<PgVectorIndex> Indexes, bool CanWrite = false)
 {
     /// <summary>A plain view has no index of its own, so what it is missing cannot be told from it.</summary>
     public bool IsView => Kind == "v";
@@ -203,9 +204,11 @@ internal sealed class PgVectorConnector(PgVectorDataSources dataSources)
         string kind;
         long rows;
         bool canRead;
+        bool canWrite;
         await using (var command = new NpgsqlCommand(
             """
-            SELECT c.oid, c.relkind::text, c.reltuples::bigint, has_table_privilege(c.oid, 'SELECT')
+            SELECT c.oid, c.relkind::text, c.reltuples::bigint, has_table_privilege(c.oid, 'SELECT'),
+                   (has_table_privilege(c.oid, 'INSERT') OR has_table_privilege(c.oid, 'UPDATE') OR has_table_privilege(c.oid, 'DELETE') OR has_table_privilege(c.oid, 'TRUNCATE'))
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = @schema AND c.relname = @name AND c.relkind IN ('r', 'v', 'm', 'p')
             """,
@@ -224,6 +227,7 @@ internal sealed class PgVectorConnector(PgVectorDataSources dataSources)
             kind = reader.GetString(1);
             rows = reader.GetInt64(2);
             canRead = reader.GetBoolean(3);
+            canWrite = reader.GetBoolean(4);
         }
 
         if (!canRead)
@@ -274,7 +278,7 @@ internal sealed class PgVectorConnector(PgVectorDataSources dataSources)
             }
         }
 
-        return new PgVectorRelation(schema, name, kind, rows, columns, indexes);
+        return new PgVectorRelation(schema, name, kind, rows, columns, indexes, canWrite);
     }
 
     // vector_dims takes a vector or a halfvec; the first row that has a value says how many dimensions the column holds.
