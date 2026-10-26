@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Quorum.SampleKnowledgeBase;
 
 var options = ParseArguments(args);
@@ -13,6 +14,11 @@ if (options.ContainsKey("help"))
           --api-key <key>    Qdrant API key, if the server needs one
           --prefix <text>    prepended to every collection name
           --schema <name>    prints the pasteable JSON Schema of 'flat' or 'nested' and exits
+
+        To seed sample relations into a PostgreSQL with pgvector instead (spec 008, D-18; Qdrant is then left alone):
+
+          --pgvector <connection string>  e.g. "Host=localhost;Database=samples;Username=quorum;Password=quorum-dev"
+          --relation-schema <name>        the schema the relations are created in (default public)
 
         By default the vectors are the deterministic 64-dimension fake of the tests. To query the collections from a real
         Quorum, embed them with the model the knowledge base will be registered with:
@@ -45,6 +51,11 @@ if (options.TryGetValue("schema", out var schemaName))
 
 var url = options.GetValueOrDefault("url", "http://localhost:6333");
 using var services = new ServiceCollection().AddHttpClient().BuildServiceProvider();
+if (options.TryGetValue("pgvector", out var connectionString))
+{
+    return await SeedRelationsAsync(connectionString);
+}
+
 var http = services.GetRequiredService<IHttpClientFactory>().CreateClient();
 http.BaseAddress = new Uri(url.TrimEnd('/') + "/");
 if (options.TryGetValue("api-key", out var apiKey))
@@ -90,6 +101,56 @@ catch (Exception exception) when (exception is HttpRequestException or InvalidOp
 {
     Console.Error.WriteLine($"Cannot seed {url}: {exception.Message}");
     return 1;
+}
+
+async Task<int> SeedRelationsAsync(string connectionString)
+{
+    try
+    {
+        var schema = options.GetValueOrDefault("relation-schema", "public");
+        var embedder = CreateEmbedder();
+        var dimensions = embedder is null ? DeterministicEmbedding.DefaultDimensions : await embedder.ProbeDimensionsAsync(CancellationToken.None);
+        if (embedder is not null)
+        {
+            Console.WriteLine($"Embedding with {options["embedding-model"]}: {dimensions} dimensions.");
+        }
+
+        var relations = SampleRelations.All(schema, dimensions, fromModel: embedder is not null);
+        await using var dataSource = PgVectorSeeder.CreateDataSource(connectionString);
+        var seeder = new PgVectorSeeder(dataSource, embedder);
+        await seeder.SeedAsync(schema, relations, CancellationToken.None);
+        foreach (var relation in relations)
+        {
+            Console.WriteLine($"{schema}.{relation.Name}: {relation.Rows.Count} rows. {relation.Description}");
+        }
+
+        return 0;
+    }
+    catch (Exception exception) when (exception is NpgsqlException or HttpRequestException or InvalidOperationException or UriFormatException or ArgumentException)
+    {
+        Console.Error.WriteLine($"Cannot seed the PostgreSQL database: {exception.Message}");
+        return 1;
+    }
+}
+
+ModelEmbedder? CreateEmbedder()
+{
+    if (!options.TryGetValue("embedding-url", out var embeddingUrl))
+    {
+        return null;
+    }
+
+    if (!options.TryGetValue("embedding-model", out var embeddingModel) || embeddingModel.Length == 0)
+    {
+        throw new InvalidOperationException("--embedding-url needs --embedding-model.");
+    }
+
+    return ModelEmbedder.Create(
+        services.GetRequiredService<IHttpClientFactory>().CreateClient(),
+        new Uri(embeddingUrl),
+        embeddingModel,
+        options.GetValueOrDefault("document-prefix", string.Empty),
+        options.GetValueOrDefault("embedding-key"));
 }
 
 static Dictionary<string, string> ParseArguments(string[] arguments)

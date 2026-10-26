@@ -24,9 +24,9 @@ public static class SampleCollections
     /// <summary>The name of the vector to choose in <see cref="NamedVectors"/>: its size matches <see cref="DeterministicEmbedding.DefaultDimensions"/>.</summary>
     public const string DenseVectorName = "dense";
 
-    private const string BaseUrl = "https://intranet.example.test/policies";
+    internal const string BaseUrl = "https://intranet.example.test/policies";
 
-    private static readonly Chunk[] Corpus =
+    internal static readonly Chunk[] Corpus =
     [
         new(1, "leave", "Annual leave policy", 1, "Employees accrue twenty-five days of paid annual leave per year. Leave requests must be approved by the line manager at least two weeks in advance.", "hr", 2024, "2024-01-15", false, ["hr", "leave"]),
         new(2, "leave", "Annual leave policy", 2, "Unused annual leave can be carried over to the next year up to five days. Carried over days expire on the thirty-first of March.", "hr", 2024, "2024-01-15", false, ["hr", "leave"]),
@@ -334,7 +334,7 @@ public static class SampleCollections
             ["tags"] = new JsonArray(chunk.Tags.Select(tag => (JsonNode?)JsonValue.Create(tag)).ToArray()),
         });
 
-    private sealed record Chunk(
+    internal sealed record Chunk(
         ulong Id,
         string Document,
         string Title,
