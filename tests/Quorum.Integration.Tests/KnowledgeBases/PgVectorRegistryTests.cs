@@ -251,8 +251,8 @@ public sealed class PgVectorRegistryTests(PostgresFixture postgres, PgVectorFixt
         Assert.Contains(afterText.Warnings, w => w.Code == "knowledge_base.pgvector_column_missing" && w.Path == "text");
     }
 
-    [Fact] // AC-42
-    public async Task TheMappingMembersOfTheLookupsAreRefusedForAKindWithoutLookups()
+    [Fact] // A2-1, AC-42 as read for a kind with the capability
+    public async Task TheMappingMembersOfTheLookupsAreAcceptedBecauseTheKindHasLookups()
     {
         var (app, admin) = await StartAsync();
         await using var _ = app;
@@ -265,9 +265,9 @@ public sealed class PgVectorRegistryTests(PostgresFixture postgres, PgVectorFixt
             fields = new[] { new { path = "department", name = "department", listable = true } },
         };
 
-        Assert.Equal(
-            "knowledge_base.lookups_not_supported",
-            await RegisterRefusedAsync(admin, Body(connection, mapping: listable, createFields: [new { name = "department", type = "Text" }])));
-        Assert.Equal("Available", (await RegisterAsync(admin, Body(connection))).Status);
+        var registered = await RegisterAsync(admin, Body(connection, mapping: listable, createFields: [new { name = "department", type = "Text" }]));
+
+        var detail = await KnowledgeBaseApi.GetAsync(admin, registered.Id);
+        Assert.True(Assert.Single(detail.Mapping!.Fields).Listable);
     }
 }

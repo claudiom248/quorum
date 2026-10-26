@@ -15,7 +15,7 @@ namespace Quorum.Modules.KnowledgeBases.Storage.PgVector;
 internal abstract class PgVectorStatement(PgVectorRelation relation)
 {
     // The path of the value of a json scalar, for #>>.
-    private const string Scalar = "'{}'";
+    protected const string Scalar = "'{}'";
 
     // A date in a json key is an ISO 8601 text; only one that starts like a real calendar date is cast.
     private const string IsoDate = "'^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'";
