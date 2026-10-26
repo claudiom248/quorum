@@ -13,7 +13,7 @@ if (options.ContainsKey("help"))
           --url <url>        Qdrant REST address (default http://localhost:6333, the dev compose)
           --api-key <key>    Qdrant API key, if the server needs one
           --prefix <text>    prepended to every collection name
-          --schema <name>    prints the pasteable JSON Schema of 'flat' or 'nested' and exits
+          --schema <name>    prints the pasteable JSON Schema of 'flat', 'nested', 'relation-flat' or 'relation-langchain' and exits
 
         To seed sample relations into a PostgreSQL with pgvector instead (spec 008, D-18; Qdrant is then left alone):
 
@@ -36,12 +36,14 @@ if (options.TryGetValue("schema", out var schemaName))
     var schema = schemaName switch
     {
         "flat" => SampleSchemas.Flat,
+        "relation-flat" => SampleSchemas.RelationFlat,
+        "relation-langchain" => SampleSchemas.RelationLangChain,
         "nested" => SampleSchemas.Nested,
         _ => null,
     };
     if (schema is null)
     {
-        Console.Error.WriteLine("--schema takes 'flat' or 'nested'.");
+        Console.Error.WriteLine("--schema takes 'flat', 'nested', 'relation-flat' or 'relation-langchain'.");
         return 1;
     }
 

@@ -1163,7 +1163,7 @@
       "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
       "title": "Bad Request",
       "status": 400,
-      "detail": "The kind must be Qdrant: it is the only storage kind supported.",
+      "detail": "The kind must be one of: Qdrant, PgVector.",
       "code": "knowledge_base.unsupported_kind"
     }
   },
@@ -1173,7 +1173,7 @@
       "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
       "title": "Bad Request",
       "status": 400,
-      "detail": "The kind must be Qdrant: it is the only storage kind supported.",
+      "detail": "The kind must be one of: Qdrant, PgVector.",
       "code": "knowledge_base.unsupported_kind"
     }
   },

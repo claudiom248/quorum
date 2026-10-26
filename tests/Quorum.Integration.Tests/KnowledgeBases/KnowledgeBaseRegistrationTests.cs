@@ -219,7 +219,7 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
     }
 
     [Fact]
-    public async Task TheKindMustBeQdrant()
+    public async Task TheKindMustBeOneThatIsSupported()
     {
         var (app, admin, collection, url) = await StartWithFlatAsync();
         await using var _ = app;
@@ -231,7 +231,7 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
             {
                 name = "policies",
                 description = "Company policies.",
-                kind = "PgVector",
+                kind = "Pinecone",
                 connection = new { url, collection },
                 embeddingModel = KnowledgeBaseApi.EmbeddingModel,
                 mapping = KnowledgeBaseApi.TextOnly(),

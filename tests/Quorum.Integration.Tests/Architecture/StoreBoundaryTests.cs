@@ -8,16 +8,24 @@ public sealed class StoreBoundaryTests
 {
     private static readonly string ModuleRoot = Path.Combine(FindRepositoryRoot(), "src", "Modules", "KnowledgeBases", "Quorum.Modules.KnowledgeBases");
 
-    public static TheoryData<string> Forbidden() => ["Qdrant.Client", "QdrantConnector"];
+    public static TheoryData<string, string> Forbidden() => new()
+    {
+        { "Qdrant", "Qdrant.Client" },
+        { "Qdrant", "QdrantConnector" },
+        { "PgVector", "NpgsqlDataSource" },
+        { "PgVector", "NpgsqlConnection" },
+        { "PgVector", "Pgvector" },
+        { "PgVector", "PgVectorConnector" },
+    };
 
     [Theory]
     [MemberData(nameof(Forbidden))]
-    public void NothingOutsideTheQdrantFolderReferencesTheQdrantClientOrConnector(string name)
+    public void NothingOutsideAStoreFolderReferencesItsClientOrConnector(string store, string name)
     {
-        var qdrantFolder = Path.Combine(ModuleRoot, "Storage", "Qdrant") + Path.DirectorySeparatorChar;
+        var storeFolder = Path.Combine(ModuleRoot, "Storage", store) + Path.DirectorySeparatorChar;
 
         var offenders = Directory.EnumerateFiles(ModuleRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(file => !file.StartsWith(qdrantFolder, StringComparison.OrdinalIgnoreCase))
+            .Where(file => !file.StartsWith(storeFolder, StringComparison.OrdinalIgnoreCase))
             .Where(file => !IsBuildOutput(file))
             .Where(file => File.ReadAllText(file).Contains(name, StringComparison.Ordinal))
             .Select(file => Path.GetRelativePath(ModuleRoot, file))
@@ -26,11 +34,13 @@ public sealed class StoreBoundaryTests
         Assert.Empty(offenders);
     }
 
-    [Fact]
-    public void TheGuardLooksWhereTheConnectorIs()
+    [Theory]
+    [InlineData("Qdrant")]
+    [InlineData("PgVector")]
+    public void TheGuardLooksWhereTheConnectorIs(string store)
     {
         // The guard above would pass vacuously if the folder moved: the connector must still be where the test looks for it.
-        Assert.True(File.Exists(Path.Combine(ModuleRoot, "Storage", "Qdrant", "QdrantConnector.cs")));
+        Assert.True(File.Exists(Path.Combine(ModuleRoot, "Storage", store, $"{store}Connector.cs")));
     }
 
     private static bool IsBuildOutput(string file)

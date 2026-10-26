@@ -24,12 +24,14 @@ internal sealed record StoreQuery(float[] Vector, IReadOnlyList<FilterCondition>
 /// <param name="Sample">Rows as JSON, empty unless sampling was asked for and the source has records.</param>
 /// <param name="Warnings">Every problem found, with its cause and what follows from it; none stops registration.</param>
 /// <param name="Notes">What the administrator should know that does not stop a search (the store is too old for lookups): shown, never a reason to mark the source unavailable.</param>
+/// <param name="Declared">What the store itself says about the types of the sampled properties, for the stores whose records have a schema.</param>
 internal sealed record SourceProbe(
     bool Reachable,
     SourceInfo? Info,
     IReadOnlyList<JsonObject> Sample,
     IReadOnlyList<InspectWarning> Warnings,
-    IReadOnlyList<InspectWarning>? Notes = null);
+    IReadOnlyList<InspectWarning>? Notes = null,
+    DeclaredProperties? Declared = null);
 
 /// <summary>The vector that will be searched, or the warning that says why it cannot be told yet.</summary>
 internal sealed record VectorSelection(VectorInfo? Vector, InspectWarning? Warning);
@@ -82,9 +84,13 @@ internal interface IStoreAdapter
 
     InspectWarning EmptySourceWarning();
 
-    InspectWarning UnindexedPathWarning(string path);
+    /// <summary>The warning for a mapped path the source has no index for, or <see langword="null"/> when it has one or when the store cannot tell.</summary>
+    InspectWarning? UnindexedPathWarning(SourceInfo source, string path);
 
     InspectWarning DimensionMismatchWarning(VectorInfo vector, int embeddingSize);
+
+    /// <summary>What an inspection says when the vector does not declare its dimensions and no record showed them (<see cref="VectorInfo.Size"/> is 0).</summary>
+    InspectWarning DimensionsUnknownWarning(VectorInfo vector);
 
     /// <summary>The records nearest to the query vector that satisfy every condition, best first.</summary>
     /// <exception cref="StoreException">The store cannot be used.</exception>

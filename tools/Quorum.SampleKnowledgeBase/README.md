@@ -48,6 +48,41 @@ the `summary` vector) stay deterministic. The walk-through is in [docs/knowledge
 | `sample_company` | About forty contracts of sixteen kinds across ten departments, from 2018 to 2025, in four states, for many audiences (a list), with `year`, `status`, `confidential`, `value_eur` and `signed_on`, all indexed: questions with more than one answer for the lookups and the lookup tool |
 | `sample_vendors` | The 18 vendors of `sample_company` as entities (`name`, `country`, `category`, `contract_count`, `supplier_since`, `rating`, `preferred`), with contract counts that match the contracts |
 
+## Seed a PostgreSQL with pgvector (spec 008)
+
+The same tool writes sample **relations** into a PostgreSQL that has the pgvector extension, for the `PgVector` kind. Use a database
+of your own, never the platform's: the dev compose's PostgreSQL has the extension, so a separate database on it works.
+
+```bash
+docker compose -f deploy/docker-compose.dev.yml up -d postgres
+docker compose -f deploy/docker-compose.dev.yml exec postgres psql -U quorum -c "CREATE DATABASE samples"
+dotnet run --project tools/Quorum.SampleKnowledgeBase -- --pgvector "Host=localhost;Database=samples;Username=quorum;Password=quorum-dev"
+```
+
+Options: `--pgvector <connection string>` (Npgsql format; Qdrant is then left alone), `--relation-schema <name>` (default `public`), and the same
+`--embedding-*` options as above to embed with a real model. The extension and the schema are created if they are missing, and seeding again
+recreates the relations.
+
+| Relation | What it is there to exercise |
+|---|---|
+| `sample_flat` | Flat columns (`text`, `document_id`, `title`, `page`, `source_url`, `department`, `year`, `published_on`, `confidential`), HNSW with cosine and B-tree indexes on the filter columns |
+| `sample_langchain` | A LangChain-style table: `uuid`, `document`, `cmetadata` (`jsonb` with every metadata key) and the vector |
+| `sample_tags` | A `text[]` column (`tags`) with a GIN index |
+| `sample_unindexed` | The flat columns with no index at all, not even on the vector |
+| `sample_two_vectors` | Two vector columns, `embedding` (64) and `embedding_summary` (32): the column must be chosen |
+| `sample_halfvec` | A `halfvec` column with HNSW and cosine |
+| `sample_unspecified_dimensions` | A `vector` declared without dimensions: they are measured on a row |
+| `sample_other_vector_size` | 128-dimension vectors, as if ingested with a different model: the verification warns |
+| `sample_empty` | Ready but with no rows |
+| `sample_view` | A view over `sample_flat` without the confidential rows |
+| `sample_ivfflat_l2` | IVFFlat with L2: the distance proposed is `L2` |
+| `sample_inner_product` | HNSW with inner product: the distance proposed is `InnerProduct` |
+| `Sample Mixed Case` | Capitals, spaces and a reserved word (`"Select"`) in the names: every identifier is quoted |
+| `sample_dotted_column` | A column named `meta.year`, which cannot be mapped and is reported |
+| `sample_unmappable` | `bytea`, `int4range`, `interval` and `integer[]` columns, which cannot be mapped and are reported |
+
+The pasteable schemas of the rows are `SampleSchemas.RelationFlat` and `SampleSchemas.RelationLangChain`.
+
 ## Trying the lookups (spec 007)
 
 Seed with a real model (see above), then register the collections and create the tools in the admin:
