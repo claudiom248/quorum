@@ -16,9 +16,10 @@ public sealed class DictionaryClusterTests(PostgresFixture postgres)
         var finance = await DictionaryApi.CreateOkAsync(admin, "year", "Number", cluster: "finance");
         var none = await DictionaryApi.CreateOkAsync(admin, "year", "Boolean");
 
+        // Every list is in name order, then id (spec 010): the same name in three clusters comes in the order they were created.
         var fields = await DictionaryApi.ListAsync(admin);
         Assert.Equal(
-            [(none, null, "Boolean"), (finance, "finance", "Number"), (hr, "hr", "Text")],
+            [(hr, "hr", "Text"), (finance, "finance", "Number"), (none, null, "Boolean")],
             fields.Select(f => (f.Id, f.Cluster, f.Type)).ToArray());
     }
 

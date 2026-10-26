@@ -63,7 +63,7 @@ internal static class LookupToolApi
         (await client.GetFromJsonAsync<DetailBody>(One(id), Ct))!;
 
     public static async Task<IReadOnlyList<ListItemBody>> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<ListItemBody>>(All, Ct))!;
+        (await client.GetFromJsonAsync<KnowledgeBases.KnowledgeBaseApi.PageBody<ListItemBody>>(All, Ct))!.Items;
 
     public static async Task<string?> ProblemCodeAsync(HttpResponseMessage response) => await LookupApi.ProblemCodeAsync(response);
 

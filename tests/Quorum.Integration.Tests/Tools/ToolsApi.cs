@@ -46,7 +46,7 @@ internal static class ToolsApi
         (await client.GetFromJsonAsync<ServerBody>(Server(id), TestContext.Current.CancellationToken))!;
 
     public static async Task<IReadOnlyList<ServerBody>> ListServersAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<ServerBody>>(Servers, TestContext.Current.CancellationToken))!;
+        (await client.GetFromJsonAsync<KnowledgeBases.KnowledgeBaseApi.PageBody<ServerBody>>(Servers, TestContext.Current.CancellationToken))!.Items;
 
     public static async Task<RefreshBody> RefreshServerOkAsync(HttpClient client, Guid id)
     {

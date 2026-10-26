@@ -23,7 +23,7 @@ internal static class DictionaryApi
     }
 
     public static async Task<IReadOnlyList<FieldBody>> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<FieldBody>>(Dictionary, TestContext.Current.CancellationToken))!;
+        (await client.GetFromJsonAsync<KnowledgeBaseApi.PageBody<FieldBody>>(Dictionary, TestContext.Current.CancellationToken))!.Items;
 
     /// <summary>The stable <c>code</c> of a ProblemDetails response.</summary>
     public static async Task<string?> ProblemCodeAsync(HttpResponseMessage response)
@@ -34,5 +34,5 @@ internal static class DictionaryApi
 
     public sealed record CreatedBody(Guid Id);
 
-    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null, bool Shared = false);
+    public sealed record FieldBody(Guid Id, string Name, string Type, string? Description, KnowledgeBaseApi.ScopeBody Scope, int UsedByCount, string? Cluster = null, bool Shared = false);
 }

@@ -12,6 +12,9 @@ internal sealed class PoolTool
     /// <summary>Null for built-in, rag and lookup tools.</summary>
     public string? ServerName { get; init; }
 
+    /// <summary>The server of an MCP tool, loaded by the admin listings only (the pool an assistant draws from does not need it).</summary>
+    public McpServer? Server { get; init; }
+
     public string ExposedName => Tool.Origin switch
     {
         ToolOrigin.Builtin => ToolNaming.Builtin(Tool.Name),
@@ -105,7 +108,7 @@ internal static class ToolVisibility
                           || (lookup != null
                               && (lookup.Scope == ToolScopeKind.Global
                                   || (lookup.Scope == ToolScopeKind.Tenant && lookup.ScopeTenantIds.Contains(tenantId))))))
-            select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
+            select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name, Server = server };
     }
 
     /// <summary>

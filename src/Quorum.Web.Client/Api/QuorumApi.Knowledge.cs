@@ -4,7 +4,10 @@ namespace Quorum.Web.Client.Api;
 public sealed partial class QuorumApi
 {
     public Task<ApiResult<List<DictionaryField>>> ListDictionaryAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<DictionaryField>>("api/knowledge-bases/dictionary", cancellationToken);
+        ListAllAsync<DictionaryField>("api/knowledge-bases/dictionary", cancellationToken);
+
+    public Task<ApiResult<Page<DictionaryField>>> ListDictionaryPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<DictionaryField>>(PageRoute("api/knowledge-bases/dictionary", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<CreatedId>> CreateDictionaryFieldAsync(DictionaryFieldRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<CreatedId>(HttpMethod.Post, "api/knowledge-bases/dictionary", request, setupToken: null, cancellationToken);
@@ -21,7 +24,10 @@ public sealed partial class QuorumApi
         SendAsync<InspectResult>(HttpMethod.Post, "api/knowledge-bases/inspect", request, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<KnowledgeBaseListItem>>> ListKnowledgeBasesAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<KnowledgeBaseListItem>>("api/knowledge-bases", cancellationToken);
+        ListAllAsync<KnowledgeBaseListItem>("api/knowledge-bases", cancellationToken);
+
+    public Task<ApiResult<Page<KnowledgeBaseListItem>>> ListKnowledgeBasesPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<KnowledgeBaseListItem>>(PageRoute("api/knowledge-bases", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<KnowledgeBaseDetail>> GetKnowledgeBaseAsync(Guid id, CancellationToken cancellationToken = default) =>
         GetAsync<KnowledgeBaseDetail>($"api/knowledge-bases/{id}", cancellationToken);
@@ -44,7 +50,10 @@ public sealed partial class QuorumApi
         SendAsync<TestSearchResult>(HttpMethod.Post, $"api/knowledge-bases/{id}/search", request, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<RagToolListItem>>> ListRagToolsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<RagToolListItem>>("api/tools/rag", cancellationToken);
+        ListAllAsync<RagToolListItem>("api/tools/rag", cancellationToken);
+
+    public Task<ApiResult<Page<RagToolListItem>>> ListRagToolsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<RagToolListItem>>(PageRoute("api/tools/rag", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<RagToolDetail>> GetRagToolAsync(Guid id, CancellationToken cancellationToken = default) =>
         GetAsync<RagToolDetail>($"api/tools/rag/{id}", cancellationToken);
@@ -61,7 +70,10 @@ public sealed partial class QuorumApi
     // Lookup tools (spec 007 D-12).
 
     public Task<ApiResult<List<LookupToolListItem>>> ListLookupToolsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<LookupToolListItem>>("api/tools/lookup", cancellationToken);
+        ListAllAsync<LookupToolListItem>("api/tools/lookup", cancellationToken);
+
+    public Task<ApiResult<Page<LookupToolListItem>>> ListLookupToolsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<LookupToolListItem>>(PageRoute("api/tools/lookup", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<LookupToolDetail>> GetLookupToolAsync(Guid id, CancellationToken cancellationToken = default) =>
         GetAsync<LookupToolDetail>($"api/tools/lookup/{id}", cancellationToken);
@@ -108,7 +120,10 @@ public sealed partial class QuorumApi
     }
 
     public Task<ApiResult<List<ManualLookupInfo>>> ListManualLookupsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<ManualLookupInfo>>("api/knowledge-bases/manual-lookups", cancellationToken);
+        ListAllAsync<ManualLookupInfo>("api/knowledge-bases/manual-lookups", cancellationToken);
+
+    public Task<ApiResult<Page<ManualLookupInfo>>> ListManualLookupsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
+        GetAsync<Page<ManualLookupInfo>>(PageRoute("api/knowledge-bases/manual-lookups", query, limit, cursor), cancellationToken);
 
     public Task<ApiResult<CreatedId>> CreateManualLookupAsync(ManualLookupRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<CreatedId>(HttpMethod.Post, "api/knowledge-bases/manual-lookups", request, setupToken: null, cancellationToken);
@@ -118,6 +133,47 @@ public sealed partial class QuorumApi
 
     public Task<ApiResult> DeleteManualLookupAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, $"api/knowledge-bases/manual-lookups/{id}", body: null, setupToken: null, cancellationToken);
+
+    /// <summary>The route with the filters of the query, the page size and the cursor of the page to read.</summary>
+    private static string PageRoute(string route, ListQuery query, int limit, string? cursor)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var parts = new List<string>();
+        var filters = query.ToQueryString();
+        if (filters.Length > 1)
+        {
+            parts.Add(filters[1..]);
+        }
+
+        parts.Add($"limit={limit.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        AddQuery(parts, "cursor", cursor);
+        return $"{route}?{string.Join('&', parts)}";
+    }
+
+    /// <summary>
+    /// Every item of a list, page after page, for the pages that have no paging of their own yet: nothing is silently cut at the
+    /// first page.
+    /// </summary>
+    private async Task<ApiResult<List<T>>> ListAllAsync<T>(string route, CancellationToken cancellationToken)
+    {
+        var items = new List<T>();
+        string? cursor = null;
+        do
+        {
+            var page = await GetAsync<Page<T>>(PageRoute(route, ListQuery.Empty, limit: 200, cursor), cancellationToken);
+            if (!page.IsSuccess)
+            {
+                return ApiResult.Fail<List<T>>(page.Problem!);
+            }
+
+            items.AddRange(page.Value.Items);
+            cursor = page.Value.Cursor;
+        }
+        while (cursor is not null);
+
+        return ApiResult.Ok(items);
+    }
 
     private static void AddQuery(List<string> query, string name, string? value)
     {

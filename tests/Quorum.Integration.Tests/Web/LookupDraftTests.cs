@@ -12,8 +12,8 @@ public sealed class LookupDraftTests
 
     private static readonly IReadOnlyList<DictionaryField> Dictionary =
     [
-        new(DepartmentId, "department", DictionaryFieldTypes.Text, null, ScopeKinds.Tenant, 0),
-        new(YearId, "year", DictionaryFieldTypes.Number, null, ScopeKinds.Tenant, 0),
+        new(DepartmentId, "department", DictionaryFieldTypes.Text, null, new ToolScope(ScopeKinds.Tenant, [], []), 0),
+        new(YearId, "year", DictionaryFieldTypes.Number, null, new ToolScope(ScopeKinds.Tenant, [], []), 0),
     ];
 
     private static MappingDraft Saved(bool yearListable = false) => MappingDraft.From(new MappingInfo(
@@ -271,7 +271,7 @@ public sealed class LookupDraftTests
     [Fact]
     public void ALookupSavedByTheServerIsEditedFromItsValuesInOrder()
     {
-        var info = new ManualLookupInfo(Guid.NewGuid(), "nationality", "n", ScopeKinds.Tenant, 2, false, []);
+        var info = new ManualLookupInfo(Guid.NewGuid(), "nationality", "n", new ToolScope(ScopeKinds.Tenant, [], []), 2, false);
 
         var form = ManualLookupForm.From(info, [new LookupValueInfo("IT", "Italian", ["Italy"], null, null), new LookupValueInfo("FR", null, null, null, null)]);
 

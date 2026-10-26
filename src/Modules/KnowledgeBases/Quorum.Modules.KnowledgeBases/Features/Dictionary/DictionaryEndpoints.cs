@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
+using Quorum.Modules.KnowledgeBases.Features.Registry;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Persistence;
@@ -128,11 +129,24 @@ internal sealed class DictionaryEndpoints : IEndpointGroup
         return Error.Conflict("knowledge_base.field_in_use", $"The field is used by {users}{more}: remove it from their mapping or configuration first.");
     }
 
-    private static async Task<Ok<List<DictionaryFieldDto>>> ListAsync(KnowledgeBasesDbContext db, IRagToolUsage ragTools, ILookupToolUsage lookupTools, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<Page<DictionaryFieldDto>>, ProblemHttpResult>> ListAsync(HttpRequest request, KnowledgeBasesDbContext db, IRagToolUsage ragTools, ILookupToolUsage lookupTools, CancellationToken cancellationToken)
     {
-        var fields = await DictionaryVisibility.Fields(db).AsNoTracking().OrderBy(f => f.Cluster != null).ThenBy(f => f.Cluster).ThenBy(f => f.Name).ToListAsync(cancellationToken);
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        var filtered = ScopeFilter.Apply(DictionaryVisibility.Fields(db).AsNoTracking(), query.Value);
+        if (!filtered.IsSuccess)
+        {
+            return filtered.Error.ToProblem();
+        }
+
         var usage = await DictionaryUsage.LoadAsync(db, ragTools, lookupTools, cancellationToken);
-        return TypedResults.Ok(fields.Select(field => DictionaryFieldDto.From(field, usage.CountFor(field.Id), db.CurrentTenantId)).ToList());
+        var tenantId = db.CurrentTenantId;
+        var page = await filtered.Value.ToPageAsync(query.Value, "dictionary", f => f.Name, f => f.Id, f => DictionaryFieldDto.From(f, usage.CountFor(f.Id), tenantId), cancellationToken);
+        return page.IsSuccess ? TypedResults.Ok(page.Value) : page.Error.ToProblem();
     }
 
     private static async Task<Results<Created<CreatedFieldDto>, ProblemHttpResult>> CreateAsync(
@@ -204,8 +218,8 @@ internal sealed record DictionaryFieldUpdateRequest(string? Description);
 internal sealed record CreatedFieldDto(Guid Id);
 
 /// <param name="Shared"><see langword="true"/> for a Global field of another tenant: it can be used but not changed or deleted.</param>
-internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, string Scope, int UsedByCount, string? Cluster = null, bool Shared = false)
+internal sealed record DictionaryFieldDto(Guid Id, string Name, string Type, string? Description, ScopeResponse Scope, int UsedByCount, string? Cluster = null, bool Shared = false)
 {
     public static DictionaryFieldDto From(DictionaryField field, int usedByCount, Guid? currentTenantId = null) =>
-        new(field.Id, field.Name, field.Type.ToString(), field.Description, field.Scope.ToString(), usedByCount, field.Cluster, currentTenantId is not null && field.TenantId != currentTenantId);
+        new(field.Id, field.Name, field.Type.ToString(), field.Description, new ScopeResponse(field.Scope.ToString(), [], []), usedByCount, field.Cluster, currentTenantId is not null && field.TenantId != currentTenantId);
 }

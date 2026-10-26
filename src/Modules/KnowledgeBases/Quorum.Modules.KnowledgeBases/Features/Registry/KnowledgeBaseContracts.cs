@@ -51,7 +51,7 @@ internal sealed record KnowledgeBaseListItem(
     string Status,
     bool Shared,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Kind,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Scope,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ScopeResponse? Scope,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? LastVerifiedAt,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Warning)
 {
@@ -64,10 +64,10 @@ internal sealed record KnowledgeBaseListItem(
                 registration.Status.ToString(),
                 Shared: false,
                 registration.Kind.ToString(),
-                registration.Scope.ToString(),
+                new ScopeResponse(registration.Scope.ToString(), registration.ScopeTenantIds, registration.ScopeAssistantIds),
                 registration.LastVerifiedAt,
                 registration.LastError)
-            : new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, null, null, null);
+            : new(registration.Id, registration.Name, registration.Description, registration.Status.ToString(), Shared: true, null, new ScopeResponse(registration.Scope.ToString(), [], []), null, null);
 }
 
 

@@ -31,10 +31,23 @@ internal sealed class KnowledgeBaseEndpoints : IEndpointGroup
         knowledgeBases.MapPost("/{id:guid}/verify", VerifyAsync).WithName("VerifyKnowledgeBase");
     }
 
-    private static async Task<Ok<List<KnowledgeBaseListItem>>> ListAsync(KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<Page<KnowledgeBaseListItem>>, ProblemHttpResult>> ListAsync(HttpRequest request, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
     {
-        var registrations = await KnowledgeBaseVisibility.KnowledgeBases(db).AsNoTracking().OrderBy(k => k.Name).ToListAsync(cancellationToken);
-        return TypedResults.Ok(registrations.Select(k => KnowledgeBaseListItem.From(k, db.CurrentTenantId)).ToList());
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
+
+        var filtered = ScopeFilter.Apply(KnowledgeBaseVisibility.KnowledgeBases(db).AsNoTracking(), query.Value);
+        if (!filtered.IsSuccess)
+        {
+            return filtered.Error.ToProblem();
+        }
+
+        var tenantId = db.CurrentTenantId;
+        var page = await filtered.Value.ToPageAsync(query.Value, "knowledge-bases", k => k.Name, k => k.Id, k => KnowledgeBaseListItem.From(k, tenantId), cancellationToken);
+        return page.IsSuccess ? TypedResults.Ok(page.Value) : page.Error.ToProblem();
     }
 
     private static async Task<Results<Ok<KnowledgeBaseDetail>, ProblemHttpResult>> GetAsync(Guid id, KnowledgeBasesDbContext db, StoreAdapters adapters, CancellationToken cancellationToken)

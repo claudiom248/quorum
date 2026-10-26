@@ -60,7 +60,7 @@ internal static class RagApi
         (await client.GetFromJsonAsync<DetailBody>(One(id), TestContext.Current.CancellationToken))!;
 
     public static async Task<IReadOnlyList<ListItemBody>> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<ListItemBody>>(All, TestContext.Current.CancellationToken))!;
+        (await client.GetFromJsonAsync<KnowledgeBases.KnowledgeBaseApi.PageBody<ListItemBody>>(All, TestContext.Current.CancellationToken))!.Items;
 
     /// <summary>Activates the named tools (exposed names) on the default assistant, in addition to nothing else.</summary>
     public static Task ActivateAsync(HttpClient client, params string[] exposedNames) => ToolFixtures.ActivateOnlyAsync(client, exposedNames);

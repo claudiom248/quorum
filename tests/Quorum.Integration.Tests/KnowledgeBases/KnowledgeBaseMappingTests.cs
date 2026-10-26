@@ -135,7 +135,7 @@ public sealed class KnowledgeBaseMappingTests(PostgresFixture postgres, QdrantFi
         await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, mapping: Mapping("text", ("year", "year")), createFields: [new { name = "year", type = "Number" }]);
 
         var created = Assert.Single(await DictionaryApi.ListAsync(admin));
-        Assert.Equal(("year", "Number", "Tenant", 1), (created.Name, created.Type, created.Scope, created.UsedByCount));
+        Assert.Equal(("year", "Number", "Tenant", 1), (created.Name, created.Type, created.Scope.Kind, created.UsedByCount));
     }
 
     [Fact] // AC-10
@@ -147,7 +147,7 @@ public sealed class KnowledgeBaseMappingTests(PostgresFixture postgres, QdrantFi
 
         await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, scope: new { kind = "Global" });
 
-        Assert.All(await DictionaryApi.ListAsync(admin), field => Assert.Equal("Global", field.Scope));
+        Assert.All(await DictionaryApi.ListAsync(admin), field => Assert.Equal("Global", field.Scope.Kind));
     }
 
     [Fact] // AC-10

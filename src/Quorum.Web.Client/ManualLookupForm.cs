@@ -38,8 +38,8 @@ public sealed partial class ManualLookupForm
             Id = info.Id,
             Name = info.Name,
             Description = info.Description ?? string.Empty,
-            Scope = info.Scope,
-            TenantsText = string.Join(Environment.NewLine, info.ScopeTenantIds ?? []),
+            Scope = info.Scope.Kind,
+            TenantsText = string.Join(Environment.NewLine, info.Scope.TenantIds),
             ValuesText = string.Join(Environment.NewLine, values.Select(Line)),
         };
     }

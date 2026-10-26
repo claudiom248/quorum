@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
+using Quorum.Modules.KnowledgeBases.Features.Registry;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Persistence;
@@ -33,15 +34,36 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         lookups.MapDelete("/{id:guid}", DeleteAsync).WithName("DeleteManualLookup");
     }
 
-    private static async Task<Ok<List<ManualLookupDto>>> ListAsync(KnowledgeBasesDbContext db, CancellationToken cancellationToken)
+    private static async Task<Results<Ok<Page<ManualLookupDto>>, ProblemHttpResult>> ListAsync(HttpRequest request, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
     {
-        var rows = await (
-            from lookup in LookupVisibility.Manual(db).AsNoTracking()
-            join slice in db.LookupSlices.IgnoreQueryFilters() on lookup.Id equals slice.LookupId
-            orderby lookup.Name
-            select new { Lookup = lookup, slice.ValueCount }).ToListAsync(cancellationToken);
+        var query = ListQuery.Parse(request.Query);
+        if (!query.IsSuccess)
+        {
+            return query.Error.ToProblem();
+        }
 
-        return TypedResults.Ok(rows.Select(row => ManualLookupDto.From(row.Lookup, row.ValueCount, db.CurrentTenantId)).ToList());
+        var filtered = ScopeFilter.Apply(LookupVisibility.Manual(db).AsNoTracking(), query.Value);
+        if (!filtered.IsSuccess)
+        {
+            return filtered.Error.ToProblem();
+        }
+
+        // The value counts are read for the page only: one query for the page, one for the slices of its lookups.
+        var page = await filtered.Value.ToPageAsync(query.Value, "manual-lookups", l => l.Name!, l => l.Id, l => l, cancellationToken);
+        if (!page.IsSuccess)
+        {
+            return page.Error.ToProblem();
+        }
+
+        var ids = page.Value.Items.Select(l => l.Id).ToList();
+        var counts = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => ids.Contains(s.LookupId))
+            .ToDictionaryAsync(s => s.LookupId, s => s.ValueCount, cancellationToken);
+        var tenantId = db.CurrentTenantId;
+
+        return TypedResults.Ok(new Page<ManualLookupDto>(
+            [.. page.Value.Items.Select(l => ManualLookupDto.From(l, counts.GetValueOrDefault(l.Id), tenantId))],
+            page.Value.Cursor));
     }
 
     private static async Task<Results<Created<CreatedLookupDto>, ProblemHttpResult>> CreateAsync(
@@ -182,12 +204,12 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
 internal sealed record CreatedLookupDto(Guid Id);
 
 /// <param name="Shared"><see langword="true"/> for a lookup of another tenant: it can be read but not changed or deleted.</param>
-/// <param name="ScopeTenantIds">The tenants the owner shares the lookup with; only the owner sees them.</param>
-internal sealed record ManualLookupDto(Guid Id, string Name, string? Description, string Scope, int ValueCount, bool Shared, List<Guid>? ScopeTenantIds)
+/// <param name="Scope">The tenants a Tenant scope lists are the owner's to see: a lookup of another tenant shows its kind only.</param>
+internal sealed record ManualLookupDto(Guid Id, string Name, string? Description, ScopeResponse Scope, int ValueCount, bool Shared)
 {
     public static ManualLookupDto From(Lookup lookup, int valueCount, Guid? currentTenantId)
     {
         var shared = lookup.TenantId != currentTenantId;
-        return new ManualLookupDto(lookup.Id, lookup.Name!, lookup.Description, lookup.Scope!.Value.ToString(), valueCount, shared, shared ? null : lookup.ScopeTenantIds);
+        return new ManualLookupDto(lookup.Id, lookup.Name!, lookup.Description, new ScopeResponse(lookup.Scope!.Value.ToString(), shared ? [] : lookup.ScopeTenantIds, []), valueCount, shared);
     }
 }
