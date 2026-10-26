@@ -45,7 +45,7 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
         Assert.Empty(draft.PgVectorServerProblems());
         var relations = (await api.ListRelationsAsync(draft.ToRelationsRequest("sample_fl"), Ct)).Value;
         Assert.True(relations.Reachable);
-        var flat = Assert.Single(relations.Relations, r => r.Name == SampleRelations.Flat);
+        var flat = Assert.Single(relations.Relations, r => r.Schema == schema && r.Name == SampleRelations.Flat);
         Assert.Contains("table", KnowledgeAdminView.DescribeRelation(flat), StringComparison.Ordinal);
         draft.UseRelation(flat);
         Assert.Equal((SampleRelations.Flat, "embedding"), (draft.Table, draft.VectorColumn));
@@ -127,10 +127,11 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
         using var admin = await app.SetUpAsync();
         KnowledgeBaseApi.ServeEmbeddings(app);
         var api = new QuorumApi(admin);
-        var draft = await NewDraftAsync(await pgvector.GetSharedSchemaAsync());
+        var schema = await pgvector.GetSharedSchemaAsync();
+        var draft = await NewDraftAsync(schema);
         var relations = (await api.ListRelationsAsync(draft.ToRelationsRequest(SampleRelations.TwoVectors), Ct)).Value;
 
-        draft.UseRelation(Assert.Single(relations.Relations, r => r.Name == SampleRelations.TwoVectors));
+        draft.UseRelation(Assert.Single(relations.Relations, r => r.Schema == schema && r.Name == SampleRelations.TwoVectors));
         var inspection = (await api.InspectKnowledgeBaseAsync(draft.ToInspectRequest(), Ct)).Value;
 
         Assert.Equal(string.Empty, draft.VectorColumn);
