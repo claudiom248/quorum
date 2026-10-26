@@ -55,8 +55,13 @@ public sealed partial class QuorumApi
     public Task<ApiResult<Page<RagToolListItem>>> ListRagToolsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
         GetAsync<Page<RagToolListItem>>(PageRoute("api/tools/rag", query, limit, cursor), cancellationToken);
 
-    public Task<ApiResult<RagToolDetail>> GetRagToolAsync(Guid id, CancellationToken cancellationToken = default) =>
-        GetAsync<RagToolDetail>($"api/tools/rag/{id}", cancellationToken);
+    /// <param name="live"><see langword="false"/> leaves out what only the store can tell (see <see cref="GetRagToolLiveWarningsAsync"/>): it is much faster.</param>
+    public Task<ApiResult<RagToolDetail>> GetRagToolAsync(Guid id, bool live = true, CancellationToken cancellationToken = default) =>
+        GetAsync<RagToolDetail>(live ? $"api/tools/rag/{id}" : $"api/tools/rag/{id}?live=false", cancellationToken);
+
+    /// <summary>The warnings that need the store (an unindexed field); it can take seconds.</summary>
+    public Task<ApiResult<List<ToolWarning>>> GetRagToolLiveWarningsAsync(Guid id, CancellationToken cancellationToken = default) =>
+        GetAsync<List<ToolWarning>>($"api/tools/rag/{id}/live-warnings", cancellationToken);
 
     public Task<ApiResult<CreatedRagTool>> CreateRagToolAsync(RagToolRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<CreatedRagTool>(HttpMethod.Post, "api/tools/rag", request, setupToken: null, cancellationToken);
@@ -75,8 +80,13 @@ public sealed partial class QuorumApi
     public Task<ApiResult<Page<LookupToolListItem>>> ListLookupToolsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
         GetAsync<Page<LookupToolListItem>>(PageRoute("api/tools/lookup", query, limit, cursor), cancellationToken);
 
-    public Task<ApiResult<LookupToolDetail>> GetLookupToolAsync(Guid id, CancellationToken cancellationToken = default) =>
-        GetAsync<LookupToolDetail>($"api/tools/lookup/{id}", cancellationToken);
+    /// <param name="live"><see langword="false"/> leaves out what only the store can tell (see <see cref="GetLookupToolLiveWarningsAsync"/>): it is much faster.</param>
+    public Task<ApiResult<LookupToolDetail>> GetLookupToolAsync(Guid id, bool live = true, CancellationToken cancellationToken = default) =>
+        GetAsync<LookupToolDetail>(live ? $"api/tools/lookup/{id}" : $"api/tools/lookup/{id}?live=false", cancellationToken);
+
+    /// <summary>The warnings that need the store (an unindexed field); it can take seconds.</summary>
+    public Task<ApiResult<List<ToolWarning>>> GetLookupToolLiveWarningsAsync(Guid id, CancellationToken cancellationToken = default) =>
+        GetAsync<List<ToolWarning>>($"api/tools/lookup/{id}/live-warnings", cancellationToken);
 
     public Task<ApiResult<CreatedLookupTool>> CreateLookupToolAsync(LookupToolRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<CreatedLookupTool>(HttpMethod.Post, "api/tools/lookup", request, setupToken: null, cancellationToken);
@@ -124,6 +134,23 @@ public sealed partial class QuorumApi
 
     public Task<ApiResult<Page<ManualLookupInfo>>> ListManualLookupsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default) =>
         GetAsync<Page<ManualLookupInfo>>(PageRoute("api/knowledge-bases/manual-lookups", query, limit, cursor), cancellationToken);
+
+    /// <summary>One page of every lookup, manual and derived. The query's type filter is the kind (<c>Manual</c> or <c>Derived</c>).</summary>
+    /// <summary>Every lookup, manual and derived, in one read: what a lookup tool chooses from.</summary>
+    public Task<ApiResult<List<LookupListItem>>> ListLookupsAsync(CancellationToken cancellationToken = default) =>
+        ListAllAsync<LookupListItem>("api/knowledge-bases/lookups", cancellationToken);
+
+    public Task<ApiResult<Page<LookupListItem>>> ListLookupsPageAsync(ListQuery query, int limit, string? cursor, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var route = PageRoute("api/knowledge-bases/lookups", query with { Type = [] }, limit, cursor);
+        foreach (var kind in query.Type)
+        {
+            route += $"&kind={Uri.EscapeDataString(kind)}";
+        }
+
+        return GetAsync<Page<LookupListItem>>(route, cancellationToken);
+    }
 
     public Task<ApiResult<CreatedId>> CreateManualLookupAsync(ManualLookupRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<CreatedId>(HttpMethod.Post, "api/knowledge-bases/manual-lookups", request, setupToken: null, cancellationToken);

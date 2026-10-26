@@ -1,0 +1,54 @@
+@page "/tools/builtin"
+@inject QuorumApi Api
+
+<PageTitle>Built-in tools · Quorum</PageTitle>
+
+<div class="list-page">
+    <div class="list-page-head">
+        <div>
+            <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">Built-in tools</MudText>
+            <MudText Typo="Typo.body2" Class="tools-support-hint">The tools that come with Quorum. Decide which ones may run and whether they ask first.</MudText>
+        </div>
+    </div>
+
+    <ProblemMessage Problem="_problem" />
+    <ToolTable Source="BuiltinSource" Generation="_generation" Load="LoadAsync" Busy="_busy" OnChange="ChangeAsync" EmptyText="No built-in tools." />
+</div>
+
+@code {
+    private const string BuiltinSource = "builtin";
+
+    private ApiProblem? _problem;
+    private bool _busy;
+    private int _generation;
+
+    // The tools are few and come whole: the page is the only one that ever asks for a later page, which therefore does not exist.
+    private async Task<ApiResult<Page<ToolInfo>>> LoadAsync(ListQuery query, string? cursor)
+    {
+        var result = await Api.ListToolsAsync(query);
+        return result.IsSuccess
+            ? ApiResult.Ok(new Page<ToolInfo>([.. result.Value.Where(t => t.Origin == "Builtin")], null))
+            : ApiResult.Fail<Page<ToolInfo>>(result.Problem!);
+    }
+
+    private async Task ChangeAsync((ToolInfo Tool, string State, string Policy) change)
+    {
+        _busy = true;
+        _problem = null;
+        try
+        {
+            var result = await Api.UpdateToolAsync(change.Tool.Id, change.State, change.Policy);
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+            }
+
+            // The rows are drawn again from what the server has, so a refused change does not look accepted.
+            _generation++;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

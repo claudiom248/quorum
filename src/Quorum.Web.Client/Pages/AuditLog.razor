@@ -1,0 +1,177 @@
+@page "/tools/audit"
+@page "/tools/audit/{Id:guid}"
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+
+<PageTitle>Audit log · Quorum</PageTitle>
+
+<ListPage Title="Audit log"
+          Description="Every tool call, recorded before it runs and completed after. The log is read-only: old entries leave only through the retention purge."
+          Loading="_loading" Problem="_items.Count == 0 ? _problem : null" OnRetry="LoadAsync"
+          IsEmpty="_loaded && _problem is null && _items.Count == 0" HasFilters="_query.HasFilters" OnClearFilters="() => ChangeAsync(new AuditQuery())"
+          EmptyTitle="No tool call was recorded yet" EmptyText="Entries appear when an assistant runs a tool.">
+    <FilterContent>
+        <div class="filter-bar" role="search" aria-label="Filter the audit log">
+            <div class="filter-bar-controls">
+                <MudTextField T="string" Value="_query.From" ValueChanged="v => ChangeAsync(_query with { From = Clean(v), Page = 1 })" Label="From" InputType="InputType.Date"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Class="filter-select" />
+                <MudTextField T="string" Value="_query.To" ValueChanged="v => ChangeAsync(_query with { To = Clean(v), Page = 1 })" Label="To" InputType="InputType.Date"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Class="filter-select" />
+                <MudTextField T="string" Value="_query.Tool" ValueChanged="v => ChangeAsync(_query with { Tool = Clean(v), Page = 1 })" Label="Tool" Placeholder="builtin__calculator"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" DebounceInterval="300" Clearable="true" Class="filter-search" />
+                <MudTextField T="string" Value="_query.User?.ToString()" ValueChanged="UserChangedAsync" Label="User id" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Immediate="true" DebounceInterval="300" Clearable="true" Class="filter-search" />
+                <MudSelect T="string" Label="Outcome" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="filter-select"
+                           Value="_query.Outcome" ValueChanged="v => ChangeAsync(_query with { Outcome = Clean(v), Page = 1 })">
+                    @foreach (var outcome in AuditOutcomes.All)
+                    {
+                        <MudSelectItem T="string" Value="@outcome">@outcome</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+        </div>
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_items.Count > 0 ? _problem : null" />
+        <MudTable T="ToolAuditItem" Items="_items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="audit">
+            <HeaderContent>
+                <MudTh>When</MudTh>
+                <MudTh>Tool</MudTh>
+                <MudTh>Outcome</MudTh>
+                <MudTh>User</MudTh>
+                <MudTh>Duration</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="entry">
+                <MudTd DataLabel="When">
+                    <MudLink Href="@DetailUri(entry.Id)" data-entry="@entry.CallId">@entry.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Tool"><span class="tool-name">@ToolLabel(entry)</span></MudTd>
+                <MudTd DataLabel="Outcome">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@OutcomeColor(entry.Outcome)">@entry.Outcome</MudChip>
+                </MudTd>
+                <MudTd DataLabel="User"><span class="tool-hint">@entry.UserId</span></MudTd>
+                <MudTd DataLabel="Duration">@(entry.DurationMs is { } ms ? $"{ms} ms" : string.Empty)</MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <div class="audit-pager" data-pager>
+            <span class="tool-hint">@_total entr@(_total == 1 ? "y" : "ies")@(_total > 0 ? $" · page {_query.Page} of {Pages}" : string.Empty)</span>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_loading || _query.Page <= 1" OnClick="() => ChangeAsync(_query with { Page = _query.Page - 1 })">Previous</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_loading || _query.Page >= Pages" OnClick="() => ChangeAsync(_query with { Page = _query.Page + 1 })">Next</MudButton>
+        </div>
+    </ChildContent>
+</ListPage>
+
+<ListDrawer Open="Id is not null" Title="@(Selected is { } entry ? ToolLabel(entry) : "Tool call")" Wide="true" OnClose="CloseDrawer">
+    @if (Selected is { } shown)
+    {
+        <dl class="audit-detail" data-detail="audit">
+            <dt>Started</dt><dd>@shown.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
+            <dt>Completed</dt><dd>@(shown.CompletedAt is { } done ? done.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "never (the call did not finish)")</dd>
+            <dt>Outcome</dt><dd>@shown.Outcome@(shown.ErrorCode is null ? string.Empty : $" ({shown.ErrorCode})")</dd>
+            <dt>Decision</dt><dd>@(shown.Decision ?? "none")</dd>
+            <dt>User</dt><dd>@shown.UserId</dd>
+            <dt>Assistant</dt><dd>@shown.AssistantId</dd>
+            <dt>Conversation</dt><dd>@shown.ConversationId</dd>
+            <dt>Duration</dt><dd>@(shown.DurationMs is { } ms ? $"{ms} ms" : "unknown")</dd>
+            <dt>Result</dt><dd>@(shown.ResultCharacters is { } size ? $"{size} characters" : "none")@(shown.SourceCount is { } sources ? $", {sources} source(s)" : string.Empty)</dd>
+        </dl>
+        <MudText Typo="Typo.subtitle2" Class="mt-3">Arguments@(shown.ArgumentsTruncated ? " (cut)" : string.Empty)</MudText>
+        <pre class="tool-pre">@shown.Arguments</pre>
+    }
+    else if (_loaded)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">This entry is not on this page of the log. Go back and find it by its filters.</MudAlert>
+    }
+    else
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+</ListDrawer>
+
+@code {
+    private AuditQuery _query = new();
+    private List<ToolAuditItem> _items = [];
+    private int _total;
+    private bool _loading;
+    private bool _loaded;
+    private ApiProblem? _problem;
+
+    /// <summary>The entry shown in the drawer.</summary>
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private ToolAuditItem? Selected => Id is { } id ? _items.FirstOrDefault(e => e.Id == id) : null;
+
+    private int Pages => Math.Max(1, (int)Math.Ceiling(_total / (double)AuditQuery.PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _query = AuditQuery.Parse(Navigation.Uri);
+        Navigation.LocationChanged += OnLocationChanged;
+        await LoadAsync();
+    }
+
+    private string DetailUri(Guid id) => $"/tools/audit/{id}{_query.ToQueryString()}";
+
+    private void CloseDrawer() => Navigation.NavigateTo($"/tools/audit{_query.ToQueryString()}");
+
+    private static string ToolLabel(ToolAuditItem entry) => entry.ServerName is null ? $"builtin__{entry.ToolName}" : $"{entry.ServerName}__{entry.ToolName}";
+
+    private static Color OutcomeColor(string outcome) => outcome switch
+    {
+        "Succeeded" => Color.Success,
+        "Failed" or "TimedOut" => Color.Error,
+        "Denied" or "Cancelled" => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private Task UserChangedAsync(string? text) =>
+        ChangeAsync(_query with { User = Guid.TryParse(text, out var user) ? user : null, Page = 1 });
+
+    // The address changes in place, so Back does not step through every keystroke.
+    private Task ChangeAsync(AuditQuery query)
+    {
+        _query = query;
+        var path = new Uri(Navigation.Uri).AbsolutePath;
+        Navigation.NavigateTo(path + query.ToQueryString(), replace: true);
+        return LoadAsync();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        var query = AuditQuery.Parse(e.Location);
+        if (query.ToQueryString() != _query.ToQueryString())
+        {
+            _query = query;
+            _ = InvokeAsync(LoadAsync);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        var result = await Api.ListToolAuditAsync(_query);
+        _loading = false;
+        _loaded = true;
+        if (result.IsSuccess)
+        {
+            _problem = null;
+            _items = [.. result.Value.Items];
+            _total = result.Value.Total;
+        }
+        else
+        {
+            _problem = result.Problem;
+        }
+
+        StateHasChanged();
+    }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+}

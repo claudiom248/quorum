@@ -13,5 +13,6 @@ builder.Services.AddTransient<AntiforgeryHeaderHandler>();
 builder.Services.AddHttpClient<QuorumApi>(client => client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress))
     .AddHttpMessageHandler<AntiforgeryHeaderHandler>();
 builder.Services.AddScoped<Session>();
+builder.Services.AddScoped<OnboardingProgress>();
 
 await builder.Build().RunAsync();

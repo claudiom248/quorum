@@ -1,0 +1,12 @@
+@page "/tools"
+@page "/knowledge"
+@inject NavigationManager Navigation
+
+@code {
+    // The sections have no page of their own any more: the first page of each one opens.
+    protected override void OnInitialized()
+    {
+        var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        Navigation.NavigateTo(path.EndsWith("/knowledge", StringComparison.OrdinalIgnoreCase) ? "/knowledge/bases" : "/tools/mcp", replace: true);
+    }
+}

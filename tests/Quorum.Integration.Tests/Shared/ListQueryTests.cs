@@ -46,6 +46,15 @@ public sealed class ListQueryTests
     }
 
     [Fact]
+    public void ASearchTextLongerThanTheBoundFails()
+    {
+        var result = ListQuery.Parse(Query(("q", new string('a', ListQuery.MaxSearchLength + 1))));
+
+        Assert.Equal("list.invalid_filter", result.Error.Code);
+        Assert.True(ListQuery.Parse(Query(("q", new string('a', ListQuery.MaxSearchLength)))).IsSuccess);
+    }
+
+    [Fact]
     public void TheLimitBoundsAreAccepted()
     {
         Assert.Equal(1, ListQuery.Parse(Query(("limit", "1"))).Value.Limit);

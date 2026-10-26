@@ -38,7 +38,10 @@ public sealed class SetupWizardToolsTests : BunitContext
     {
         var page = Render<Quorum.Web.Client.Pages.Setup>();
         page.WaitForAssertion(() => page.Find("form"));
-        page.Find("input[type=password]").Change("token");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "off").Change("token");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "name").Change("Ada");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "username").Change("ada@acme.test");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "new-password").Change("a-long-enough-password");
         page.Find("form").Submit();
         page.WaitForAssertion(() => Assert.Contains("Test connection", page.Markup, StringComparison.Ordinal));
         return page;
@@ -93,15 +96,41 @@ public sealed class SetupWizardToolsTests : BunitContext
         TestConnection(page);
         page.WaitForAssertion(() => Assert.False(SwitchIsOn(page)));
         page.Find("form").Submit();
-        page.WaitForAssertion(() => Assert.Contains("Finish setup", page.Markup, StringComparison.Ordinal));
-
-        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "name").Change("Ada");
-        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "username").Change("ada@acme.test");
-        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "new-password").Change("a-long-enough-password");
-        page.Find("form").Submit();
 
         page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/setup/complete")));
         using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Post, "/api/setup/complete")!);
         Assert.False(body.RootElement.GetProperty("model").GetProperty("supportsTools").GetBoolean());
+    }
+
+    [Fact]
+    public void TheSetupHasTwoStepsAndSendsNoSystemPrompt()
+    {
+        var page = RenderModelStep();
+        Assert.Contains("Step 2 of 2", page.Markup, StringComparison.Ordinal);
+        TestConnection(page);
+        page.WaitForAssertion(() => Assert.Contains("Connected", page.Markup, StringComparison.Ordinal));
+        page.Find("form").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/api/setup/complete")));
+        using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Post, "/api/setup/complete")!);
+        Assert.Equal("ada@acme.test", body.RootElement.GetProperty("admin").GetProperty("email").GetString());
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("systemPrompt").ValueKind);
+    }
+
+    [Fact]
+    public void AShortPasswordIsToldOnTheFirstStepBeforeTheTokenIsChecked()
+    {
+        var page = Render<Quorum.Web.Client.Pages.Setup>();
+        page.WaitForAssertion(() => page.Find("form"));
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "off").Change("token");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "name").Change("Ada");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "username").Change("ada@acme.test");
+        page.FindAll("input").First(i => i.GetAttribute("autocomplete") == "new-password").Change("short");
+
+        page.Find("form").Submit();
+
+        page.WaitForAssertion(() => Assert.Contains("at least 12 characters", page.Find(".problem-list").TextContent, StringComparison.Ordinal));
+        Assert.Contains("Step 1 of 2", page.Markup, StringComparison.Ordinal);
+        Assert.Equal(0, _api.Count(HttpMethod.Post, "/api/setup/verify-token"));
     }
 }

@@ -1,0 +1,54 @@
+@* The first-run checklist of the home page. The state lives on the server, so any admin's visit completes a step for everyone;
+   it shows nothing for other roles, while loading, or once every step is done or it was dismissed. *@
+@inject OnboardingProgress Onboarding
+
+@if (_checklist is { IsVisible: true })
+{
+    <MudPaper Outlined="true" Class="getting-started pa-3 mb-3" data-getting-started="">
+        <div class="d-flex align-center justify-space-between">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h2">Getting started</MudText>
+            <MudButton Size="Size.Small" OnClick="DismissAsync" Disabled="_busy">Dismiss</MudButton>
+        </div>
+        <MudList T="string" Dense="true" Padding="false">
+            @foreach (var step in Steps)
+            {
+                var done = IsDone(step.Key);
+                <MudListItem T="string" Href="@step.Href" data-step="@step.Key" data-done="@(done ? "true" : "false")">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@(done ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.RadioButtonUnchecked)"
+                                 Color="@(done ? Color.Success : Color.Default)" Size="Size.Small" Class="mr-2" />
+                        <span>@step.Label</span>
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    </MudPaper>
+}
+
+@code {
+    private static readonly (string Key, string Label, string Href)[] Steps =
+    [
+        ("model", "Model connected", "settings"),
+        ("prompt", "Write the system prompt", "settings"),
+        ("tools", "Register an MCP server", "tools/mcp"),
+        ("knowledge", "Connect a knowledge base", "knowledge/bases"),
+    ];
+
+    private Checklist? _checklist;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => _checklist = await Onboarding.GetAsync();
+
+    private bool IsDone(string key) => _checklist!.Items.Any(i => i.Key == key && i.Done);
+
+    private async Task DismissAsync()
+    {
+        _busy = true;
+        var dismissed = await Onboarding.DismissAsync();
+        _busy = false;
+        if (dismissed)
+        {
+            _checklist = null;
+        }
+    }
+}

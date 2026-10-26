@@ -8,9 +8,9 @@ How to connect MCP servers to Quorum and decide what the assistants may run. Des
 Quorum connects to MCP servers over **Streamable HTTP** only. It never starts a process on its own: a stdio server (the usual
 `npx ...` or `uvx ...` package) runs outside Quorum, behind a gateway you operate. See [stdio servers](#stdio-servers-through-a-gateway).
 
-## The Tools page
+## The MCP servers page
 
-Open **Tools** in the top bar (it needs the administrator role).
+Open **Tools → MCP servers** in the sidebar (it needs the administrator role). A server opens in a drawer on the right.
 
 | Task | How |
 |---|---|
@@ -36,7 +36,7 @@ A tool a server lists for the first time, or one whose name, description or inpu
 For each tool pending review choose a policy and **Approve and enable**, or **Keep disabled**. After a refresh, tools that
 vanished from the server are removed together with their activations on assistants.
 
-Approving makes a tool available; it still has to be switched on for an assistant in **Settings**.
+Approving makes a tool available; it still has to be switched on for an assistant in **Settings → Tools**.
 
 The hints a server sends about a tool (read-only, destructive...) are shown as *claimed by the server*. A server can be wrong or
 dishonest, so they never change a policy.
@@ -48,7 +48,7 @@ dishonest, so they never change a policy.
 | Ask before running | The chat shows the tool and its full arguments and waits for the person's approval |
 | Run without asking | The tool runs as soon as the model asks. Use it for tools you trust to be harmless |
 
-The built-in tools (calculator, current date and time) are listed at the bottom of the page and are managed the same way.
+The built-in tools (calculator, current date and time) are listed under **Tools → Built-in** and are managed the same way.
 
 ### Who can use a server
 
@@ -60,7 +60,7 @@ The built-in tools (calculator, current date and time) are listed at the bottom 
 
 A server shared by another tenant appears marked *Shared with you* and cannot be changed here.
 
-Warnings about too many active tools, or tool definitions that take too much of the context, appear in **Settings** next to the
+Warnings about too many active tools, or tool definitions that take too much of the context, appear in **Settings → Tools** next to the
 tools of the assistant.
 
 ## Safety notes

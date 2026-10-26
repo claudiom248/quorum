@@ -4,12 +4,16 @@
             <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">@Title</MudText>
             @if (!string.IsNullOrWhiteSpace(Description))
             {
-                <MudText Typo="Typo.body2" Class="tools-support-hint">@Description</MudText>
+                <MudText Typo="Typo.caption" Class="tools-support-hint" Style="display:block">@Description</MudText>
             }
         </div>
         @if (!string.IsNullOrWhiteSpace(AddLabel))
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OnAdd">@AddLabel</MudButton>
+            @* The title already names the list: the button says "Add" and keeps the full label for the hover hint and for screen readers. *@
+            <MudTooltip Text="@AddLabel">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OnAdd"
+                           aria-label="@AddLabel" Class="list-add"><span class="list-add-text">Add</span></MudButton>
+            </MudTooltip>
         }
     </div>
 

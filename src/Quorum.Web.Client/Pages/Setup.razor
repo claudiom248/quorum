@@ -13,77 +13,35 @@
 else if (_status is not null)
 {
     <MudText Typo="Typo.h5">Set up Quorum</MudText>
-    <MudText Typo="Typo.caption" Class="mb-4" Style="display:block">Step @_step of 3</MudText>
-    <MudProgressLinear Value="@(_step * 100 / 3)" Class="mb-4" />
+    <MudText Typo="Typo.caption" Class="mb-4" Style="display:block">Step @_step of 2</MudText>
+    <MudProgressLinear Value="@(_step * 100 / 2)" Class="mb-4" />
 
     @if (_step == 1)
     {
-        <MudText Class="mb-3">Paste the setup token printed in the application logs (<code>docker compose logs quorum</code>).</MudText>
+        <MudText Class="mb-3">Paste the setup token printed in the application logs (<code>docker compose logs quorum</code>), then create the administrator.</MudText>
         <form @onsubmit="VerifyTokenAsync">
             <MudStack Spacing="3">
                 <MudTextField @bind-Value="_token" Label="Setup token" InputType="InputType.Password" Variant="Variant.Outlined"
                               Required="true" AutoFocus="true" autocomplete="off" />
-                <ProblemMessage Problem="_problem" />
-                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Continue</MudButton>
-            </MudStack>
-        </form>
-    }
-    else if (_step == 2)
-    {
-        <MudText Class="mb-3">Connect Quorum to an OpenAI-compatible model endpoint, such as Ollama.</MudText>
-        <form @onsubmit="NextFromModel">
-            <MudStack Spacing="3">
-                <MudTextField @bind-Value="_baseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true"
-                              HelperText="Include the version segment, e.g. http://host.docker.internal:11434/v1 from Docker." />
-                <MudTextField @bind-Value="_apiKey" Label="API key (optional)" InputType="InputType.Password" Variant="Variant.Outlined"
-                              autocomplete="off" />
-                <MudButton Variant="Variant.Outlined" OnClick="TestModelAsync" Disabled="_busy"
-                           StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
-                @if (_testResult is not null)
-                {
-                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined">Connected. @_testResult.Models.Count model(s) available.</MudAlert>
-                }
-                @if (_testResult is { Models.Count: > 0 })
-                {
-                    <MudSelect T="string" @bind-Value="_modelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
-                        @foreach (var model in _testResult.Models)
-                        {
-                            <MudSelectItem Value="@model">@model</MudSelectItem>
-                        }
-                    </MudSelect>
-                }
-                else
-                {
-                    <MudTextField @bind-Value="_modelName" Label="Model" Variant="Variant.Outlined" Required="true" />
-                }
-                <MudSwitch T="bool" @bind-Value="_supportsTools" Color="Color.Primary" Label="The model supports tools"
-                           aria-describedby="tools-support-hint" />
-                <MudText id="tools-support-hint" Typo="Typo.caption">@ToolSupportHint</MudText>
-                <MudNumericField T="int" @bind-Value="_contextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined"
-                                 Min="256" Max="1000000"
-                                 HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
-                <ProblemMessage Problem="_problem" />
-                <MudStack Row="true" Justify="Justify.FlexEnd">
-                    <MudButton OnClick="@(() => _step = 1)">Back</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Continue</MudButton>
-                </MudStack>
-            </MudStack>
-        </form>
-    }
-    else
-    {
-        <form @onsubmit="CompleteAsync">
-            <MudStack Spacing="3">
                 <MudTextField @bind-Value="_displayName" Label="Your name" Variant="Variant.Outlined" Required="true" autocomplete="name" />
                 <MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined"
                               Required="true" autocomplete="username" />
                 <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined"
                               Required="true" HelperText="At least 12 characters." autocomplete="new-password" />
-                <MudTextField @bind-Value="_systemPrompt" Label="System prompt" Variant="Variant.Outlined" Lines="6"
-                              HelperText="How the assistant behaves. You can change it later in the settings." />
+                <ProblemMessage Problem="_problem" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Continue</MudButton>
+            </MudStack>
+        </form>
+    }
+    else
+    {
+        <MudText Class="mb-3">Connect Quorum to an OpenAI-compatible model endpoint, such as Ollama. The default system prompt applies; you can change it later in the settings.</MudText>
+        <form @onsubmit="CompleteAsync">
+            <MudStack Spacing="3">
+                <ModelConnectionForm Value="_model" Busy="_busy" Test="TestModelAsync" />
                 <ProblemMessage Problem="_problem" />
                 <MudStack Row="true" Justify="Justify.FlexEnd">
-                    <MudButton OnClick="@(() => _step = 2)">Back</MudButton>
+                    <MudButton OnClick="@(() => _step = 1)">Back</MudButton>
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Finish setup</MudButton>
                 </MudStack>
             </MudStack>
@@ -96,33 +54,20 @@ else
 }
 
 @code {
+    private const int MinPasswordLength = 12;
+
     private SetupStatus? _status;
     private bool _loading = true;
     private bool _busy;
     private int _step = 1;
     private ApiProblem? _problem;
-    private ModelConnection? _testResult;
+    private bool _modelReached;
 
+    private readonly ModelConnectionFields _model = new() { BaseUrl = "http://localhost:11434/v1" };
     private string _token = string.Empty;
-    private string _baseUrl = "http://localhost:11434/v1";
-    private string? _apiKey;
-    private string _modelName = string.Empty;
-    private int _contextTokenBudget;
     private string _displayName = string.Empty;
     private string _email = string.Empty;
     private string _password = string.Empty;
-    private string _systemPrompt = string.Empty;
-    private bool _supportsTools = true;
-    private bool? _detectedToolSupport;
-
-    private string ToolSupportHint => _testResult is null
-        ? "Use \"Test connection\" to let Quorum check it, or set it by hand."
-        : _detectedToolSupport switch
-        {
-            true => "The server reports that this model supports tools.",
-            false => "The server reports that this model does not support tools.",
-            null => "The server does not say whether this model supports tools; it is on by default.",
-        };
 
     protected override async Task OnInitializedAsync()
     {
@@ -141,12 +86,34 @@ else
         }
 
         _status = result.Value;
-        _systemPrompt = result.Value.DefaultSystemPrompt ?? string.Empty;
-        _contextTokenBudget = result.Value.DefaultContextTokenBudget ?? _contextTokenBudget;
+        _model.ContextTokenBudget = result.Value.DefaultContextTokenBudget ?? _model.ContextTokenBudget;
     }
 
     private async Task VerifyTokenAsync()
     {
+        // The admin fields are on this step: a mistake in them is told here, not by the server after the model step.
+        var mistakes = new List<string>();
+        if (string.IsNullOrWhiteSpace(_displayName))
+        {
+            mistakes.Add("Enter your name.");
+        }
+
+        if (!_email.Contains('@', StringComparison.Ordinal))
+        {
+            mistakes.Add("Enter a valid email.");
+        }
+
+        if (_password.Length < MinPasswordLength)
+        {
+            mistakes.Add($"The password needs at least {MinPasswordLength} characters.");
+        }
+
+        if (mistakes.Count > 0)
+        {
+            _problem = new ApiProblem(400, "setup.invalid_admin", mistakes[0], new Dictionary<string, string[]> { ["admin"] = [.. mistakes] });
+            return;
+        }
+
         _busy = true;
         _problem = null;
         var result = await Api.VerifySetupTokenAsync(_token.Trim());
@@ -162,59 +129,11 @@ else
         }
     }
 
-    private async Task TestModelAsync()
+    private async Task<ApiResult<ModelConnection>> TestModelAsync(string baseUrl, string? key, string? model)
     {
-        _busy = true;
-        _problem = null;
-        _testResult = null;
-        var result = await Api.TestSetupModelAsync(_token.Trim(), _baseUrl, EmptyToNull(_apiKey), EmptyToNull(_modelName));
-        _busy = false;
-
-        if (result.IsSuccess)
-        {
-            _testResult = result.Value;
-            if (string.IsNullOrWhiteSpace(_modelName) && result.Value.Models.Count > 0)
-            {
-                _modelName = result.Value.Models[0];
-
-                // The first model was only just picked: ask about it, the test could not know it.
-                await DetectToolSupportAsync();
-                return;
-            }
-
-            ApplyToolSupport(result.Value.SupportsTools);
-        }
-        else
-        {
-            _problem = result.Problem;
-        }
-    }
-
-    /// <summary>The chosen model may differ from the one tested: ask again, so the flag follows the model.</summary>
-    private async Task DetectToolSupportAsync()
-    {
-        var result = await Api.TestSetupModelAsync(_token.Trim(), _baseUrl, EmptyToNull(_apiKey), EmptyToNull(_modelName));
-        if (result.IsSuccess)
-        {
-            ApplyToolSupport(result.Value.SupportsTools);
-        }
-    }
-
-    // What the server reports pre-fills the flag; when it does not say, the value stays (on, as the server defaults it, until the admin changes it).
-    private void ApplyToolSupport(bool? reported)
-    {
-        _detectedToolSupport = reported;
-        if (reported is { } value)
-        {
-            _supportsTools = value;
-        }
-    }
-
-    // An unreachable model does not block the setup (it may still be starting): the settings page warns about it.
-    private void NextFromModel()
-    {
-        _problem = null;
-        _step = 3;
+        var result = await Api.TestSetupModelAsync(_token.Trim(), baseUrl, key, model);
+        _modelReached = result.IsSuccess;
+        return result;
     }
 
     private async Task CompleteAsync()
@@ -222,10 +141,10 @@ else
         _busy = true;
         _problem = null;
 
+        // No system prompt is sent: the server applies the default one.
         var request = new CompleteSetupRequest(
             new AdminAccount(_email.Trim(), _displayName.Trim(), _password),
-            new ModelEndpointSettings(_baseUrl.Trim(), _modelName.Trim(), EmptyToNull(_apiKey), _contextTokenBudget, _supportsTools),
-            _systemPrompt);
+            new ModelEndpointSettings(_model.BaseUrl.Trim(), _model.ModelName.Trim(), EmptyToNull(_model.ApiKey), _model.ContextTokenBudget, _model.SupportsTools));
         var result = await Api.CompleteSetupAsync(_token.Trim(), request);
         _busy = false;
 
@@ -236,7 +155,9 @@ else
         }
 
         Session.Reset();
-        Navigation.NavigateTo(_testResult is not null ? string.Empty : "settings?unverified=1", forceLoad: true);
+
+        // An unreachable model does not block the setup (it may still be starting): the settings page warns about it.
+        Navigation.NavigateTo(_modelReached ? string.Empty : "settings?unverified=1", forceLoad: true);
     }
 
     private static string? EmptyToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
