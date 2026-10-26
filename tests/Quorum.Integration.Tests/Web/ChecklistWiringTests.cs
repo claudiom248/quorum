@@ -29,7 +29,12 @@ public sealed class ChecklistWiringTests : ListPageTestContext
             ("GET", "/api/assistants" or "/api/tenants") => FakeApiHandler.Json(Array.Empty<object>()),
             ("GET", "/api/settings/assistant") => FakeApiHandler.Json(new
             {
-                baseUrl = "http://ollama:11434/v1", modelName = "llama3.2", hasApiKey = false, contextTokenBudget = 4096, systemPrompt = "Be brief.", supportsTools = true,
+                baseUrl = "http://ollama:11434/v1",
+                modelName = "llama3.2",
+                hasApiKey = false,
+                contextTokenBudget = 4096,
+                systemPrompt = "Be brief.",
+                supportsTools = true,
             }),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
