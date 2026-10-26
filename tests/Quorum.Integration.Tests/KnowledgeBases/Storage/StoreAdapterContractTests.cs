@@ -40,7 +40,7 @@ public sealed class StoreAdapterContractTests(PostgresFixture postgres)
 
     private sealed record Setup(QuorumApp App, Guid TenantId, FakeStoreAdapter Fake) : IAsyncDisposable
     {
-        public StoreAdapters Adapters { get; } = new([Fake]);
+        public StoreAdapters Adapters { get; } = new([Fake, FakeStoreAdapter.PgVectorStub()]);
 
         /// <summary>
         /// A scope that runs as the tenant. The test opens it itself: the accessor keeps the request in an async-local value, which

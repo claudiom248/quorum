@@ -27,6 +27,55 @@ public static class SampleSchemas
         }
         """;
 
+    /// <summary>The row of <see cref="SampleRelations.Flat"/> without its vector, as a data owner would describe a table.</summary>
+    public const string RelationFlat = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "Policy chunk",
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer" },
+            "text": { "type": "string" },
+            "document_id": { "type": "string" },
+            "title": { "type": "string" },
+            "page": { "type": "integer" },
+            "source_url": { "type": "string", "format": "uri" },
+            "department": { "type": "string" },
+            "year": { "type": "integer" },
+            "published_on": { "type": "string", "format": "date" },
+            "confidential": { "type": "boolean" }
+          },
+          "required": ["id", "text"]
+        }
+        """;
+
+    /// <summary>The row of <see cref="SampleRelations.LangChain"/>: the metadata is a nested object, the way a <c>jsonb</c> column is described.</summary>
+    public const string RelationLangChain = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "LangChain row",
+          "type": "object",
+          "properties": {
+            "uuid": { "type": "string", "format": "uuid" },
+            "document": { "type": "string" },
+            "cmetadata": {
+              "type": "object",
+              "properties": {
+                "document_id": { "type": "string" },
+                "title": { "type": "string" },
+                "page": { "type": "integer" },
+                "source_url": { "type": "string", "format": "uri" },
+                "department": { "type": "string" },
+                "year": { "type": "integer" },
+                "published_on": { "type": "string", "format": "date" },
+                "confidential": { "type": "boolean" }
+              }
+            }
+          },
+          "required": ["document"]
+        }
+        """;
+
     /// <summary>The payload of <see cref="SampleCollections.Lookups"/>.</summary>
     public const string Lookups = """
         {

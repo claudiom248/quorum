@@ -1,9 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.AspNetCore.DataProtection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Modules.KnowledgeBases.Mapping;
+using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage;
+using Quorum.Modules.KnowledgeBases.Storage.PgVector;
 using Quorum.Shared.Results;
 using Quorum.SampleKnowledgeBase;
 
@@ -37,6 +40,13 @@ internal sealed class FakeStoreAdapter(IReadOnlyList<FakeStoreAdapter.Row> rows,
     }
 
     private sealed record FakeConnection(string Name) : IStoreConnection;
+
+    /// <summary>Every kind must have an adapter, so a test that puts the fake in the place of Qdrant gives the other kind its real one.</summary>
+    public static IStoreAdapter PgVectorStub()
+    {
+        var connector = new PgVectorConnector(new PgVectorDataSources());
+        return new PgVectorStoreAdapter(connector, new KnowledgeBaseSecretProtector(new EphemeralDataProtectionProvider()), new PgVectorSourceListing(connector));
+    }
 
     /// <summary>The queries the store received, in order.</summary>
     public List<StoreQuery> Queries { get; } = [];
@@ -80,7 +90,10 @@ internal sealed class FakeStoreAdapter(IReadOnlyList<FakeStoreAdapter.Row> rows,
 
     public InspectWarning EmptySourceWarning() => new("fake.empty", "Fake: nothing stored.", Path: null);
 
-    public InspectWarning UnindexedPathWarning(string path) => new("fake.unindexed", $"Fake: {path} has no index.", path);
+    public InspectWarning DimensionsUnknownWarning(VectorInfo vector) => new("fake.dimensions_unknown", "Fake: the dimensions are unknown.");
+
+    public InspectWarning? UnindexedPathWarning(SourceInfo source, string path) =>
+        source.IndexedPaths.ContainsKey(path) ? null : new("fake.unindexed", $"Fake: {path} has no index.", path);
 
     public InspectWarning DimensionMismatchWarning(VectorInfo vector, int embeddingSize) => new("fake.dimension_mismatch", "Fake: wrong size.", Path: null);
 

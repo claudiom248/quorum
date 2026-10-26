@@ -34,7 +34,16 @@ internal sealed partial class KnowledgeBaseInspector(
             return validated.Error;
         }
 
-        var (adapter, connection, embeddingModel) = validated.Value;
+        var (adapter, requested, embeddingModel) = validated.Value;
+
+        // Nothing is stored yet, so a connection that leaves its secret to a stored one cannot be resolved here.
+        var kept = adapter.KeepSecrets(requested, stored: null);
+        if (!kept.IsSuccess)
+        {
+            return kept.Error;
+        }
+
+        var connection = kept.Value;
         var schemaDiscovery = SchemaText(request.Schema) is { } schema ? JsonSchemaReader.Read(schema) : null;
         if (schemaDiscovery is { IsSuccess: false })
         {
@@ -49,6 +58,11 @@ internal sealed partial class KnowledgeBaseInspector(
         }
 
         var discovery = schemaDiscovery is { IsSuccess: true } ? schemaDiscovery.Value : PayloadSampler.Sample(found.Sample);
+        if (schemaDiscovery is null && found.Declared is { } declared)
+        {
+            discovery = declared.Apply(discovery);
+        }
+
         warnings.AddRange(discovery.Warnings);
 
         var vectors = found.Info?.Vectors.Select(v => new VectorDto(v.Name, v.Size, v.Distance)).ToList() ?? [];
@@ -64,10 +78,13 @@ internal sealed partial class KnowledgeBaseInspector(
         var unindexed = new List<string>();
         if (found.Info is { } info)
         {
-            foreach (var field in fields.Where(f => !info.IndexedPaths.ContainsKey(f.Path)))
+            foreach (var field in fields)
             {
-                unindexed.Add(field.Path);
-                warnings.Add(adapter.UnindexedPathWarning(field.Path));
+                if (adapter.UnindexedPathWarning(info, field.Path) is { } unindexedWarning)
+                {
+                    unindexed.Add(field.Path);
+                    warnings.Add(unindexedWarning);
+                }
             }
         }
 

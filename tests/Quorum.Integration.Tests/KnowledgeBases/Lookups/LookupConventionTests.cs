@@ -111,7 +111,7 @@ public sealed class LookupConventionTests(PostgresFixture postgres, QdrantFixtur
             services.GetRequiredService<KnowledgeBasesDbContext>(),
             services.GetRequiredService<ITenantContext>(),
             new StoreProbe(services.GetRequiredService<IEmbeddings>()),
-            new StoreAdapters([fake]),
+            new StoreAdapters([fake, FakeStoreAdapter.PgVectorStub()]),
             services.GetRequiredService<IAssistantDirectory>(),
             services.GetRequiredService<LookupRefreshSignal>(),
             services.GetRequiredService<LookupCache>(),

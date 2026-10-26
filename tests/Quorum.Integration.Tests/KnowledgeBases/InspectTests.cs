@@ -376,7 +376,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
 
     [Theory]
     [InlineData(null, "http://127.0.0.1:6333", "docs", "nomic", "knowledge_base.unsupported_kind")]
-    [InlineData("Pgvector", "http://127.0.0.1:6333", "docs", "nomic", "knowledge_base.unsupported_kind")]
+    [InlineData("Pinecone", "http://127.0.0.1:6333", "docs", "nomic", "knowledge_base.unsupported_kind")]
     [InlineData("Qdrant", null, "docs", "nomic", "knowledge_base.invalid_connection")]
     [InlineData("Qdrant", "not a url", "docs", "nomic", "knowledge_base.invalid_connection")]
     [InlineData("Qdrant", "ftp://qdrant:6333", "docs", "nomic", "knowledge_base.invalid_connection")]

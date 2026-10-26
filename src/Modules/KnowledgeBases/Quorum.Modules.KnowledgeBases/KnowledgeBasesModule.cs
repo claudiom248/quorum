@@ -9,6 +9,7 @@ using Quorum.Modules.KnowledgeBases.Features.Search;
 using Quorum.Modules.KnowledgeBases.Features.Verification;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage;
+using Quorum.Modules.KnowledgeBases.Storage.PgVector;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Shared.Persistence;
 
@@ -23,6 +24,7 @@ public static class KnowledgeBasesModule
         services.AddModuleDbContext<KnowledgeBasesDbContext>(KnowledgeBasesDbContext.Schema);
 
         services.AddQdrantStore();
+        services.AddPgVectorStore();
         services.AddSingleton<StoreAdapters>();
         services.AddHostedService<StoreAdaptersStartupCheck>();
         services.AddScoped<StoreProbe>();

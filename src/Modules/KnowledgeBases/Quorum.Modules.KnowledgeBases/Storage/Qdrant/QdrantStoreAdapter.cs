@@ -235,14 +235,22 @@ internal sealed class QdrantStoreAdapter(QdrantConnector connector, KnowledgeBas
         "The collection has no points yet, so there is nothing to sample: write the mapping by hand or paste the payload's JSON Schema.",
         Path: null);
 
-    public InspectWarning UnindexedPathWarning(string path) => new(
-        WarningCodes.FieldUnindexed,
-        $"'{path}' has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
-        path);
+    public InspectWarning? UnindexedPathWarning(SourceInfo source, string path) => source.IndexedPaths.ContainsKey(path)
+        ? null
+        : new(
+            WarningCodes.FieldUnindexed,
+            $"'{path}' has no payload index in Qdrant: filters on it work but can be slow on large collections. Ask the data owner to index it if you plan to filter on it.",
+            path);
 
     public InspectWarning DimensionMismatchWarning(VectorInfo vector, int embeddingSize) => new(
         WarningCodes.DimensionMismatch,
         $"The collection's vectors have {vector.Size} dimensions but the embedding model produces {embeddingSize}. RAG searches would fail: ingestion and retrieval must use the same model.",
+        Path: null);
+
+    // A Qdrant vector always declares its size, so this is not reached; it is the same words as a mismatch would be.
+    public InspectWarning DimensionsUnknownWarning(VectorInfo vector) => new(
+        WarningCodes.DimensionMismatch,
+        "The collection's vector size is unknown, so it cannot be compared with the embedding model's.",
         Path: null);
 
     public Task<IReadOnlyList<StoreHit>> SearchAsync(IStoreConnection connection, StoreQuery query, CancellationToken cancellationToken)
