@@ -200,6 +200,10 @@
         _showBreakdown = false;
         _problem = null;
 
+        // Before any await: the previous conversation's files and budget must not stay on screen while the new ones load.
+        _attachments = [];
+        _breakdown = null;
+
         if (InitialAttachments is not null)
         {
             _attachments = [.. InitialAttachments];
@@ -222,6 +226,11 @@
         }
 
         var list = await Api.ListAttachmentsAsync(id);
+        if (ConversationId != id)
+        {
+            return;
+        }
+
         if (list.IsSuccess)
         {
             _attachments = list.Value;
@@ -247,6 +256,11 @@
         }
 
         var context = await Api.GetContextAsync(id);
+        if (ConversationId != id)
+        {
+            return;
+        }
+
         _breakdown = context.IsSuccess ? ContextBreakdown.From(context.Value, _attachments) : null;
         StateHasChanged();
     }

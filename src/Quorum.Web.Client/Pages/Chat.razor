@@ -14,7 +14,7 @@
     <aside class="chat-side">
         <div class="pa-3">
             <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" OnClick="NewConversation"
-                       Disabled="_streaming" StartIcon="@Icons.Material.Filled.Add">New conversation</MudButton>
+                       StartIcon="@Icons.Material.Filled.Add">New conversation</MudButton>
         </div>
         <ProblemMessage Problem="_deleteProblem" />
         <div class="chat-list">
@@ -52,14 +52,14 @@
                 {
                     <h1>@(_title ?? "New conversation")</h1>
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" title="Rename"
-                                   OnClick="StartRename" Disabled="@(_title is null || _streaming)" />
+                                   OnClick="StartRename" Disabled="@(_title is null || Streaming)" />
                 }
             </div>
         }
 
         <div class="messages" @ref="_messagesElement">
             <div class="messages-inner">
-                @if (_messages.Count == 0 && !_streaming)
+                @if (_messages.Count == 0 && !Streaming)
                 {
                     <div class="empty">
                         <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" />
@@ -76,7 +76,7 @@
                     else
                     {
                         <div class="turn assistant">
-                            @if (ReferenceEquals(message, _messages[^1]) && !_streaming && _calls.Count > 0)
+                            @if (ReferenceEquals(message, _messages[^1]) && !Streaming && _calls.Count > 0)
                             {
                                 @Calls
                             }
@@ -96,12 +96,12 @@
                 }
 
                 @* With the answer on screen the cards sit above it, as they do while it streams; this one is for when it is not (yet). *@
-                @if (!_streaming && _calls.Count > 0 && _messages is not [.., { Role: MessageRoles.Assistant }])
+                @if (!Streaming && _calls.Count > 0 && _messages is not [.., { Role: MessageRoles.Assistant }])
                 {
                     <div class="turn assistant">@Calls</div>
                 }
 
-                @if (_streaming)
+                @if (Streaming)
                 {
                     <div class="turn assistant">
                         @Calls
@@ -130,14 +130,14 @@
 
         <div class="composer">
             <div class="composer-inner">
-                <ComposerCard @ref="_attachments" ConversationId="Id" Disabled="_streaming" InitialAttachments="_loaded?.Attachments"
+                <ComposerCard @ref="_attachments" ConversationId="Id" Disabled="Streaming" InitialAttachments="@(_loaded?.Id == Id ? _loaded?.Attachments : null)"
                               EnsureConversation="EnsureConversationAsync" OnSessionExpired="Expired">
                     <Input>
                         <textarea @ref="_composerElement" @bind="_draft" @bind:event="oninput" rows="1"
-                                  placeholder="Write a message (Shift+Enter for a new line)" disabled="@_streaming"></textarea>
+                                  placeholder="Write a message (Shift+Enter for a new line)" disabled="@Streaming"></textarea>
                     </Input>
                     <Actions>
-                        @if (_streaming)
+                        @if (Streaming)
                         {
                             <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Stop" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.Stop">Stop</MudButton>
@@ -151,7 +151,8 @@
                             }
 
                             <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small"
-                                           title="Send" OnClick="SendAsync" Disabled="@string.IsNullOrWhiteSpace(_draft)" />
+                                           title="@(_streamingId is null ? "Send" : "Wait for the answer in the other conversation to finish")"
+                                           OnClick="SendAsync" Disabled="@(string.IsNullOrWhiteSpace(_draft) || _streamingId is not null)" />
                         }
                     </Actions>
                 </ComposerCard>
@@ -179,7 +180,8 @@
     private string _draft = string.Empty;
     private string _partial = string.Empty;
     private string _reasoning = string.Empty;
-    private bool _streaming;
+    // The conversation an answer is streaming into: the page outlives navigation, the answer's state belongs to one conversation.
+    private Guid? _streamingId;
     private bool _sending;
     private bool _renaming;
 
@@ -188,7 +190,9 @@
 
     private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(60);
 
-    private bool CanRegenerate => _messages.Count > 0 && Id is not null;
+    private bool Streaming => _streamingId is { } streamingId && streamingId == Id;
+
+    private bool CanRegenerate => _messages.Count > 0 && Id is not null && _streamingId is null;
 
     // The tool calls of the answer being watched, or of the last one: the server does not store them, so they stay until the next answer.
     private RenderFragment Calls => @<div class="tool-calls">
@@ -211,7 +215,17 @@
             return;
         }
 
-        _calls.Clear();
+        // Before the first await: the render in between must not show the previous conversation's messages or attachments.
+        if (_streamingId is null || _streamingId != Id)
+        {
+            _calls.Clear();
+        }
+
+        _problem = null;
+        _messages.Clear();
+        _title = null;
+        _loaded = null;
+
         await RefreshListAsync();
         await LoadConversationAsync();
     }
@@ -309,7 +323,7 @@
     private async Task SendAsync()
     {
         var content = _draft.Trim();
-        if (content.Length == 0 || _streaming || _sending)
+        if (content.Length == 0 || _streamingId is not null || _sending)
         {
             return;
         }
@@ -345,7 +359,7 @@
 
     private async Task RegenerateAsync()
     {
-        if (Id is null || _streaming)
+        if (Id is null || _streamingId is not null)
         {
             return;
         }
@@ -362,7 +376,7 @@
     private async Task StreamAsync(Func<CancellationToken, IAsyncEnumerable<AnswerEvent>> start)
     {
         var id = Id!.Value;
-        _streaming = true;
+        _streamingId = id;
         _partial = string.Empty;
         _reasoning = string.Empty;
         _calls.Clear();
@@ -409,7 +423,11 @@
                         finished = true;
                         break;
                     case AnswerRejected rejected:
-                        _problem = rejected.Problem;
+                        if (Id == id)
+                        {
+                            _problem = rejected.Problem;
+                        }
+
                         finished = true;
                         if (rejected.Problem.IsUnauthorized)
                         {
@@ -436,12 +454,16 @@
         catch (Exception exception) when (exception is HttpRequestException or IOException or System.Text.Json.JsonException)
         {
             // The connection broke or the stream was unreadable: the server still stores what it had, shown below.
-            _problem = new ApiProblem(0, "client.stream_broken", "The connection to Quorum broke while the answer was arriving.", new Dictionary<string, string[]>());
+            if (Id == id)
+            {
+                _problem = new ApiProblem(0, "client.stream_broken", "The connection to Quorum broke while the answer was arriving.", new Dictionary<string, string[]>());
+            }
+
             finished = true;
         }
         finally
         {
-            _streaming = false;
+            _streamingId = null;
             _stream?.Dispose();
             _stream = null;
 
@@ -450,6 +472,13 @@
             {
                 call.Abandon();
             }
+        }
+
+        // The user went to another conversation meanwhile: the answer is stored, nothing here to refresh or navigate back to.
+        if (Id != id)
+        {
+            StateHasChanged();
+            return;
         }
 
         // The server stores the final text and status: reload so the screen shows what is persisted.
@@ -558,7 +587,7 @@
         await RefreshListAsync();
     }
 
-    private bool DeleteDisabled(ConversationSummary item) => _streaming && item.Id == Id;
+    private bool DeleteDisabled(ConversationSummary item) => _streamingId == item.Id;
 
     private async Task DeleteAsync(ConversationSummary item)
     {
