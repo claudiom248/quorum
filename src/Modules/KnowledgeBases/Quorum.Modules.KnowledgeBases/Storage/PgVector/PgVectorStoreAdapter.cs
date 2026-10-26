@@ -29,6 +29,9 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
         "knowledge_base.invalid_connection",
         "The connection is required: host, database and username (with the password), or a connectionString.");
 
+    // Iterative index scans arrived in 0.8; before it a filtered approximate search returns too few rows (D-12).
+    private static readonly Version MinimumRecommendedVersion = new(0, 8);
+
     public KnowledgeBaseKind Kind => KnowledgeBaseKind.PgVector;
 
     public Error SecretRequired => PasswordRequired;
@@ -171,9 +174,10 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
             return new SourceProbe(Reachable: true, Info: null, [], warnings);
         }
 
+        List<InspectWarning> notes = [];
         var vectors = relation.Columns
             .Where(column => column.IsVector)
-            .Select(column => VectorOf(relation, column, found.MeasuredDimensions, warnings))
+            .Select(column => VectorOf(relation, column, found.MeasuredDimensions, notes))
             .ToList();
         if (vectors.Count == 0)
         {
@@ -190,7 +194,87 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
             new SourceInfo(vectors, IndexedPaths(relation), recordCount, IndexesKnown: !relation.IsView),
             rows,
             warnings,
-            Declared: Declared(relation));
+            AddNotes(notes, pg, found.Extension, relation, vectors),
+            Declared(relation));
+    }
+
+    /// <summary>What never changes the status (D-13): worth fixing, none of it stops a search.</summary>
+    private static List<InspectWarning> AddNotes(List<InspectWarning> notes, PgVectorConnection pg, Version? extension, PgVectorRelation relation, List<VectorInfo> vectors)
+    {
+        if (extension is not null && extension < MinimumRecommendedVersion)
+        {
+            notes.Add(new InspectWarning(
+                WarningCodes.PgVectorOldVersion,
+                $"pgvector {extension} is older than {MinimumRecommendedVersion}: a search with filters on an approximate index can return fewer rows than asked for. Upgrade the extension.",
+                Path: null));
+        }
+
+        var searched = pg.VectorColumn is { } named ? vectors.FirstOrDefault(v => v.Name == named) : vectors.Count == 1 ? vectors[0] : null;
+        if (searched is not null && !relation.IsView && !relation.Indexes.Any(index => index.Column == searched.Name && index.Method is "hnsw" or "ivfflat"))
+        {
+            notes.Add(new InspectWarning(
+                WarningCodes.PgVectorVectorUnindexed,
+                $"'{searched.Name}' has no vector index, so every search reads the whole relation: exact, but slow on large ones. Ask the data owner to create an HNSW or IVFFlat index.",
+                searched.Name));
+        }
+
+        if (relation.CanWrite)
+        {
+            notes.Add(new InspectWarning(
+                WarningCodes.PgVectorWritable,
+                "The user Quorum connects with can change this relation (INSERT, UPDATE, DELETE or TRUNCATE). Quorum never writes to it: use a read-only role.",
+                Path: null));
+        }
+
+        return notes;
+    }
+
+    /// <summary>
+    /// A column the mapping reads that is gone is reported by name: it stops the search when it is the text, and warns otherwise.
+    /// Keys inside a <c>json</c> column are left to the sample. A filter on a mapped column or on the document id with no index is slow.
+    /// </summary>
+    public MappingCheck CheckMapping(SourceInfo source, DeclaredProperties? declared, KnowledgeBaseMapping mapping)
+    {
+        List<InspectWarning> problems = [];
+        List<InspectWarning> notes = [];
+        HashSet<string> covered = [];
+
+        if (declared is not null)
+        {
+            var known = declared.Properties.Select(p => p.Path).Concat(declared.Warnings.Select(w => w.Path).OfType<string>()).ToHashSet(StringComparer.Ordinal);
+            var roles = mapping.Roles;
+            var rolePaths = new[] { roles.Text, roles.DocumentId, roles.Title, roles.Position, roles.SourceUrl }.OfType<string>();
+            foreach (var path in rolePaths.Concat(mapping.Fields.Select(f => f.Path)).Distinct(StringComparer.Ordinal))
+            {
+                if (path.Contains('.', StringComparison.Ordinal) || known.Contains(path) || source.Vectors.Any(v => v.Name == path))
+                {
+                    continue;
+                }
+
+                var isText = path == roles.Text;
+                var warning = new InspectWarning(
+                    WarningCodes.PgVectorColumnMissing,
+                    isText
+                        ? $"The column '{path}' the text is read from no longer exists, so RAG answers have nothing to read. Map the text to another column."
+                        : $"The column '{path}' no longer exists: filters and results that use it are ignored until the mapping is corrected.",
+                    path);
+                (isText ? problems : notes).Add(warning);
+                covered.Add(path);
+            }
+        }
+
+        var indexed = mapping.Fields.Select(f => f.Path).Concat(mapping.Roles.DocumentId is { } documentId ? [documentId] : []).Distinct(StringComparer.Ordinal);
+        foreach (var path in indexed.Where(path => !covered.Contains(path)))
+        {
+            if (UnindexedPathWarning(source, path) is { } unindexed)
+            {
+                notes.Add(path == mapping.Roles.DocumentId
+                    ? unindexed with { Message = $"'{path}' identifies the document and has no index: a search limited to some documents can be slow." }
+                    : unindexed);
+            }
+        }
+
+        return new MappingCheck(problems, notes, covered);
     }
 
     public VectorSelection SelectVector(SourceInfo source, IStoreConnection connection)
@@ -285,7 +369,7 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
     };
 
     // The distance is the operator class of the index on the column; with none, or with different ones, the draft is Cosine and says so.
-    private static VectorInfo VectorOf(PgVectorRelation relation, PgVectorColumn column, IReadOnlyDictionary<string, int> measured, List<InspectWarning> warnings)
+    private static VectorInfo VectorOf(PgVectorRelation relation, PgVectorColumn column, IReadOnlyDictionary<string, int> measured, List<InspectWarning> notes)
     {
         var classes = relation.Indexes
             .Where(index => index.Column == column.Name && index.Method is "hnsw" or "ivfflat")
@@ -302,7 +386,7 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
         else
         {
             distance = PgVectorDistance.Cosine;
-            warnings.Add(new InspectWarning(
+            notes.Add(new InspectWarning(
                 WarningCodes.PgVectorDistanceDefaulted,
                 classes.Count == 0
                     ? $"'{column.Name}' has no vector index to tell the distance from, so Cosine is proposed. Check which distance the embedding model was trained for."

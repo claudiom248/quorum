@@ -63,7 +63,7 @@ public sealed class PgVectorInspectTests(PostgresFixture postgres, PgVectorFixtu
         Assert.True(report.DimensionMatch);
         Assert.Equal([new InspectApi.VectorBody("embedding", 64, "Cosine")], report.Vectors);
         Assert.Empty(report.UnindexedFields);
-        Assert.Empty(report.Warnings);
+        Assert.All(report.Warnings, w => Assert.Equal("knowledge_base.pgvector_writable", w.Code)); // the test database is reached as its owner
     }
 
     [Fact] // AC-10, AC-11

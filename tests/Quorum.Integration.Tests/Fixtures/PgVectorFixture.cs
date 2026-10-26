@@ -84,6 +84,9 @@ public sealed class PgVectorFixture : IAsyncLifetime
             {
                 var container = new PostgreSqlBuilder(ComposeFile.Image("pgvector/pgvector")).Build();
                 await container.StartAsync(TestContext.Current.CancellationToken);
+
+                // Created once, here: seeders that run in parallel and each issue CREATE EXTENSION IF NOT EXISTS can collide on the catalog's unique index.
+                await container.ExecScriptAsync("CREATE EXTENSION IF NOT EXISTS vector", TestContext.Current.CancellationToken);
                 _container = container;
             }
 
