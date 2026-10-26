@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.0](https://github.com/claudiom248/quorum/compare/v0.10.0...v0.11.0) (2026-10-26)
+
+
+### Features
+
+* admin UI pages, two-step setup and getting-started checklist (spec 010) ([#99](https://github.com/claudiom248/quorum/issues/99)) ([62ece40](https://github.com/claudiom248/quorum/commit/62ece4012f85ee96bb3d8607db0dee97908fb172))
+* connect, list relations and inspect pgvector knowledge bases (spec 008) ([#101](https://github.com/claudiom248/quorum/issues/101)) ([d27bcb8](https://github.com/claudiom248/quorum/commit/d27bcb803ee67643aca64d0679d9809c8978321c))
+* sidebar shell and shared list components (spec 010) ([#94](https://github.com/claudiom248/quorum/issues/94)) ([1a361c5](https://github.com/claudiom248/quorum/commit/1a361c548f1a032eee5c9f72a207a0845138e41c))
+* tenants list and onboarding checklist API (spec 010) ([#96](https://github.com/claudiom248/quorum/issues/96)) ([9fc98a2](https://github.com/claudiom248/quorum/commit/9fc98a2ddd53dd6b80bf54441af1ce277d2fc602))
+* uniform scope, list query and aggregate lookups (spec 010) ([#97](https://github.com/claudiom248/quorum/issues/97)) ([0feaeb4](https://github.com/claudiom248/quorum/commit/0feaeb48478069be8e00efe03340e9a6e769c84e))
+
+
+### Bug Fixes
+
+* code review findings for lookups and admin UI (specs 007, 010) ([#100](https://github.com/claudiom248/quorum/issues/100)) ([db410da](https://github.com/claudiom248/quorum/commit/db410da915f354480475410beba7ce3e7189a782))
+
 ## [0.10.0](https://github.com/claudiom248/quorum/compare/v0.9.0...v0.10.0) (2026-10-23)
 
 
