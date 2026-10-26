@@ -96,7 +96,7 @@ internal static class PgVectorRows
     public static string Quote(string identifier) => "\"" + identifier.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
 
     /// <summary>The value of column <paramref name="ordinal"/> of the current row, or <see langword="null"/> when it is null or cannot be written as JSON.</summary>
-    public static JsonNode? Read(NpgsqlDataReader reader, int ordinal, PgVectorColumnKind kind)
+    public static JsonNode? Read(NpgsqlDataReader reader, int ordinal, PgVectorColumnKind kind, bool whole = false)
     {
         if (reader.IsDBNull(ordinal))
         {
@@ -107,7 +107,7 @@ internal static class PgVectorRows
         {
             case PgVectorColumnKind.Text:
             case PgVectorColumnKind.Enum:
-                return Cut(reader.GetValue(ordinal).ToString());
+                return whole ? JsonValue.Create(reader.GetValue(ordinal).ToString()) : Cut(reader.GetValue(ordinal).ToString());
             case PgVectorColumnKind.Uuid:
                 return JsonValue.Create(reader.GetGuid(ordinal).ToString());
             case PgVectorColumnKind.Integer:
@@ -128,9 +128,9 @@ internal static class PgVectorRows
                 var utc = moment.Kind == DateTimeKind.Local ? moment.ToUniversalTime() : DateTime.SpecifyKind(moment, DateTimeKind.Utc);
                 return JsonValue.Create(utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
             case PgVectorColumnKind.TextArray:
-                return new JsonArray(reader.GetFieldValue<string?[]>(ordinal).Where(item => item is not null).Select(item => Cut(item)).ToArray());
+                return new JsonArray(reader.GetFieldValue<string?[]>(ordinal).Where(item => item is not null).Select(item => whole ? JsonValue.Create(item) : Cut(item)).ToArray());
             case PgVectorColumnKind.Json:
-                return ParseJson(reader.GetString(ordinal));
+                return whole ? JsonNode.Parse(reader.GetString(ordinal)) : ParseJson(reader.GetString(ordinal));
             default:
                 return null;
         }

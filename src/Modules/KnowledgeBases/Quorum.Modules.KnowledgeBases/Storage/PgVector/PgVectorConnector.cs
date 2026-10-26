@@ -41,7 +41,7 @@ internal sealed record PgVectorRelationListing(Version? Extension, IReadOnlyList
 /// mapped to a few outcomes with messages that are safe to show. Identifiers are only ever names read from the catalog, quoted;
 /// values are parameters.
 /// </summary>
-internal sealed class PgVectorConnector(PgVectorDataSources dataSources)
+internal sealed partial class PgVectorConnector(PgVectorDataSources dataSources)
 {
     /// <summary>How many rows discovery reads: a relation has many columns and a <c>jsonb</c> column may carry keys that appear in few rows (D-10).</summary>
     public const int SampleSize = 100;
