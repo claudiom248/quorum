@@ -5,11 +5,11 @@
     <MudText Typo="Typo.subtitle1" Class="mb-2">@(Draft.IsNew ? "Register a knowledge base" : $"Edit {Draft.Name}")</MudText>
 
     <ol class="wizard-steps" aria-label="Steps">
-        @foreach (var (step, label) in Steps)
+        @foreach (var (step, label, number) in VisibleSteps)
         {
             var current = step == _step;
             <li class="@(current ? "current" : step <= _reached ? "reached" : "pending")" aria-current="@(current ? "step" : null)">
-                <button type="button" disabled="@(step > _reached || _busy)" @onclick="() => GoTo(step)">@((int)step + 1). @label</button>
+                <button type="button" disabled="@(step > _reached || _busy)" @onclick="() => GoTo(step)">@number. @label</button>
             </li>
         }
     </ol>
@@ -19,12 +19,101 @@
         case WizardStep.Connection:
             <MudStack Spacing="3" data-step="connection">
                 <MudText Typo="Typo.body2" Class="tools-support-hint">
-                    Quorum reads a collection that already holds your documents, prepared by whoever owns the data. It never writes to it.
+                    @(Draft.IsPgVector
+                        ? "Quorum reads a table or view of a PostgreSQL database with pgvector that already holds your documents, prepared by whoever owns the data. It never writes to it: a read-only user is best."
+                        : "Quorum reads a collection that already holds your documents, prepared by whoever owns the data. It never writes to it.")
                 </MudText>
+                @if (Draft.IsNew)
+                {
+                    <label class="tool-policy">Store
+                        <select aria-label="Store" value="@Draft.Kind" @onchange="e => ChangeKind(e.Value?.ToString())">
+                            <option value="@KnowledgeBaseKinds.Qdrant">Qdrant</option>
+                            <option value="@KnowledgeBaseKinds.PgVector">PostgreSQL (pgvector)</option>
+                        </select>
+                    </label>
+                }
                 <MudTextField @bind-Value="Draft.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
                               HelperText="Lower-case letters, digits, '-' and '_'. The model sees it when a tool searches several knowledge bases." />
                 <MudTextField @bind-Value="Draft.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="1000"
                               HelperText="What is in it. The model reads this to choose where to search." />
+                @if (Draft.IsPgVector)
+                {
+                    <MudCheckBox T="bool" @bind-Value="Draft.UseConnectionString" Dense="true" Label="Use a connection string instead of separate fields" />
+                    @if (Draft.UseConnectionString)
+                    {
+                        <MudTextField @bind-Value="Draft.ConnectionString" Label="Connection string" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
+                                      HelperText="@ConnectionStringHint" />
+                    }
+                    else
+                    {
+                        <MudStack Row="true" Spacing="2" Class="mapping-row-fields">
+                            <MudTextField @bind-Value="Draft.Host" Label="Host" Variant="Variant.Outlined" Required="true" />
+                            <MudTextField @bind-Value="Draft.Port" Label="Port" Variant="Variant.Outlined" HelperText="5432 when empty." />
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" Class="mapping-row-fields">
+                            <MudTextField @bind-Value="Draft.Database" Label="Database" Variant="Variant.Outlined" Required="true" />
+                            <MudTextField @bind-Value="Draft.Username" Label="User" Variant="Variant.Outlined" Required="true" autocomplete="off" />
+                        </MudStack>
+                        <MudTextField @bind-Value="Draft.Password" Label="Password" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
+                                      HelperText="@PasswordHint" />
+                        <label class="tool-policy">SSL mode
+                            <select aria-label="SSL mode" @bind="Draft.SslMode">
+                                <option value="">Default (prefer)</option>
+                                @foreach (var mode in KnowledgeBaseDraft.SslModes)
+                                {
+                                    <option value="@mode">@mode</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    @if (Draft.NeedsPasswordAgain)
+                    {
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                            The host, port, database or user changed: the stored password is only kept for the same account, so type the password again.
+                        </MudAlert>
+                    }
+
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End" Class="mapping-row-fields">
+                        <MudTextField @bind-Value="Draft.DatabaseSchema" Label="Schema" Variant="Variant.Outlined" HelperText="public when empty." />
+                        <MudTextField @bind-Value="_relationFilter" Label="Filter the list" Variant="Variant.Outlined" Immediate="true" HelperText="Part of a name." />
+                        <MudButton Variant="Variant.Outlined" OnClick="ListRelationsAsync" Disabled="_busy"
+                                   StartIcon="@Icons.Material.Filled.Storage">List relations</MudButton>
+                    </MudStack>
+                    @if (_relations is { } relations)
+                    {
+                        <div data-relations>
+                            @foreach (var warning in relations.Warnings)
+                            {
+                                <MudAlert Severity="@SeverityOf(warning)" Variant="Variant.Outlined" data-warning="@warning.Code">@warning.Message</MudAlert>
+                            }
+
+                            @if (relations.Reachable && relations.Relations.Count == 0 && relations.Warnings.Count == 0)
+                            {
+                                <div class="tool-hint">No table or view with a vector column that this user can read was found.</div>
+                            }
+
+                            @foreach (var relation in relations.Relations)
+                            {
+                                var selected = relation.Name == Draft.Table && relation.Schema == (Draft.DatabaseSchema.Trim().Length > 0 ? Draft.DatabaseSchema.Trim() : relation.Schema);
+                                <div class="mapping-row @(selected ? "current" : string.Empty)" data-relation="@(relation.Schema + "." + relation.Name)">
+                                    <MudButton Variant="@(selected ? Variant.Filled : Variant.Text)" Size="Size.Small" Style="text-transform: none" OnClick="() => Draft.UseRelation(relation)">
+                                        @relation.Schema.@relation.Name
+                                    </MudButton>
+                                    <span class="tool-hint">@KnowledgeAdminView.DescribeRelation(relation)</span>
+                                </div>
+                            }
+
+                            @if (relations.Truncated)
+                            {
+                                <div class="tool-hint">Only the first relations are shown: filter the list to find the one you need.</div>
+                            }
+                        </div>
+                    }
+                    <MudTextField @bind-Value="Draft.Table" Label="Table or view" Variant="Variant.Outlined" Required="true"
+                                  HelperText="Choose it from the list, or type its name." />
+                }
+                else
+                {
                 <MudTextField @bind-Value="Draft.Url" Label="Qdrant address (gRPC)" Variant="Variant.Outlined" Required="true"
                               HelperText="The gRPC port, 6334 by default, e.g. http://qdrant:6334. The REST port, 6333, does not work here." />
                 <MudTextField @bind-Value="Draft.ApiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
@@ -32,6 +121,7 @@
                 <MudTextField @bind-Value="Draft.Collection" Label="Collection" Variant="Variant.Outlined" Required="true" />
                 <MudTextField @bind-Value="Draft.VectorName" Label="Vector name" Variant="Variant.Outlined"
                               HelperText="Only when the collection has several vectors; the inspection tells you." />
+                }
                 <MudTextField @bind-Value="Draft.EmbeddingModel" Label="Embedding model" Variant="Variant.Outlined" Required="true"
                               HelperText="The model that embedded the documents, served by the model endpoint of this installation, e.g. nomic-embed-text." />
                 <MudTextField @bind-Value="Draft.QueryPrefix" Label="Query prefix" Variant="Variant.Outlined" MaxLength="200"
@@ -60,7 +150,7 @@
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
                     <MudButton Variant="Variant.Text" OnClick="Cancel" Disabled="_busy">Cancel</MudButton>
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="InspectAsync" Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Search">@(Draft.IsNew ? "Inspect collection" : "Inspect again")</MudButton>
+                               StartIcon="@Icons.Material.Filled.Search">@(Draft.IsNew ? (Draft.IsPgVector ? "Inspect relation" : "Inspect collection") : "Inspect again")</MudButton>
                 </MudStack>
                 @if (!Draft.IsNew)
                 {
@@ -74,7 +164,7 @@
                 @if (_inspection is { } inspection)
                 {
                     <ul class="problem-list findings">
-                        @foreach (var finding in KnowledgeAdminView.Findings(inspection))
+                        @foreach (var finding in KnowledgeAdminView.Findings(inspection, Draft.Kind))
                         {
                             <li>@finding</li>
                         }
@@ -94,12 +184,46 @@
                     @if (inspection.UnindexedFields.Count > 0)
                     {
                         <div class="tool-hint" data-unindexed>
-                            Without a payload index, filters on these fields can be slow on a large collection:
+                            @(Draft.IsPgVector ? "Without an index, filters on these columns can be slow on a large relation:" : "Without a payload index, filters on these fields can be slow on a large collection:")
                             @string.Join(", ", inspection.UnindexedFields). Quorum never creates indexes: ask the data owner.
                         </div>
                     }
 
-                    @if (inspection.Vectors.Count > 1 || Draft.VectorName.Length > 0)
+                    @if (Draft.IsPgVector)
+                    {
+                        @if (inspection.Vectors.Count > 0)
+                        {
+                            <label class="tool-policy">Vector column
+                                <select aria-label="Vector column" @bind="Draft.VectorColumn">
+                                    <option value="">Choose…</option>
+                                    @foreach (var vector in inspection.Vectors.Where(v => v.Name is not null))
+                                    {
+                                        <option value="@vector.Name">@vector.Name · @KnowledgeAdminView.DescribeVector(new VectorInfo(null, vector.Size, vector.Distance))</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="tool-policy">Distance
+                                <select aria-label="Distance" @bind="Draft.Distance">
+                                    <option value="">Cosine (default)</option>
+                                    @foreach (var distance in KnowledgeBaseDraft.Distances)
+                                    {
+                                        <option value="@distance">@distance</option>
+                                    }
+                                </select>
+                            </label>
+                            <div class="tool-hint">
+                                The distance must be the one the embedding model was trained for; it is proposed from the index of the column.
+                            </div>
+                        }
+
+                        @if (Draft.NeedsVectorColumnChoice(inspection))
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                The relation has several vector columns: choose which one holds the embeddings, then inspect again to check its size.
+                            </MudAlert>
+                        }
+                    }
+                    else if (inspection.Vectors.Count > 1 || Draft.VectorName.Length > 0)
                     {
                         <label class="tool-policy">Vector
                             <select aria-label="Vector" @bind="Draft.VectorName">
@@ -119,8 +243,8 @@
                     }
                 }
 
-                <MudTextField @bind-Value="Draft.Schema" Label="Payload schema (optional)" Variant="Variant.Outlined" Lines="6" Class="schema-input"
-                              HelperText="Paste a plain JSON Schema of the payload, if the data owner gave you one, instead of sampling points. Up to 100 KB." />
+                <MudTextField @bind-Value="Draft.Schema" Label="@(Draft.IsPgVector ? "Row schema (optional)" : "Payload schema (optional)")" Variant="Variant.Outlined" Lines="6" Class="schema-input"
+                              HelperText="@(Draft.IsPgVector ? "Paste a plain JSON Schema of a row (columns as properties, json columns as objects), if the data owner gave you one, instead of sampling rows. Up to 100 KB." : "Paste a plain JSON Schema of the payload, if the data owner gave you one, instead of sampling points. Up to 100 KB.")" />
                 @if (Draft.SchemaProblem() is { } schemaProblem)
                 {
                     <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@schemaProblem</MudAlert>
@@ -141,12 +265,14 @@
         case WizardStep.Mapping when Draft.Mapping is { } mapping:
             <MudStack Spacing="3" data-step="mapping">
                 <MudText Typo="Typo.body2" Class="tools-support-hint">
-                    Say what each payload field means. Nothing is saved until you confirm. Paths use dots for nested objects, e.g. meta.year.
+                    @(Draft.IsPgVector
+                        ? "Say what each column means. Nothing is saved until you confirm. A key inside a json column is written column.key, e.g. cmetadata.year."
+                        : "Say what each payload field means. Nothing is saved until you confirm. Paths use dots for nested objects, e.g. meta.year.")
                 </MudText>
 
                 <MudText Typo="Typo.subtitle2">What the model reads and cites</MudText>
                 <MudTextField @bind-Value="mapping.Text" Label="Text (required)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
-                              HelperText="The payload field with the text of the chunk." />
+                              HelperText="@(Draft.IsPgVector ? "The column with the text of the chunk." : "The payload field with the text of the chunk.")" />
                 <MudTextField @bind-Value="mapping.DocumentId" Label="Document id" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                 <MudTextField @bind-Value="mapping.Title" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                 <MudTextField @bind-Value="mapping.Position" Label="Position (page or section)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
@@ -162,7 +288,7 @@
                     var row = review.Row;
                     <div class="mapping-row @(review.Problems.Count > 0 ? "has-problems" : string.Empty)" data-path="@row.Path">
                         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start" Class="mapping-row-fields">
-                            <MudTextField @bind-Value="row.Path" Label="Payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                            <MudTextField @bind-Value="row.Path" Label="@(Draft.IsPgVector ? "Column" : "Payload path")" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudTextField @bind-Value="row.Name" Label="Dictionary field" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudTextField @bind-Value="row.Cluster" Label="Cluster (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="@($"Remove {row.Path}")" OnClick="() => mapping.RemoveRow(row)" />
@@ -321,7 +447,7 @@
                 }
 
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
-                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Lookups)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(Draft.IsPgVector ? WizardStep.Mapping : WizardStep.Lookups)" Disabled="_busy">Back</MudButton>
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToReview" Disabled="_busy">Next</MudButton>
                 </MudStack>
             </MudStack>
@@ -414,6 +540,22 @@
     [Parameter]
     public EventCallback OnCancel { get; set; }
 
+    // The steps this kind goes through, numbered as the admin sees them: a PostgreSQL knowledge base has no lookups step.
+    private IEnumerable<(WizardStep Step, string Label, int Number)> VisibleSteps => Steps
+        .Where(s => s.Step != WizardStep.Lookups || !Draft.IsPgVector)
+        .Select((s, index) => (s.Step, s.Label, index + 1));
+
+    private RelationsResult? _relations;
+    private string? _relationFilter;
+
+    private string PasswordHint => Draft.HadPassword
+        ? "A password is stored. Leave empty to keep it. It is only kept while the host, port, database and user stay the same."
+        : "Optional if the server needs none. Stored encrypted and never shown again.";
+
+    private string ConnectionStringHint => Draft.HadConnectionString
+        ? "A connection string is stored. Leave empty to keep it. Npgsql format, e.g. Host=db;Database=docs;Username=reader;Password=…"
+        : "Npgsql format, e.g. Host=db;Database=docs;Username=reader;Password=… Stored encrypted and never shown again.";
+
     private string ApiKeyHint => Draft.HadApiKey
         ? "A key is stored. Leave empty to keep it. It is only kept while the address stays the same."
         : "Optional. Stored encrypted and never shown again.";
@@ -432,7 +574,22 @@
         new Dictionary<string, string[]>());
 
     // What the inspection and the draft mapping were made from. The vector is left out: choosing it does not change the mapping.
-    private string Fingerprint() => string.Join('\u001f', Draft.Url.Trim(), Draft.Collection.Trim(), Draft.EmbeddingModel.Trim(), Draft.QueryPrefix, Draft.Schema.Trim());
+    private string Fingerprint() => string.Join(
+        '\u001f',
+        Draft.Kind,
+        Draft.Url.Trim(),
+        Draft.Collection.Trim(),
+        Draft.EmbeddingModel.Trim(),
+        Draft.QueryPrefix,
+        Draft.Schema.Trim(),
+        Draft.UseConnectionString,
+        Draft.Host.Trim(),
+        Draft.Port.Trim(),
+        Draft.Database.Trim(),
+        Draft.Username.Trim(),
+        Draft.ConnectionString,
+        Draft.DatabaseSchema.Trim(),
+        Draft.Table.Trim());
 
     private bool InspectionIsStale => _inspected is not null && _inspected != Fingerprint();
 
@@ -530,7 +687,56 @@
         }
 
         _showProblems = false;
+
+        // A PostgreSQL knowledge base has no lookups (spec 008 A1-1): the step after the mapping is the scope.
+        if (Draft.IsPgVector)
+        {
+            Reach(WizardStep.Scope);
+            return;
+        }
+
         Reach(WizardStep.Lookups);
+    }
+
+    private void ChangeKind(string? kind)
+    {
+        if (kind is not null && kind != Draft.Kind)
+        {
+            Draft.Kind = kind;
+            _inspection = null;
+            _inspected = null;
+            _relations = null;
+            _reached = WizardStep.Connection;
+            _problem = null;
+        }
+    }
+
+    private async Task ListRelationsAsync()
+    {
+        _problem = null;
+        _showProblems = false;
+        if (Draft.PgVectorServerProblems() is { Count: > 0 } problems)
+        {
+            _problem = new ApiProblem(0, "client.invalid_connection", string.Join(' ', problems), new Dictionary<string, string[]>());
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.ListRelationsAsync(Draft.ToRelationsRequest(_relationFilter));
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+                return;
+            }
+
+            _relations = result.Value;
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private void ToScope()

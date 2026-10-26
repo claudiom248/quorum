@@ -212,7 +212,7 @@ public sealed class KnowledgeAdminViewTests
 
         var request = draft.ToInspectRequest();
 
-        Assert.Equal(("http://qdrant:6334", "docs", (string?)null, (string?)null), (request.Connection.Url, request.Connection.Collection, request.Connection.ApiKey, request.Schema));
+        Assert.Equal(("http://qdrant:6334", "docs", (string?)null, (string?)null), (((ConnectionRequest)request.Connection).Url, ((ConnectionRequest)request.Connection).Collection, ((ConnectionRequest)request.Connection).ApiKey, request.Schema));
         Assert.Equal("search_query: ", request.QueryPrefix);
         Assert.Equal(KnowledgeBaseKinds.Qdrant, request.Kind);
 
@@ -292,7 +292,7 @@ public sealed class KnowledgeAdminViewTests
         Assert.Empty(draft.Problems(Dictionary));
         var request = draft.ToRequest(Dictionary);
 
-        Assert.Equal(("policies", KnowledgeBaseKinds.Qdrant, "http://qdrant:6334", "s3cret"), (request.Name, request.Kind, request.Connection.Url, request.Connection.ApiKey));
+        Assert.Equal(("policies", KnowledgeBaseKinds.Qdrant, "http://qdrant:6334", "s3cret"), (request.Name, request.Kind, ((ConnectionRequest)request.Connection).Url, ((ConnectionRequest)request.Connection).ApiKey));
         Assert.Equal(ScopeKinds.Global, request.Scope.Kind);
         Assert.Contains(draft.Summary(Dictionary, []), line => line.Contains("every tenant", StringComparison.OrdinalIgnoreCase));
     }
@@ -326,7 +326,7 @@ public sealed class KnowledgeAdminViewTests
         Assert.False(draft.IsNew);
         Assert.Empty(draft.Problems(Dictionary));
         Assert.False(draft.NeedsApiKeyAgain);
-        Assert.Null(draft.ToRequest(Dictionary).Connection.ApiKey);
+        Assert.Null(((ConnectionRequest)draft.ToRequest(Dictionary).Connection).ApiKey);
 
         draft.Url = "http://elsewhere:6334";
 

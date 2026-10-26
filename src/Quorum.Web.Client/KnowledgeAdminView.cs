@@ -25,6 +25,28 @@ public static class KnowledgeAdminView
         "knowledge_base.embedding_failed",
         "knowledge_base.vector_name_required",
         "knowledge_base.vector_not_found",
+        "knowledge_base.pgvector_unreachable",
+        "knowledge_base.pgvector_unauthorized",
+        "knowledge_base.pgvector_unexpected_response",
+        "knowledge_base.pgvector_extension_missing",
+        "knowledge_base.pgvector_relation_not_found",
+        "knowledge_base.pgvector_dimension_mismatch",
+        "knowledge_base.vector_column_required",
+        "knowledge_base.vector_column_not_found",
+    ];
+
+    // Advice about speed or about the data owner's setup: nothing is broken.
+    private static readonly HashSet<string> InfoCodes =
+    [
+        "knowledge_base.field_unindexed",
+        "knowledge_base.empty_collection",
+        "knowledge_base.unsupported_schema_keyword",
+        "knowledge_base.pgvector_field_unindexed",
+        "knowledge_base.pgvector_vector_unindexed",
+        "knowledge_base.pgvector_empty_relation",
+        "knowledge_base.pgvector_old_version",
+        "knowledge_base.pgvector_writable",
+        "knowledge_base.pgvector_distance_defaulted",
     ];
 
     public static WarningLevel LevelOf(KnowledgeBaseWarning warning)
@@ -33,7 +55,7 @@ public static class KnowledgeAdminView
 
         return BlockingCodes.Contains(warning.Code)
             ? WarningLevel.Error
-            : warning.Code is "knowledge_base.field_unindexed" or "knowledge_base.empty_collection" or "knowledge_base.unsupported_schema_keyword"
+            : InfoCodes.Contains(warning.Code)
                 ? WarningLevel.Info
                 : WarningLevel.Warning;
     }
@@ -76,10 +98,11 @@ public static class KnowledgeAdminView
     }
 
     /// <summary>What the inspection found, as short statements for the admin.</summary>
-    public static IReadOnlyList<string> Findings(InspectResult result)
+    public static IReadOnlyList<string> Findings(InspectResult result, string kind = KnowledgeBaseKinds.Qdrant)
     {
         ArgumentNullException.ThrowIfNull(result);
 
+        var source = kind == KnowledgeBaseKinds.PgVector ? "relation" : "collection";
         var findings = new List<string>
         {
             result.Reachable ? "The server answered." : "The server could not be reached.",
@@ -87,7 +110,7 @@ public static class KnowledgeAdminView
 
         if (result.Reachable)
         {
-            findings.Add(result.CollectionExists ? "The collection exists." : "The collection was not found.");
+            findings.Add(result.CollectionExists ? $"The {source} exists." : $"The {source} was not found.");
         }
 
         if (result.Vectors.Count > 0)
@@ -100,12 +123,42 @@ public static class KnowledgeAdminView
             findings.Add(result.DimensionMatch switch
             {
                 true => $"The embedding model gives vectors of {size} dimensions: they match.",
-                false => $"The embedding model gives vectors of {size} dimensions: they do not match the collection.",
+                false => $"The embedding model gives vectors of {size} dimensions: they do not match the {source}.",
                 null => $"The embedding model gives vectors of {size} dimensions.",
             });
         }
 
         return findings;
+    }
+
+    /// <summary>A relation of the list in a few words: its type, the rows it is estimated to have and its vector columns.</summary>
+    public static string DescribeRelation(RelationInfo relation)
+    {
+        ArgumentNullException.ThrowIfNull(relation);
+
+        var vectors = string.Join(", ", relation.VectorColumns.Select(v => $"{v.Name} ({v.Type})"));
+        var rows = relation.ApproximateRows is { } count ? $" · about {count:N0} rows" : string.Empty;
+        return $"{relation.Type}{rows} · {vectors}";
+    }
+
+    /// <summary>Where a knowledge base lives, in one line, without anything secret: <c>Qdrant · http://qdrant:6334 · collection docs</c>.</summary>
+    public static string DescribeConnection(KnowledgeBaseDetail detail)
+    {
+        ArgumentNullException.ThrowIfNull(detail);
+
+        if (detail.Connection is not { } connection)
+        {
+            return detail.Kind ?? string.Empty;
+        }
+
+        if (detail.Kind != KnowledgeBaseKinds.PgVector)
+        {
+            return $"{detail.Kind} · {connection.Url} · collection {connection.Collection}";
+        }
+
+        var schema = connection.Schema is { Length: > 0 } name ? name + "." : string.Empty;
+        var server = connection.HasConnectionString ? "a connection string" : $"{connection.Host}{(connection.Port is { } port ? ":" + port : string.Empty)}/{connection.Database}";
+        return $"{detail.Kind} · {server} · {schema}{connection.Table}{(connection.VectorColumn is { Length: > 0 } column ? $" · vector {column}" : string.Empty)}";
     }
 
     /// <summary>Whether the admin can go on to the mapping: the collection was read, so there is something to review.</summary>
