@@ -45,7 +45,7 @@ internal sealed class FakeStoreAdapter(IReadOnlyList<FakeStoreAdapter.Row> rows,
     public static IStoreAdapter PgVectorStub()
     {
         var connector = new PgVectorConnector(new PgVectorDataSources());
-        return new PgVectorStoreAdapter(connector, new KnowledgeBaseSecretProtector(new EphemeralDataProtectionProvider()), new PgVectorSourceListing(connector));
+        return new PgVectorStoreAdapter(connector, new KnowledgeBaseSecretProtector(new EphemeralDataProtectionProvider()), new PgVectorSourceListing(connector), new PgVectorLookups(connector));
     }
 
     /// <summary>The queries the store received, in order.</summary>

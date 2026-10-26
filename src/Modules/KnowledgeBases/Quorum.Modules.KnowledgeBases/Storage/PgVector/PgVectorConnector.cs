@@ -10,9 +10,10 @@ namespace Quorum.Modules.KnowledgeBases.Storage.PgVector;
 internal sealed record PgVectorIndex(string Column, string Method, string OperatorClass);
 
 /// <param name="Kind">The catalog's letter: <c>r</c> table, <c>p</c> partitioned table, <c>v</c> view, <c>m</c> materialized view.</param>
+/// <param name="Oid">The relation's id in the catalog, to ask it more.</param>
 /// <param name="CanWrite">Whether the connecting user may change the relation: Quorum never does, so a read-only role is advised.</param>
 /// <param name="ApproximateRows">What the catalog estimates; negative when the relation was never analysed or has no rows of its own (a view).</param>
-internal sealed record PgVectorRelation(string Schema, string Name, string Kind, long ApproximateRows, IReadOnlyList<PgVectorColumn> Columns, IReadOnlyList<PgVectorIndex> Indexes, bool CanWrite = false)
+internal sealed record PgVectorRelation(string Schema, string Name, string Kind, long ApproximateRows, IReadOnlyList<PgVectorColumn> Columns, IReadOnlyList<PgVectorIndex> Indexes, bool CanWrite = false, uint Oid = 0)
 {
     /// <summary>A plain view has no index of its own, so what it is missing cannot be told from it.</summary>
     public bool IsView => Kind == "v";
@@ -278,7 +279,7 @@ internal sealed partial class PgVectorConnector(PgVectorDataSources dataSources)
             }
         }
 
-        return new PgVectorRelation(schema, name, kind, rows, columns, indexes, canWrite);
+        return new PgVectorRelation(schema, name, kind, rows, columns, indexes, canWrite, oid);
     }
 
     // vector_dims takes a vector or a halfvec; the first row that has a value says how many dimensions the column holds.
