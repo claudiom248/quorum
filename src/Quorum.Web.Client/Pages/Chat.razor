@@ -76,7 +76,7 @@
                     else
                     {
                         <div class="turn assistant">
-                            @if (ReferenceEquals(message, _messages[^1]) && !Streaming && _calls.Count > 0)
+                            @if (ReferenceEquals(message, _messages[^1]) && !Streaming && CurrentCalls.Count > 0)
                             {
                                 @Calls
                             }
@@ -96,33 +96,33 @@
                 }
 
                 @* With the answer on screen the cards sit above it, as they do while it streams; this one is for when it is not (yet). *@
-                @if (!Streaming && _calls.Count > 0 && _messages is not [.., { Role: MessageRoles.Assistant }])
+                @if (!Streaming && CurrentCalls.Count > 0 && _messages is not [.., { Role: MessageRoles.Assistant }])
                 {
                     <div class="turn assistant">@Calls</div>
                 }
 
-                @if (Streaming)
+                @if (Run is { } run)
                 {
                     <div class="turn assistant">
                         @Calls
-                        @if (_reasoning.Length > 0)
+                        @if (run.Reasoning.Length > 0)
                         {
-                            <details class="reasoning" open="@(_partial.Length == 0)">
-                                <summary>💭 Thinking@(_partial.Length == 0 ? "…" : string.Empty)</summary>
-                                <div class="reasoning-text">@_reasoning</div>
+                            <details class="reasoning" open="@(run.Partial.Length == 0)">
+                                <summary>💭 Thinking@(run.Partial.Length == 0 ? "…" : string.Empty)</summary>
+                                <div class="reasoning-text">@run.Reasoning</div>
                             </details>
                         }
 
-                        @if (_partial.Length > 0)
+                        @if (run.Partial.Length > 0)
                         {
-                            <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(_partial))</div>
+                            <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(run.Partial))</div>
                         }
-                        else if (_reasoning.Length == 0)
+                        else if (run.Reasoning.Length == 0)
                         {
                             <div class="bubble"><MudText Typo="Typo.body2">Thinking…</MudText><MudProgressLinear Indeterminate="true" Size="Size.Small" /></div>
                         }
 
-                        <SourcesList Sources="_sources" Text="@_partial" Streaming="true" />
+                        <SourcesList Sources="run.Sources" Text="@run.Partial" Streaming="true" />
                     </div>
                 }
             </div>
@@ -151,8 +151,7 @@
                             }
 
                             <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small"
-                                           title="@(_streamingId is null ? "Send" : "Wait for the answer in the other conversation to finish")"
-                                           OnClick="SendAsync" Disabled="@(string.IsNullOrWhiteSpace(_draft) || _streamingId is not null)" />
+                                           title="Send" OnClick="SendAsync" Disabled="@string.IsNullOrWhiteSpace(_draft)" />
                         }
                     </Actions>
                 </ComposerCard>
@@ -164,11 +163,10 @@
 
 @code {
     private readonly List<MessageDto> _messages = [];
-    private readonly List<ToolCallView> _calls = [];
-    private readonly List<MessageSourceDto> _sources = [];
+    private readonly Dictionary<Guid, AnswerRun> _runs = [];
+    private List<ToolCallView> _calls = [];
     private List<ConversationSummary> _conversations = [];
     private ConversationDetail? _loaded;
-    private CancellationTokenSource? _stream;
     private DotNetObjectReference<Chat>? _self;
     private ElementReference _messagesElement;
     private ElementReference _composerElement;
@@ -178,10 +176,6 @@
     private string? _title;
     private string _newTitle = string.Empty;
     private string _draft = string.Empty;
-    private string _partial = string.Empty;
-    private string _reasoning = string.Empty;
-    // The conversation an answer is streaming into: the page outlives navigation, the answer's state belongs to one conversation.
-    private Guid? _streamingId;
     private bool _sending;
     private bool _renaming;
 
@@ -190,13 +184,32 @@
 
     private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(60);
 
-    private bool Streaming => _streamingId is { } streamingId && streamingId == Id;
+    /// <summary>The state of one answer on its way. The page outlives navigation, so each conversation streams on its own.</summary>
+    private sealed class AnswerRun
+    {
+        public string Partial { get; set; } = string.Empty;
 
-    private bool CanRegenerate => _messages.Count > 0 && Id is not null && _streamingId is null;
+        public string Reasoning { get; set; } = string.Empty;
+
+        public List<ToolCallView> Calls { get; } = [];
+
+        public List<MessageSourceDto> Sources { get; } = [];
+
+        public CancellationTokenSource Cancellation { get; } = new();
+    }
+
+    // The answer streaming into the conversation on screen, if any; another conversation's answer does not block this one.
+    private AnswerRun? Run => Id is { } id && _runs.TryGetValue(id, out var run) ? run : null;
+
+    private bool Streaming => Run is not null;
+
+    private bool CanRegenerate => _messages.Count > 0 && Id is not null && !Streaming;
+
+    private List<ToolCallView> CurrentCalls => Run?.Calls ?? _calls;
 
     // The tool calls of the answer being watched, or of the last one: the server does not store them, so they stay until the next answer.
     private RenderFragment Calls => @<div class="tool-calls">
-        @foreach (var call in _calls)
+        @foreach (var call in CurrentCalls)
         {
             var current = call;
             <ToolCallCard @key="current.CallId" Call="current"
@@ -216,11 +229,7 @@
         }
 
         // Before the first await: the render in between must not show the previous conversation's messages or attachments.
-        if (_streamingId is null || _streamingId != Id)
-        {
-            _calls.Clear();
-        }
-
+        _calls = [];
         _problem = null;
         _messages.Clear();
         _title = null;
@@ -323,12 +332,16 @@
     private async Task SendAsync()
     {
         var content = _draft.Trim();
-        if (content.Length == 0 || _streamingId is not null || _sending)
+        if (content.Length == 0 || Streaming || _sending)
         {
             return;
         }
 
+        AnswerRun run;
+        Guid id;
+
         // Set before the first await: a second Enter during the creation of a new conversation must not start another send.
+        // It covers only that creation: while an answer streams, the other conversations stay free to be written to.
         _sending = true;
         try
         {
@@ -345,21 +358,28 @@
 
                 _loaded = new ConversationDetail(created.Value, null, [], []);
                 Id = created.Value;
+
+                // At once: the address names the conversation the answer streams into, so "New conversation" starts a fresh page.
+                Navigation.NavigateTo($"c/{created.Value}", replace: true);
             }
 
+            id = Id!.Value;
             _draft = string.Empty;
             _messages.Add(new MessageDto(Guid.NewGuid(), MessageRoles.User, content, MessageStatuses.Completed, Clock.GetUtcNow()));
-            await StreamAsync(token => Api.SendMessageAsync(Id!.Value, content, token));
+            run = new AnswerRun();
+            _runs[id] = run;
         }
         finally
         {
             _sending = false;
         }
+
+        await StreamAsync(id, run, token => Api.SendMessageAsync(id, content, token));
     }
 
     private async Task RegenerateAsync()
     {
-        if (Id is null || _streamingId is not null)
+        if (Id is not { } id || Streaming)
         {
             return;
         }
@@ -370,20 +390,18 @@
             _messages.RemoveAt(_messages.Count - 1);
         }
 
-        await StreamAsync(token => Api.RegenerateAsync(Id!.Value, token));
+        var run = new AnswerRun();
+        _runs[id] = run;
+        await StreamAsync(id, run, token => Api.RegenerateAsync(id, token));
     }
 
-    private async Task StreamAsync(Func<CancellationToken, IAsyncEnumerable<AnswerEvent>> start)
+    private async Task StreamAsync(Guid id, AnswerRun run, Func<CancellationToken, IAsyncEnumerable<AnswerEvent>> start)
     {
-        var id = Id!.Value;
-        _streamingId = id;
-        _partial = string.Empty;
-        _reasoning = string.Empty;
-        _calls.Clear();
-        _sources.Clear();
-        _stream = new CancellationTokenSource();
-        await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
-        await RefreshAsync();
+        if (Id == id)
+        {
+            await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
+            await RefreshAsync(id);
+        }
 
         var finished = false;
         var stopped = false;
@@ -391,32 +409,32 @@
 
         try
         {
-            await foreach (var answerEvent in start(_stream.Token))
+            await foreach (var answerEvent in start(run.Cancellation.Token))
             {
                 // A call that waits for the user must be on screen before the next event, which may be minutes away.
                 var urgent = false;
                 switch (answerEvent)
                 {
                     case AnswerReasoning reasoning:
-                        _reasoning += reasoning.Text;
+                        run.Reasoning += reasoning.Text;
                         break;
                     case AnswerDelta delta:
-                        _partial += delta.Text;
+                        run.Partial += delta.Text;
                         break;
                     case ToolCallEvent call:
-                        _calls.Add(ToolCallView.From(call));
+                        run.Calls.Add(ToolCallView.From(call));
                         urgent = true;
                         break;
                     case AskUserEvent ask:
-                        _calls.Find(c => c.CallId == ask.CallId)?.Apply(ask);
+                        run.Calls.Find(c => c.CallId == ask.CallId)?.Apply(ask);
                         urgent = true;
                         break;
                     case ToolResultEvent result:
-                        _calls.Find(c => c.CallId == result.CallId)?.Apply(result);
+                        run.Calls.Find(c => c.CallId == result.CallId)?.Apply(result);
                         urgent = true;
                         break;
                     case SourcesEvent cited:
-                        _sources.AddRange(cited.Sources);
+                        run.Sources.AddRange(cited.Sources);
                         urgent = true;
                         break;
                     case AnswerDone:
@@ -441,11 +459,11 @@
                 if (urgent || Clock.GetElapsedTime(lastRender) >= RenderInterval)
                 {
                     lastRender = Clock.GetTimestamp();
-                    await RefreshAsync();
+                    await RefreshAsync(id);
                 }
             }
 
-            await RefreshAsync();
+            await RefreshAsync(id);
         }
         catch (OperationCanceledException)
         {
@@ -463,12 +481,11 @@
         }
         finally
         {
-            _streamingId = null;
-            _stream?.Dispose();
-            _stream = null;
+            _runs.Remove(id);
+            run.Cancellation.Dispose();
 
             // Whatever ended the answer, a call still without a result is over: nothing may keep waiting for the user.
-            foreach (var call in _calls)
+            foreach (var call in run.Calls)
             {
                 call.Abandon();
             }
@@ -480,6 +497,9 @@
             StateHasChanged();
             return;
         }
+
+        // The server does not store the tool calls: the cards stay on screen until the next answer.
+        _calls = run.Calls;
 
         // The server stores the final text and status: reload so the screen shows what is persisted.
         if (finished || stopped)
@@ -516,7 +536,16 @@
         await JS.InvokeVoidAsync("quorumChat.scrollToEnd", _messagesElement);
     }
 
-    private void Stop() => _stream?.Cancel();
+    // An answer of another conversation than the one on screen renders nothing of its own and must not scroll this one.
+    private async Task RefreshAsync(Guid id)
+    {
+        if (Id == id)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private void Stop() => Run?.Cancellation.Cancel();
 
     private async Task DecideAsync(ToolCallView call, bool approved)
     {
@@ -587,7 +616,7 @@
         await RefreshListAsync();
     }
 
-    private bool DeleteDisabled(ConversationSummary item) => _streamingId == item.Id;
+    private bool DeleteDisabled(ConversationSummary item) => _runs.ContainsKey(item.Id);
 
     private async Task DeleteAsync(ConversationSummary item)
     {
@@ -620,7 +649,11 @@
 
     public ValueTask DisposeAsync()
     {
-        _stream?.Cancel();
+        foreach (var run in _runs.Values)
+        {
+            run.Cancellation.Cancel();
+        }
+
         _self?.Dispose();
         return ValueTask.CompletedTask;
     }
