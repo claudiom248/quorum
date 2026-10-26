@@ -166,7 +166,8 @@ internal static class LookupToolDefinition
     private static string DescribeDocuments(string introduction, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyDictionary<string, string> filters, string toolName)
     {
         var text = new StringBuilder(introduction)
-            .Append("\n\nLists the documents that match the filters (id, title, link and the fields you can filter on), a page at a time.")
+            .Append("\n\nLists the documents that match the filters, a page at a time: for each its id, title, link and the value of every field it has, numbers and dates included.")
+            .Append(" Nothing here adds up or averages: to total or compare a field, read every page (follow the cursor until there is none) and work it out from the rows, saying how many documents you read.")
             .Append(" The ids can be given to a search to look only inside those documents.");
         AppendFilterHint(text, filters, toolName);
         AppendKnowledgeBases(text, knowledgeBases);
@@ -175,7 +176,7 @@ internal static class LookupToolDefinition
 
     private static string DescribeCount(string introduction, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyDictionary<string, string> filters, string toolName)
     {
-        var text = new StringBuilder(introduction).Append("\n\nCounts the documents that match the filters, exactly.");
+        var text = new StringBuilder(introduction).Append("\n\nCounts the documents that match the filters, exactly. It does not add up the values of a field: for a total, read the documents.");
         AppendFilterHint(text, filters, toolName);
         AppendKnowledgeBases(text, knowledgeBases);
         return text.ToString();
