@@ -1,6 +1,6 @@
 # Plan 008: pgvector Knowledge Bases
 
-**Spec:** `docs/specs/008-pgvector-knowledge-bases.md` (Approved 2026-10-22, Amendment 1 approved 2026-10-22, Amendment 2 drafted 2026-10-27, waiting for approval)
+**Spec:** `docs/specs/008-pgvector-knowledge-bases.md` (Approved 2026-10-22, Amendment 1 approved 2026-10-22, Amendment 2 approved 2026-10-27)
 **Architecture:** Modular Monolith; Vertical Slice inside the KnowledgeBases module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
 **Status:** Approved (2026-10-22)

@@ -1,6 +1,6 @@
 # Spec 008: pgvector Knowledge Bases
 
-**Status:** Approved (2026-10-22). Amendment 1 (ready for lookups, spec 007) approved 2026-10-22. Amendment 2 (lookups for PgVector) drafted 2026-10-27, waiting for approval.
+**Status:** Approved (2026-10-22). Amendment 1 (ready for lookups, spec 007) approved 2026-10-22. Amendment 2 (lookups for PgVector) approved 2026-10-27.
 **Date:** 2026-10-22
 
 ## Problem
@@ -75,7 +75,7 @@ Decisions of spec 003 not listed here stand for this kind too: dictionary, mappi
 - **AC-43** Given a `documentId` column with no index, When verifying, Then a warning says so and the status is unchanged.
 
 ## Amendment 2: lookups for PgVector (spec 007)
-**Status:** Draft (2026-10-27), waiting for approval. Spec 007 implemented the lookups capability for Qdrant only and left the other kinds to their own amendments (007 D-15); this amendment gives the capability to PgVector, as a customer on PostgreSQL needs the same lists, counts and entity lookups as one on Qdrant. It reverses A1-1 and A1-4 for this kind and the "not supported" row of the deferred decisions; everything else stands. The contract (`ILookupsCapability`) and the callers (the computation in the background, the live operations, the lookup tools) are those of spec 007 and do not change: the PgVector adapter implements the capability the way the contract defines it.
+**Status:** Approved (2026-10-27). Spec 007 implemented the lookups capability for Qdrant only and left the other kinds to their own amendments (007 D-15); this amendment gives the capability to PgVector, as a customer on PostgreSQL needs the same lists, counts and entity lookups as one on Qdrant. It reverses A1-1 and A1-4 for this kind and the "not supported" row of the deferred decisions; everything else stands. The contract (`ILookupsCapability`) and the callers (the computation in the background, the live operations, the lookup tools) are those of spec 007 and do not change: the PgVector adapter implements the capability the way the contract defines it.
 
 | # | Decision |
 |---|---|
