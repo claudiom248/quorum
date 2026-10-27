@@ -107,6 +107,13 @@ internal sealed record PgVectorConnection(
             builder.Timeout = (int)StoreLimits.RequestTimeout.TotalSeconds;
         }
 
+        // Npgsql abandons a command after 30 seconds by default, which would cut a lookup that is allowed ten minutes: the limits are the
+        // statement timeout the connector sets in each transaction and the cancellation token of the caller.
+        if (!builder.ShouldSerialize("Command Timeout"))
+        {
+            builder.CommandTimeout = 0;
+        }
+
         if (!builder.ShouldSerialize("Application Name"))
         {
             builder.ApplicationName = "Quorum";

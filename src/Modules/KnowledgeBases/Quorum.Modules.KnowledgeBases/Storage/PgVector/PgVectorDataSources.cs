@@ -35,6 +35,13 @@ internal sealed class PgVectorDataSources : IDisposable
             var builder = new NpgsqlDataSourceBuilder(connectionString);
             builder.UseVector();
             var created = builder.Build();
+
+            // A full cache would refuse the entry and dispose the data source that is about to be returned: make room first, the least used go.
+            if (_cache.Count >= MaxPools)
+            {
+                _cache.Compact(0.1);
+            }
+
             _cache.Set(
                 connectionString,
                 created,

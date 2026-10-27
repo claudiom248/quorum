@@ -3,6 +3,7 @@ using System.Text.Json;
 using Npgsql;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Modules.KnowledgeBases.Storage;
+using Quorum.Modules.KnowledgeBases.Storage.PgVector;
 using Quorum.SampleKnowledgeBase;
 
 namespace Quorum.Integration.Tests.KnowledgeBases.Storage;
@@ -258,6 +259,76 @@ public sealed class PgVectorLookupsAdapterTests(PgVectorFixture pgvector)
         }
 
         Assert.Equal(0, running);
+    }
+
+    [Fact] // spec 008 A2-2: ten minutes, not the 30 seconds Npgsql allows a command by default
+    public async Task ALookupThatTakesLongerThanThirtySecondsIsNotCutByTheDriver()
+    {
+        var schema = await pgvector.NewSchemaAsync();
+        await pgvector.ExecuteAsync(
+            $"""
+            CREATE VIEW {schema}.slow AS SELECT pg_sleep(32)::text AS s, 'x' AS text, '[1,0,0]'::vector(3) AS embedding;
+            """);
+        var (lookups, connection) = await OpenAsync("slow", schema);
+
+        var count = await lookups.CountAsync(connection, [], Ct);
+
+        Assert.Equal(1, count);
+    }
+
+    [Fact] // a data error is not a dimension error
+    public async Task ABadValueInAJsonKeyIsNotReportedAsADimensionMismatch()
+    {
+        var schema = await pgvector.NewSchemaAsync();
+        await pgvector.ExecuteAsync(
+            $$"""
+            CREATE TABLE {{schema}}.dates (id bigint PRIMARY KEY, text text, meta jsonb, embedding vector(3));
+            INSERT INTO {{schema}}.dates VALUES (1, 't', '{"day": "2024-02-30"}', '[1,0,0]');
+            """);
+        var (lookups, connection) = await OpenAsync("dates", schema);
+
+        var failure = await Assert.ThrowsAsync<StoreException>(() => lookups.CountAsync(connection, [new DateRangeCondition("meta.day", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), null)], Ct));
+
+        Assert.NotEqual(StoreFailure.Rejected, failure.Failure);
+    }
+
+    [Fact] // a cursor that decodes to nothing is refused
+    public async Task ACursorThatDecodesToNullIsRefusedAndDoesNotRestartTheScan()
+    {
+        var (lookups, connection) = await OpenAsync(SampleRelations.Flat);
+
+        var failure = await Assert.ThrowsAsync<StoreException>(() => lookups.ScanAsync(connection, new RecordQuery([], ["document_id"], 5, "bnVsbA"), Ct));
+
+        Assert.Equal(StoreFailure.Unexpected, failure.Failure);
+    }
+
+    [Fact] // a json column listed as a whole is refused by the check
+    public async Task AJsonColumnWithoutAKeyIsRefusedByTheCheckWithAMessageThatSaysWhatToMap()
+    {
+        var (lookups, connection) = await OpenAsync(SampleRelations.LangChain);
+
+        var message = await lookups.CheckAsync(connection, ["cmetadata"], Ct);
+
+        Assert.Contains("cmetadata.", message, StringComparison.Ordinal);
+        Assert.Null(await lookups.CheckAsync(connection, ["cmetadata.department"], Ct));
+    }
+
+    [Fact] // rows that look alike in the paths asked for still page in the same order
+    public void AnOffsetScanOrdersByEveryOrderableColumnAfterThePathsAsked()
+    {
+        PgVectorColumn[] columns =
+        [
+            new("id", "int8", "b", "bigint", -1),
+            new("grp", "text", "b", "text", -1),
+            new("raw", "json", "b", "json", -1),
+            new("embedding", "vector", "b", "vector(3)", 3),
+        ];
+        var relation = new PgVectorRelation("s", "v", "v", -1, columns, []);
+
+        var statement = PgVectorScanStatement.Build(relation, new PgVectorOrder(PgVectorOrderKind.Offset, []), new RecordQuery([], ["grp"], 10, null));
+
+        Assert.Contains("ORDER BY c0, \"id\", \"grp\"", statement.Sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"raw\"", statement.Sql.Split("ORDER BY")[1], StringComparison.Ordinal);
     }
 
     private async Task<List<string>> ScanAllAsync(string relation, string schema, int pageSize, int expectedPages)
