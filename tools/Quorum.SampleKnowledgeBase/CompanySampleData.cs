@@ -46,6 +46,32 @@ public static class CompanySampleData
         new("Massive Dynamic", "DE", "research", "2018-12-01", 4.5, true),
         new("Aperture", "NL", "laboratory", "2022-07-07", 3.5, false),
         new("Dunder Mifflin", "US", "office supplies", "2015-06-06", 3.3, false),
+
+        // A second wave of vendors, with contracts of their own (see MoreContracts).
+        new("Nakatomi", "JP", "finance", "2019-02-11", 4.5, true),
+        new("Weyland", "UK", "research", "2017-06-19", 4.2, true),
+        new("Dharma", "US", "logistics", "2018-09-24", 3.4, false),
+        new("Buy n Large", "US", "office supplies", "2021-01-18", 3.1, false),
+        new("Prestige Worldwide", "NL", "logistics", "2022-03-21", 3.9, false),
+        new("Sterling Cooper", "US", "marketing", "2016-10-03", 4.0, true),
+        new("Bluth Company", "US", "facilities", "2020-05-25", 2.9, false),
+        new("Los Pollos", "ES", "catering", "2019-11-04", 4.4, true),
+        new("Paper Street", "IT", "cleaning", "2023-04-03", 3.6, false),
+        new("Sirius Cybernetics", "UK", "software", "2018-02-12", 3.3, false),
+        new("Zorg Industries", "DE", "security", "2020-08-17", 4.1, true),
+        new("Spacely Sprockets", "US", "hardware", "2021-09-27", 3.8, false),
+        new("Cogswell Cogs", "US", "hardware", "2022-12-05", 3.5, false),
+        new("Planet Express", "US", "logistics", "2019-07-15", 4.3, true),
+        new("Hanso Foundation", "CH", "research", "2017-03-06", 4.6, true),
+        new("Rekall", "FR", "training", "2022-06-13", 3.7, false),
+        new("Virtucon", "DE", "legal", "2018-12-03", 4.2, true),
+        new("Praxis", "IT", "recruitment", "2021-11-22", 3.9, false),
+        new("Genco", "IT", "insurance", "2016-01-25", 4.7, true),
+        new("Wernham Hogg", "UK", "recruitment", "2019-10-14", 3.2, false),
+        new("Bubba Gump", "US", "catering", "2023-08-28", 3.6, false),
+        new("Vehement Capital", "UK", "audit", "2020-02-24", 4.1, true),
+        new("Duff", "NL", "catering", "2020-07-06", 3.8, false),
+        new("Pearson Hardman", "US", "legal", "2017-09-11", 4.4, true),
     ];
 
     private static readonly string[] All = ["all"];
@@ -64,13 +90,13 @@ public static class CompanySampleData
 
 
     /// <summary>
-    /// About three hundred and twenty contracts of sixteen kinds (forty written by hand, the rest generated), several chunks each: <c>supplier</c>, <c>department</c>, <c>nationality</c> (the vendor's
+    /// About six hundred and twenty contracts of sixteen kinds with forty-two vendors (forty-two contracts written by hand, the rest generated), several chunks each: <c>supplier</c>, <c>department</c>, <c>nationality</c> (the vendor's
     /// country), <c>audience</c> (a list), <c>year</c>, <c>status</c>, <c>confidential</c>, <c>value_eur</c>, <c>signed_on</c>,
     /// <c>is_first_chunk</c> and <c>chunk_index</c>, all indexed.
     /// </summary>
     public static SampleDataset CreateContracts(string name) => new(
         name,
-        "About three hundred and twenty contracts of sixteen kinds (forty written by hand, the rest generated), in ten departments, from 2018 to 2025, in four states, for many audiences, with indexes on every filter field.",
+        "About six hundred and twenty contracts of sixteen kinds with forty-two vendors (forty-two contracts written by hand, the rest generated), in ten departments, from 2018 to 2025, in four states, for many audiences, with indexes on every filter field.",
         [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
         [
             new("document_id", "keyword"),
@@ -221,7 +247,7 @@ public static class CompanySampleData
             ("research", "Aperture", Executives, 2023, "under_review", true, 24, 18500, 90),
         ];
 
-        return [.. specs.Concat(Generated()).Select((spec, index) =>
+        return [.. specs.Concat(Generated(GeneratedContracts, 0, kind => Offer[kind].Vendors)).Concat(Generated(MoreContracts, 1000, kind => NewOffer[kind])).Select((spec, index) =>
         {
             var vendor = V(spec.Vendor);
             var (title, department, sections) = Describe(spec.Kind, vendor.Name, spec.Months, spec.Price, spec.Notice);
@@ -244,6 +270,8 @@ public static class CompanySampleData
 
     private const int GeneratedContracts = 280;
 
+    private const int MoreContracts = 300;
+
     // The vendors that can supply each kind, and the audiences a contract of that kind is for: the generated contracts pick among them, so
     // a vendor has contracts of the kinds that fit it.
     private static readonly Dictionary<string, (string[] Vendors, string[][] Audiences)> Offer = new()
@@ -264,6 +292,27 @@ public static class CompanySampleData
         ["insurance"] = (["Gringotts", "Umbrella"], [FinanceExecutives, Executives]),
         ["office"] = (["Dunder Mifflin", "Acme"], [Procurement]),
         ["research"] = (["Oscorp", "Massive Dynamic", "Stark", "Aperture", "Tyrell"], [Executives, Operations]),
+    };
+
+    // The second wave of vendors, by the kind of contract they can supply: 300 more contracts are theirs.
+    private static readonly Dictionary<string, string[]> NewOffer = new()
+    {
+        ["cleaning"] = ["Paper Street", "Bluth Company", "Prestige Worldwide"],
+        ["catering"] = ["Los Pollos", "Bubba Gump", "Duff"],
+        ["laptops"] = ["Spacely Sprockets", "Cogswell Cogs"],
+        ["cloud"] = ["Sirius Cybernetics", "Dharma", "Spacely Sprockets"],
+        ["legal"] = ["Virtucon", "Pearson Hardman", "Nakatomi"],
+        ["travel"] = ["Planet Express", "Prestige Worldwide"],
+        ["security"] = ["Zorg Industries", "Weyland"],
+        ["recruitment"] = ["Praxis", "Wernham Hogg"],
+        ["software"] = ["Sirius Cybernetics", "Cogswell Cogs", "Dharma", "Virtucon"],
+        ["marketing"] = ["Sterling Cooper", "Duff"],
+        ["training"] = ["Rekall", "Duff", "Hanso Foundation"],
+        ["logistics"] = ["Planet Express", "Dharma", "Prestige Worldwide"],
+        ["audit"] = ["Vehement Capital", "Nakatomi"],
+        ["insurance"] = ["Genco", "Vehement Capital"],
+        ["office"] = ["Buy n Large", "Paper Street"],
+        ["research"] = ["Weyland", "Hanso Foundation", "Dharma"],
     };
 
     private static readonly Dictionary<string, (int Price, bool Confidential)> Pricing = new()
@@ -291,15 +340,17 @@ public static class CompanySampleData
 
     // 280 more contracts, from 2018 to 2025, a deterministic mix of kinds, vendors, years, states and terms (the year decides the state:
     // the old ones are mostly expired, the newest mostly drafts and reviews), so the lists and the counts have many values to show.
-    private static IEnumerable<(string Kind, string Vendor, string[] Audience, int Year, string Status, bool Confidential, int Months, int Price, int Notice)> Generated()
+    private static IEnumerable<(string Kind, string Vendor, string[] Audience, int Year, string Status, bool Confidential, int Months, int Price, int Notice)> Generated(int count, int offset, Func<string, string[]> vendorsOf)
     {
         var kinds = Offer.Keys.ToArray();
         int[] terms = [12, 24, 36, 24];
         int[] notices = [30, 60, 90, 60, 120];
-        for (var i = 0; i < GeneratedContracts; i++)
+        for (var n = 0; n < count; n++)
         {
+            var i = n + offset;
             var kind = kinds[i % kinds.Length];
-            var (vendors, audiences) = Offer[kind];
+            var vendors = vendorsOf(kind);
+            var audiences = Offer[kind].Audiences;
             var year = 2018 + (((i * 5) + (i / 16)) % 8);
             var status = year switch
             {

@@ -204,6 +204,9 @@ public static class PeopleSampleData
     [
         "Acme", "Globex", "Initech", "Hooli", "Umbrella", "Stark", "Wayne", "Wonka", "Soylent", "Tyrell", "Cyberdyne", "Gringotts", "Oscorp",
         "Vandelay", "Pied Piper", "Massive Dynamic", "Aperture", "Dunder Mifflin",
+        "Nakatomi", "Weyland", "Dharma", "Buy n Large", "Prestige Worldwide", "Sterling Cooper", "Bluth Company", "Los Pollos", "Paper Street",
+        "Sirius Cybernetics", "Zorg Industries", "Spacely Sprockets", "Cogswell Cogs", "Planet Express", "Hanso Foundation", "Rekall", "Virtucon", "Praxis",
+        "Genco", "Wernham Hogg", "Bubba Gump", "Vehement Capital", "Duff", "Pearson Hardman",
     ];
 
     private static readonly string[] Levels = ["junior", "mid", "mid", "mid", "senior", "senior", "senior", "lead", "mid", "senior"];

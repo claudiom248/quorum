@@ -123,12 +123,15 @@ public sealed class SampleDocumentsServerTests : IAsyncLifetime
 
 
     [Fact]
-    public void ThereAreAtLeastThreeHundredContractsAndFourHundredEmployeesAndNobodyIsRepeated()
+    public void ThereAreAtLeastSixHundredContractsOfFortyVendorsAndFourHundredEmployeesAndNobodyIsRepeated()
     {
         var contracts = SampleDocuments.Catalog().Where(document => document.Kind == "contracts").ToList();
         var employees = PeopleSampleData.Employees;
 
-        Assert.True(contracts.Count >= 300, $"{contracts.Count} contracts.");
+        Assert.True(contracts.Count >= 600, $"{contracts.Count} contracts.");
+        var perVendor = contracts.GroupBy(c => c.Details.First(d => d.Key == "supplier").Value).ToDictionary(g => g.Key, g => g.Count());
+        Assert.True(perVendor.Count >= 40, $"{perVendor.Count} vendors with contracts.");
+        Assert.All(perVendor, pair => Assert.True(pair.Value >= 5, $"{pair.Key} has {pair.Value} contracts."));
         Assert.True(employees.Count >= 400, $"{employees.Count} employees.");
         Assert.Equal(employees.Count, employees.Select(e => e.Name).Distinct().Count());
         Assert.Equal(employees.Count, employees.Select(e => e.HiredOn).Distinct().Count());
