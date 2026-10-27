@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.12.0](https://github.com/claudiom248/quorum/compare/v0.11.0...v0.12.0) (2026-10-27)
+
+
+### Features
+
+* lookups for pgvector in the registry, the wizard and the samples (spec 008 amendment 2) ([#113](https://github.com/claudiom248/quorum/issues/113)) ([ae6e684](https://github.com/claudiom248/quorum/commit/ae6e684d8364fd9aac21ae5c53f640012de11545))
+* lookups for pgvector knowledge bases (spec 008 amendment 2) ([#107](https://github.com/claudiom248/quorum/issues/107)) ([048c7b2](https://github.com/claudiom248/quorum/commit/048c7b2d4fa83b59e4bb14cd37061f653e7ca5d4))
+* register pgvector knowledge bases from the admin pages (spec 008) ([#105](https://github.com/claudiom248/quorum/issues/105)) ([ee9bbe9](https://github.com/claudiom248/quorum/commit/ee9bbe992a6f9194ca834eebab889e447c12070f))
+* search pgvector knowledge bases (spec 008) ([#103](https://github.com/claudiom248/quorum/issues/103)) ([8043374](https://github.com/claudiom248/quorum/commit/8043374367ce1a29aed529a0782d4c5db3344b30))
+* serve the documents of the samples and grow them to 620 contracts and 420 employees ([#114](https://github.com/claudiom248/quorum/issues/114)) ([30c4b6e](https://github.com/claudiom248/quorum/commit/30c4b6ebde82cc65012b79a9cdb4c666b9ce4a71))
+* the name of an entity can be its title and its document id (spec 007 A2) ([#111](https://github.com/claudiom248/quorum/issues/111)) ([172970d](https://github.com/claudiom248/quorum/commit/172970d6d888fae84d2e4976f35dee905d91c5a1))
+* verify pgvector knowledge bases and keep their secrets (spec 008) ([#102](https://github.com/claudiom248/quorum/issues/102)) ([e7f6198](https://github.com/claudiom248/quorum/commit/e7f61986263aa787b62fb0077fd6678ffad23105))
+
+
+### Bug Fixes
+
+* code review findings of the pgvector store (spec 008) ([#112](https://github.com/claudiom248/quorum/issues/112)) ([e748b74](https://github.com/claudiom248/quorum/commit/e748b74f4fee5771a6b5879bbf7a6249f7aeac96))
+* keep chat state per conversation and let each one stream its own answer ([#108](https://github.com/claudiom248/quorum/issues/108)) ([34f3d16](https://github.com/claudiom248/quorum/commit/34f3d167b576e663cf2725224be11ffbccfdc685))
+
 ## [0.11.0](https://github.com/claudiom248/quorum/compare/v0.10.0...v0.11.0) (2026-10-26)
 
 
