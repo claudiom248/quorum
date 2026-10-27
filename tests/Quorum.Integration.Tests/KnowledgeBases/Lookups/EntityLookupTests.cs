@@ -89,6 +89,47 @@ public sealed class EntityLookupTests(PostgresFixture postgres, QdrantFixture qd
         Assert.Equal(("IT", 12, "2019-03-01"), (acme.GetProperty("country").GetString(), acme.GetProperty("contract_count").GetInt32(), acme.GetProperty("supplier_since").GetString()));
     }
 
+    [Fact] // A2-11
+    public async Task TheNameOfAnEntityCanBeItsTitleAndItsDocumentIdToo()
+    {
+        var (app, admin, url, collection) = await StartAsync();
+        await using var _ = app;
+        using var __ = admin;
+        var mapping = new
+        {
+            roles = new { text = "text", title = "name", documentId = "name" },
+            fields = Attributes.Select(name => new { path = name, name, entityAttribute = true }).ToArray(),
+            entityName = "name",
+        };
+
+        var registered = await RegisterOkAsync(admin, url, collection, mapping);
+
+        var detail = await KnowledgeBaseApi.GetAsync(admin, registered.Id);
+        Assert.Equal(("name", "name"), (detail.Mapping!.Roles.Title, detail.Mapping.Roles.DocumentId));
+        Assert.Equal("name", detail.Mapping.EntityName);
+    }
+
+    [Theory] // A2-11
+    [InlineData("text")]
+    [InlineData("country")]
+    public async Task TheNameOfAnEntityStillCannotBeTheTextOrAMetadataField(string clash)
+    {
+        var (app, admin, url, collection) = await StartAsync();
+        await using var _ = app;
+        using var __ = admin;
+        var mapping = new
+        {
+            roles = new { text = "text", title = clash == "text" ? null : "name" },
+            fields = Attributes.Select(name => new { path = name, name, entityAttribute = true }).ToArray(),
+            entityName = clash,
+        };
+
+        using var response = await RegisterAsync(admin, url, collection, mapping);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("knowledge_base.invalid_mapping", await KnowledgeBaseApi.ProblemCodeAsync(response));
+    }
+
     [Fact] // AC-9
     public async Task OnlyTheAttributesTheMappingMarksAreKept()
     {

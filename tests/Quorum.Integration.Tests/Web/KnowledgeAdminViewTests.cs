@@ -43,6 +43,22 @@ public sealed class KnowledgeAdminViewTests
         Assert.All(reviews, r => Assert.Empty(r.Problems));
     }
 
+    [Fact] // A2-11
+    public void TheNameOfAnEntityMayBeItsTitleAndItsDocumentIdButNotTheText()
+    {
+        var draft = MappingDraft.From(FlatDraft());
+        draft.ConfirmCreate = true;
+        draft.EntityName = "file_name";
+        draft.Title = "file_name";
+        draft.DocumentId = "file_name";
+
+        Assert.DoesNotContain(draft.Problems(Dictionary), p => p.Contains("two roles", StringComparison.Ordinal));
+
+        draft.EntityName = "chunk_text";
+
+        Assert.Contains(draft.Problems(Dictionary), p => p.Contains("two roles", StringComparison.Ordinal));
+    }
+
     [Fact] // D-10
     public void ANewFieldNeedsTheAdminsConfirmationBeforeItIsCreated()
     {

@@ -141,14 +141,14 @@ public sealed class LookupMappingTests(PostgresFixture postgres, QdrantFixture q
     }
 
     [Fact]
-    public async Task TheEntityNameIsStoredAndCannotShareAPathWithAnotherRole()
+    public async Task TheEntityNameIsStoredAndCannotBeTheText()
     {
         var (app, admin, collection, url) = await StartAsync();
         await using var _ = app;
         using var __ = admin;
 
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, url, collection, mapping: Mapping(entityName: "document_id"));
-        using var shared = await KnowledgeBaseApi.RegisterAsync(admin, url, collection, "second", mapping: Mapping(entityName: "title"));
+        using var shared = await KnowledgeBaseApi.RegisterAsync(admin, url, collection, "second", mapping: Mapping(entityName: "text"));
 
         Assert.Equal("document_id", (await KnowledgeBaseApi.GetAsync(admin, registered.Id)).Mapping!.EntityName);
         Assert.Equal(HttpStatusCode.BadRequest, shared.StatusCode);
