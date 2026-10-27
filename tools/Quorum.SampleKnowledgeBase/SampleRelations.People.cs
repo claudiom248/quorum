@@ -101,7 +101,7 @@ public static partial class SampleRelations
                 $"""
                 CREATE TABLE {table} (
                     id bigint PRIMARY KEY, name text NOT NULL, text text NOT NULL, department text, country text, role text, level text,
-                    hired_on date, remote boolean, skills text[], vendor_contacts text[], embedding vector({dimensions}))
+                    hired_on date, remote boolean, skills text[], vendor_contacts text[], source_url text, embedding vector({dimensions}))
                 """,
                 $"CREATE INDEX ON {table} USING hnsw (embedding vector_cosine_ops)",
                 $"CREATE INDEX ON {table} (name)",
@@ -127,6 +127,7 @@ public static partial class SampleRelations
                     ["remote"] = employee.Remote,
                     ["skills"] = employee.Skills,
                     ["vendor_contacts"] = employee.VendorContacts,
+                    ["source_url"] = PeopleSampleData.UrlOf(employee),
                     ["embedding"] = new SampleVectorValue(employee.Description, dimensions, FromModel: fromModel),
                 })).ToList());
     }

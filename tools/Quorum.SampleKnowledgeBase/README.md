@@ -109,6 +109,16 @@ Seed with a real model (see above), then register the collections and create the
 `dotnet run --project tools/Quorum.SampleKnowledgeBase -- --schema flat` (or `nested`) prints the plain JSON Schema of the
 payload, to paste in the registration.
 
+## The documents behind the citations
+
+Every chunk the samples embed points to a document with a `source_url`, in Qdrant and in PostgreSQL alike: the contracts (`/contracts/{id}`), the policies of the small collections (`/policies/{id}`), the handbook (`/handbook/{id}`), and the pages of the entities (`/vendors/{name}`, `/suppliers/{name}`, `/people/{id}`). A small web server serves them all, as an HTML page with the text that was embedded and what the data say about the document, as plain text (`.txt` after the address), and as an index at `/`:
+
+```bash
+dotnet run --project tools/Quorum.SampleKnowledgeBase -- --serve          # http://127.0.0.1:5290/, --port <n> to change it
+```
+
+The sample you seed by hand points to that server (`--documents-url`, default `http://localhost:5290`), so a source in a chat answer or in a test search opens its page. In the tests the addresses are `https://intranet.example.test/...`, which nothing opens: only the path matters, and the integration tests check that every path the samples point to is served. The server builds its catalog from the data, so a new sample that carries a `source_url` is served with nothing else to write. The relations and collections that exist to exercise a single schema case (two vectors, `halfvec`, an unspecified size, a dotted column...) keep their few columns and have no address.
+
 ## Embeddings without a model
 
 `DeterministicEmbedding` turns a text into a 64-dimension vector with a hashed bag of words, normalised: texts that share words
