@@ -45,7 +45,7 @@ the `summary` vector) stay deterministic. The walk-through is in [docs/knowledge
 | `sample_lookups` | Contracts with `supplier`, `department`, `nationality`, `audience` (list), `is_first_chunk` and `chunk_index`, all indexed: computed lookups (spec 007) |
 | `sample_lookups_unindexed` | The same contracts with no payload index: a lookup fails and names the field that needs one |
 | `sample_suppliers` | One point per supplier (`name`, `country`, `contract_count`, `supplier_since`): entity lookups, with `name` as the entity name (spec 007) |
-| `sample_company` | About forty contracts of sixteen kinds across ten departments, from 2018 to 2025, in four states, for many audiences (a list), with `year`, `status`, `confidential`, `value_eur` and `signed_on`, all indexed: questions with more than one answer for the lookups and the lookup tool |
+| `sample_company` | About three hundred and twenty contracts of sixteen kinds across ten departments, from 2018 to 2025, in four states, for many audiences (a list), with `year`, `status`, `confidential`, `value_eur` and `signed_on`, all indexed: questions with more than one answer for the lookups and the lookup tool |
 | `sample_vendors` | The 18 vendors of `sample_company` as entities (`name`, `country`, `category`, `contract_count`, `supplier_since`, `rating`, `preferred`), with contract counts that match the contracts |
 
 ## Seed a PostgreSQL with pgvector (spec 008)
@@ -82,7 +82,7 @@ recreates the relations.
 | `sample_unmappable` | `bytea`, `int4range`, `interval` and `integer[]` columns, which cannot be mapped and are reported |
 | `sample_handbook` | The policies of the company (18 documents of two sections): `department`, `audience` (`text[]`), `country` where a rule applies to one country, `status`, `year`, `effective_on`, `confidential`, `is_first_chunk` and `chunk_index`, all indexed: computed lookups on PostgreSQL (spec 008 Amendment 2) |
 | `sample_handbook_json` | The same handbook as LangChain leaves it: `cmetadata` `jsonb` with every key, the audience list included |
-| `sample_employees` | 36 employees in the departments and countries of the contracts: `name` as the entity name, `department`, `country`, `role`, `level`, `hired_on`, `remote`, `skills` and `vendor_contacts` (the vendors of `sample_company` they deal with) as `text[]`: entity lookups |
+| `sample_employees` | 420 employees in the departments and countries of the contracts: `name` as the entity name, `department`, `country`, `role`, `level`, `hired_on`, `remote`, `skills` and `vendor_contacts` (the vendors of `sample_company` they deal with) as `text[]`: entity lookups |
 
 The pasteable schemas of the rows are `SampleSchemas.RelationFlat` and `SampleSchemas.RelationLangChain`.
 

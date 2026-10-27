@@ -95,7 +95,7 @@ public static partial class SampleRelations
         var table = Table(schema, Employees);
         return new(
             Employees,
-            "36 employees (name, department, country, role, level, hired_on, remote, skills and vendor_contacts as text[]) in the departments and countries of the contracts: entity lookups.",
+            "420 employees (name, department, country, role, level, hired_on, remote, skills and vendor_contacts as text[]) in the departments and countries of the contracts: entity lookups.",
             [
                 $"DROP TABLE IF EXISTS {table} CASCADE",
                 $"""

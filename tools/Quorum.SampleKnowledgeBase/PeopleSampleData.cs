@@ -118,11 +118,8 @@ public static class PeopleSampleData
              "Executives sign the annual export compliance statement and legal keeps the register of licenses."]),
     ];
 
-    /// <summary>
-    /// Thirty-six employees across the ten departments and the nine countries, with their skills, and for those who deal with vendors the
-    /// names of the vendors of <see cref="CompanySampleData"/> they are in touch with.
-    /// </summary>
-    public static IReadOnlyList<Employee> Employees { get; } =
+    // The thirty-six employees written by hand.
+    private static readonly Employee[] Directory =
     [
         new(1, "Giulia Rossi", "hr", "IT", "HR business partner", "senior", "2019-04-01", false, ["recruiting", "labour law"], []),
         new(2, "Marco Bianchi", "it", "IT", "Systems engineer", "senior", "2018-09-17", false, ["linux", "networking"], ["Acme", "Hooli"]),
@@ -161,6 +158,108 @@ public static class PeopleSampleData
         new(35, "Brian O'Connor", "it", "US", "IT director", "lead", "2015-03-02", false, ["architecture", "vendor management"], ["Globex", "Stark", "Hooli"]),
         new(36, "Martina Keller", "facilities", "DE", "Workplace coordinator", "mid", "2022-08-15", false, ["events", "safety"], []),
     ];
+
+
+    /// <summary>
+    /// Four hundred and twenty employees across the ten departments and the nine countries (36 written by hand, the rest generated), with
+    /// their skills, and for those who deal with vendors the names of the vendors of <see cref="CompanySampleData"/> they are in touch with.
+    /// </summary>
+    public static IReadOnlyList<Employee> Employees => AllEmployees.Value;
+
+    // Lazy because the generator reads tables that are written below: static fields are initialized in the order they are written.
+    private static readonly Lazy<IReadOnlyList<Employee>> AllEmployees = new(() => [.. Directory, .. GeneratedEmployees(Directory)]);
+
+    private const int GeneratedEmployeeCount = 384;
+
+    // Names by country, eight first names and eight surnames each: sixty-four people a country, none repeated.
+    private static readonly Dictionary<string, (string[] First, string[] Last)> Names = new()
+    {
+        ["IT"] = (["Luca", "Sofia", "Alessandro", "Francesca", "Davide", "Elisa", "Simone", "Valentina"], ["Romano", "Colombo", "Ricci", "Marino", "Bruno", "Gallo", "Costa", "Fontana"]),
+        ["US"] = (["Michael", "Jessica", "Christopher", "Ashley", "Matthew", "Amanda", "Joshua", "Megan"], ["Miller", "Davis", "Wilson", "Anderson", "Thomas", "Moore", "Jackson", "Harris"]),
+        ["DE"] = (["Felix", "Lena", "Jonas", "Marie", "Maximilian", "Tobias", "Julia", "Stefan"], ["Weber", "Becker", "Schulz", "Koch", "Richter", "Wolf", "Neumann", "Braun"]),
+        ["UK"] = (["Harry", "Amelia", "George", "Olivia", "Jack", "Isla", "Thomas", "Poppy"], ["Clarke", "Bennett", "Hughes", "Edwards", "Turner", "Parker", "Cooper", "Morgan"]),
+        ["FR"] = (["Lucas", "Chloé", "Hugo", "Emma", "Louis", "Manon", "Jules", "Inès"], ["Bernard", "Petit", "Robert", "Richard", "Durand", "Leroy", "Fournier", "Girard"]),
+        ["ES"] = (["Pablo", "Lucía", "Javier", "Carmen", "Sergio", "Marta", "Álvaro", "Paula"], ["Ruiz", "Díaz", "Hernández", "Muñoz", "Jiménez", "Navarro", "Torres", "Romero"]),
+        ["NL"] = (["Daan", "Sanne", "Bram", "Eva", "Thijs", "Lotte", "Sem", "Fleur"], ["Jansen", "Visser", "Smit", "Meijer", "Mulder", "Bos", "Vos", "Peters"]),
+        ["JP"] = (["Haruto", "Yui", "Sota", "Hina", "Ren", "Mio", "Takumi", "Aoi"], ["Suzuki", "Takahashi", "Ito", "Yamamoto", "Nakamura", "Kobayashi", "Kato", "Yoshida"]),
+        ["CH"] = (["Noah", "Mia", "Elias", "Lara", "Luca", "Nina", "Jonas", "Sara"], ["Meier", "Keller", "Frei", "Steiner", "Gerber", "Brunner", "Baumann", "Huber"]),
+    };
+
+    private static readonly Dictionary<string, (string[] Roles, string[] Skills)> Jobs = new()
+    {
+        ["facilities"] = (["Facility technician", "Maintenance planner", "Space planner", "Safety coordinator", "Reception lead"], ["maintenance", "safety", "events", "space planning", "compliance", "contracts", "energy", "cleaning"]),
+        ["finance"] = (["Accountant", "Financial analyst", "Controller", "Payroll specialist", "Tax specialist"], ["accounting", "reporting", "forecasting", "audit", "excel", "treasury", "tax", "budgeting"]),
+        ["hr"] = (["Recruiter", "HR business partner", "Compensation analyst", "Learning specialist", "HR assistant"], ["recruiting", "labour law", "interviewing", "compensation", "training", "onboarding", "coaching", "payroll"]),
+        ["it"] = (["Software engineer", "Systems engineer", "Support engineer", "Data engineer", "Platform engineer"], ["dotnet", "cloud", "linux", "kubernetes", "networking", "sql", "helpdesk", "iam"]),
+        ["legal"] = (["Counsel", "Paralegal", "Compliance officer", "Contract specialist", "Privacy officer"], ["contracts", "data protection", "export controls", "litigation", "research", "compliance", "negotiation", "ip"]),
+        ["marketing"] = (["Brand manager", "Content strategist", "Marketing analyst", "Designer", "Events manager"], ["branding", "writing", "seo", "analytics", "events", "design", "social media", "sql"]),
+        ["operations"] = (["Logistics coordinator", "Supply planner", "Process analyst", "Operations manager", "Quality controller"], ["logistics", "planning", "lean", "sql", "quality", "procurement", "warehouse", "forecasting"]),
+        ["procurement"] = (["Buyer", "Category manager", "Contract manager", "Sourcing specialist", "Vendor manager"], ["sourcing", "negotiation", "tendering", "contracts", "vendor management", "category management", "excel", "risk"]),
+        ["research"] = (["Research scientist", "Data scientist", "Research engineer", "Laboratory technician", "Research manager"], ["machine learning", "statistics", "robotics", "python", "chemistry", "safety", "simulation", "writing"]),
+        ["security"] = (["Security analyst", "Security engineer", "Incident responder", "Risk analyst", "Security architect"], ["incident response", "forensics", "network security", "audit", "risk", "iam", "cloud", "pentesting"]),
+    };
+
+    // The vendors of the contracts, for the employees who deal with them.
+    private static readonly string[] VendorNames =
+    [
+        "Acme", "Globex", "Initech", "Hooli", "Umbrella", "Stark", "Wayne", "Wonka", "Soylent", "Tyrell", "Cyberdyne", "Gringotts", "Oscorp",
+        "Vandelay", "Pied Piper", "Massive Dynamic", "Aperture", "Dunder Mifflin",
+    ];
+
+    private static readonly string[] Levels = ["junior", "mid", "mid", "mid", "senior", "senior", "senior", "lead", "mid", "senior"];
+
+    /// <summary>
+    /// 384 more employees, deterministic: spread over the ten departments and the nine countries, each with a name nobody else has, a date of
+    /// hiring nobody else shares (so an order by it is the same everywhere), and for the departments that deal with vendors the vendors they
+    /// are in touch with.
+    /// </summary>
+    private static List<Employee> GeneratedEmployees(Employee[] handwritten)
+    {
+        var taken = handwritten.Select(e => e.HiredOn).ToHashSet(StringComparer.Ordinal);
+        var names = handwritten.Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
+        var countries = Names.Keys.ToArray();
+        var perCountry = countries.ToDictionary(country => country, _ => 0, StringComparer.Ordinal);
+        var date = new DateOnly(2015, 1, 5);
+        var generated = new List<Employee>(GeneratedEmployeeCount);
+        for (var i = 0; i < GeneratedEmployeeCount; i++)
+        {
+            var country = countries[(i * 4) % countries.Length == 0 ? i % countries.Length : (i * 4) % countries.Length];
+            var k = perCountry[country]++;
+            var (first, last) = Names[country];
+            var name = $"{first[k % 8]} {last[(k / 8) % 8]}";
+            if (!names.Add(name))
+            {
+                name += $" {(char)('A' + (i % 26))}.";
+                names.Add(name);
+            }
+
+            var department = Departments[((i * 3) + (i / 9)) % Departments.Count];
+            var (roles, skills) = Jobs[department];
+            while (!taken.Add(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)))
+            {
+                date = date.AddDays(1);
+            }
+
+            var hired = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            date = date.AddDays(9);
+            string[] vendors = department is "procurement" or "it" or "legal" or "finance" or "security" or "operations" or "research" or "facilities"
+                ? [.. Enumerable.Range(0, 1 + (i % 3)).Select(step => VendorNames[((i * 5) + (step * 7)) % VendorNames.Length]).Distinct()]
+                : [];
+            generated.Add(new Employee(
+                37 + i,
+                name,
+                department,
+                country,
+                roles[i % roles.Length],
+                Levels[i % Levels.Length],
+                hired,
+                i % 3 == 0,
+                [.. new[] { skills[i % skills.Length], skills[((i * 3) + 1) % skills.Length] }.Distinct()],
+                vendors));
+        }
+
+        return generated;
+    }
 
     /// <summary>The chunks of the handbook, one per section, with the first of each policy marked.</summary>
     internal static IEnumerable<(Policy Policy, int Chunk, string Text, long Id)> Chunks()
