@@ -240,6 +240,13 @@ Alternatives not taken: three tool rows (three activations and policies to keep 
 
 Also, from the same questions: a list of entities can be ordered by its number and date attributes (offered in `sort`); each list says what it is (values that occur, entities, typed by hand) and whether it can be filtered ("can be filtered by …" or "cannot be filtered: read it whole"); a model-chosen filter is always computed live against the store (D-7), so a list of entities is filtered by scanning its entity collection with the filter, and a filter that does not apply to the chosen list gets an error result that names the filters the list accepts. Each function offers only the filters it can apply: `lookup_values` those of the fields held by a computed or entity list, `documents` and `count` those of the knowledge bases they query.
 
+### A2 - The name of an entity can be its title and its document id (2026-10-27)
+Context: with the entities of a PostgreSQL relation and of a Qdrant collection (employees, vendors) registered and searched through a rag tool, the sources of an answer read "Source 1 employees", because the one field that says what the entity is called, the `entityName`, could not also be the `title` role: the mapping refused a path used for two roles (spec 003 D-9), and the model had to invent a label for the link.
+
+Decision: for a knowledge base of entities (D-4) the `entityName` path may also be the path of the **`title`** role and the one of the **`documentId`** role, each at once or both. It is one field with one meaning, the entity itself. It still cannot be the text, the position or the source address, nor a metadata field, and any other two roles that share a path are refused as before. The sources of an answer then show the name of the entity, and `document_ids` and the lookups that count documents can address an entity by its name. The same rule is applied by the registration wizard before it sends the mapping.
+
+Alternatives not taken: a second `entityName` of its own for the title (the same value twice in the mapping), and leaving the label to the model (it varies from answer to answer).
+
 ## Appendix: cost evidence
 Benchmark run on 2026-10-22 with `tools/Quorum.QdrantMetadataBench` (a throwaway tool of the investigation, not part of the product): Qdrant 1.12.0, 5,000,000 points of 8-dimension vectors, payload on disk, about 10 chunks per document, `supplier` with about 5,000 values. Medians in milliseconds.
 

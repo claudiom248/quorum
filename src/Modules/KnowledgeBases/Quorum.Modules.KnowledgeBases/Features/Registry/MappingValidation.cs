@@ -119,7 +119,11 @@ internal static class MappingValidation
     public static Error? Paths(MappingRoles roles, string? entityName, IReadOnlyList<MappedFieldRequest> fields)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var rolePaths = new[] { roles.Text, roles.DocumentId, roles.Title, roles.Position, roles.SourceUrl, entityName }.OfType<string>();
+        // The name of an entity is what the entity is called: it can be its title and its document id too (one field, one meaning: the
+        // entity itself). It cannot be the text, the position or the address, nor a metadata field.
+        var title = roles.Title == entityName ? null : roles.Title;
+        var documentId = roles.DocumentId == entityName ? null : roles.DocumentId;
+        var rolePaths = new[] { roles.Text, documentId, title, roles.Position, roles.SourceUrl, entityName }.OfType<string>();
         foreach (var path in rolePaths)
         {
             if (!seen.Add(path))

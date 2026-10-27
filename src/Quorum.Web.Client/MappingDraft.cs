@@ -442,8 +442,20 @@ public sealed partial class MappingDraft
         }
     }
 
-    private IEnumerable<string> RolePaths() =>
-        new[] { Text, DocumentId, Title, Position, SourceUrl, EntityName }.Select(p => p.Trim()).Where(p => p.Length > 0);
+    // The name of an entity can be its title and its document id too (it is what the entity is called), so it counts as a role of its own
+    // only when it is the text, the position or the address.
+    private List<string> RolePaths()
+    {
+        var name = EntityName.Trim();
+        var paths = new[] { Text, DocumentId.Trim() == name ? string.Empty : DocumentId, Title.Trim() == name ? string.Empty : Title, Position, SourceUrl }
+            .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+        if (name.Length > 0)
+        {
+            paths.Add(name);
+        }
+
+        return paths;
+    }
 
     private static string? Clean(string text) => text.Trim() is { Length: > 0 } trimmed ? trimmed : null;
 
