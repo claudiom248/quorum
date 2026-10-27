@@ -46,6 +46,10 @@ internal abstract class PgVectorStatement(PgVectorRelation relation)
         return new PgVectorOutput(path, column ?? throw PgVectorConnector.Failure(StoreFailure.NotFound), key);
     }
 
+    // A path the relation no longer has: null, for a caller that can do without it.
+    protected PgVectorOutput? TryResolve(string path) =>
+        Find(path) is ({ } column, var key) ? new PgVectorOutput(path, column, key) : null;
+
     // The expression that reads one path of a row: the column, or the key inside a json column as text.
     protected string Select(PgVectorOutput output) => output.Key is { } key
         ? $"({Json(output.Column)} #> {Add(key, NpgsqlDbType.Array | NpgsqlDbType.Text)})::text"
