@@ -121,6 +121,21 @@ public sealed class SampleDocumentsServerTests : IAsyncLifetime
         Assert.Contains("no-such-contract", await missing.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public void ThereAreAtLeastThreeHundredContractsAndFourHundredEmployeesAndNobodyIsRepeated()
+    {
+        var contracts = SampleDocuments.Catalog().Where(document => document.Kind == "contracts").ToList();
+        var employees = PeopleSampleData.Employees;
+
+        Assert.True(contracts.Count >= 300, $"{contracts.Count} contracts.");
+        Assert.True(employees.Count >= 400, $"{employees.Count} employees.");
+        Assert.Equal(employees.Count, employees.Select(e => e.Name).Distinct().Count());
+        Assert.Equal(employees.Count, employees.Select(e => e.HiredOn).Distinct().Count());
+        Assert.Equal(employees.Count, employees.Select(e => e.Id).Distinct().Count());
+        Assert.All(PeopleSampleData.Departments, department => Assert.Contains(employees, e => e.Department == department));
+        Assert.All(PeopleSampleData.Countries, country => Assert.Contains(employees, e => e.Country == country));
+    }
     [Fact]
     public void EveryChunkOfTheSamplesThatAreNotSchemaCasesCarriesTheAddressOfItsDocument()
     {
