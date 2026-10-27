@@ -23,7 +23,7 @@ public sealed record SampleRelation(string Name, string Description, IReadOnlyLi
 /// The sample relations of spec 008 (D-18): one per case the PgVector registration has to handle, written with the same policies as
 /// <see cref="SampleCollections"/>. Relations are created in the schema the caller names.
 /// </summary>
-public static class SampleRelations
+public static partial class SampleRelations
 {
     public const string Flat = "sample_flat";
     public const string LangChain = "sample_langchain";
@@ -70,6 +70,9 @@ public static class SampleRelations
         CreateMixedCase(schema, dimensions, fromModel),
         CreateDottedColumn(schema, dimensions, fromModel),
         CreateUnmappable(schema, dimensions, fromModel),
+        CreateHandbook(schema, dimensions, fromModel),
+        CreateHandbookJson(schema, dimensions, fromModel),
+        CreateEmployees(schema, dimensions, fromModel),
     ];
 
     /// <summary>Flat columns, an HNSW index with cosine on the vector and B-tree indexes on the filter columns: the straightforward case.</summary>

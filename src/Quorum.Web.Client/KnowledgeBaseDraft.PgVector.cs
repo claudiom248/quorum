@@ -15,6 +15,15 @@ public sealed partial class KnowledgeBaseDraft
 
     public bool IsPgVector => Kind == KnowledgeBaseKinds.PgVector;
 
+    // The words of the pages for what the knowledge base is stored in: a relation of rows and columns, or a collection of points and payload fields.
+    public string SourceWord => IsPgVector ? "relation" : "collection";
+
+    public string RecordWord => IsPgVector ? "row" : "point";
+
+    public string FieldWord => IsPgVector ? "column" : "payload field";
+
+    public string PathWord => IsPgVector ? "column" : "payload path";
+
     /// <summary>The way the database is reached: a connection string instead of separate fields.</summary>
     public bool UseConnectionString { get; set; }
 

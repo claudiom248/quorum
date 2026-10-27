@@ -151,8 +151,6 @@
                         <KnowledgeBaseSearch Id="detail.Id" Name="@detail.Name" Detail="detail" Dictionary="_dictionary" OnClose="() => _searching = false" />
                     }
 
-                    @if (detail.Kind != KnowledgeBaseKinds.PgVector)
-                    {
                     <MudDivider />
                     <MudText Typo="Typo.subtitle1">Lookups</MudText>
                     @if (_lookups is null)
@@ -171,7 +169,6 @@
                                 <li><span class="tool-name">@lookup.Name</span> <span class="tool-hint">@lookup.Kind@(lookup.Field is null ? string.Empty : $" · {lookup.Field}")</span></li>
                             }
                         </ul>
-                    }
                     }
                 }
             </MudStack>

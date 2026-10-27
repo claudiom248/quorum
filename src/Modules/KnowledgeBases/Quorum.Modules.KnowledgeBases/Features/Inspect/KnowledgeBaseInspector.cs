@@ -93,7 +93,8 @@ internal sealed partial class KnowledgeBaseInspector(
             // The fields of the mapping were warned about above; these are the paths only a lookup reads.
             foreach (var (path, role) in new[] { (draft.CountedPoint?.Path, "counted point"), (draft.Roles.DocumentId, "document id") })
             {
-                if (path is not null && !source.IndexedPaths.ContainsKey(path))
+                // The kind decides what an index means for a path: a key inside a json column or a view has none to look at.
+                if (path is not null && adapter.UnindexedPathWarning(source, path) is not null)
                 {
                     warnings.Add(lookups.UnindexedWarning(path, role));
                 }
