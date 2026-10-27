@@ -262,13 +262,17 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
             }
         }
 
-        var indexed = mapping.Fields.Select(f => f.Path).Concat(mapping.Roles.DocumentId is { } documentId ? [documentId] : []).Distinct(StringComparer.Ordinal);
+        // What lookups read besides the fields: the counted point, the entity name and the document id (A2-8).
+        var indexed = mapping.Fields.Select(f => f.Path)
+            .Concat(new[] { mapping.Roles.DocumentId, mapping.CountedPoint?.Path, mapping.EntityName }.OfType<string>())
+            .Distinct(StringComparer.Ordinal);
         foreach (var path in indexed.Where(path => !covered.Contains(path)))
         {
             if (UnindexedPathWarning(source, path) is { } unindexed)
             {
-                notes.Add(path == mapping.Roles.DocumentId
-                    ? unindexed with { Message = $"'{path}' identifies the document and has no index: a search limited to some documents can be slow." }
+                notes.Add(path == mapping.CountedPoint?.Path ? lookups.UnindexedWarning(path, "counted point")
+                    : path == mapping.EntityName ? lookups.UnindexedWarning(path, "entity name")
+                    : path == mapping.Roles.DocumentId ? unindexed with { Message = $"'{path}' identifies the document and has no index: a search limited to some documents, and the lookups that count documents, can be slow." }
                     : unindexed);
             }
         }

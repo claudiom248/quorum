@@ -174,12 +174,6 @@ public sealed partial class KnowledgeBaseDraft
     /// <summary>What blocks the lookups step: the counted point, the entity attributes, the listed fields and the refresh interval.</summary>
     public IReadOnlyList<string> LookupProblems(IReadOnlyList<DictionaryField> dictionary)
     {
-        // A PostgreSQL knowledge base has no lookups (spec 008 A1-1).
-        if (IsPgVector)
-        {
-            return [];
-        }
-
         var problems = new List<string>(Mapping?.LookupProblems(dictionary) ?? []);
         if (LookupRefreshHours is < LookupLimits.MinRefreshHours or > LookupLimits.MaxRefreshHours)
         {
@@ -248,7 +242,7 @@ public sealed partial class KnowledgeBaseDraft
                 lines.Add($"New dictionary field(s): {string.Join(", ", created.Select(f => f.Cluster is null ? f.Name : $"{f.Cluster}/{f.Name}"))}");
             }
 
-            if (!IsPgVector && mapping.LookupSummary(LookupRefreshHours) is { } lookups)
+            if (mapping.LookupSummary(LookupRefreshHours) is { } lookups)
             {
                 lines.Add(lookups);
             }

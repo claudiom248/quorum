@@ -105,7 +105,7 @@ Spec 008 Amendment 2 gives the PgVector kind the lookups capability of spec 007.
 ### PR 9 - Lookups in the registry, the wizard and the samples (`feat/008-ui-lookups-pgvector`)
 22. Registry and inspection: a PgVector mapping with `listable`, `countedPoint` or `entityName` is accepted and validated as 007 says; the inspection and the verification add the warning of A2-8; AC-39 and AC-42 are tested with a kind that has no capability, and AC-51 stays. AC-48 (warning).
 23. Wizard and pages: the lookups step for PgVector with the wording of columns, the advice about indexes, the detail page with its Lookups section; checked in the browser as in PR 6. AC-50.
-24. Samples and scenarios: the relations of A2-10 in `tools/Quorum.SampleKnowledgeBase` (README), and the lookup scenarios of spec 007 (computation, live operations, entity lookups, lookup tools) run against both kinds. AC-47 (engine level), AC-49.
+24. Samples and scenarios: the people and rules relations of A2-10 (`sample_handbook`, `sample_handbook_json`, `sample_employees`: not contracts, but the same departments, countries, audiences and vendor names) in `tools/Quorum.SampleKnowledgeBase` with a walk-through in its README, and the lookup scenarios of spec 007 (computation, units, entities, failures) on them. AC-47 (engine level), AC-49.
 
 ### PR 7 - Documentation and verification (`docs/008-closing`)
 17. The pgvector section of the guide for data owners (shape of a relation, recommended indexes, a read-only role, choosing the distance, what Quorum reads, and the lookups: which columns can be listed, the counted point, the entity name, indexes as advice), `docs/database-schema.md`, README mention, the sample README. AC-37.

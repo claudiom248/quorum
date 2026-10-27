@@ -369,13 +369,13 @@
             <MudStack Spacing="3" data-step="lookups">
                 <MudText Typo="Typo.body2" Class="tools-support-hint">
                     Lookups are lists of values that models read to know what exists, e.g. the suppliers or the departments. Quorum computes them in the
-                    background from the collection and keeps them in its own database. All of this is optional: skip the step if the collection needs no list.
+                    background from the @Draft.SourceWord and keeps them in its own database. All of this is optional: skip the step if the @Draft.SourceWord needs no list.
                 </MudText>
 
                 <MudText Typo="Typo.subtitle2">Fields to list</MudText>
                 <MudText Typo="Typo.body2" Class="tools-support-hint">
                     Each marked field gets a list of its distinct values with how many documents have each. Only text and list of texts fields can be listed.
-                    Filters on these fields should have a payload index in the collection: Quorum never creates one.
+                    @(Draft.IsPgVector ? "Without an index on these columns the lists take longer to compute on a large relation: Quorum never creates one." : "Filters on these fields should have a payload index in the collection: Quorum never creates one.")
                 </MudText>
                 @foreach (var review in lookupMapping.Review(Dictionary))
                 {
@@ -396,11 +396,11 @@
 
                 <MudText Typo="Typo.subtitle2" Class="mt-2">What the counts count</MudText>
                 <MudText Typo="Typo.body2" Class="tools-support-hint">
-                    A document is usually split into many chunks. If one chunk of each document is marked in the payload (e.g. is_first_chunk is true),
+                    A document is usually split into many chunks. If one chunk of each document is marked in the @Draft.FieldWord (e.g. is_first_chunk is true),
                     say which: the lists then count documents. Without it they count chunks.
                 </MudText>
                 <MudStack Row="true" Spacing="2" Class="mapping-row-fields">
-                    <MudTextField @bind-Value="lookupMapping.CountedPointPath" Label="Counted point: payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                    <MudTextField @bind-Value="lookupMapping.CountedPointPath" Label="@($"Counted point: {Draft.PathWord}")" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
                                   HelperText="e.g. is_first_chunk or chunk_index" />
                     <MudTextField @bind-Value="lookupMapping.CountedPointValue" Label="Counted point: value" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
                                   HelperText="true, a number such as 0, or a text. Put a text that looks like a number in double quotes." />
@@ -408,10 +408,10 @@
 
                 <MudText Typo="Typo.subtitle2" Class="mt-2">Entities</MudText>
                 <MudText Typo="Typo.body2" Class="tools-support-hint">
-                    If every point of the collection is a thing in itself (a person, a product) rather than a piece of a document, say which payload field holds
+                    If every @Draft.RecordWord of the @Draft.SourceWord is a thing in itself (a person, a product) rather than a piece of a document, say which @Draft.FieldWord holds
                     its name. Up to @LookupLimits.MaxEntityAttributes fields can be shown beside the name.
                 </MudText>
-                <MudTextField @bind-Value="lookupMapping.EntityName" Label="Entity name: payload path" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
+                <MudTextField @bind-Value="lookupMapping.EntityName" Label="@($"Entity name: {Draft.PathWord}")" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" />
 
                 <MudText Typo="Typo.subtitle2" Class="mt-2">Refresh</MudText>
                 <MudNumericField T="int" @bind-Value="Draft.LookupRefreshHours" Label="Refresh every (hours)" Variant="Variant.Outlined" Margin="Margin.Dense"
@@ -447,7 +447,7 @@
                 }
 
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
-                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(Draft.IsPgVector ? WizardStep.Mapping : WizardStep.Lookups)" Disabled="_busy">Back</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="() => GoTo(WizardStep.Lookups)" Disabled="_busy">Back</MudButton>
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ToReview" Disabled="_busy">Next</MudButton>
                 </MudStack>
             </MudStack>
@@ -540,10 +540,7 @@
     [Parameter]
     public EventCallback OnCancel { get; set; }
 
-    // The steps this kind goes through, numbered as the admin sees them: a PostgreSQL knowledge base has no lookups step.
-    private IEnumerable<(WizardStep Step, string Label, int Number)> VisibleSteps => Steps
-        .Where(s => s.Step != WizardStep.Lookups || !Draft.IsPgVector)
-        .Select((s, index) => (s.Step, s.Label, index + 1));
+    private IEnumerable<(WizardStep Step, string Label, int Number)> VisibleSteps => Steps.Select((s, index) => (s.Step, s.Label, index + 1));
 
     private RelationsResult? _relations;
     private string? _relationFilter;
@@ -687,14 +684,6 @@
         }
 
         _showProblems = false;
-
-        // A PostgreSQL knowledge base has no lookups (spec 008 A1-1): the step after the mapping is the scope.
-        if (Draft.IsPgVector)
-        {
-            Reach(WizardStep.Scope);
-            return;
-        }
-
         Reach(WizardStep.Lookups);
     }
 
