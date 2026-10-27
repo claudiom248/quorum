@@ -93,6 +93,12 @@ Spec 008 Amendment 2 gives the PgVector kind the lookups capability of spec 007.
 
 ### PR 8 - Lookups backend (`feat/008-pgvector-lookups`)
 19. Prototype of the statements on the sample database: `GROUP BY` over a text column, an enum, a `uuid`, a `text[]` (`unnest`) and a `jsonb` key (string and array, other types ignored); distinct documents against rows; the order of ties; a keyset scan over a primary key, a unique index, a table with neither (`ctid`) and a view (offset); cancelling a long statement through the token. Findings written below this step.
+
+**Findings of the step 19 prototype** (the statements of `PgVectorLookupStatements`, tested in `PgVectorLookupsAdapterTests`):
+- Every listable shape is a `CROSS JOIN LATERAL` subquery that yields `"__value"`: a scalar as text, `unnest` for a text array, and for a `jsonb` key the string plus each string of an array (`jsonb_typeof` inside the subquery, so other JSON types contribute nothing). One `GROUP BY` then serves both the row count (`count(*)`) and the document count (`count(DISTINCT document)`), and the document id is the column itself, never cast.
+- Ties are ordered with `COLLATE "C"`, so the order is the same on every server, like the other kinds' ordinal order.
+- The scan key comes from the catalog (`pg_index`: primary key first, else the first valid unique index without expressions, predicate or nullable columns). Keyset values travel as text and are cast back to the type of their column (`bigint`, `numeric`, `text`, `uuid`, `date`, `timestamp`, `timestamptz`); any other key type falls back, as does a table with no key (`ctid`, compared as `tid`) and a view or partitioned table without one (offset over the paths asked for). The page reads one row more than asked to know whether a cursor is due.
+- Cancelling the token cancels the statement on the server: a `pg_sleep(20)` view is gone from `pg_stat_activity` within a few seconds.
 20. Move the condition translation out of `PgVectorSearchStatement` into a shared class; the existing search tests pass untouched.
 21. `PgVectorLookups : ILookupsCapability` with the five operations and the catalog queries for the order of a scan; the adapter declares it. AC-44, AC-45, AC-46, AC-47 (adapter level: filters, `document_ids`, timeout and cancellation), AC-48 (check), AC-49 (read-only, no value in a log).
 

@@ -12,10 +12,9 @@ namespace Quorum.Modules.KnowledgeBases.Storage.PgVector;
 /// <summary>
 /// What is specific to a PostgreSQL database with pgvector (spec 008): the shape of its connection, the password or connection string
 /// and the rule that keeps it, what is read from the catalog and sampled from a relation, the vector column, and the mapping of its
-/// failures to the codes of the kind. It declares no optional capability besides listing its relations: a PgVector knowledge base has
-/// no lookups (A1-1).
+/// failures to the codes of the kind. It declares two optional capabilities: listing its relations and the lookups (A2-1).
 /// </summary>
-internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, KnowledgeBaseSecretProtector protector, PgVectorSourceListing listing) : IStoreAdapter
+internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, KnowledgeBaseSecretProtector protector, PgVectorSourceListing listing, PgVectorLookups lookups) : IStoreAdapter
 {
     private static readonly Error PasswordRequired = Error.Validation(
         "knowledge_base.password_required",
@@ -357,7 +356,7 @@ internal sealed class PgVectorStoreAdapter(PgVectorConnector connector, Knowledg
         connector.SearchAsync(Own(connection), query, cancellationToken);
 
     public T? Capability<T>()
-        where T : class, IStoreCapability => listing as T;
+        where T : class, IStoreCapability => listing as T ?? lookups as T;
 
     public string CodeOf(StoreFailure failure) => failure switch
     {

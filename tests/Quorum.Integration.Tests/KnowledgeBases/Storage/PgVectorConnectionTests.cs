@@ -18,7 +18,7 @@ public sealed class PgVectorConnectionTests
     private static PgVectorStoreAdapter Adapter(KnowledgeBaseSecretProtector? protector = null)
     {
         var connector = new PgVectorConnector(new PgVectorDataSources());
-        return new PgVectorStoreAdapter(connector, protector ?? Protector, new PgVectorSourceListing(connector));
+        return new PgVectorStoreAdapter(connector, protector ?? Protector, new PgVectorSourceListing(connector), new PgVectorLookups(connector));
     }
 
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);
@@ -225,12 +225,12 @@ public sealed class PgVectorConnectionTests
     }
 
     [Fact]
-    public void TheKindSupportsNoLookupsButListsItsSources()
+    public void TheKindSupportsLookupsAndListsItsSources()
     {
         var adapter = Adapter();
 
         Assert.Equal(KnowledgeBaseKind.PgVector, adapter.Kind);
-        Assert.Null(adapter.Capability<ILookupsCapability>());
+        Assert.NotNull(adapter.Capability<ILookupsCapability>());
         Assert.NotNull(adapter.Capability<ISourceListingCapability>());
     }
 
