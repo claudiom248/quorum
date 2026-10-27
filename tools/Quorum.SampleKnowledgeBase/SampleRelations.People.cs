@@ -95,19 +95,21 @@ public static partial class SampleRelations
         var table = Table(schema, Employees);
         return new(
             Employees,
-            "36 employees (name, department, country, role, level, hired_on, remote, skills and vendor_contacts as text[]) in the departments and countries of the contracts: entity lookups.",
+            "420 employees (name, department, country, role, level, hired_on, remote, skills and vendor_contacts as text[]) in the departments and countries of the contracts: entity lookups.",
             [
                 $"DROP TABLE IF EXISTS {table} CASCADE",
                 $"""
                 CREATE TABLE {table} (
                     id bigint PRIMARY KEY, name text NOT NULL, text text NOT NULL, department text, country text, role text, level text,
-                    hired_on date, remote boolean, skills text[], vendor_contacts text[], embedding vector({dimensions}))
+                    hired_on date, remote boolean, skills text[], vendor_contacts text[], source_url text, embedding vector({dimensions}))
                 """,
                 $"CREATE INDEX ON {table} USING hnsw (embedding vector_cosine_ops)",
                 $"CREATE INDEX ON {table} (name)",
                 $"CREATE INDEX ON {table} (department)",
                 $"CREATE INDEX ON {table} (country)",
                 $"CREATE INDEX ON {table} (level)",
+                $"CREATE INDEX ON {table} (role)",
+                $"CREATE INDEX ON {table} (remote)",
                 $"CREATE INDEX ON {table} (hired_on)",
                 $"CREATE INDEX ON {table} USING gin (skills)",
                 $"CREATE INDEX ON {table} USING gin (vendor_contacts)",
@@ -127,6 +129,7 @@ public static partial class SampleRelations
                     ["remote"] = employee.Remote,
                     ["skills"] = employee.Skills,
                     ["vendor_contacts"] = employee.VendorContacts,
+                    ["source_url"] = PeopleSampleData.UrlOf(employee),
                     ["embedding"] = new SampleVectorValue(employee.Description, dimensions, FromModel: fromModel),
                 })).ToList());
     }

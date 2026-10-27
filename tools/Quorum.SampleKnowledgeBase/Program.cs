@@ -27,6 +27,12 @@ if (options.ContainsKey("help"))
           --embedding-model <name>   the model, e.g. nomic-embed-text
           --embedding-key <key>      API key of that endpoint, if it needs one
           --document-prefix <text>   prepended to every chunk before embedding, e.g. "search_document: "
+
+        Every chunk points to a document, and the documents are served by a small web server so that a citation can be opened:
+
+          --serve                    serves every document the samples point to and does nothing else (stop it with Ctrl+C)
+          --port <n>                 the port of --serve (default 5290, on 127.0.0.1)
+          --documents-url <url>      the address the seeded chunks point to (default http://localhost:5290, where --serve listens)
         """);
     return 0;
 }
@@ -50,6 +56,18 @@ if (options.TryGetValue("schema", out var schemaName))
     Console.WriteLine(schema);
     return 0;
 }
+
+if (options.ContainsKey("serve"))
+{
+    var port = options.TryGetValue("port", out var portText) && int.TryParse(portText, out var chosen) ? chosen : SampleDocumentsServer.DefaultPort;
+    var server = SampleDocumentsServer.Build($"http://127.0.0.1:{port}");
+    Console.WriteLine($"Serving the sample documents at http://127.0.0.1:{port}/ (Ctrl+C to stop).");
+    await server.RunAsync();
+    return 0;
+}
+
+// What the seeded chunks point to: the address of the server above, so every citation opens a page.
+SampleDocuments.UseBaseUrl(options.GetValueOrDefault("documents-url", "http://localhost:" + SampleDocumentsServer.DefaultPort));
 
 var url = options.GetValueOrDefault("url", "http://localhost:6333");
 using var services = new ServiceCollection().AddHttpClient().BuildServiceProvider();
@@ -171,3 +189,5 @@ static Dictionary<string, string> ParseArguments(string[] arguments)
 
     return parsed;
 }
+
+internal partial class Program;
