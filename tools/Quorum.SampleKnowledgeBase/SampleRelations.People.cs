@@ -108,6 +108,8 @@ public static partial class SampleRelations
                 $"CREATE INDEX ON {table} (department)",
                 $"CREATE INDEX ON {table} (country)",
                 $"CREATE INDEX ON {table} (level)",
+                $"CREATE INDEX ON {table} (role)",
+                $"CREATE INDEX ON {table} (remote)",
                 $"CREATE INDEX ON {table} (hired_on)",
                 $"CREATE INDEX ON {table} USING gin (skills)",
                 $"CREATE INDEX ON {table} USING gin (vendor_contacts)",
