@@ -59,7 +59,9 @@ internal sealed class PgVectorSearchStatement : PgVectorStatement
         var queryVector = Add(query.Vector, NpgsqlDbType.Array | NpgsqlDbType.Real);
         var measured = $"({quotedVector} {distance} CAST({queryVector} AS {type}))";
 
-        Outputs = [.. query.Paths.Select(Resolve).Where(output => output.Column.Kind is not (PgVectorColumnKind.Vector or PgVectorColumnKind.Other))];
+        // The first path is the text of the chunk (ChunkReader.PathsOf): without it there is nothing to return. A reference that is gone (the page,
+        // the address) only leaves the source less precise, as verification says.
+        Outputs = [.. query.Paths.Select((path, index) => index == 0 ? Resolve(path) : TryResolve(path)).OfType<PgVectorOutput>().Where(output => output.Column.Kind is not (PgVectorColumnKind.Vector or PgVectorColumnKind.Other))];
 
         var filters = new List<string> { $"{quotedVector} IS NOT NULL" };
         filters.AddRange(query.Conditions.Select(Condition));

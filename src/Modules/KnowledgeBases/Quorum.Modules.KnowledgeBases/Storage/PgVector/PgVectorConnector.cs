@@ -351,8 +351,9 @@ internal sealed partial class PgVectorConnector(PgVectorDataSources dataSources)
                 // invalid_catalog_name, invalid_schema_name, undefined_table, undefined_column
                 "3D000" or "3F000" or "42P01" or "42703" => StoreFailure.NotFound,
 
-                // data_exception: pgvector says a vector has other dimensions than the column this way
-                { Length: 5 } state when state.StartsWith("22", StringComparison.Ordinal) => StoreFailure.Rejected,
+                // data_exception: pgvector says a vector has other dimensions than the column this way; any other data exception (an impossible
+                // date in a json key, a text that is not a uuid) is about the data and not about the vector
+                "22000" => StoreFailure.Rejected,
 
                 // connection_exception, cannot_connect_now, too_many_connections, query_canceled (the statement timeout), admin_shutdown
                 { Length: 5 } state when state.StartsWith("08", StringComparison.Ordinal) => StoreFailure.Unreachable,

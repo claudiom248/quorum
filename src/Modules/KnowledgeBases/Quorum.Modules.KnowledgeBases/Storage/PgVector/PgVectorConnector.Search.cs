@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Npgsql;
 
@@ -13,6 +15,58 @@ internal sealed partial class PgVectorConnector
 
     internal static string QualifiedName(PgVectorRelation relation) => Table(relation);
 
+    /// <summary>How long the description of a relation (its columns, indexes and the version of the extension) is trusted between searches.</summary>
+    private static readonly long SnapshotTicks = Stopwatch.Frequency * 30;
+
+    private const int MaxSnapshots = 256;
+
+    private readonly ConcurrentDictionary<string, (long Until, Version? Extension, PgVectorRelation? Relation)> _snapshots = new(StringComparer.Ordinal);
+
+    // The key is held in memory only, as the pools are: the connection string of the administrator is part of it.
+    private static string SnapshotKey(PgVectorConnection connection) => $"{connection.ToNpgsqlConnectionString()}\u001f{connection.Schema}\u001f{connection.Table}";
+
+    /// <summary>
+    /// The version of the extension and the relation of the connection, read from the catalog at most every 30 seconds: a search or a
+    /// lookup page asks for them every time and they hardly ever change. A failure forgets them (see <see cref="Guarded{T}"/>).
+    /// </summary>
+    private async Task<(Version? Extension, PgVectorRelation? Relation)> SnapshotAsync(NpgsqlConnection db, NpgsqlTransaction transaction, PgVectorConnection connection, CancellationToken cancellationToken)
+    {
+        var key = SnapshotKey(connection);
+        if (_snapshots.TryGetValue(key, out var kept) && kept.Until > Stopwatch.GetTimestamp())
+        {
+            return (kept.Extension, kept.Relation);
+        }
+
+        var extension = await ExtensionVersionAsync(db, transaction, cancellationToken);
+        var relation = extension is null ? null : await FindRelationAsync(db, transaction, connection.Schema, connection.Table ?? string.Empty, cancellationToken);
+        if (_snapshots.Count >= MaxSnapshots)
+        {
+            _snapshots.Clear();
+        }
+
+        _snapshots[key] = (Stopwatch.GetTimestamp() + SnapshotTicks, extension, relation);
+        return (extension, relation);
+    }
+
+    // A column or a relation that went away makes the statement fail with NotFound: what was kept is forgotten and the call is made once more
+    // with what the catalog says now, so a change is noticed by the call that meets it and not by the next one.
+    private async Task<T> Guarded<T>(PgVectorConnection connection, Func<Task<T>> work)
+    {
+        try
+        {
+            return await work();
+        }
+        catch (StoreException exception) when (exception.Failure == StoreFailure.NotFound && _snapshots.TryRemove(SnapshotKey(connection), out _))
+        {
+            return await work();
+        }
+        catch (StoreException)
+        {
+            _snapshots.TryRemove(SnapshotKey(connection), out _);
+            throw;
+        }
+    }
+
     /// <summary>
     /// The rows nearest to the vector that satisfy every condition, best first, with the columns at <paramref name="query"/>'s paths and
     /// nothing else. It is one read-only transaction with a statement timeout, as everything else the connector does.
@@ -23,33 +77,32 @@ internal sealed partial class PgVectorConnector
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(query);
 
-        return await ReadAsync(
+        return await Guarded(
+            connection,
+            () => ReadAsync(
             connection,
             StoreLimits.SearchTimeout,
             async (db, transaction, token) =>
             {
-                var extension = await ExtensionVersionAsync(db, transaction, token);
-                var relation = extension is null ? null : await FindRelationAsync(db, transaction, connection.Schema, connection.Table ?? string.Empty, token);
-                if (relation is null)
+                var (extension, relation) = await SnapshotAsync(db, transaction, connection, token);
+                if (extension is null || relation is null)
                 {
                     throw Failure(StoreFailure.NotFound);
                 }
 
                 var statement = PgVectorSearchStatement.Build(relation, connection, query);
 
-                // The settings are numbers and keywords of ours, never text from outside. Before 0.8 the index can only be asked for more candidates.
-                await ExecuteAsync(db, transaction, $"SET LOCAL hnsw.ef_search = {Math.Clamp(query.Limit, 40, MaxEfSearch)}", token);
+                // The settings are numbers and keywords of ours, never text from outside, and go in one round trip. Before 0.8 the index can only be
+                // asked for more candidates.
+                var settings = $"SET LOCAL hnsw.ef_search = {Math.Clamp(query.Limit, 40, MaxEfSearch)}";
                 if (extension >= IterativeScanVersion)
                 {
-                    await ExecuteAsync(db, transaction, "SET LOCAL hnsw.iterative_scan = relaxed_order", token);
-                    await ExecuteAsync(db, transaction, "SET LOCAL ivfflat.iterative_scan = relaxed_order", token);
+                    settings += "; SET LOCAL hnsw.iterative_scan = relaxed_order; SET LOCAL ivfflat.iterative_scan = relaxed_order";
                 }
 
-                await using var command = new NpgsqlCommand(statement.Sql, db, transaction);
-                foreach (var parameter in statement.Parameters)
-                {
-                    command.Parameters.Add(parameter);
-                }
+                await ExecuteAsync(db, transaction, settings, token);
+
+                await using var command = Command(statement.Sql, statement.Parameters, db, transaction);
 
                 await using var reader = await command.ExecuteReaderAsync(token);
 
@@ -71,7 +124,7 @@ internal sealed partial class PgVectorConnector
 
                 return (IReadOnlyList<StoreHit>)hits;
             },
-            cancellationToken);
+            cancellationToken));
     }
 
     // A key inside a json column was selected as text: its JSON is the value. A plain column is read by its own type, whole.

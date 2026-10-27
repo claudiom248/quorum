@@ -65,7 +65,8 @@ internal sealed record PgVectorCursor(string[]? After, long Offset)
         {
             var padded = text.Replace('-', '+').Replace('_', '/');
             padded = padded.PadRight(padded.Length + ((4 - (padded.Length % 4)) % 4), '=');
-            return JsonSerializer.Deserialize<PgVectorCursor>(Convert.FromBase64String(padded), Options);
+            // The JSON text "null" is not a cursor either: it would silently start the scan again.
+            return JsonSerializer.Deserialize<PgVectorCursor>(Convert.FromBase64String(padded), Options) ?? throw PgVectorConnector.Failure(StoreFailure.Unexpected);
         }
         catch (Exception exception) when (exception is FormatException or JsonException)
         {
@@ -267,9 +268,15 @@ internal sealed class PgVectorScanStatement : PgVectorStatement
                 orderBy = "ctid";
                 break;
             default:
-                // Nothing in the relation is stable to compare: the rows are passed by count, in the order of the paths asked for.
+                // Nothing in the relation is stable to compare: the rows are passed by count, in the order of the paths asked for
                 StartOffset = Math.Max(0, cursor?.Offset ?? 0);
-                orderBy = Outputs.Count == 0 ? "1" : string.Join(", ", Enumerable.Range(0, Outputs.Count).Select(i => "c" + i.ToString(CultureInfo.InvariantCulture)));
+                // and after them every other column that can be ordered, so rows that look alike in the paths asked for still come in the same order
+                // on every page (a json column has no ordering).
+                orderBy = string.Join(
+                    ", ",
+                    Enumerable.Range(0, Outputs.Count).Select(i => "c" + i.ToString(CultureInfo.InvariantCulture))
+                        .Concat(Relation.Columns.Where(column => column.Kind is not (PgVectorColumnKind.Vector or PgVectorColumnKind.Other) && column.TypeName != "json").Select(column => PgVectorRows.Quote(column.Name)))
+                        .DefaultIfEmpty("1"));
                 break;
         }
 

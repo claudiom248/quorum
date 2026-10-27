@@ -35,12 +35,17 @@ internal sealed partial class PgVectorConnector
 
         List<string> missing = [];
         List<string> unusable = [];
+        List<string> needsKey = [];
         foreach (var path in paths.Order(StringComparer.Ordinal))
         {
             var (column, key) = PgVectorStatement.FindPath(relation, path);
             if (column is null || (key is not null && column.Kind != PgVectorColumnKind.Json))
             {
                 missing.Add(path);
+            }
+            else if (key is null && column.Kind == PgVectorColumnKind.Json)
+            {
+                needsKey.Add(path);
             }
             else if (key is null && column.Kind is PgVectorColumnKind.Vector or PgVectorColumnKind.Other)
             {
@@ -51,6 +56,11 @@ internal sealed partial class PgVectorConnector
         if (missing.Count > 0)
         {
             return $"'{string.Join("', '", missing)}' {(missing.Count == 1 ? "is" : "are")} not in the relation: the mapping no longer fits it. Correct the mapping and refresh the lookup.";
+        }
+
+        if (needsKey.Count > 0)
+        {
+            return $"'{string.Join("', '", needsKey)}' {(needsKey.Count == 1 ? "is a json column" : "are json columns")}, which lookups cannot read as a whole: map one of its keys as column.key (for example {needsKey[0]}.department).";
         }
 
         return unusable.Count > 0
@@ -64,7 +74,9 @@ internal sealed partial class PgVectorConnector
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(query);
 
-        return await ReadAsync(
+        return await Guarded(
+            connection,
+            () => ReadAsync(
             connection,
             LookupTimeout,
             async (db, transaction, token) =>
@@ -82,7 +94,7 @@ internal sealed partial class PgVectorConnector
 
                 return new DistinctValues([.. values.Take(query.MaxValues)], values.Count > query.MaxValues);
             },
-            cancellationToken);
+            cancellationToken));
     }
 
     /// <exception cref="StoreException">The database cannot be used, or the relation or a path is gone.</exception>
@@ -91,7 +103,9 @@ internal sealed partial class PgVectorConnector
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(conditions);
 
-        return await ReadAsync(
+        return await Guarded(
+            connection,
+            () => ReadAsync(
             connection,
             LookupTimeout,
             async (db, transaction, token) =>
@@ -101,7 +115,7 @@ internal sealed partial class PgVectorConnector
                 await using var command = Command(statement.Sql, statement.Parameters, db, transaction);
                 return Convert.ToInt64(await command.ExecuteScalarAsync(token), CultureInfo.InvariantCulture);
             },
-            cancellationToken);
+            cancellationToken));
     }
 
     /// <exception cref="StoreException">The database cannot be used, the relation or a path is gone, or the cursor is not this relation's.</exception>
@@ -110,7 +124,9 @@ internal sealed partial class PgVectorConnector
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(query);
 
-        return await ReadAsync(
+        return await Guarded(
+            connection,
+            () => ReadAsync(
             connection,
             LookupTimeout,
             async (db, transaction, token) =>
@@ -152,12 +168,11 @@ internal sealed partial class PgVectorConnector
                         : new PgVectorCursor(lastKey, 0).Encode();
                 return new RecordPage(rows, next);
             },
-            cancellationToken);
+            cancellationToken));
     }
 
-    private static async Task<PgVectorRelation> RequireRelationAsync(NpgsqlConnection db, NpgsqlTransaction transaction, PgVectorConnection connection, CancellationToken cancellationToken) =>
-        await FindRelationAsync(db, transaction, connection.Schema, connection.Table ?? string.Empty, cancellationToken)
-        ?? throw Failure(StoreFailure.NotFound);
+    private async Task<PgVectorRelation> RequireRelationAsync(NpgsqlConnection db, NpgsqlTransaction transaction, PgVectorConnection connection, CancellationToken cancellationToken) =>
+        (await SnapshotAsync(db, transaction, connection, cancellationToken)).Relation ?? throw Failure(StoreFailure.NotFound);
 
     private static NpgsqlCommand Command(string sql, IReadOnlyList<NpgsqlParameter> parameters, NpgsqlConnection db, NpgsqlTransaction transaction)
     {

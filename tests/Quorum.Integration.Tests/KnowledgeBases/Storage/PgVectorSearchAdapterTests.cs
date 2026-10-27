@@ -270,6 +270,46 @@ public sealed class PgVectorSearchAdapterTests(PgVectorFixture pgvector)
         Assert.DoesNotContain("dimensions 10", failure.Message, StringComparison.Ordinal);
     }
 
+    [Fact] // a reference column that is gone only leaves the source less precise
+    public async Task AMissingReferenceColumnIsSkippedButAMissingTextColumnFails()
+    {
+        var hits = await SearchAsync(SampleRelations.Flat, paths: ["text", "no_such_page", "document_id"]);
+
+        Assert.NotEmpty(hits);
+        Assert.All(hits, hit => Assert.Equal(["text", "document_id"], hit.Row.Select(p => p.Key)));
+        var failure = await Assert.ThrowsAsync<StoreException>(() => SearchAsync(SampleRelations.Flat, paths: ["no_such_text", "document_id"]));
+        Assert.Equal(StoreFailure.NotFound, failure.Failure);
+    }
+
+    [Fact] // a data error is not a dimension error
+    public async Task AnImpossibleDateInAJsonKeyFailsTheSearchWithoutTheDimensionMessage()
+    {
+        var schema = await pgvector.NewSchemaAsync();
+        await pgvector.ExecuteAsync(
+            $$"""
+            CREATE TABLE {{schema}}.dates (id bigint PRIMARY KEY, text text, meta jsonb, embedding vector(3));
+            INSERT INTO {{schema}}.dates VALUES (1, 't', '{"day": "2024-02-30"}', '[1,0,0]');
+            """);
+
+        var failure = await Assert.ThrowsAsync<StoreException>(() => SearchAsync("dates", [new DateRangeCondition("meta.day", new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), null)], ["text"], schema: schema, vector: [1, 0, 0]));
+
+        Assert.NotEqual(StoreFailure.Rejected, failure.Failure);
+        Assert.DoesNotContain("dimension", failure.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact] // the relation is described once; a change is noticed after the call that failed
+    public async Task AColumnDroppedAfterASearchIsSkippedWhenItIsOnlyAReference()
+    {
+        var schema = await pgvector.NewSchemaAsync();
+        await pgvector.ExecuteAsync($"CREATE TABLE {schema}.changing (id bigint PRIMARY KEY, text text, extra text, embedding vector(3)); INSERT INTO {schema}.changing VALUES (1, 'a', 'x', '[1,0,0]');");
+        Assert.NotEmpty(await SearchAsync("changing", paths: ["text", "extra"], schema: schema, vector: [1, 0, 0]));
+
+        await pgvector.ExecuteAsync($"ALTER TABLE {schema}.changing DROP COLUMN extra");
+        var hits = await SearchAsync("changing", paths: ["text", "extra"], schema: schema, vector: [1, 0, 0]);
+
+        Assert.All(hits, hit => Assert.DoesNotContain("extra", hit.Row.Select(p => p.Key)));
+    }
+
     [Fact] // AC-28
     public async Task ARelationThatWasDroppedFailsAsNotFound()
     {
