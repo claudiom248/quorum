@@ -10,8 +10,6 @@ namespace Quorum.SampleKnowledgeBase;
 /// </summary>
 public static class CompanySampleData
 {
-    private const string BaseUrl = "https://intranet.example.test/contracts";
-
     private sealed record Vendor(string Name, string Country, string Category, string Since, double Rating, bool Preferred);
 
     private sealed record Contract(
@@ -124,6 +122,7 @@ public static class CompanySampleData
                 {
                     ["text"] = text,
                     ["name"] = vendor.Name,
+                    ["source_url"] = SampleDocuments.Url("vendors", vendor.Name),
                     ["country"] = vendor.Country,
                     ["category"] = vendor.Category,
                     ["contract_count"] = Contracts.Count(c => c.Vendor == vendor),
@@ -153,7 +152,7 @@ public static class CompanySampleData
                         ["text"] = text,
                         ["document_id"] = contract.Id,
                         ["title"] = contract.Title,
-                        ["source_url"] = $"{BaseUrl}/{contract.Id}",
+                        ["source_url"] = SampleDocuments.Url("contracts", contract.Id),
                         ["supplier"] = contract.Vendor.Name,
                         ["department"] = contract.Department,
                         ["nationality"] = contract.Vendor.Country,

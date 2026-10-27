@@ -11,8 +11,6 @@ namespace Quorum.SampleKnowledgeBase;
 /// </summary>
 public static class PeopleSampleData
 {
-    private const string BaseUrl = "https://intranet.example.test/handbook";
-
     /// <summary>The departments, the countries and the audiences the contracts use: the references the two domains share.</summary>
     public static IReadOnlyList<string> Departments { get; } = ["facilities", "finance", "hr", "it", "legal", "marketing", "operations", "procurement", "research", "security"];
 
@@ -177,7 +175,9 @@ public static class PeopleSampleData
         }
     }
 
-    internal static string UrlOf(Policy policy) => $"{BaseUrl}/{policy.Id}";
+    internal static string UrlOf(Policy policy) => SampleDocuments.Url("handbook", policy.Id);
+
+    internal static string UrlOf(Employee employee) => SampleDocuments.Url("people", employee.Id.ToString(CultureInfo.InvariantCulture));
 
     /// <summary>The metadata of a chunk as one JSON object, the way a LangChain-style table keeps it.</summary>
     internal static JsonObject MetadataOf(Policy policy, int chunk) => new()

@@ -24,7 +24,6 @@ public static class SampleCollections
     /// <summary>The name of the vector to choose in <see cref="NamedVectors"/>: its size matches <see cref="DeterministicEmbedding.DefaultDimensions"/>.</summary>
     public const string DenseVectorName = "dense";
 
-    internal const string BaseUrl = "https://intranet.example.test/policies";
 
     internal static readonly Chunk[] Corpus =
     [
@@ -170,6 +169,7 @@ public static class SampleCollections
             {
                 ["text"] = text,
                 ["name"] = supplier.Name,
+                ["source_url"] = SampleDocuments.Url("suppliers", supplier.Name),
                 ["country"] = supplier.Country,
                 ["contract_count"] = supplier.Contracts,
                 ["supplier_since"] = supplier.Since,
@@ -202,7 +202,7 @@ public static class SampleCollections
                         ["text"] = text,
                         ["document_id"] = contract.Document,
                         ["title"] = contract.Title,
-                        ["source_url"] = $"{BaseUrl}/{contract.Document}",
+                        ["source_url"] = SampleDocuments.Url("policies", contract.Document),
                         ["supplier"] = contract.Supplier,
                         ["department"] = contract.Department,
                         ["nationality"] = contract.Nationality,
@@ -298,7 +298,7 @@ public static class SampleCollections
             ["document_id"] = chunk.Document,
             ["title"] = chunk.Title,
             ["page"] = chunk.Page,
-            ["source_url"] = $"{BaseUrl}/{chunk.Document}",
+            ["source_url"] = SampleDocuments.Url("policies", chunk.Document),
             ["department"] = chunk.Department,
             ["year"] = chunk.Year,
             ["published_on"] = chunk.PublishedOn,
@@ -314,7 +314,7 @@ public static class SampleCollections
             ["doc_id"] = chunk.Document,
             ["file_name"] = chunk.Title,
             ["page"] = chunk.Page,
-            ["source_url"] = $"{BaseUrl}/{chunk.Document}",
+            ["source_url"] = SampleDocuments.Url("policies", chunk.Document),
             ["meta"] = new JsonObject
             {
                 ["department"] = chunk.Department,
