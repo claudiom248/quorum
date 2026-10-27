@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.KnowledgeBases;
 using Quorum.SampleKnowledgeBase;
@@ -59,12 +60,11 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
         Assert.Equal("Cosine", draft.Distance);
         Assert.Equal("text", draft.Mapping!.Text);
 
-        // The mapping review and the save; a PostgreSQL knowledge base has no lookups to review.
+        // The mapping review and the save; nothing is marked for lookups, so nothing is asked of that step.
         var dictionary = (await api.ListDictionaryAsync(Ct)).Value;
         draft.Mapping.ConfirmCreate = true;
         Assert.Empty(draft.LookupProblems(dictionary));
         Assert.Empty(draft.Problems(dictionary));
-        Assert.DoesNotContain(draft.Summary(dictionary, []), line => line.Contains("lists", StringComparison.OrdinalIgnoreCase));
         var registered = (await api.CreateKnowledgeBaseAsync(draft.ToRequest(dictionary), Ct)).Value;
         Assert.Equal(KnowledgeBaseStatuses.Available, registered.Status);
 
@@ -86,6 +86,51 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
 
         // Verify. The test search of the page runs the search of #103, which is tested there.
         Assert.Equal(KnowledgeBaseStatuses.Available, (await api.VerifyKnowledgeBaseAsync(registered.Id, Ct)).Value.Status);
+    }
+
+    [Fact] // AC-50
+    public async Task TheLookupsStepMarksTheListableColumnsAndTheCountedPointAndTheServerComputesThem()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        KnowledgeBaseApi.ServeEmbeddings(app);
+        app.LookupComputer.Handler = new Quorum.Modules.KnowledgeBases.Features.Lookups.LookupComputer(app.Services.GetRequiredService<Quorum.Modules.KnowledgeBases.Storage.StoreAdapters>()).ComputeAsync;
+        var api = new QuorumApi(admin);
+        var draft = await NewDraftAsync(await pgvector.GetSharedSchemaAsync());
+        draft.Table = SampleRelations.Handbook;
+        draft.UseInspection((await api.InspectKnowledgeBaseAsync(draft.ToInspectRequest(), Ct)).Value);
+        draft.Mapping!.ConfirmCreate = true;
+        var dictionary = (await api.ListDictionaryAsync(Ct)).Value;
+
+        // The lookups step: a list column to list, the counted point and a refresh interval.
+        var audience = draft.Mapping.Rows.Single(r => r.Path == "audience");
+        audience.Listable = true;
+        draft.Mapping.CountedPointPath = "is_first_chunk";
+        draft.Mapping.CountedPointValue = "true";
+        Assert.Empty(draft.LookupProblems(dictionary));
+        Assert.Contains(draft.Summary(dictionary, []), line => line.Contains("audience", StringComparison.Ordinal));
+        var registered = (await api.CreateKnowledgeBaseAsync(draft.ToRequest(dictionary), Ct)).Value;
+
+        Assert.Equal(KnowledgeBaseStatuses.Available, registered.Status);
+        var lookups = await WaitForLookupsAsync(api, registered.Id);
+        var lookup = Assert.Single(lookups, l => l.Field == "audience");
+        Assert.Equal("documents", lookup.Unit);
+    }
+
+    private static async Task<IReadOnlyList<KnowledgeBaseLookupInfo>> WaitForLookupsAsync(QuorumApi api, Guid id)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            var lookups = (await api.ListKnowledgeBaseLookupsAsync(id, Ct)).Value;
+            if (lookups.Any(l => l.Field == "audience"))
+            {
+                return lookups;
+            }
+
+            await Task.Delay(500, Ct);
+        }
+
+        throw new TimeoutException("The lookup of the knowledge base never appeared.");
     }
 
     [Fact] // AC-34

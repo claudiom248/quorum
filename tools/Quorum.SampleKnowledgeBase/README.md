@@ -80,8 +80,20 @@ recreates the relations.
 | `Sample Mixed Case` | Capitals, spaces and a reserved word (`"Select"`) in the names: every identifier is quoted |
 | `sample_dotted_column` | A column named `meta.year`, which cannot be mapped and is reported |
 | `sample_unmappable` | `bytea`, `int4range`, `interval` and `integer[]` columns, which cannot be mapped and are reported |
+| `sample_handbook` | The policies of the company (18 documents of two sections): `department`, `audience` (`text[]`), `country` where a rule applies to one country, `status`, `year`, `effective_on`, `confidential`, `is_first_chunk` and `chunk_index`, all indexed: computed lookups on PostgreSQL (spec 008 Amendment 2) |
+| `sample_handbook_json` | The same handbook as LangChain leaves it: `cmetadata` `jsonb` with every key, the audience list included |
+| `sample_employees` | 36 employees in the departments and countries of the contracts: `name` as the entity name, `department`, `country`, `role`, `level`, `hired_on`, `remote`, `skills` and `vendor_contacts` (the vendors of `sample_company` they deal with) as `text[]`: entity lookups |
 
 The pasteable schemas of the rows are `SampleSchemas.RelationFlat` and `SampleSchemas.RelationLangChain`.
+
+### People and rules: lookups on PostgreSQL (spec 008 Amendment 2)
+
+The handbook and the employees are not contracts but belong to the same company: they use the ten departments, the countries of the vendors (IT, US, DE, UK, CH, FR, JP, ES, NL) and the audiences of `sample_company`, and the employees who deal with vendors list their names in `vendor_contacts`, so a question can go from one domain to the other. Seed with a real model (see above), register the relations with `PgVector` and:
+
+1. Register `sample_handbook`: in the lookups step mark `department`, `audience`, `country` and `status` as **listable**, and set the **counted point** to `is_first_chunk` = `true`: the lists count documents. `sample_handbook_json` is the same through `cmetadata.department`, `cmetadata.audience` ... and `cmetadata.is_first_chunk`.
+2. Register `sample_employees` with `name` as the **entity name** and `department`, `country`, `role` and `hired_on` as attributes.
+3. Create a lookup tool that binds the lists and the knowledge bases, with `department`, `audience` and `country` as filters, and a rag tool over the handbook with `document_ids` on.
+4. Ask: "which policies apply to new hires", "which rules are only for Italy", "how many people work in IT", "who deals with Hooli and which policies does that department follow", "which employees were hired after 2023".
 
 ## Trying the lookups (spec 007)
 
