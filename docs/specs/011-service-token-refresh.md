@@ -15,11 +15,11 @@ Chi alimenta una Knowledge Base con un proprio processo ETL deve poter triggerar
 - Il service token è generato dall'admin, legato al tenant, e autorizza solo il refresh e la consultazione dello stato — non altre operazioni.
 - Gestione dei token (generazione, lista, revoca) tramite API admin.
 - Middleware nel Host che valida il Bearer token tramite il modulo Tenancy e inietta le claim nel contesto.
+- UI per la gestione dei token nella pagina Settings (Blazor WebAssembly).
 
 ### Out
 
 - Modifiche all'endpoint di refresh esistente (comportamento invariato: marca le slice come due, sveglia il servizio, torna `202 Accepted`).
-- UI per la gestione dei token (solo API in questa spec).
 - Rate limiting, audit log, scadenza dei token.
 - Webhook o notifiche al completamento del refresh.
 
@@ -154,7 +154,11 @@ Gli endpoint di gestione token (`/api/tenants/me/service-tokens`) restano admin-
 **Sicurezza**
 - **AC-11** Given una richiesta senza header `Authorization: Bearer`, When arriva al middleware, Then il middleware passa through e l'autenticazione cookie funziona come oggi.
 - **AC-12** Given una richiesta con `Authorization: Bearer` e un token invalido, When arriva al middleware, Then riceve 401 senza fallback su cookie.
-- **AC-13** Given un service token valido, When chiama un endpoint che non sia refresh o status, Then riceve 401 (il token non autorizza altre operazioni).
+- **AC-13** Given un service token valido, When chiama un endpoint che non sia refresh o status, Then riceve 403 (il token non autorizza altre operazioni).
+
+**UI**
+- **AC-14** Given l'admin autenticato, When apre la pagina Settings, Then vede una tab "Integrations" con la lista dei service token attivi (data di creazione) e un pulsante per generarne uno nuovo.
+- **AC-15** Given la generazione di un nuovo token dalla UI, When il token è creato, Then il plaintext è mostrato in un campo copiabile con un messaggio che avverte che non sarà più visibile dopo aver chiuso il dialogo.
 
 ## Deferred Decisions
 
@@ -163,3 +167,9 @@ _None._
 ## Open Questions
 
 _None._
+
+## Amendments
+
+| Date | Change |
+|---|---|
+| 2026-10-28 | UI per la gestione dei service token aggiunta allo scope (tab "Integrations" nelle Settings, AC-14 e AC-15). AC-13 corretto da 401 a 403 (il token è autenticato ma non autorizzato). |

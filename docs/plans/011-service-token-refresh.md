@@ -4,7 +4,7 @@
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
 **Status:** Draft
-**Affected:** Tenancy (Contracts, Domain, Persistence, Features), Host (Infrastructure, Program.cs), KnowledgeBases (Features/Lookups), `tests/Quorum.Integration.Tests`.
+**Affected:** Tenancy (Contracts, Domain, Persistence, Features), Host (Infrastructure, Program.cs), KnowledgeBases (Features/Lookups), `Quorum.Web.Client` (Settings page), `tests/Quorum.Integration.Tests`.
 
 ## Decisions
 | Topic | Choice |
@@ -25,15 +25,17 @@
 - **PR 2** (Host: middleware + Program.cs) dipende da PR 1 per il validator.
 - **PR 3** (KnowledgeBases: policy switch + status endpoint) dipende da PR 1 per la policy.
 - **PR 2 e PR 3 sono indipendenti tra loro** e possono essere sviluppati in parallelo dopo PR 1.
-- **PR 4** (integration tests) dipende da PR 2 e PR 3.
+- **PR 4** (UI: tab Integrations nelle Settings) dipende da PR 1 per gli endpoint.
+- **PR 5** (integration tests) dipende da PR 2 e PR 3.
 
 ## Acceptance criteria map
 | AC | PR |
 |---|---|
 | AC-1, AC-2, AC-3 | 1 |
-| AC-4, AC-5, AC-6, AC-7 | 3, 4 |
-| AC-8, AC-9, AC-10 | 3, 4 |
-| AC-11, AC-12, AC-13 | 2, 4 |
+| AC-4, AC-5, AC-6, AC-7 | 3, 5 |
+| AC-8, AC-9, AC-10 | 3, 5 |
+| AC-11, AC-12, AC-13 | 2, 5 |
+| AC-14, AC-15 | 4 |
 
 ## Steps
 
@@ -79,9 +81,15 @@
     - Policy `KnowledgeBaseRefresh` (dual auth).
     - AC-8, AC-9, AC-10.
 
-### PR 4 — Integration tests (`feat/011-service-token-tests`)
+### PR 4 — UI: tab Integrations nelle Settings (`feat/011-service-token-ui`)
 
-11. Test class `ServiceTokenTests` in `tests/Quorum.Integration.Tests/`:
+11. Nuova tab "Integrations" in `Settings.razor` (MudBlazor `MudTabPanel`), visibile solo all'admin. Lista i service token attivi con data di creazione (`GET /api/tenants/me/service-tokens`). Pulsante "Generate" che chiama `POST /api/tenants/me/service-tokens` e mostra il plaintext in un dialogo con campo copiabile e avviso "This token will not be shown again". Ogni token ha un pulsante "Revoke" con conferma che chiama `DELETE /api/tenants/me/service-tokens/{id}`. AC-14, AC-15.
+
+12. `QuorumApi` client: metodi `CreateServiceTokenAsync`, `ListServiceTokensAsync`, `RevokeServiceTokenAsync` che chiamano gli endpoint esistenti. Modelli `ServiceTokenInfo` e `CreatedServiceToken` in `QuorumApi.Tenancy.cs`.
+
+### PR 5 — Integration tests (`feat/011-service-token-tests`)
+
+13. Test class `ServiceTokenTests` in `tests/Quorum.Integration.Tests/`:
     - AC-1: POST genera token, risposta contiene plaintext, il token è immediatamente utilizzabile.
     - AC-2: GET lista, nessun plaintext nella risposta.
     - AC-3: DELETE revoca, riga rimossa dal DB.
@@ -96,9 +104,9 @@
     - AC-12: Bearer invalido → 401.
     - AC-13: Bearer su endpoint non refresh/status → 401.
 
-### PR 5 — Build verification (`chore/011-verification`)
+### PR 6 — Build verification (`chore/011-verification`)
 
-12. `dotnet build -c Release` e `dotnet format --verify-no-changes` prima di aprire la PR. Suite completa dei test alla fine.
+14. `dotnet build -c Release` e `dotnet format --verify-no-changes` prima di aprire la PR. Suite completa dei test alla fine.
 
 ## Risks
 - **AC-13 (token su altri endpoint)**: il middleware autentica con la claim `ServiceToken`, ma la policy degli altri endpoint richiede il role `Admin`. Il service token non ha quel role → 401 automaticamente. Da verificare esplicitamente nel test.
