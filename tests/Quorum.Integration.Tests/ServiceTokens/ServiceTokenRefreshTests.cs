@@ -57,26 +57,29 @@ public sealed class ServiceTokenRefreshTests(PostgresFixture postgres)
     {
         var (app, admin, knowledgeBaseId, token) = await SeedAsync();
         await using var _ = app;
-        var seeded = await LookupApi.SeedDueAsync(app, await TenantScope.TenantIdAsync(app));
-        // Use the seeded KB's actual ID
-        knowledgeBaseId = seeded.KnowledgeBaseId;
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        app.LookupComputer.Handler = async (_, token2) =>
+        app.LookupComputer.Handler = async (_, cancellation) =>
         {
-            started.SetResult();
-            await release.Task.WaitAsync(token2);
+            started.TrySetResult();
+            await release.Task.WaitAsync(cancellation);
             return FakeLookupComputer.Of(("x", 1));
         };
 
-        using var first = await CallRefreshAsync(app, token, knowledgeBaseId);
-        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+        try
+        {
+            using var first = await CallRefreshAsync(app, token, knowledgeBaseId);
+            Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
 
-        await started.Task.WaitAsync(Ct);
-        using var second = await CallRefreshAsync(app, token, knowledgeBaseId);
+            await started.Task.WaitAsync(Ct);
+            using var second = await CallRefreshAsync(app, token, knowledgeBaseId);
 
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        release.SetResult();
+            Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     [Fact] // AC-8
@@ -156,7 +159,12 @@ public sealed class ServiceTokenRefreshTests(PostgresFixture postgres)
         var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, clock);
         var admin = await app.SetUpAsync();
         var token = await CreateTokenAsync(admin);
-        var seeded = await LookupApi.SeedDueAsync(app, await TenantScope.TenantIdAsync(app));
+        // Not due: a due slice would be computed by the background service on its own, racing with what the test asserts.
+        var seeded = await LookupApi.SeedDueAsync(
+            app,
+            await TenantScope.TenantIdAsync(app),
+            published: [("x", 1)],
+            nextRefreshAt: clock.GetUtcNow().AddDays(30));
         return (app, admin, seeded.KnowledgeBaseId, token);
     }
 
