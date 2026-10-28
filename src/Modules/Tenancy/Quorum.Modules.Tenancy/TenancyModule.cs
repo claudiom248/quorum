@@ -2,7 +2,9 @@ using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Quorum.Modules.Tenancy.Contracts;
 using Quorum.Modules.Tenancy.Domain;
+using Quorum.Modules.Tenancy.Features.ServiceTokens;
 using Quorum.Modules.Tenancy.Identity;
 using Quorum.Modules.Tenancy.Persistence;
 using Quorum.Modules.Tenancy.Setup;
@@ -31,6 +33,7 @@ public static class TenancyModule
         services.AddHttpContextAccessor();
         services.AddScoped<ITenantContext, HttpTenantContext>();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
+        services.AddScoped<ITenantServiceTokenValidator, TenantServiceTokenValidator>();
 
         services.AddIdentityCore<QuorumUser>(options =>
             {
@@ -81,7 +84,10 @@ public static class TenancyModule
             .AddPolicy(QuorumPolicies.ToolsManage, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.ToolsAttach, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.ToolsUse, policy => policy.RequireRole(Roles.Admin))
-            .AddPolicy(QuorumPolicies.KnowledgeBaseManage, policy => policy.RequireRole(Roles.Admin));
+            .AddPolicy(QuorumPolicies.KnowledgeBaseManage, policy => policy.RequireRole(Roles.Admin))
+            .AddPolicy(QuorumPolicies.KnowledgeBaseRefresh, policy => policy.RequireAssertion(context =>
+                context.User.IsInRole(Roles.Admin) ||
+                context.User.HasClaim(c => c.Type == QuorumClaimTypes.ServiceToken)));
 
         return services;
     }

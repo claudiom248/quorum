@@ -6,4 +6,6 @@ public static class QuorumClaimTypes
     public const string TenantId = "quorum:tenant_id";
 
     public const string DisplayName = "quorum:display_name";
+
+    public const string ServiceToken = "quorum:service_token";
 }

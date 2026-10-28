@@ -16,4 +16,7 @@ public static class QuorumPolicies
 
     /// <summary>Manage the metadata dictionary and the knowledge bases: register, verify, map, try a search.</summary>
     public const string KnowledgeBaseManage = "knowledge_base.manage";
+
+    /// <summary>Trigger and check the refresh of a knowledge base's lookups: admin or service token.</summary>
+    public const string KnowledgeBaseRefresh = "knowledge_base.refresh";
 }
