@@ -36,6 +36,7 @@ app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ClientDisconnectMiddleware>();
 app.UseAuthentication();
+app.UseMiddleware<ServiceTokenAuthenticationMiddleware>();
 app.UseMiddleware<AntiforgeryHeaderMiddleware>();
 app.UseAuthorization();
 
