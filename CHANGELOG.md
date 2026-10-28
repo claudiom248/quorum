@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.13.0](https://github.com/claudiom248/quorum/compare/v0.12.0...v0.13.0) (2026-10-28)
+
+
+### Features
+
+* dual auth on refresh and status endpoint for knowledge base lookups (spec 011) ([#122](https://github.com/claudiom248/quorum/issues/122)) ([cbe2f69](https://github.com/claudiom248/quorum/commit/cbe2f6928b4e3143fa8ca042ec06625e4b7d7c83))
+* Integrations tab in the settings for service tokens (spec 011) ([#127](https://github.com/claudiom248/quorum/issues/127)) ([742c2a4](https://github.com/claudiom248/quorum/commit/742c2a480c95b3e1dd69eeb400101c5f0b7e0e6a))
+* service token authentication middleware in the host (spec 011) ([#118](https://github.com/claudiom248/quorum/issues/118)) ([db9eaff](https://github.com/claudiom248/quorum/commit/db9eaff24b12b67850f8b1e2534181fd1a555a13))
+* service token generation, listing and revocation in Tenancy (spec 011) ([#117](https://github.com/claudiom248/quorum/issues/117)) ([016de75](https://github.com/claudiom248/quorum/commit/016de75ff5567f39da81522c43974710245b59ed))
+
+
+### Bug Fixes
+
+* a collection of entities counts documents, not chunks (spec 007) ([#123](https://github.com/claudiom248/quorum/issues/123)) ([54b7729](https://github.com/claudiom248/quorum/commit/54b77298d1b0fe83e3b01fe5c5260c1cd1eb3249))
+* tell the model how to total a field with the lookup tools (spec 007) ([#124](https://github.com/claudiom248/quorum/issues/124)) ([6a72715](https://github.com/claudiom248/quorum/commit/6a7271554cf7e68759ab958102bcaeb68c043f3d))
+
 ## [0.12.0](https://github.com/claudiom248/quorum/compare/v0.11.0...v0.12.0) (2026-10-27)
 
 
