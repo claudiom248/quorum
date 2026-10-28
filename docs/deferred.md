@@ -8,7 +8,6 @@ Items that hurt what users see today and should be picked up before new features
 
 | Item | Origin | Why deferred | Revisit when |
 |---|---|---|---|
-| The text the model writes between tool calls is glued to its final answer in one message, so a conclusion drawn too early can sit in front of the correct one (seen in 2 of 7 questions with the local model, e.g. "No documents with Japanese nationality found" followed by the right suppliers; the second case announced the next calls). Show the text before a tool call as intermediate output and keep only the last step's text as the answer, or at least separate the steps | Found while testing spec 007 from chat | It is in the chat engine (Conversations/Agents streaming), not in the lookup tools, so it was left out of the lookups PRs | Next spec or fix on the chat; before any new work on the chat UI |
 | The lookup tool description does not steer the local model enough: it passed a country name ("Italy") instead of the stored code (`IT`) to a filter, twice in a row, and corrected itself only after two empty answers; and it uses `document_ids` only when the question asks for it explicitly, otherwise it searches with `rag` and a filter. Reword the tool description (and the filter hints) so values come from the lookup list as stored and `document_ids` is the way to narrow to known documents | Found while testing spec 007 from chat | It is a change to the tool description, not to the lookup mechanism, so it was left out of the spec 007 PRs | Next fix on the lookup tools; before any new work on the model-facing tool definitions |
 
 ## Other deferred work
@@ -46,7 +45,6 @@ Items that hurt what users see today and should be picked up before new features
 | Lookups for `Pinecone` knowledge bases | Spec 007 | Qdrant and PgVector (spec 008 Amendment 2); Pinecone has no facet and reports no support for lookups | A customer on Pinecone |
 | Normalising values or a synonym table for computed lookups; a cache shared between several instances; sums, averages and joins over metadata | Spec 007 | Values as stored (synonyms only in manual lookups), in-memory cache with the tables as source of truth, and no aggregates beyond counts of documents | Data with many spellings of one value and no ingestion fix, a multi-instance deployment, or external SQL sources with named parametrised queries |
 | Renaming a lookup or moving it between knowledge bases | Spec 007 | A lookup follows its field and its knowledge base | A concrete need |
-| A permission policy per function of a lookup tool (`values`, `documents`, `count`) | Spec 007 A1 | One tool, one policy and one activation for the three functions | A case where one function needs confirmation and another does not |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
 
 ## Planned specs
