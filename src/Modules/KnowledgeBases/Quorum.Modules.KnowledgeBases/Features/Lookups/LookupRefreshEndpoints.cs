@@ -28,8 +28,14 @@ internal sealed class LookupRefreshEndpoints : IEndpointGroup
             .RequireAuthorization(QuorumPolicies.KnowledgeBaseManage);
 
         knowledgeBases.MapGet("/{id:guid}/lookups", ListAsync).WithName("ListKnowledgeBaseLookups");
-        knowledgeBases.MapPost("/{id:guid}/lookups/refresh", RefreshKnowledgeBaseAsync).WithName("RefreshKnowledgeBaseLookups");
-        knowledgeBases.MapPost("/lookups/{lookupId:guid}/refresh", RefreshLookupAsync).WithName("RefreshLookup");
+
+        var refresh = app.MapGroup("/api/knowledge-bases")
+            .WithTags("Knowledge bases")
+            .RequireAuthorization(QuorumPolicies.KnowledgeBaseRefresh);
+
+        refresh.MapPost("/{id:guid}/lookups/refresh", RefreshKnowledgeBaseAsync).WithName("RefreshKnowledgeBaseLookups");
+        refresh.MapPost("/lookups/{lookupId:guid}/refresh", RefreshLookupAsync).WithName("RefreshLookup");
+        refresh.MapGet("/{id:guid}/refresh-status", RefreshStatusAsync).WithName("GetRefreshStatus");
     }
 
     private static async Task<Results<Ok<List<KnowledgeBaseLookupDto>>, ProblemHttpResult>> ListAsync(Guid id, KnowledgeBasesDbContext db, CancellationToken cancellationToken)
@@ -121,7 +127,39 @@ internal sealed class LookupRefreshEndpoints : IEndpointGroup
         signal.Wake();
         return TypedResults.Accepted((string?)null);
     }
+
+    private static async Task<Results<Ok<RefreshStatusResponse>, ProblemHttpResult>> RefreshStatusAsync(
+        Guid id,
+        KnowledgeBasesDbContext db,
+        TimeProvider clock,
+        IOptions<LookupOptions> options,
+        CancellationToken cancellationToken)
+    {
+        if (!await db.KnowledgeBases.AnyAsync(k => k.Id == id, cancellationToken))
+        {
+            return KnowledgeBaseNotFound.ToProblem();
+        }
+
+        var lookupIds = await db.Lookups.Where(l => l.KnowledgeBaseId == id).Select(l => l.Id).ToListAsync(cancellationToken);
+        var slices = await db.LookupSlices.AsNoTracking()
+            .Where(s => lookupIds.Contains(s.LookupId))
+            .Select(s => new { s.ComputingSince, s.ComputedAt, s.LastError })
+            .ToListAsync(cancellationToken);
+
+        var total = slices.Count;
+        var lease = clock.GetUtcNow() - options.Value.Lease;
+        var running = slices.Count(s => s.ComputingSince >= lease);
+        var lastCompleted = slices
+            .Where(s => s.ComputedAt is not null)
+            .MaxBy(s => s.ComputedAt)?.ComputedAt;
+        var hasErrors = slices.Any(s => s.LastError is not null);
+
+        var status = running > 0 ? "running" : hasErrors ? "failed" : "idle";
+        return TypedResults.Ok(new RefreshStatusResponse(status, lastCompleted, running, total));
+    }
 }
+
+internal sealed record RefreshStatusResponse(string Status, DateTimeOffset? LastCompletedAt, int RunningSlices, int TotalSlices);
 
 /// <param name="Field">The field a computed lookup lists.</param>
 internal sealed record KnowledgeBaseLookupDto(Guid Id, string Name, string Kind, string? Field, string? Unit, List<LookupSliceDto> Slices)
