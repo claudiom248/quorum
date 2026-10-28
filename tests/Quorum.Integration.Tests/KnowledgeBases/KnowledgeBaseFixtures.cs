@@ -16,7 +16,8 @@ internal static class KnowledgeBaseFixtures
         IEnumerable<Guid> scopeTenantIds,
         IEnumerable<Guid>? mappedFieldIds = null,
         int lookupRefreshHours = KnowledgeBase.DefaultLookupRefreshHours,
-        IEnumerable<Guid>? scopeAssistantIds = null)
+        IEnumerable<Guid>? scopeAssistantIds = null,
+        KnowledgeBaseMapping? mapping = null)
     {
         var now = DateTimeOffset.UtcNow;
         var registration = KnowledgeBase.Create(
@@ -27,7 +28,7 @@ internal static class KnowledgeBaseFixtures
             ConnectionSettings.From(new QdrantConnectionSettings(url, collection, VectorName: null, ProtectedApiKey: "protected-s3cret")),
             "nomic-embed-text",
             queryPrefix: null,
-            new KnowledgeBaseMapping(new MappingRoles("text", null, null, null, null), [.. (mappedFieldIds ?? []).Select((id, index) => new MappedField($"field{index}", id))]),
+            mapping ?? new KnowledgeBaseMapping(new MappingRoles("text", null, null, null, null), [.. (mappedFieldIds ?? []).Select((id, index) => new MappedField($"field{index}", id))]),
             scope,
             scopeTenantIds,
             scopeAssistantIds: scopeAssistantIds ?? [],

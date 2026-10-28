@@ -148,7 +148,10 @@ internal sealed class LookupComputer(StoreAdapters adapters) : ILookupComputer
     {
         ArgumentNullException.ThrowIfNull(mapping);
 
-        return mapping.CountedPoint is not null || mapping.Roles.DocumentId is not null ? LookupUnit.Documents : LookupUnit.Chunks;
+        // A collection of entities has one record per entity (spec 007 D-4): nothing is counted twice.
+        return mapping.CountedPoint is not null || mapping.Roles.DocumentId is not null || mapping.EntityName is not null
+            ? LookupUnit.Documents
+            : LookupUnit.Chunks;
     }
 
     internal static FilterCondition CountedCondition(CountedPoint counted)

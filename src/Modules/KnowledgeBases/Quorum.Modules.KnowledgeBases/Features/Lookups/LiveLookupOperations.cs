@@ -616,9 +616,11 @@ internal sealed record Target(
     /// <summary>The conditions with the counted point, which makes one record of each document, and the unit they count (spec 007 D-2).</summary>
     public (IReadOnlyList<FilterCondition> Conditions, string Unit) Counted()
     {
-        if (KnowledgeBase!.Mapping.CountedPoint is not { } point)
+        var mapping = KnowledgeBase!.Mapping;
+        if (mapping.CountedPoint is not { } point)
         {
-            return (Conditions, "chunks");
+            // A collection of entities has one record per entity (spec 007 D-4): nothing is counted twice, and "chunks" would be wrong.
+            return (Conditions, mapping.EntityName is null ? "chunks" : "documents");
         }
 
         IReadOnlyList<FilterCondition> conditions = [.. Conditions, LookupComputer.CountedCondition(point)];
