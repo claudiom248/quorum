@@ -1,17 +1,21 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Tenancy.Contracts;
+using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
 
 namespace Quorum.Modules.Tenancy.Features.ServiceTokens;
 
 internal sealed class TenantServiceTokenValidator(TenancyDbContext db) : ITenantServiceTokenValidator
 {
-    public async Task<Guid?> ValidateAsync(string tokenHash, CancellationToken cancellationToken = default)
+    public async Task<Guid?> ValidateAsync(string token, CancellationToken cancellationToken = default)
     {
-        var token = await db.ServiceTokens
+        var hash = ServiceToken.HashToken(token);
+        var found = await db.ServiceTokens
             .AsNoTracking()
             .IgnoreQueryFilters()
-            .SingleOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
-        return token?.TenantId;
+            .Where(t => t.TokenHash == hash)
+            .Select(t => (Guid?)t.TenantId)
+            .FirstOrDefaultAsync(cancellationToken);
+        return found;
     }
 }
