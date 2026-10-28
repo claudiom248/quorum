@@ -15,10 +15,12 @@ Entrambi gli utenti finali (che ricevono risposte incomplete o obsolete) e gli a
 
 - Tool di web search invocabile dagli agenti tramite function calling (MEAI `FunctionInvokingChatClient`)
 - Provider iniziale: SearXNG (meta-motore di ricerca open source self-hosted)
-- Configurazione dell'istanza SearXNG a livello di piattaforma (admin del tenant global)
-- Configurazione del tool per agente: abilitazione/disabilitazione + parametri (top N risultati, motori di ricerca, lingua, safe search, max invocazioni per conversazione)
+- Configurazione globale dell'istanza SearXNG a livello di piattaforma (admin del tenant default)
+- Configurazione del tool web search per agente: abilitazione/disabilitazione + parametri (top N risultati, motori di ricerca, lingua, safe search, max invocazioni per conversazione) + scope (Global, Tenant, Assistant)
+- UI per la configurazione globale SearXNG (tab "Web search" in Settings)
+- UI per la gestione dei tool web search (pagina dedicata simile a RagTools)
 - Gestione errori: timeout (90s), retry con backoff, messaggi di errore al modello
-- Citazione delle fonti nelle risposte (pattern esistente del RAG)
+- Citazione delle fonti nelle risposte (pattern esistente del RAG, riutilizzando MessageSource)
 - Orchestrazione RAG vs web search veicolata dal prompt di sistema dell'agente
 
 ### Out
@@ -26,27 +28,30 @@ Entrambi gli utenti finali (che ricevono risposte incomplete o obsolete) e gli a
 - Cache semantica dei risultati di ricerca (rimandata a spec successiva)
 - Provider di ricerca alternativi a SearXNG (l'interfaccia sarà astratta, ma l'implementazione iniziale è solo SearXNG)
 - Ottimizzazioni di performance basate su volume atteso (rimandate a quando ci sono dati)
-- UI dedicata per la configurazione della web search (si usa l'API esistente di configurazione agenti)
 
 ## Domain Model
 
 ### Entità
 
-- **WebSearchConfiguration** (piattaforma): configurazione globale dell'istanza SearXNG
+- **WebSearchConfiguration** (globale): configurazione globale dell'istanza SearXNG, una sola per piattaforma
   - `Url` (obbligatorio): URL dell'istanza SearXNG
   - `DefaultTimeout` (default 90s): timeout per le richieste
+  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default
   
-- **WebSearchToolConfiguration** (per agente): configurazione del tool su un agente specifico
-  - `AgentId`: riferimento all'agente
-  - `Enabled` (bool): se il tool è abilitato
+- **WebSearchTool** (per tenant): configurazione del tool web search, simile a RagTool
+  - `ToolId`: riferimento al Tool (chiave primaria, relazione 1:1)
+  - `TenantId`: il tenant proprietario
   - `TopN` (int, default 5): numero massimo di risultati da restituire
   - `SearchEngines` (lista stringhe, opzionale): motori di ricerca abilitati (es. ["google", "bing", "duckduckgo"])
   - `Language` (stringa, opzionale): lingua preferita per i risultati (es. "it", "en")
   - `SafeSearch` (int, default 1): livello di safe search (0=off, 1=moderate, 2=strict)
   - `TimeRange` (stringa, opzionale): filtro temporale (es. "day", "week", "month", "year")
   - `MaxInvocationsPerConversation` (int, default 5): massimo numero di invocazioni del tool per conversazione
-  
-- **WebSearchResult**: risultato di una ricerca
+  - `Scope` (ToolScopeKind): Global, Tenant o Assistant
+  - `ScopeTenantIds` (lista Guid): tenant aggiuntivi che possono usare il tool (se Scope = Tenant)
+  - `ScopeAssistantIds` (lista Guid): assistenti che possono usare il tool (se Scope = Assistant)
+
+- **WebSearchResult**: risultato di una ricerca (effimero, non persistito)
   - `Title`: titolo del risultato
   - `Url`: URL della pagina
   - `Snippet`: estratto del contenuto
@@ -55,25 +60,24 @@ Entrambi gli utenti finali (che ricevono risposte incomplete o obsolete) e gli a
 
 ### Relazioni
 
-- `WebSearchConfiguration` è singola per piattaforma (1:1 con il sistema)
-- `WebSearchToolConfiguration` è 1:1 con un `Agent` (un agente può avere al massimo una configurazione del tool web search)
+- `WebSearchConfiguration` è singola per piattaforma (1:1 con il sistema, senza TenantId)
+- `WebSearchTool` ha una relazione 1:1 con `Tool` (ToolId come chiave primaria), simile a RagTool
 - `WebSearchResult` è effimero: vive solo nel contesto della conversazione corrente, non viene persistito
 
 ### Lifecycle
 
-- `WebSearchConfiguration`: creata dall'admin del tenant global, modificabile, eliminabile (ma se ci sono agenti che usano il tool, l'eliminazione dovrebbe essere bloccata o richiedere conferma)
-- `WebSearchToolConfiguration`: creata/modificata/eliminata da chi ha permessi di modifica sull'agente
+- `WebSearchConfiguration`: creata dall'admin del tenant default, modificabile. Non eliminabile (è una configurazione di piattaforma).
+- `WebSearchTool`: creato/modificato/eliminato da chi ha permessi di modifica sul tenant proprietario. Segue il pattern di RagTool per lo scope.
 - `WebSearchResult`: creato dal tool durante l'esecuzione, garbage-collected alla fine della conversazione (o prima, se non serve più)
 
 ## API Contract
 
-### Configurazione piattaforma (admin del tenant global)
+### Configurazione globale SearXNG (admin del tenant default)
 
 | Verbo | Route | Request | Response | Errori |
 |-------|-------|---------|----------|--------|
-| GET | `/api/admin/settings/web-search` | — | `WebSearchConfigurationResponse` | 401, 403 |
-| PUT | `/api/admin/settings/web-search` | `UpdateWebSearchConfigurationRequest` | `WebSearchConfigurationResponse` | 400, 401, 403 |
-| DELETE | `/api/admin/settings/web-search` | — | 204 | 401, 403, 409 (agenti in uso) |
+| GET | `/api/settings/web-search` | — | `WebSearchConfigurationResponse` | 401, 403 |
+| PUT | `/api/settings/web-search` | `UpdateWebSearchConfigurationRequest` | `WebSearchConfigurationResponse` | 400, 401, 403 |
 
 **WebSearchConfigurationResponse:**
 ```json
@@ -91,28 +95,58 @@ Entrambi gli utenti finali (che ricevono risposte incomplete o obsolete) e gli a
 }
 ```
 
-### Configurazione tool su agente (chi può modificare l'agente)
+### Configurazione tool web search (chi può modificare il tenant)
 
-La configurazione del tool web search è parte della configurazione dei tool dell'agente, non un endpoint separato. Si usa l'endpoint esistente di update dell'agente, aggiungendo il tool "web search" nella lista dei tool con i relativi parametri.
+La configurazione del tool web search segue il pattern di RagTool: endpoint dedicati per CRUD, non parte della configurazione dell'agente.
 
-Esempio di request body per l'update di un agente:
+| Verbo | Route | Request | Response | Errori |
+|-------|-------|---------|----------|--------|
+| GET | `/api/tools/web-search` | — | `List<WebSearchToolResponse>` | 401, 403 |
+| POST | `/api/tools/web-search` | `CreateWebSearchToolRequest` | `WebSearchToolCreatedResponse` | 400, 401, 403, 409 |
+| GET | `/api/tools/web-search/{id}` | — | `WebSearchToolResponse` | 401, 403, 404 |
+| PUT | `/api/tools/web-search/{id}` | `UpdateWebSearchToolRequest` | `WebSearchToolResponse` | 400, 401, 403, 404 |
+| DELETE | `/api/tools/web-search/{id}` | — | 204 | 401, 403, 404 |
+
+**WebSearchToolResponse:**
 ```json
 {
-  "name": "Research Assistant",
-  "tools": [
-    {
-      "type": "web_search",
-      "enabled": true,
-      "configuration": {
-        "topN": 10,
-        "searchEngines": ["google", "bing"],
-        "language": "it",
-        "safeSearch": 1,
-        "timeRange": "week",
-        "maxInvocationsPerConversation": 3
-      }
-    }
-  ]
+  "id": "guid",
+  "name": "web_search",
+  "description": "Search the web for current information",
+  "topN": 10,
+  "searchEngines": ["google", "bing"],
+  "language": "it",
+  "safeSearch": 1,
+  "timeRange": "week",
+  "maxInvocationsPerConversation": 3,
+  "scope": {
+    "kind": "Tenant",
+    "tenantIds": [],
+    "assistantIds": []
+  },
+  "state": "Enabled",
+  "policy": "Auto",
+  "shared": false
+}
+```
+
+**CreateWebSearchToolRequest / UpdateWebSearchToolRequest:**
+```json
+{
+  "name": "web_search",
+  "description": "Search the web for current information",
+  "topN": 10,
+  "searchEngines": ["google", "bing"],
+  "language": "it",
+  "safeSearch": 1,
+  "timeRange": "week",
+  "maxInvocationsPerConversation": 3,
+  "scope": {
+    "kind": "Tenant",
+    "tenantIds": [],
+    "assistantIds": []
+  },
+  "policy": "Auto"
 }
 ```
 
@@ -161,10 +195,10 @@ Il tool di web search è invocato dal modello tramite function calling. Il contr
 
 | Azione | Chi |
 |--------|-----|
-| Configurare l'istanza SearXNG a livello di piattaforma | Admin del tenant global |
-| Abilitare/disabilitare il tool web search su un agente | Chiunque abbia permessi di modifica sull'agente (owner del tenant) |
-| Modificare i parametri del tool (top N, motori, lingua, ecc.) | Chiunque abbia permessi di modifica sull'agente |
-| Invocare il tool durante una conversazione | Il modello (tramite function calling), se il tool è abilitato sull'agente |
+| Configurare l'istanza SearXNG a livello globale | Admin del tenant default (admin di sistema) |
+| Creare/modificare/eliminare tool web search | Admin del tenant proprietario |
+| Attivare/disattivare il tool web search su un assistente | Chiunque possa modificare l'assistente (tramite Settings > Tools) |
+| Invocare il tool durante una conversazione | Il modello (tramite function calling), se il tool è attivato sull'assistente e rientra nello scope |
 
 ## Edge Cases & Failure Modes
 
@@ -197,9 +231,9 @@ Il tool di web search è invocato dal modello tramite function calling. Il contr
 
 ## Acceptance Criteria
 
-**AC-1**: Given l'admin del tenant global ha configurato l'istanza SearXNG (URL), When un admin abilita il tool "web search" su un agente, Then il tool è disponibile per quell'agente con i parametri specificati (top N, motori, lingua, safe search, max invocazioni).
+**AC-1**: Given l'admin del tenant default ha configurato l'istanza SearXNG (URL), When un admin crea un tool web search con parametri specifici (top N, motori, lingua, safe search, max invocazioni, scope), Then il tool è disponibile per il tenant con i parametri specificati.
 
-**AC-2**: Given un agente con il tool "web search" abilitato, When il modello decide di invocare il tool con una query, Then il tool chiama SearXNG e restituisce i risultati al modello (array di risultati con title, url, snippet, engine, score).
+**AC-2**: Given un assistente con il tool web search attivato (tramite Settings > Tools), When il modello decide di invocare il tool con una query, Then il tool chiama SearXNG e restituisce i risultati al modello (array di risultati con title, url, snippet, engine, score).
 
 **AC-3**: Given SearXNG non risponde entro 90 secondi, When il tool tenta di eseguire una ricerca, Then il tool restituisce un messaggio di errore al modello ("Web search unavailable: SearXNG did not respond within 90 seconds").
 
@@ -207,11 +241,15 @@ Il tool di web search è invocato dal modello tramite function calling. Il contr
 
 **AC-5**: Given il modello ha invocato il tool N volte (dove N è `MaxInvocationsPerConversation`), When tenta di invocarlo un'altra volta, Then il tool restituisce un errore ("Max invocations reached: N") al modello.
 
-**AC-6**: Given il modello usa i risultati della web search per generare una risposta, When la risposta viene inviata all'utente, Then le fonti possono essere citate (pattern esistente del RAG: `AnswerSource` con N, KnowledgeBase="web", DocumentId=null, Title, Position=null, Url).
+**AC-6**: Given il modello usa i risultati della web search per generare una risposta, When la risposta viene inviata all'utente, Then le fonti possono essere citate (riutilizzando MessageSource con KnowledgeBase="web", Title, Url).
 
-**AC-7**: Given l'admin del tenant global non ha configurato l'istanza SearXNG, When un admin tenta di abilitare il tool "web search" su un agente, Then l'API restituisce un errore 400 ("Web search configuration missing").
+**AC-7**: Given l'admin del tenant default non ha configurato l'istanza SearXNG, When un admin tenta di creare un tool web search, Then l'API restituisce un errore 400 ("Web search configuration missing").
 
-**AC-8**: Given un agente con il tool "web search" abilitato, When l'agente ha un prompt di sistema che specifica la priorità RAG vs web search, Then il modello rispetta la priorità indicata nel prompt (es. "usa prima il RAG, poi la web search se necessario").
+**AC-8**: Given un assistente con il tool web search attivato e un prompt di sistema che specifica la priorità RAG vs web search, Then il modello rispetta la priorità indicata nel prompt (es. "usa prima il RAG, poi la web search se necessario").
+
+**AC-9**: Given l'admin del tenant default accede alla pagina Settings, When seleziona la tab "Web search", Then può configurare l'URL dell'istanza SearXNG e il timeout default.
+
+**AC-10**: Given l'admin accede alla pagina "/tools/web-search", When ci sono tool web search configurati, Then vede la lista dei tool con nome, descrizione, scope, stato e può crearne, modificarne o eliminarne.
 
 ## Deferred Decisions
 
