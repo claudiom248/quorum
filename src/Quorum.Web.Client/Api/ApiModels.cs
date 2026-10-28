@@ -98,6 +98,12 @@ public sealed record Checklist(List<ChecklistItem> Items, bool Dismissed)
 
 public sealed record TenantSummary(Guid Id, string Name, bool Current = false);
 
+/// <summary>A service token as the admin sees it in the list: the value is only in <see cref="CreatedServiceToken"/>.</summary>
+public sealed record ServiceTokenInfo(Guid Id, DateTimeOffset CreatedAt);
+
+/// <param name="Token">The plaintext, shown once at generation and never returned again.</param>
+public sealed record CreatedServiceToken(Guid Id, string Token, DateTimeOffset CreatedAt);
+
 /// <summary>A tool an assistant may use, and whether it is activated on it.</summary>
 public sealed record PoolTool(Guid ToolId, string Name, bool Active);
 
