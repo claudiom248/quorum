@@ -103,6 +103,59 @@
                     </form>
                 </MudTabPanel>
             }
+
+            <MudTabPanel Text="Integrations" data-tab="integrations">
+                <MudStack Spacing="3">
+                    <MudText Typo="Typo.body2">
+                        Service tokens let an external process (an ETL, a scheduled job) trigger the refresh of a knowledge base's lookups
+                        as soon as it finishes writing. A token reaches the refresh and its status only, and only for the knowledge bases
+                        of this tenant.
+                    </MudText>
+
+                    @if (_tokensProblem is not null)
+                    {
+                        <ProblemMessage Problem="_tokensProblem" />
+                    }
+
+                    @if (_newToken is not null)
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="py-3">
+                            <MudStack Spacing="2">
+                                <MudText>Copied this token into your ETL configuration now: it <strong>will not be shown again</strong>.</MudText>
+                                <MudTextField Value="@_newToken.Token" Variant="Variant.Outlined" ReadOnly="true" Margin="Margin.Dense"
+                                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                                              data-token-plaintext />
+                            </MudStack>
+                        </MudAlert>
+                    }
+
+                    @if (_tokens.Count > 0)
+                    {
+                        <MudTable T="ServiceTokenInfo" Items="_tokens" Dense="true" Hover="true" Elevation="0" Outlined="true">
+                            <HeaderContent>
+                                <MudTh>Created</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate Context="token">
+                                <MudTd DataLabel="Created">@token.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                                <MudTd DataLabel="Actions">
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                               data-revoke-token="@token.Id"
+                                               OnClick="() => RevokeTokenAsync(token.Id)">Revoke</MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">No service token yet.</MudText>
+                    }
+
+                    <MudStack Row="true" Justify="Justify.FlexEnd">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="GenerateTokenAsync">Generate</MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudTabPanel>
         </MudTabs>
     }
     else
@@ -130,6 +183,9 @@
     private ApiProblem? _toolsProblem;
     private bool _toolsSaved;
     private string? _toolSearch;
+    private List<ServiceTokenInfo> _tokens = [];
+    private ApiProblem? _tokensProblem;
+    private CreatedServiceToken? _newToken;
     private int _tab;
 
     private const int BehaviourTab = 1;
@@ -161,6 +217,54 @@
         _prompt = _savedPrompt = s.SystemPrompt;
 
         await LoadToolsAsync();
+        await LoadTokensAsync();
+    }
+
+    private async Task LoadTokensAsync()
+    {
+        var tokens = await Api.ListServiceTokensAsync();
+        if (!tokens.IsSuccess)
+        {
+            _tokensProblem = tokens.Problem;
+            return;
+        }
+
+        _tokens = [.. tokens.Value.OrderByDescending(t => t.CreatedAt)];
+    }
+
+    private async Task GenerateTokenAsync()
+    {
+        _busy = true;
+        _tokensProblem = null;
+        _newToken = null;
+        var created = await Api.CreateServiceTokenAsync();
+        _busy = false;
+
+        if (!created.IsSuccess)
+        {
+            _tokensProblem = created.Problem;
+            return;
+        }
+
+        _newToken = created.Value;
+        _tokens = [.. _tokens.Where(t => t.Id != created.Value.Id).Prepend(new ServiceTokenInfo(created.Value.Id, created.Value.CreatedAt)).OrderByDescending(t => t.CreatedAt)];
+    }
+
+    private async Task RevokeTokenAsync(Guid id)
+    {
+        _tokensProblem = null;
+        var result = await Api.RevokeServiceTokenAsync(id);
+        if (!result.IsSuccess)
+        {
+            _tokensProblem = result.Problem;
+            return;
+        }
+
+        _tokens = [.. _tokens.Where(t => t.Id != id)];
+        if (_newToken?.Id == id)
+        {
+            _newToken = null;
+        }
     }
 
     private async Task LoadToolsAsync()
