@@ -189,6 +189,32 @@ namespace Quorum.Modules.Tenancy.Persistence.Migrations
                     b.ToTable("users", "tenancy");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Tenancy.Domain.ServiceToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("service_tokens", "tenancy");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Tenancy.Domain.SetupState", b =>
                 {
                     b.Property<int>("Id")

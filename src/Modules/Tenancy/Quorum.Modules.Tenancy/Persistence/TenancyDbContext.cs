@@ -19,6 +19,8 @@ internal sealed class TenancyDbContext(DbContextOptions<TenancyDbContext> option
 
     public DbSet<OnboardingChecklist> OnboardingChecklists => Set<OnboardingChecklist>();
 
+    public DbSet<ServiceToken> ServiceTokens => Set<ServiceToken>();
+
     private Guid? CurrentTenantId => tenantContext.TenantId;
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -42,6 +44,16 @@ internal sealed class TenancyDbContext(DbContextOptions<TenancyDbContext> option
         {
             checklist.ToTable("onboarding_checklist");
             checklist.Property(c => c.Id).ValueGeneratedNever();
+        });
+
+        builder.Entity<ServiceToken>(token =>
+        {
+            token.ToTable("service_tokens");
+            token.Property(t => t.Id).ValueGeneratedNever();
+            token.Property(t => t.TokenHash).HasMaxLength(64);
+            token.HasIndex(t => t.TokenHash).IsUnique();
+            token.HasIndex(t => t.TenantId);
+            token.HasQueryFilter(t => CurrentTenantId == null || t.TenantId == CurrentTenantId);
         });
 
         builder.Entity<QuorumUser>(user =>
