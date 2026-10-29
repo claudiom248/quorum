@@ -109,6 +109,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             lookup.Property(l => l.LookupAliases).HasColumnType("jsonb").HasDefaultValue("{}");
             lookup.Property(l => l.ExposedAliases).HasColumnType("jsonb").HasDefaultValue("{}");
             lookup.Property(l => l.FixedFilters).HasColumnType("jsonb");
+            lookup.Property(l => l.LookupFilters).HasColumnType("jsonb").HasDefaultValue("{}");
             lookup.Property(l => l.Scope).HasConversion<string>().HasMaxLength(20);
             lookup.HasIndex(l => l.TenantId);
             lookup.HasOne<Tool>().WithOne().HasForeignKey<LookupTool>(l => l.ToolId).OnDelete(DeleteBehavior.Cascade);
@@ -139,6 +140,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
         {
             activation.ToTable("assistant_tools");
             activation.HasKey(a => new { a.AssistantId, a.ToolId });
+            activation.Property(a => a.Manifest).HasMaxLength(10).HasDefaultValue(LookupManifest.Full);
             activation.HasIndex(a => a.TenantId);
             activation.HasOne<Assistant>().WithMany().HasForeignKey(a => a.AssistantId).OnDelete(DeleteBehavior.Cascade);
             activation.HasOne<Tool>().WithMany().HasForeignKey(a => a.ToolId).OnDelete(DeleteBehavior.Cascade);

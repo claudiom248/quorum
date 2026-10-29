@@ -90,6 +90,13 @@ internal static class ActiveToolsQuery
                 .Where(lookup => lookupIds.Contains(lookup.ToolId))
                 .ToDictionaryAsync(lookup => lookup.ToolId, LookupBinding.From, cancellationToken);
 
+        // The manifest is the activation's, so the same tool can be lean on one assistant and full on another (spec 012 D-8).
+        var manifests = lookupIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.AssistantTools.IgnoreQueryFilters().AsNoTracking()
+                .Where(activation => activation.AssistantId == assistantId && lookupIds.Contains(activation.ToolId))
+                .ToDictionaryAsync(activation => activation.ToolId, activation => activation.Manifest, cancellationToken);
+
         var webSearchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebSearch).Select(pooled => pooled.Tool.Id).ToList();
         var webSearchBindings = webSearchIds.Count == 0
             ? []
@@ -116,7 +123,9 @@ internal static class ActiveToolsQuery
                     pooled.Tool.DefinitionHash,
                     pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null,
                     bindings.GetValueOrDefault(pooled.Tool.Id),
-                    lookupBindings.GetValueOrDefault(pooled.Tool.Id),
+                    lookupBindings.GetValueOrDefault(pooled.Tool.Id) is { } lookupBinding
+                        ? lookupBinding with { Manifest = manifests.GetValueOrDefault(pooled.Tool.Id, LookupManifest.Full) }
+                        : null,
                     webSearch);
             })
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)

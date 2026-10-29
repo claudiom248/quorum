@@ -85,8 +85,10 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
         {
             lookup.ToTable("lookups");
             lookup.Property(l => l.Kind).HasConversion<string>().HasMaxLength(20);
-            lookup.Property(l => l.Name).HasMaxLength(Lookup.MaxNameLength);
-            lookup.Property(l => l.Description).HasMaxLength(Lookup.MaxDescriptionLength);
+            lookup.Property(l => l.Name).IsRequired().HasMaxLength(Lookup.MaxNameLength);
+            lookup.Property(l => l.Description).IsRequired().HasMaxLength(Lookup.MaxDescriptionLength);
+            lookup.Property(l => l.Storage).HasConversion<string>().HasMaxLength(20);
+            lookup.OwnsMany(l => l.Attributes, attribute => attribute.ToJson());
             lookup.Property(l => l.Scope).HasConversion<string>().HasMaxLength(20);
             lookup.Property(l => l.Unit).HasConversion<string>().HasMaxLength(20);
 

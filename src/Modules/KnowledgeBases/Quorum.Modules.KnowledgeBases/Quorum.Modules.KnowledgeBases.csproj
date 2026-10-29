@@ -10,6 +10,7 @@
     <PackageReference Include="Pgvector" />
     <PackageReference Include="Qdrant.Client" />
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
+    <PackageReference Include="CsvHelper" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

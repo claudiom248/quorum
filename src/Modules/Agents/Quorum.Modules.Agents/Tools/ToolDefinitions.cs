@@ -64,8 +64,16 @@ internal static class ToolNaming
     {
         "documents" => LookupDocuments(toolName),
         "count" => LookupCount(toolName),
+        "describe" => LookupDescribe(toolName),
+        "query" => LookupQuery(toolName),
         _ => LookupValues(toolName),
     };
+
+    /// <summary>The lean manifest's function that describes the lists and knowledge bases of a lookup tool (spec 012 D-8).</summary>
+    public static string LookupDescribe(string toolName) => "lookup_describe__" + toolName;
+
+    /// <summary>The lean manifest's function that reads one of them (spec 012 D-8).</summary>
+    public static string LookupQuery(string toolName) => "lookup_query__" + toolName;
 
     /// <summary>
     /// <c>&lt;server&gt;__&lt;tool&gt;</c>. A tool name the model APIs would not accept (characters outside <c>[a-zA-Z0-9_-]</c>, or too

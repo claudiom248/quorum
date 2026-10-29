@@ -52,8 +52,18 @@ public sealed partial class QuorumApi(HttpClient http)
         GetAsync<AssistantTools>($"api/assistants/{assistantId}/tools", cancellationToken);
 
     /// <summary>Activates exactly these tools on the assistant.</summary>
-    public Task<ApiResult> SetAssistantToolsAsync(Guid assistantId, IReadOnlyList<Guid> toolIds, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Put, $"api/assistants/{assistantId}/tools", new { toolIds }, setupToken: null, cancellationToken);
+    /// <param name="manifests">For lookup tools: <c>full</c> or <c>lean</c> by tool id; a tool left out keeps its manifest.</param>
+    public Task<ApiResult> SetAssistantToolsAsync(
+        Guid assistantId,
+        IReadOnlyList<Guid> toolIds,
+        IReadOnlyDictionary<Guid, string>? manifests = null,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(
+            HttpMethod.Put,
+            $"api/assistants/{assistantId}/tools",
+            new { toolIds, manifests = manifests?.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value.ToLowerInvariant()) },
+            setupToken: null,
+            cancellationToken);
 
     public Task<ApiResult<Checklist>> GetChecklistAsync(CancellationToken cancellationToken = default) =>
         GetAsync<Checklist>("api/onboarding/checklist", cancellationToken);

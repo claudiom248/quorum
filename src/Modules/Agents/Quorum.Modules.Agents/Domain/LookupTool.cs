@@ -48,6 +48,12 @@ internal sealed class LookupTool
     /// <summary>The dictionary fields the fixed filters name, kept so that a field in use cannot be deleted.</summary>
     public List<Guid> FixedFilterFieldIds { get; private set; } = [];
 
+    /// <summary>
+    /// The fixed conditions on the attributes of the entity and manual lookups (spec 012 D-7), by lookup id:
+    /// <c>{ "&lt;lookupId&gt;": { "&lt;attribute&gt;": { "eq": v } } }</c>. The model never sees them.
+    /// </summary>
+    public string LookupFilters { get; private set; } = "{}";
+
     public ToolScopeKind Scope { get; private set; }
 
     /// <summary>With <see cref="ToolScopeKind.Tenant"/>: the tenants besides the owner that may use the tool.</summary>
@@ -78,6 +84,7 @@ internal sealed class LookupTool
         ExposedAliases = JsonSerializer.Serialize(configuration.ExposedAliases ?? new Dictionary<Guid, string>());
         FixedFilters = configuration.FixedFilters;
         FixedFilterFieldIds = [.. configuration.FixedFilterFieldIds];
+        LookupFilters = configuration.LookupFilters;
         Scope = configuration.Scope;
         ScopeTenantIds = [.. configuration.ScopeTenantIds];
         ScopeAssistantIds = [.. configuration.ScopeAssistantIds];
@@ -96,4 +103,5 @@ internal sealed record LookupConfiguration(
     IReadOnlyList<Guid> FixedFilterFieldIds,
     ToolScopeKind Scope,
     IReadOnlyList<Guid> ScopeTenantIds,
-    IReadOnlyList<Guid> ScopeAssistantIds);
+    IReadOnlyList<Guid> ScopeAssistantIds,
+    string LookupFilters = "{}");

@@ -307,7 +307,7 @@ public sealed class LookupRefreshTests(PostgresFixture postgres)
         {
             // A second slice of the first knowledge base: still only one of the two may run.
             var db = scope.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
-            var second = Lookup.Computed(tenantId, a.KnowledgeBaseId, Guid.NewGuid(), LookupUnit.Chunks, Start);
+            var second = Lookup.Computed(tenantId, a.KnowledgeBaseId, Guid.NewGuid(), LookupUnit.Chunks, $"list-{Guid.NewGuid():N}", "A list of values.", Start);
             db.Lookups.Add(second);
             db.LookupSlices.Add(LookupSlice.Create(tenantId, second.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, Start));
             await db.SaveChangesAsync(Ct);

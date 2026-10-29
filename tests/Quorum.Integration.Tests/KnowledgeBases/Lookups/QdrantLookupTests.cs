@@ -59,7 +59,7 @@ public sealed class QdrantLookupTests(PostgresFixture postgres, QdrantFixture qd
     private static async Task<KnowledgeBaseApi.RegisteredBody> RegisterAsync(HttpClient admin, string url, string collection, object mapping)
     {
         using var response = await KnowledgeBaseApi.RegisterAsync(admin, url, collection, mapping: mapping, createFields: ContractFields);
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        if (response.StatusCode != HttpStatusCode.Created) throw new Xunit.Sdk.XunitException(await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<KnowledgeBaseApi.RegisteredBody>(Ct))!;
     }
 

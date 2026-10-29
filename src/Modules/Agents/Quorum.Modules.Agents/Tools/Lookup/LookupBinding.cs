@@ -39,6 +39,28 @@ internal sealed record LookupBinding(
     /// <summary>The list that holds the exact values of a filter parameter, by parameter name: the list of the field it filters; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>The fixed conditions on the attributes of the lookups, as stored (spec 012 D-7): <c>{ "&lt;lookupId&gt;": { "&lt;attribute&gt;": { "eq": v } } }</c>.</summary>
+    public string LookupFilters { get; init; } = "{}";
+
+    /// <summary>The manifest of the activation on the assistant answering (spec 012 D-8): <c>Full</c> or <c>Lean</c>.</summary>
+    public string Manifest { get; init; } = Domain.LookupManifest.Full;
+
+    /// <summary>The lookups the tool offers, by the name the model knows them under, as the catalog describes them; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, LookupInfo> Targets { get; init; } = new Dictionary<string, LookupInfo>();
+
+    /// <summary>The fixed conditions on one lookup's attributes, in the shape the lookups read them.</summary>
+    public IReadOnlyList<LookupRowFilter> RowFiltersOf(Guid lookupId)
+    {
+        using var document = JsonDocument.Parse(LookupFilters);
+        if (!document.RootElement.TryGetProperty(lookupId.ToString(), out var perLookup) || perLookup.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        return [.. perLookup.EnumerateObject().SelectMany(attribute => attribute.Value.EnumerateObject()
+            .Select(condition => new LookupRowFilter(attribute.Name, condition.Name, condition.Value.Clone())))];
+    }
+
     public static LookupBinding From(LookupTool row)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -46,6 +68,7 @@ internal sealed record LookupBinding(
         {
             LookupAliases = JsonSerializer.Deserialize<Dictionary<Guid, string>>(row.LookupAliases) ?? [],
             ExposedAliases = JsonSerializer.Deserialize<Dictionary<Guid, string>>(row.ExposedAliases) ?? [],
+            LookupFilters = row.LookupFilters,
         };
     }
 

@@ -29,13 +29,15 @@ internal sealed record LookupAttributeSort(string Name, bool Descending)
 /// <param name="Search">A case-insensitive substring of the value, its label or one of its synonyms.</param>
 /// <param name="Cursor">What the previous page returned.</param>
 /// <param name="Attribute">With <see cref="LookupSort.Attribute"/>: the attribute to order by.</param>
-internal sealed record LookupPageRequest(string? Search, LookupSort Sort, int Limit, string? Cursor, LookupAttributeSort? Attribute = null);
+/// <param name="Filters">On the attributes of the rows (spec 012 D-5); none when left out.</param>
+internal sealed record LookupPageRequest(string? Search, LookupSort Sort, int Limit, string? Cursor, LookupAttributeSort? Attribute = null, IReadOnlyList<LookupFilter>? Filters = null);
 
 internal sealed record LookupPageValue(string Value, string? Label, IReadOnlyList<string> Synonyms, int? Count, string? Attributes);
 
 /// <param name="Cursor"><see langword="null"/> on the last page.</param>
 /// <param name="CursorRestarted">The cursor belonged to a generation that is no longer current, so the list starts again from the top.</param>
-internal sealed record LookupPage(IReadOnlyList<LookupPageValue> Values, string? Cursor, bool CursorRestarted);
+/// <param name="Matching">How many rows match the search and the filters; <see langword="null"/> when the read did not count them.</param>
+internal sealed record LookupPage(IReadOnlyList<LookupPageValue> Values, string? Cursor, bool CursorRestarted, int? Matching = null);
 
 /// <summary>
 /// Reads a page of the current generation of one slice from the tables (spec 007 D-12). It is the one reader of every kind of lookup
@@ -71,9 +73,9 @@ internal static class LookupReader
         }
 
         var generation = slice.CurrentGeneration;
-        if (request.Sort == LookupSort.Attribute)
+        if (request.Sort == LookupSort.Attribute || request.Filters is { Count: > 0 })
         {
-            // The order is by a value inside the JSON of each row, so the generation (at most the ceiling of values) is ordered in memory, as the cache does.
+            // The order and the filters read a value inside the JSON of each row, so the generation (at most the ceiling of values) is worked on in memory, as the cache does.
             return LookupPager.Page(await LookupCache.LoadAsync(db, slice.Id, generation, cancellationToken), slice, request);
         }
 

@@ -70,6 +70,8 @@ internal sealed partial class KnowledgeBaseRegistrar(
         Apply(registration, input.Verdict, now);
 
         db.KnowledgeBases.Add(registration);
+        // The new fields are named by the lookups made from them, so they are in the context before the sync reads their names.
+        db.DictionaryFields.AddRange(input.NewFields);
         var sync = await ComputedLookups.SyncAsync(db, registration, before: null, now, cancellationToken);
         if (await SaveAsync(input, cancellationToken) is { } conflict)
         {
@@ -118,6 +120,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
         Apply(registration, input.Verdict, now);
 
         var storeChanged = registration.Kind != kindBefore || registration.Connection.Members.ToJsonString() != connectionBefore;
+        db.DictionaryFields.AddRange(input.NewFields);
         var sync = await ComputedLookups.SyncAsync(db, registration, before, now, cancellationToken, storeChanged);
         if (await SaveAsync(input, cancellationToken) is { } conflict)
         {

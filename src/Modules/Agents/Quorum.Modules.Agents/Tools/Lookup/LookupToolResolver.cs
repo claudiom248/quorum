@@ -24,6 +24,9 @@ internal sealed record ResolvedLookupTool(
     /// <summary>The fields each list can be filtered by, by list name.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ListFilters { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
 
+    /// <summary>The lists the tool offers, by the name the model knows them under: what the lean manifest describes.</summary>
+    public IReadOnlyDictionary<string, LookupInfo> Targets { get; init; } = new Dictionary<string, LookupInfo>();
+
     /// <summary>The list that holds the exact values of a filter parameter, by parameter name.</summary>
     public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
 }
@@ -126,11 +129,18 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                     .ToDictionary(l => l.Name, l => l.Info.SortableAttributes!, StringComparer.Ordinal),
                 FilterLists = LookupToolDefinition.ListsOfFilters(offered, exposed),
                 ListFilters = offered.ToDictionary(l => l.Name, l => l.Filters ?? [], StringComparer.Ordinal),
+                Targets = offered.ToDictionary(l => l.Name, l => l.Info, StringComparer.Ordinal),
             };
         }
 
         return resolved;
     }
+
+    /// <summary>The functions a lookup tool is offered as on this activation: its full ones, or the lean pair of spec 012 D-8.</summary>
+    private static IReadOnlyList<GeneratedLookupFunction> FunctionsOf(ActiveTool tool, ResolvedLookupTool definition) =>
+        tool.Lookup!.Manifest == LookupManifest.Lean
+            ? LookupLeanDefinition.Build(tool.Name, tool.Description, definition).Functions
+            : definition.Definition.Functions;
 
     /// <summary>The lookup tools of a pool that an assistant of the tenant can be offered, by tool id: those with at least one visible lookup.</summary>
     public async Task<IReadOnlyDictionary<Guid, ResolvedLookupTool>> ResolvePoolAsync(
@@ -210,7 +220,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
             .. tools.SelectMany(tool => tool.Lookup is null
                 ? [tool]
                 : resolved.GetValueOrDefault(tool.ToolId) is { } definition
-                    ? definition.Definition.Functions.Select(function => tool with
+                    ? FunctionsOf(tool, definition).Select(function => tool with
                     {
                         Name = $"{tool.Name}.{function.Operation}",
                         ExposedName = ToolNaming.LookupFunction(tool.Name, function.Operation),
@@ -225,6 +235,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                             SortableAttributes = definition.SortableAttributes,
                             FilterLists = definition.FilterLists,
                             ListFilters = definition.ListFilters,
+                            Targets = definition.Targets,
                         },
                     })
                     : []),

@@ -33,6 +33,7 @@ internal static class ComputedLookups
         var existing = before is null
             ? []
             : await db.Lookups.Where(l => l.KnowledgeBaseId == knowledgeBase.Id && l.Kind != LookupKind.Manual).ToListAsync(cancellationToken);
+        var fields = await DictionaryFieldsOf(db, mapping, cancellationToken);
 
         var due = false;
         foreach (var field in wanted)
@@ -40,7 +41,15 @@ internal static class ComputedLookups
             var lookup = existing.FirstOrDefault(l => l.Kind == LookupKind.Computed && l.DictionaryFieldId == field.DictionaryFieldId);
             if (lookup is null)
             {
-                lookup = Lookup.Computed(knowledgeBase.TenantId, knowledgeBase.Id, field.DictionaryFieldId, unit, now);
+                var fieldName = fields.GetValueOrDefault(field.DictionaryFieldId)?.Name ?? string.Empty;
+                lookup = Lookup.Computed(
+                    knowledgeBase.TenantId,
+                    knowledgeBase.Id,
+                    field.DictionaryFieldId,
+                    unit,
+                    DefaultName(knowledgeBase, fieldName),
+                    $"Distinct values of {fieldName} in {knowledgeBase.Name}",
+                    now);
                 db.Lookups.Add(lookup);
                 db.LookupSlices.Add(LookupSlice.Create(
                     knowledgeBase.TenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now));
@@ -61,7 +70,8 @@ internal static class ComputedLookups
         var entities = existing.FirstOrDefault(l => l.Kind == LookupKind.Entity);
         if (mapping.EntityName is not null && entities is null)
         {
-            var created = Lookup.Entity(knowledgeBase.TenantId, knowledgeBase.Id, description: null, now);
+            var created = Lookup.Entity(knowledgeBase.TenantId, knowledgeBase.Id, knowledgeBase.Name, $"Entities of {knowledgeBase.Name}", now);
+            created.SetAttributes(AttributesOf(mapping, fields));
             db.Lookups.Add(created);
             db.LookupSlices.Add(LookupSlice.Create(
                 knowledgeBase.TenantId, created.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now));
@@ -69,18 +79,24 @@ internal static class ComputedLookups
         }
         else if (mapping.EntityName is not null && entities is not null && before is not null && EntitiesChange(before, mapping))
         {
-            foreach (var slice in await db.LookupSlices.IgnoreQueryFilters().Where(s => s.LookupId == entities.Id).ToListAsync(cancellationToken))
-            {
-                slice.RequestRefresh(now);
-            }
+            entities.SetAttributes(AttributesOf(mapping, fields));
 
-            due = true;
+            // A live entity lookup keeps no rows to recompute: its attributes are read from the store as they are.
+            if (entities.Storage == LookupStorage.Snapshot)
+            {
+                foreach (var slice in await db.LookupSlices.IgnoreQueryFilters().Where(s => s.LookupId == entities.Id).ToListAsync(cancellationToken))
+                {
+                    slice.RequestRefresh(now);
+                }
+
+                due = true;
+            }
         }
 
         // Another kind, server or collection holds other values: what was computed from the old one must not wait for the next interval.
         if (storeChanged && existing.Count > 0)
         {
-            var existingIds = existing.Select(l => l.Id).ToList();
+            var existingIds = existing.Where(l => l.Storage == LookupStorage.Snapshot).Select(l => l.Id).ToList();
             foreach (var slice in await db.LookupSlices.IgnoreQueryFilters().Where(s => existingIds.Contains(s.LookupId)).ToListAsync(cancellationToken))
             {
                 slice.RequestRefresh(now);
@@ -97,6 +113,45 @@ internal static class ComputedLookups
         db.Lookups.RemoveRange(gone);
         return new LookupSync(due, gone.Count > 0);
     }
+
+    /// <summary>The name a computed lookup gets by default (spec 012 D-2): unique across knowledge bases because their names are.</summary>
+    private static string DefaultName(KnowledgeBase knowledgeBase, string fieldName) => $"{knowledgeBase.Name}.{fieldName}";
+
+    private static async Task<Dictionary<Guid, DictionaryField>> DictionaryFieldsOf(KnowledgeBasesDbContext db, KnowledgeBaseMapping mapping, CancellationToken cancellationToken)
+    {
+        var ids = mapping.Fields.Select(f => f.DictionaryFieldId).Distinct().ToList();
+        var fields = await db.DictionaryFields.IgnoreQueryFilters().AsNoTracking()
+            .Where(f => ids.Contains(f.Id))
+            .ToDictionaryAsync(f => f.Id, cancellationToken);
+
+        // A registration creates its fields in the same save, after this sync: the names of the new ones are read from the tracker.
+        foreach (var added in db.ChangeTracker.Entries<DictionaryField>().Where(e => e.State == EntityState.Added).Select(e => e.Entity))
+        {
+            if (ids.Contains(added.Id))
+            {
+                fields[added.Id] = added;
+            }
+        }
+
+        return fields;
+    }
+
+    /// <summary>The attributes of an entity lookup (spec 012 D-3): the attribute fields of the mapping, with the key they have in the stored values.</summary>
+    private static List<LookupAttribute> AttributesOf(KnowledgeBaseMapping mapping, Dictionary<Guid, DictionaryField> fields)
+    {
+        var attributes = mapping.Fields.Where(f => f.EntityAttribute && fields.ContainsKey(f.DictionaryFieldId)).ToList();
+        var keys = EntityAttributes.Names(attributes.Select(f => fields[f.DictionaryFieldId]));
+        return [.. attributes.Select(f => new LookupAttribute(keys[f.DictionaryFieldId], fields[f.DictionaryFieldId].Name, TypeOf(fields[f.DictionaryFieldId].Type), f.DictionaryFieldId))];
+    }
+
+    /// <summary>The attribute type of a dictionary field. A boolean is kept as text, because the spec's types have no boolean (spec 012 D-3).</summary>
+    private static LookupAttributeType TypeOf(DictionaryFieldType type) => type switch
+    {
+        DictionaryFieldType.Number => LookupAttributeType.Number,
+        DictionaryFieldType.Date => LookupAttributeType.Date,
+        DictionaryFieldType.TextList => LookupAttributeType.TextList,
+        _ => LookupAttributeType.Text,
+    };
 
     /// <summary>Whether the entities or their attributes would differ under the new mapping.</summary>
     private static bool EntitiesChange(KnowledgeBaseMapping before, KnowledgeBaseMapping after) =>

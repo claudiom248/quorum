@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,7 +34,7 @@ public sealed class LookupListTests(PostgresFixture postgres)
         Assert.Null(manual.KnowledgeBase);
         Assert.Equal([friend], manual.Scope.TenantIds);
         var derived = Assert.Single(items, i => i.Kind == "Derived");
-        Assert.Equal(("department", "department", "Documents", 2), (derived.Name, derived.Field, derived.Unit, derived.ValueCount));
+        Assert.Equal(("policies.department", "department", "Documents", 2), (derived.Name, derived.Field, derived.Unit, derived.ValueCount));
         Assert.Equal((knowledgeBase, "policies"), (derived.KnowledgeBase!.Id, derived.KnowledgeBase.Name));
         Assert.Equal("Global", derived.Scope.Kind);
     }
@@ -68,12 +69,12 @@ public sealed class LookupListTests(PostgresFixture postgres)
         await SeedDerivedAsync(app, mine, "assistant-base", otherField, [("eu", 1)], KnowledgeBaseScope.Assistant, assistant);
 
         Assert.Equal(["alpha_list"], await NamesAsync(admin, "kind=manual"));
-        Assert.Equal(["department", "region"], await NamesAsync(admin, "kind=derived"));
+        Assert.Equal(["assistant-base.region", "tenant-base.department"], await NamesAsync(admin, "kind=derived"));
         Assert.Equal(["alpha_list"], await NamesAsync(admin, "scope=global"));
-        Assert.Equal(["region"], await NamesAsync(admin, "scope=assistant"));
-        Assert.Equal(["alpha_list", "department"], await NamesAsync(admin, "assistant=" + Guid.NewGuid()));
-        Assert.Equal(["alpha_list", "department", "region"], await NamesAsync(admin, "assistant=" + assistant));
-        Assert.Equal(["department"], await NamesAsync(admin, "q=PART"));
+        Assert.Equal(["assistant-base.region"], await NamesAsync(admin, "scope=assistant"));
+        Assert.Equal(["alpha_list", "tenant-base.department"], await NamesAsync(admin, "assistant=" + Guid.NewGuid()));
+        Assert.Equal(["alpha_list", "assistant-base.region", "tenant-base.department"], await NamesAsync(admin, "assistant=" + assistant));
+        Assert.Equal(["tenant-base.department"], await NamesAsync(admin, "q=PART"));
     }
 
     [Fact] // AC-19
@@ -93,7 +94,7 @@ public sealed class LookupListTests(PostgresFixture postgres)
         var first = await GetAsync(admin, "limit=2");
         var rest = await GetAsync(admin, $"limit=2&cursor={first.Cursor}");
 
-        Assert.Equal(["alpha", "bravo"], first.Items.Select(i => i.Name));
+        Assert.Equal(["base.alpha", "bravo"], first.Items.Select(i => i.Name));
         Assert.Equal(["echo"], rest.Items.Select(i => i.Name));
         Assert.Null(rest.Cursor);
     }
@@ -125,9 +126,9 @@ public sealed class LookupListTests(PostgresFixture postgres)
         var (first, _) = await SeedDerivedAsync(app, mine, "contracts", department, [("hr", 1)], KnowledgeBaseScope.Tenant);
         var (second, _) = await SeedDerivedAsync(app, mine, "company", region, [("eu", 1)], KnowledgeBaseScope.Tenant);
 
-        Assert.Equal(["department"], await NamesAsync(admin, "knowledgeBase=" + first));
-        Assert.Equal(["department", "region"], await NamesAsync(admin, $"knowledgeBase={first},{second}"));
-        Assert.Equal(["region"], await NamesAsync(admin, $"knowledgeBase={second}&q=reg"));
+        Assert.Equal(["contracts.department"], await NamesAsync(admin, "knowledgeBase=" + first));
+        Assert.Equal(["company.region", "contracts.department"], await NamesAsync(admin, $"knowledgeBase={first},{second}"));
+        Assert.Equal(["company.region"], await NamesAsync(admin, $"knowledgeBase={second}&q=reg"));
         using var invalid = await admin.GetAsync(new Uri($"{Route}?knowledgeBase=nope", UriKind.Relative), Ct);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
     }
@@ -165,7 +166,8 @@ public sealed class LookupListTests(PostgresFixture postgres)
         var registration = KnowledgeBaseFixtures.Create(tenantId, knowledgeBaseName, "http://qdrant.test:6334", $"c_{knowledgeBaseName}", scope, [], scopeAssistantIds: assistants);
         db.KnowledgeBases.Add(registration);
         var now = DateTimeOffset.UtcNow;
-        var lookup = Lookup.Computed(tenantId, registration.Id, fieldId, LookupUnit.Documents, now);
+        var fieldName = db.DictionaryFields.IgnoreQueryFilters().Single(f => f.Id == fieldId).Name;
+        var lookup = Lookup.Computed(tenantId, registration.Id, fieldId, LookupUnit.Documents, $"{knowledgeBaseName}.{fieldName}", "Distinct values of " + fieldName, now);
         var slice = LookupSlice.Create(tenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now);
         db.Lookups.Add(lookup);
         db.LookupSlices.Add(slice);

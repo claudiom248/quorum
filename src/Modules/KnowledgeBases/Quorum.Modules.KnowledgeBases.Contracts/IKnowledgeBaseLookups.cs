@@ -65,7 +65,12 @@ public sealed record LookupInfo(
     string? Description,
     string? Unit,
     Guid? FieldId = null,
-    IReadOnlyList<string>? SortableAttributes = null);
+    IReadOnlyList<string>? SortableAttributes = null,
+    string Storage = "Snapshot",
+    IReadOnlyList<LookupAttributeInfo>? Attributes = null);
+
+/// <summary>An attribute of an entity or manual lookup (spec 012 D-3). <paramref name="Type"/> is one of Text, Number, Date, TextList.</summary>
+public sealed record LookupAttributeInfo(string Key, string? Label, string Type);
 
 /// <param name="TenantId">The tenant asking; it must be the tenant of the current request.</param>
 /// <param name="AssistantId">The assistant answering, or <see langword="null"/> for an administrator looking at a configuration.</param>
@@ -139,7 +144,11 @@ public sealed record LookupReadRequest(
     LookupSortOrder Sort,
     int Limit,
     string? Cursor,
-    LookupAttributeOrder? Attribute = null);
+    LookupAttributeOrder? Attribute = null,
+    IReadOnlyList<LookupRowFilter>? RowFilters = null);
+
+/// <summary>A condition on an attribute of the rows of an entity or manual lookup (spec 012 D-5): <paramref name="Operator"/> is eq, in, min or max.</summary>
+public sealed record LookupRowFilter(string Key, string Operator, JsonElement Value);
 
 public enum LookupReadOutcome
 {

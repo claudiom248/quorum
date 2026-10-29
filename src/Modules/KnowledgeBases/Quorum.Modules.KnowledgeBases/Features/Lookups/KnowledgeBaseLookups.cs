@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
@@ -186,6 +188,20 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             return LookupRead.Of(LookupReadOutcome.KnowledgeBaseSkipped, info.Name, info.KnowledgeBaseName);
         }
 
+        var rowFilters = LookupFilters.Parse(RowFiltersJson(request.RowFilters), lookup.Attributes);
+        if (!rowFilters.IsSuccess)
+        {
+            return LookupRead.Of(LookupReadOutcome.InvalidFilters, info.Name, info.KnowledgeBaseName);
+        }
+
+        if (lookup.Storage == LookupStorage.Live)
+        {
+            // The store filters what it can scan, not the attributes of a snapshot: a row filter on a live list is not served yet.
+            return rowFilters.Value.Count > 0
+                ? LookupRead.Of(LookupReadOutcome.InvalidFilters, info.Name, info.KnowledgeBaseName)
+                : await LiveReadAsync(request, lookup, info, found.KnowledgeBase!, cancellationToken);
+        }
+
         var hash = key.Value!.Hash;
         var slice = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
             .SingleOrDefaultAsync(s => s.LookupId == lookup.Id && s.FilterHash == hash, cancellationToken);
@@ -216,7 +232,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             attribute = new LookupAttributeSort(asked.Name, asked.Descending);
         }
 
-        var page = await cache.ReadAsync(db, lookup, slice, new LookupPageRequest(request.Search, sort, request.Limit, request.Cursor, attribute), cancellationToken);
+        var page = await cache.ReadAsync(db, lookup, slice, new LookupPageRequest(request.Search, sort, request.Limit, request.Cursor, attribute, rowFilters.Value), cancellationToken);
         if (!page.IsSuccess)
         {
             return LookupRead.Of(LookupReadOutcome.InvalidCursor, info.Name, info.KnowledgeBaseName);
@@ -323,18 +339,8 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
         foreach (var entry in fromBases)
         {
             var (lookup, knowledgeBase) = (entry.Lookup, entry.KnowledgeBase);
-            string? name;
-            if (lookup.Kind == LookupKind.Computed)
-            {
-                // A field the tenant cannot see names a lookup it cannot see.
-                name = lookup.DictionaryFieldId is { } fieldId ? fieldNames.GetValueOrDefault(fieldId) : null;
-            }
-            else
-            {
-                name = knowledgeBase.Name;
-            }
-
-            if (name is null)
+            // A field the tenant cannot see makes its computed lookup invisible to the tenant.
+            if (lookup.Kind == LookupKind.Computed && (lookup.DictionaryFieldId is not { } fieldId || !fieldNames.ContainsKey(fieldId)))
             {
                 continue;
             }
@@ -344,23 +350,82 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
                 knowledgeBase,
                 new LookupInfo(
                     lookup.Id,
-                    name,
+                    lookup.Name,
                     lookup.Kind == LookupKind.Computed ? LookupKindInfo.Computed : LookupKindInfo.Entity,
                     knowledgeBase.Id,
                     knowledgeBase.Name,
-                    lookup.Description ?? (lookup.Kind == LookupKind.Entity ? knowledgeBase.Description : null),
+                    lookup.Description,
                     lookup.Unit?.ToString().ToLowerInvariant(),
                     lookup.Kind == LookupKind.Computed ? lookup.DictionaryFieldId : null,
                     lookup.Kind == LookupKind.Entity
                         ? EntityAttributes.Sortable(knowledgeBase.Mapping.Fields.Where(m => m.EntityAttribute).Select(m => dictionary.GetValueOrDefault(m.DictionaryFieldId)).OfType<DictionaryField>())
-                        : null)));
+                        : null,
+                    lookup.Storage.ToString(),
+                    [.. lookup.Attributes.Select(a => new LookupAttributeInfo(a.Key, a.Label, a.Type.ToString()))])));
         }
 
         visible.AddRange(manuals.Select(lookup => new VisibleLookup(
             lookup,
             KnowledgeBase: null,
-            new LookupInfo(lookup.Id, lookup.Name!, LookupKindInfo.Manual, KnowledgeBaseId: null, KnowledgeBaseName: null, lookup.Description, Unit: null))));
+            new LookupInfo(lookup.Id, lookup.Name, LookupKindInfo.Manual, KnowledgeBaseId: null, KnowledgeBaseName: null, lookup.Description, Unit: null,
+                Storage: LookupStorage.Snapshot.ToString(),
+                Attributes: [.. lookup.Attributes.Select(a => new LookupAttributeInfo(a.Key, a.Label, a.Type.ToString()))]))));
         return visible;
+    }
+
+    /// <summary>The row filters of a read in the shape the admin reads take: <c>{ "&lt;key&gt;": { "&lt;operator&gt;": value } }</c>.</summary>
+    private static string? RowFiltersJson(IReadOnlyList<LookupRowFilter>? filters)
+    {
+        if (filters is null || filters.Count == 0)
+        {
+            return null;
+        }
+
+        var conditions = new JsonObject();
+        foreach (var filter in filters)
+        {
+            if (conditions[filter.Key] is not JsonObject operators)
+            {
+                operators = new JsonObject();
+                conditions[filter.Key] = operators;
+            }
+
+            operators[filter.Operator] = JsonNode.Parse(filter.Value.GetRawText());
+        }
+
+        return conditions.ToJsonString();
+    }
+
+    /// <summary>An entity lookup in live storage is read from its store, with the scan of the lookups capability (spec 012 D-4, D-5).</summary>
+    private async Task<LookupRead> LiveReadAsync(LookupReadRequest request, Lookup lookup, LookupInfo info, KnowledgeBase knowledgeBase, CancellationToken cancellationToken)
+    {
+        var scope = new LiveScope(
+            request.TenantId,
+            request.AssistantId ?? Guid.Empty,
+            request.Filters.Filters,
+            new Dictionary<string, JsonElement>(),
+            request.Filters.Aliases,
+            []);
+        var values = await live.ValuesAsync(
+            lookup,
+            knowledgeBase,
+            info.Name,
+            new LiveValuesRequest(scope, lookup.Id, request.Search, request.Sort, request.Limit, request.Attribute),
+            cancellationToken);
+
+        return values.Outcome switch
+        {
+            LiveOutcome.Ok => new LookupRead(
+                LookupReadOutcome.Ok,
+                info.Name,
+                info.KnowledgeBaseName,
+                Truncated: values.Truncated,
+                ValueCount: values.ValueCount,
+                Values: values.Values,
+                Live: true),
+            LiveOutcome.NotAvailable => LookupRead.Of(LookupReadOutcome.NotAvailable, info.Name, info.KnowledgeBaseName),
+            _ => LookupRead.Of(LookupReadOutcome.Failed, info.Name, info.KnowledgeBaseName),
+        };
     }
 
     private static bool IsVisibleTo(VisibleLookup entry, Guid ownerTenantId, BindingScope scope, List<DictionaryField> fields)

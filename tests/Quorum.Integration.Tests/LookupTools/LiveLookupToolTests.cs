@@ -84,10 +84,10 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
             var db = services.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
             var supplier = await db.Lookups.IgnoreQueryFilters().AsNoTracking()
                 .SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fields["supplier"], Ct);
-            lookups.Add(LookupToolApi.Bind(supplier.Id));
+            lookups.Add(LookupToolApi.Bind(supplier.Id, "supplier"));
             var audience = await db.Lookups.IgnoreQueryFilters().AsNoTracking()
                 .SingleAsync(l => l.KnowledgeBaseId == knowledgeBase && l.DictionaryFieldId == fields["audience"], Ct);
-            lookups.Add(LookupToolApi.Bind(audience.Id));
+            lookups.Add(LookupToolApi.Bind(audience.Id, "audience"));
         }
 
         var tool = await LookupToolApi.CreateOkAsync(
@@ -95,7 +95,8 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
             LookupToolApi.Body(
                 lookups: [.. lookups],
                 knowledgeBaseIds: withKnowledgeBase ? [knowledgeBase] : null,
-                exposedFields: [new { fieldId = fields["audience"] }, new { fieldId = fields["department"] }],
+                // A field a single value fixes is not offered to the model (spec 012 D-7): the fixed filters of these tests fix department.
+                exposedFields: fixedFilters is null ? [new { fieldId = fields["audience"] }, new { fieldId = fields["department"] }] : [new { fieldId = fields["audience"] }],
                 fixedFilters: fixedFilters));
         await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
         return new Live(setup, knowledgeBase, tool.Id);

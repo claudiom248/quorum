@@ -1,23 +1,26 @@
+using System.Text.Json.Nodes;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 
-/// <summary>What the administrator sent for a manual lookup (spec 007 D-5), exactly as it arrived.</summary>
-internal sealed record ManualLookupRequest(string? Name, string? Description, string? Scope, List<Guid>? ScopeTenantIds, List<ManualValueRequest>? Values);
+/// <summary>What the administrator sent for a manual lookup (spec 007 D-5, spec 012 D-3), exactly as it arrived.</summary>
+internal sealed record ManualLookupRequest(string? Name, string? Description, string? Scope, List<Guid>? ScopeTenantIds, List<ManualValueRequest>? Values, List<LookupAttributeRequest>? Attributes = null);
 
-internal sealed record ManualValueRequest(string? Value, string? Label, List<string?>? Synonyms);
+/// <param name="Attributes">The attribute values of the row, keyed by attribute (spec 012 D-3).</param>
+internal sealed record ManualValueRequest(string? Value, string? Label, List<string?>? Synonyms, JsonObject? Attributes = null);
 
 /// <summary>A manual lookup that passed validation: trimmed, with the scope parsed.</summary>
-internal sealed record ValidManualLookup(string Name, string? Description, LookupScope Scope, List<Guid> ScopeTenantIds, List<ManualValue> Values);
+internal sealed record ValidManualLookup(string Name, string Description, LookupScope Scope, List<Guid> ScopeTenantIds, List<ManualValue> Values, List<LookupAttribute> Attributes);
 
-internal sealed record ManualValue(string Value, string? Label, List<string> Synonyms);
+/// <param name="Attributes">The stored JSON of the row's attributes, or <see langword="null"/>.</param>
+internal sealed record ManualValue(string Value, string? Label, List<string> Synonyms, string? Attributes = null);
 
 internal static class ManualLookupValidation
 {
     private static readonly Error InvalidName = Error.Validation(
         "lookup.invalid_name",
-        $"The name must be 1 to {Lookup.MaxNameLength} characters: lower-case letters, digits and '_', starting with a letter.");
+        $"The name must be 1 to {DictionaryField.MaxNameLength} characters: lower-case letters, digits and '_', starting with a letter.");
 
     private static readonly Error InvalidDescription = Error.Validation(
         "lookup.invalid_description",
@@ -34,7 +37,8 @@ internal static class ManualLookupValidation
             return InvalidName;
         }
 
-        if (request.Description?.Length > Lookup.MaxDescriptionLength)
+        // Spec 012 D-2: a manual lookup is asked its description on creation, so the model always has one to read.
+        if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Trim().Length > Lookup.MaxDescriptionLength)
         {
             return InvalidDescription;
         }
@@ -43,6 +47,12 @@ internal static class ManualLookupValidation
         if (!scope.IsSuccess)
         {
             return scope.Error;
+        }
+
+        var attributes = LookupAttributeRules.Validate(request.Attributes, entity: false);
+        if (!attributes.IsSuccess)
+        {
+            return attributes.Error;
         }
 
         var values = request.Values ?? [];
@@ -55,7 +65,7 @@ internal static class ManualLookupValidation
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var value in values)
         {
-            var checkedValue = ValidateValue(value);
+            var checkedValue = ValidateValue(value, attributes.Value);
             if (!checkedValue.IsSuccess)
             {
                 return checkedValue.Error;
@@ -71,10 +81,11 @@ internal static class ManualLookupValidation
 
         return new ValidManualLookup(
             request.Name!,
-            string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            request.Description.Trim(),
             scope.Value.Scope,
             scope.Value.TenantIds,
-            valid);
+            valid,
+            attributes.Value);
     }
 
     private static Result<(LookupScope Scope, List<Guid> TenantIds)> ValidateScope(ManualLookupRequest request)
@@ -97,7 +108,7 @@ internal static class ManualLookupValidation
             : Error.Validation("lookup.invalid_scope", problem);
     }
 
-    private static Result<ManualValue> ValidateValue(ManualValueRequest? request)
+    private static Result<ManualValue> ValidateValue(ManualValueRequest? request, List<LookupAttribute> attributes)
     {
         var value = request?.Value?.Trim();
         if (string.IsNullOrEmpty(value) || value.Length > LookupValue.MaxValueLength)
@@ -123,9 +134,18 @@ internal static class ManualLookupValidation
             synonyms.Add(trimmed);
         }
 
-        return synonyms.Count > LookupValue.MaxSynonyms
-            ? InvalidValue($"A value has at most {LookupValue.MaxSynonyms} synonyms.")
-            : new ManualValue(value, label, synonyms);
+        if (synonyms.Count > LookupValue.MaxSynonyms)
+        {
+            return InvalidValue($"A value has at most {LookupValue.MaxSynonyms} synonyms.");
+        }
+
+        var stored = LookupAttributeRules.Values(request.Attributes, attributes, value);
+        if (!stored.IsSuccess)
+        {
+            return stored.Error;
+        }
+
+        return new ManualValue(value, label, synonyms, stored.Value);
     }
 
     private static Error InvalidValue(string description) => Error.Validation("lookup.invalid_value", description);

@@ -147,6 +147,10 @@
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Counts @LookupAdminView.UnitLabel(item.Unit)</MudChip>
                     }
+                    @if (item.Storage == "Live")
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Live</MudChip>
+                    }
                 </div>
 
                 @if (item.KnowledgeBase is { } source)

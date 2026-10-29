@@ -74,7 +74,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         await using var _ = setup;
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9), ("finance", 4)]);
-        await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup)]));
+        await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup, "department")]));
         await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
 
         var result = ResultOf(await AskAsync(setup, Call(new { lookup = "department" })));

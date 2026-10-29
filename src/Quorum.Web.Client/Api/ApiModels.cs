@@ -105,7 +105,8 @@ public sealed record ServiceTokenInfo(Guid Id, DateTimeOffset CreatedAt);
 public sealed record CreatedServiceToken(Guid Id, string Token, DateTimeOffset CreatedAt);
 
 /// <summary>A tool an assistant may use, and whether it is activated on it.</summary>
-public sealed record PoolTool(Guid ToolId, string Name, bool Active);
+/// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this assistant; <see langword="null"/> for the other tools.</param>
+public sealed record PoolTool(Guid ToolId, string Name, bool Active, string? Manifest = null);
 
 public sealed record ToolWarning(string Code, string Message);
 

@@ -106,7 +106,8 @@ internal sealed class LookupListEndpoint : IEndpointGroup
         {
             Id = lookup.Id,
             TenantId = lookup.TenantId,
-            Name = manual ? lookup.Name! : lookup.Kind == LookupKind.Computed ? (field.Name ?? knowledgeBase.Name) : knowledgeBase.Name,
+            Name = lookup.Name,
+            Storage = lookup.Storage,
             Kind = manual ? LookupListKind.Manual : LookupListKind.Derived,
             KnowledgeBaseId = lookup.KnowledgeBaseId,
             KnowledgeBaseName = knowledgeBase.Name,
@@ -133,6 +134,8 @@ internal sealed class LookupRow
     public Guid TenantId { get; init; }
 
     public string Name { get; init; } = null!;
+
+    public LookupStorage Storage { get; init; }
 
     public LookupListKind Kind { get; init; }
 
@@ -167,7 +170,8 @@ internal sealed record LookupListItem(
     string? Unit,
     ScopeResponse Scope,
     int ValueCount,
-    bool Shared)
+    bool Shared,
+    string Storage)
 {
     public static LookupListItem From(LookupRow row, int valueCount, Guid? currentTenantId)
     {
@@ -181,6 +185,7 @@ internal sealed record LookupListItem(
             row.Unit?.ToString(),
             new ScopeResponse(row.Scope.ToString(), shared ? [] : row.ScopeTenantIds, shared ? [] : row.ScopeAssistantIds ?? []),
             valueCount,
-            shared);
+            shared,
+            row.Storage.ToString());
     }
 }
