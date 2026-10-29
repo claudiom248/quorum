@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,11 +7,13 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Quorum.Modules.Agents.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class ConsolidateWebConfiguration : Migration
+    public partial class AddWebFetchToolsAndWebConfiguration : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // The platform's one web row (specs 005 and 006) replaces the SearXNG-only one: the old table is dropped last, so
+            // the INSERT below can still read what an administrator had saved.
             migrationBuilder.CreateTable(
                 name: "web_configuration",
                 schema: "agents",
@@ -36,6 +39,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                 });
 
             // Carry over the SearXNG row if an administrator already saved one; the rest starts from the platform's defaults.
+            // The numbers are the defaults of WebConfiguration, written here so a fresh installation reads what the code says.
             migrationBuilder.Sql("""
                 INSERT INTO agents.web_configuration (
                     "Id", "SearchUrl", "SearchTimeoutSeconds", "FetchTimeoutSeconds",
@@ -51,6 +55,43 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                 ON CONFLICT ("Id") DO NOTHING;
                 """);
 
+            // A web fetch tool keeps only what the administrator set apart from the platform: a null is not a number but the
+            // absence of one, so the tool follows the row at the time of the call (spec 006, AC-1 and AC-13).
+            migrationBuilder.CreateTable(
+                name: "web_fetch_tools",
+                schema: "agents",
+                columns: table => new
+                {
+                    ToolId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TokenBudgetPerPage = table.Column<int>(type: "integer", nullable: true),
+                    TotalTokenBudget = table.Column<int>(type: "integer", nullable: true),
+                    MaxUrlsPerInvocation = table.Column<int>(type: "integer", nullable: true),
+                    Timeout = table.Column<int>(type: "integer", nullable: true),
+                    Scope = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    ScopeTenantIds = table.Column<List<Guid>>(type: "uuid[]", nullable: false),
+                    ScopeAssistantIds = table.Column<List<Guid>>(type: "uuid[]", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_web_fetch_tools", x => x.ToolId);
+                    table.ForeignKey(
+                        name: "FK_web_fetch_tools_tools_ToolId",
+                        column: x => x.ToolId,
+                        principalSchema: "agents",
+                        principalTable: "tools",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_web_fetch_tools_TenantId",
+                schema: "agents",
+                table: "web_fetch_tools",
+                column: "TenantId");
+
             migrationBuilder.DropTable(
                 name: "web_search_configuration",
                 schema: "agents");
@@ -59,6 +100,10 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "web_fetch_tools",
+                schema: "agents");
+
             migrationBuilder.CreateTable(
                 name: "web_search_configuration",
                 schema: "agents",

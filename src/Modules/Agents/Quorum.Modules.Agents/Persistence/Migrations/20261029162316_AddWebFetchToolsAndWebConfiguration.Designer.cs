@@ -13,8 +13,8 @@ using Quorum.Modules.Agents.Persistence;
 namespace Quorum.Modules.Agents.Persistence.Migrations
 {
     [DbContext(typeof(AgentsDbContext))]
-    [Migration("20261029113934_ConsolidateWebConfiguration")]
-    partial class ConsolidateWebConfiguration
+    [Migration("20261029162316_AddWebFetchToolsAndWebConfiguration")]
+    partial class AddWebFetchToolsAndWebConfiguration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -521,6 +521,52 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("web_configuration", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebFetchTool", b =>
+                {
+                    b.Property<Guid>("ToolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MaxUrlsPerInvocation")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Timeout")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TokenBudgetPerPage")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TotalTokenBudget")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ToolId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("web_fetch_tools", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchTool", b =>
                 {
                     b.Property<Guid>("ToolId")
@@ -621,6 +667,15 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ServerId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebFetchTool", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Tool", null)
+                        .WithOne()
+                        .HasForeignKey("Quorum.Modules.Agents.Domain.WebFetchTool", "ToolId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchTool", b =>
