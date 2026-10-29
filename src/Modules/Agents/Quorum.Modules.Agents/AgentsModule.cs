@@ -12,6 +12,7 @@ using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.Agents.Tools.Builtin;
 using Quorum.Shared.Networking;
 using Quorum.Shared.Persistence;
@@ -47,6 +48,7 @@ public static class AgentsModule
         services.AddScoped<ToolFilterRules>();
         services.AddScoped<RagToolValidation>();
         services.AddScoped<LookupToolValidation>();
+        services.AddScoped<WebSearchToolValidation>();
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();
@@ -68,6 +70,11 @@ public static class AgentsModule
 
         // Every connection to an MCP server goes through this client (D-18): no redirects, no timeout of its own.
         services.AddServerHttpClient(McpServerClient.HttpClientName);
+
+        // The same for the platform's search instance: a search bounds its own wait, so the client has none (spec 005, AC-3).
+        services.AddSingleton<IWebSearchProvider, SearxngProvider>();
+        services.AddScoped<WebSearchInvocationCounter>();
+        services.AddServerHttpClient(SearxngProvider.HttpClientName);
 
         return services;
     }

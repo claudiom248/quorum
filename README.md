@@ -55,6 +55,16 @@ docker compose --profile bundled-db --profile qdrant up --build -d
 
 Register it in the admin pages as `http://qdrant:6334` (gRPC, from inside the compose network). Its dashboard is at <http://localhost:6333/dashboard>, and the REST port 6333 on loopback is where ingestion from the host writes. Qdrant has no API key in this setup, so both ports are published on loopback only.
 
+### A search instance for web search tools
+
+A web search tool asks one SearXNG instance, shared by the whole installation (spec 005). If you have none, the compose file can run one with the `searxng` profile:
+
+```bash
+docker compose --profile bundled-db --profile searxng up --build -d
+```
+
+Set its address in **Settings → Web search** as `http://searxng:8080` (from inside the compose network); until it is set, no web search tool can be created. `deploy/searxng/settings.yml` enables the `json` answer format, which is what makes the instance usable by Quorum: without it a search is reported to the model as unavailable. The instance is published on `127.0.0.1:8888` only to look at it in a browser, and `SEARXNG_SECRET` in `.env` is its signing key.
+
 ### Configuration
 
 Set these in `.env`:
@@ -65,6 +75,8 @@ Set these in `.env`:
 | `QUORUM_BIND` | `127.0.0.1` | Address the web UI is published on. Use `0.0.0.0` only behind a TLS reverse proxy. |
 | `QUORUM_PORT` | `8080` | Port the web UI is published on. |
 | `QUORUM_DATABASE` | bundled database | Connection string of your own PostgreSQL, version 15 or later (the dictionary index uses NULLS NOT DISTINCT). Start without the `bundled-db` profile when you set it. |
+| `SEARXNG_SECRET` | (required with the `searxng` profile) | Signing key of the bundled SearXNG instance. Any long random string, e.g. `openssl rand -base64 24`. |
+| `SEARXNG_PORT` | `8888` | Loopback port the SearXNG instance is published on, to check it in a browser. |
 
 ## Development
 

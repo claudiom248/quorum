@@ -44,7 +44,8 @@ internal static class ToolFixtures
 
     /// <summary>
     /// Writes one audit entry straight to the database, as a finished call unless <paramref name="outcome"/> is
-    /// <see cref="ToolOutcome.Started"/>. <paramref name="tenantId"/> defaults to the tenant of the default assistant.
+    /// <see cref="ToolOutcome.Started"/>. <paramref name="tenantId"/> defaults to the tenant of the default assistant, and
+    /// <paramref name="conversationId"/> to a conversation of its own.
     /// </summary>
     public static async Task AddAuditEntryAsync(
         QuorumApp app,
@@ -54,14 +55,16 @@ internal static class ToolFixtures
         ToolOutcome outcome = ToolOutcome.Succeeded,
         Guid? userId = null,
         Guid? tenantId = null,
-        string arguments = "{}")
+        string arguments = "{}",
+        Guid? conversationId = null)
     {
         var tenant = tenantId ?? await ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
         var assistant = await ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.assistants LIMIT 1");
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
-        db.ToolAuditEntries.Add(NewAuditEntry(tenant, assistant, startedAt, tool, server, outcome, userId ?? Guid.NewGuid(), arguments));
+        db.ToolAuditEntries.Add(NewAuditEntry(
+            tenant, assistant, startedAt, tool, server, outcome, userId ?? Guid.NewGuid(), arguments, conversationId));
         await db.SaveChangesAsync(Ct);
     }
 
@@ -86,9 +89,11 @@ internal static class ToolFixtures
         string? server,
         ToolOutcome outcome,
         Guid userId,
-        string arguments)
+        string arguments,
+        Guid? conversationId = null)
     {
-        var entry = ToolAuditEntry.Start(tenant, userId, assistant, Guid.NewGuid(), Guid.NewGuid(), server, tool, ToolDecision.Auto, arguments, false, startedAt);
+        var entry = ToolAuditEntry.Start(
+            tenant, userId, assistant, conversationId ?? Guid.NewGuid(), Guid.NewGuid(), server, tool, ToolDecision.Auto, arguments, false, startedAt);
         if (outcome != ToolOutcome.Started)
         {
             entry.Complete(outcome, 5, null, startedAt.AddMilliseconds(40), TimeSpan.FromMilliseconds(40));

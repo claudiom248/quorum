@@ -29,6 +29,10 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<LookupTool> LookupTools => Set<LookupTool>();
 
+    public DbSet<WebSearchConfiguration> WebSearchConfigurations => Set<WebSearchConfiguration>();
+
+    public DbSet<WebSearchTool> WebSearchTools => Set<WebSearchTool>();
+
     /// <summary>
     /// The tenant of the request. Queries that must also see what other tenants share with this one (a server's scope) turn the
     /// tenant filter off and state the rule themselves, with this value.
@@ -109,6 +113,26 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             lookup.HasIndex(l => l.TenantId);
             lookup.HasOne<Tool>().WithOne().HasForeignKey<LookupTool>(l => l.ToolId).OnDelete(DeleteBehavior.Cascade);
             lookup.HasQueryFilter(l => l.TenantId == CurrentTenantId);
+        });
+
+        // Global on purpose: no tenant filter, because the platform has one SearXNG instance and every tenant searches with it (spec 005).
+        modelBuilder.Entity<WebSearchConfiguration>(configuration =>
+        {
+            configuration.ToTable("web_search_configuration");
+            configuration.HasKey(c => c.Id);
+            configuration.Property(c => c.Id).ValueGeneratedNever();
+            configuration.Property(c => c.Url).HasMaxLength(McpServerRules.MaxUrlLength);
+        });
+
+        modelBuilder.Entity<WebSearchTool>(webSearch =>
+        {
+            webSearch.ToTable("web_search_tools");
+            webSearch.HasKey(w => w.ToolId);
+            webSearch.Property(w => w.ToolId).ValueGeneratedNever();
+            webSearch.Property(w => w.Scope).HasConversion<string>().HasMaxLength(20);
+            webSearch.HasIndex(w => w.TenantId);
+            webSearch.HasOne<Tool>().WithOne().HasForeignKey<WebSearchTool>(w => w.ToolId).OnDelete(DeleteBehavior.Cascade);
+            webSearch.HasQueryFilter(w => w.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AssistantTool>(activation =>

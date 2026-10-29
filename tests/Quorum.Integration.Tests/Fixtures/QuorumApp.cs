@@ -13,6 +13,7 @@ using Quorum.Modules.Agents.Embeddings;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Modules.Tenancy.Domain;
@@ -61,6 +62,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     /// <summary>Computes the lookups of the app: tests script <see cref="FakeLookupComputer.Handler"/>.</summary>
     internal FakeLookupComputer LookupComputer { get; } = new();
+
+    /// <summary>The platform's SearXNG instance: tests script what it answers, or make it never answer (spec 005).</summary>
+    public FakeSearxng Searxng { get; } = new();
 
     /// <summary>Holds the calls to Qdrant: tests set <see cref="QdrantGate.Hold"/>.</summary>
     internal QdrantGate Qdrant { get; } = new();
@@ -197,6 +201,8 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             services.AddSingleton<IBuiltinTool>(Probe);
             services.AddSingleton<ILookupComputer>(LookupComputer);
             services.AddHttpClient(QdrantConnector.HttpClientName).AddHttpMessageHandler(() => new QdrantGateHandler(Qdrant));
+            // The platform's search instance is the fake above: no test reaches a real SearXNG.
+            services.AddHttpClient(SearxngProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Searxng);
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);

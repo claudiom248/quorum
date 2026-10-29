@@ -3,6 +3,7 @@ using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.WebSearch;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -10,6 +11,7 @@ namespace Quorum.Modules.Agents.Tools;
 /// <param name="Server">Where an MCP tool runs; <see langword="null"/> for built-in, rag and lookup tools.</param>
 /// <param name="Rag">The binding of a rag tool; <see langword="null"/> for the others.</param>
 /// <param name="Lookup">The binding of a lookup tool; <see langword="null"/> for the others.</param>
+/// <param name="WebSearch">The binding of a web search tool; <see langword="null"/> for the others.</param>
 /// <param name="DefinitionHash">The hash of the definition the model is offered; a call is refused when the stored one differs by then.</param>
 internal sealed record ActiveTool(
     Guid ToolId,
@@ -22,7 +24,8 @@ internal sealed record ActiveTool(
     string? DefinitionHash = null,
     McpServerEndpoint? Server = null,
     RagBinding? Rag = null,
-    LookupBinding? Lookup = null);
+    LookupBinding? Lookup = null,
+    WebSearchBinding? WebSearch = null);
 
 /// <summary>What a call needs to reach an MCP server: its identity, address and the encrypted static headers.</summary>
 internal sealed record McpServerEndpoint(Guid ServerId, string Url, string? ProtectedHeaders);
@@ -87,19 +90,35 @@ internal static class ActiveToolsQuery
                 .Where(lookup => lookupIds.Contains(lookup.ToolId))
                 .ToDictionaryAsync(lookup => lookup.ToolId, LookupBinding.From, cancellationToken);
 
+        var webSearchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebSearch).Select(pooled => pooled.Tool.Id).ToList();
+        var webSearchBindings = webSearchIds.Count == 0
+            ? []
+            : await db.WebSearchTools.IgnoreQueryFilters().AsNoTracking()
+                .Where(webSearch => webSearchIds.Contains(webSearch.ToolId))
+                .ToDictionaryAsync(webSearch => webSearch.ToolId, WebSearchBinding.From, cancellationToken);
+
         return tools
-            .Select(pooled => new ActiveTool(
-                pooled.Tool.Id,
-                pooled.Tool.Origin,
-                pooled.Tool.Name,
-                pooled.ExposedName,
-                AuditServerOf(pooled),
-                pooled.Tool.Description,
-                pooled.Tool.InputSchema,
-                pooled.Tool.DefinitionHash,
-                pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null,
-                bindings.GetValueOrDefault(pooled.Tool.Id),
-                lookupBindings.GetValueOrDefault(pooled.Tool.Id)))
+            .Select(pooled =>
+            {
+                var webSearch = webSearchBindings.GetValueOrDefault(pooled.Tool.Id);
+
+                // A web search tool's definition comes from its binding, the way a rag tool's comes from the catalog; unlike a rag
+                // tool's it needs nothing from outside the row, so it is written here and not by a resolver.
+                var generated = webSearch is null ? null : WebSearchToolDefinition.Build(pooled.Tool.Description, webSearch.TopN);
+                return new ActiveTool(
+                    pooled.Tool.Id,
+                    pooled.Tool.Origin,
+                    pooled.Tool.Name,
+                    pooled.ExposedName,
+                    AuditServerOf(pooled),
+                    generated?.Description ?? pooled.Tool.Description,
+                    generated?.InputSchema ?? pooled.Tool.InputSchema,
+                    pooled.Tool.DefinitionHash,
+                    pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null,
+                    bindings.GetValueOrDefault(pooled.Tool.Id),
+                    lookupBindings.GetValueOrDefault(pooled.Tool.Id),
+                    webSearch);
+            })
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
             .ToList();
     }
@@ -108,6 +127,7 @@ internal static class ActiveToolsQuery
     {
         ToolOrigin.Rag => ToolNaming.RagAuditServer,
         ToolOrigin.Lookup => ToolNaming.LookupAuditServer,
+        ToolOrigin.WebSearch => ToolNaming.WebSearchAuditServer,
         _ => pooled.ServerName,
     };
 }
