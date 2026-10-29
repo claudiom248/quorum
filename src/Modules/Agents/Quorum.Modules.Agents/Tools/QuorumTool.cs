@@ -4,6 +4,7 @@ using Quorum.Modules.Agents.Secrets;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.WebSearch;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -72,7 +73,12 @@ internal sealed class QuorumToolFactory(IEnumerable<IBuiltinTool> builtinTools, 
     public McpAnswerConnections NewConnections() => new(mcpClient, headersProtector);
 
     /// <summary>A built-in tool without an implementation in this build cannot be called, so it is not offered.</summary>
-    public IReadOnlyList<QuorumTool> Create(IEnumerable<ActiveTool> tools, McpAnswerConnections? connections, RagRuntime? rag = null, LookupRuntime? lookup = null)
+    public IReadOnlyList<QuorumTool> Create(
+        IEnumerable<ActiveTool> tools,
+        McpAnswerConnections? connections,
+        RagRuntime? rag = null,
+        LookupRuntime? lookup = null,
+        WebSearchRuntime? webSearch = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -82,6 +88,7 @@ internal sealed class QuorumToolFactory(IEnumerable<IBuiltinTool> builtinTools, 
                 Domain.ToolOrigin.Mcp when tool.Server is not null && connections is not null => new McpQuorumTool(tool, connections),
                 Domain.ToolOrigin.Rag when tool.Rag is not null && rag is not null => new RagQuorumTool(tool, rag),
                 Domain.ToolOrigin.Lookup when tool.Lookup is not null && lookup is not null => new LookupQuorumTool(tool, lookup),
+                Domain.ToolOrigin.WebSearch when tool.WebSearch is not null && webSearch is not null => new WebSearchQuorumTool(tool, webSearch),
                 Domain.ToolOrigin.Builtin when tool.Name == BuiltinToolCatalog.AskUser => new AskUserQuorumTool(tool),
                 Domain.ToolOrigin.Builtin when _builtinTools.TryGetValue(tool.Name, out var implementation) => new BuiltinQuorumTool(tool, implementation),
                 _ => (QuorumTool?)null,

@@ -156,6 +156,45 @@
                     </MudStack>
                 </MudStack>
             </MudTabPanel>
+
+            @if (_webSearch)
+            {
+                <MudTabPanel Text="Web search" data-tab="web-search">
+                    <form @onsubmit="SaveWebSearchAsync">
+                        <MudStack Spacing="3">
+                            <MudText Typo="Typo.body2">
+                                One SearXNG instance serves the whole installation: every web search tool asks it. The address is used as you
+                                write it, and a tool cannot be created before one is set here.
+                            </MudText>
+
+                            @if (_webUrl is not { Length: > 0 })
+                            {
+                                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                    No instance is set yet, so no web search tool can be created.
+                                </MudAlert>
+                            }
+
+                            <MudTextField T="string" @bind-Value="_webUrl" Label="Instance URL" Variant="Variant.Outlined" Required="true"
+                                          MaxLength="@WebSearchToolLimits.MaxUrlLength" data-web-search-url
+                                          HelperText="Where SearXNG answers, with its scheme: https://searxng.internal or http://localhost:8080." />
+                            <MudNumericField T="int" @bind-Value="_webTimeout" Label="Timeout (seconds)" Variant="Variant.Outlined"
+                                             Min="@WebSearchToolLimits.MinTimeoutSeconds" Max="@WebSearchToolLimits.MaxTimeoutSeconds" data-web-search-timeout
+                                             HelperText="How long one search may take, its retries included: past that the model is told the web is unavailable." />
+
+                            <ProblemMessage Problem="_webProblem" />
+                            @if (_webSaved)
+                            {
+                                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Web search saved.</MudAlert>
+                            }
+
+                            <MudStack Row="true" Justify="Justify.FlexEnd">
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
+                                           data-save-web-search>Save web search</MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </form>
+                </MudTabPanel>
+            }
         </MudTabs>
     }
     else
@@ -186,6 +225,11 @@
     private List<ServiceTokenInfo> _tokens = [];
     private ApiProblem? _tokensProblem;
     private CreatedServiceToken? _newToken;
+    private bool _webSearch;
+    private string? _webUrl;
+    private int _webTimeout = WebSearchToolLimits.DefaultTimeoutSeconds;
+    private ApiProblem? _webProblem;
+    private bool _webSaved;
     private int _tab;
 
     private const int BehaviourTab = 1;
@@ -218,6 +262,38 @@
 
         await LoadToolsAsync();
         await LoadTokensAsync();
+        await LoadWebSearchAsync();
+    }
+
+    private async Task LoadWebSearchAsync()
+    {
+        var configuration = await Api.GetWebSearchConfigurationAsync();
+        if (!configuration.IsSuccess)
+        {
+            // Only an administrator sees the instance: as with the tools tab, a refusal simply leaves the tab out.
+            return;
+        }
+
+        _webSearch = true;
+        _webUrl = configuration.Value.Url;
+        _webTimeout = configuration.Value.DefaultTimeout;
+    }
+
+    private async Task SaveWebSearchAsync()
+    {
+        _busy = true;
+        _webProblem = null;
+        _webSaved = false;
+        var result = await Api.UpdateWebSearchConfigurationAsync(_webUrl, _webTimeout);
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            _webProblem = result.Problem;
+            return;
+        }
+
+        _webSaved = true;
     }
 
     private async Task LoadTokensAsync()

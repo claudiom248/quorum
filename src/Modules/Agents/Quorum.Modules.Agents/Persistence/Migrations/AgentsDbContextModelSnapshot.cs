@@ -469,6 +469,78 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("tool_settings", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchConfiguration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("web_search_configuration", "agents");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchTool", b =>
+                {
+                    b.Property<Guid>("ToolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Language")
+                        .HasColumnType("text");
+
+                    b.Property<int>("MaxInvocationsPerConversation")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SafeSearch")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.PrimitiveCollection<List<string>>("SearchEngines")
+                        .HasColumnType("text[]");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TimeRange")
+                        .HasColumnType("text");
+
+                    b.Property<int>("TopN")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ToolId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("web_search_tools", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.Assistant", b =>
                 {
                     b.HasOne("Quorum.Modules.Agents.Domain.ModelEndpoint", null)
@@ -517,6 +589,15 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ServerId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchTool", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Tool", null)
+                        .WithOne()
+                        .HasForeignKey("Quorum.Modules.Agents.Domain.WebSearchTool", "ToolId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

@@ -10,6 +10,9 @@ internal enum ToolOrigin
 
     /// <summary>Configured by an administrator as a reader of lookups (lists of values of knowledge bases); runs in-process (spec 007).</summary>
     Lookup,
+
+    /// <summary>Configured by an administrator as a search of the open web through the platform's SearXNG instance; runs in-process (spec 005).</summary>
+    WebSearch,
 }
 
 internal enum ToolState
@@ -101,6 +104,23 @@ internal sealed class Tool
         Id = Guid.CreateVersion7(),
         TenantId = tenantId,
         Origin = ToolOrigin.Lookup,
+        Name = name,
+        Description = description,
+        InputSchema = "{}",
+        DefinitionHash = configurationHash,
+        State = ToolState.Enabled,
+        Policy = policy,
+    };
+
+    /// <summary>
+    /// A web search tool. As a rag tool's, its schema is generated from the binding when the tool is offered, so none is stored.
+    /// <paramref name="configurationHash"/> stands for the whole binding (see <c>WebSearchToolHash</c>).
+    /// </summary>
+    public static Tool CreateWebSearch(Guid tenantId, string name, string description, string configurationHash, ToolPolicy policy) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        Origin = ToolOrigin.WebSearch,
         Name = name,
         Description = description,
         InputSchema = "{}",

@@ -20,6 +20,7 @@ internal sealed class PoolTool
         ToolOrigin.Builtin => ToolNaming.Builtin(Tool.Name),
         ToolOrigin.Rag => ToolNaming.Rag(Tool.Name),
         ToolOrigin.Lookup => ToolNaming.Lookup(Tool.Name),
+        ToolOrigin.WebSearch => ToolNaming.WebSearch(Tool.Name),
         _ => ToolNaming.Mcp(ServerName ?? throw new InvalidOperationException("An MCP tool has a server."), Tool.Name),
     };
 
@@ -49,6 +50,8 @@ internal static class ToolPool
             from rag in rags.DefaultIfEmpty()
             join lookup in db.LookupTools.IgnoreQueryFilters() on tool.Id equals lookup.ToolId into lookups
             from lookup in lookups.DefaultIfEmpty()
+            join webSearch in db.WebSearchTools.IgnoreQueryFilters() on tool.Id equals webSearch.ToolId into webSearches
+            from webSearch in webSearches.DefaultIfEmpty()
             where tool.State == ToolState.Enabled
                   && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == tenantId)
                       || (server != null
@@ -64,7 +67,11 @@ internal static class ToolPool
                       || (lookup != null
                           && (lookup.Scope == ToolScopeKind.Global
                               || (lookup.Scope == ToolScopeKind.Tenant && (lookup.TenantId == tenantId || lookup.ScopeTenantIds.Contains(tenantId)))
-                              || (lookup.Scope == ToolScopeKind.Assistant && lookup.TenantId == tenantId && lookup.ScopeAssistantIds.Contains(assistantId)))))
+                              || (lookup.Scope == ToolScopeKind.Assistant && lookup.TenantId == tenantId && lookup.ScopeAssistantIds.Contains(assistantId))))
+                      || (webSearch != null
+                          && (webSearch.Scope == ToolScopeKind.Global
+                              || (webSearch.Scope == ToolScopeKind.Tenant && (webSearch.TenantId == tenantId || webSearch.ScopeTenantIds.Contains(tenantId)))
+                              || (webSearch.Scope == ToolScopeKind.Assistant && webSearch.TenantId == tenantId && webSearch.ScopeAssistantIds.Contains(assistantId)))))
             select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
     }
 }
@@ -146,6 +153,24 @@ internal static class ToolVisibility
                           || (lookup.Scope == ToolScopeKind.Tenant && lookup.ScopeTenantIds.Contains(tenantId))))
             select new LookupToolView { Tool = tool, Binding = lookup };
     }
+
+    /// <summary>
+    /// The web search tools the tenant can see with their bindings: its own and those shared with it (enabled only, as in <see cref="Tools"/>).
+    /// </summary>
+    public static IQueryable<WebSearchToolView> WebSearchTools(AgentsDbContext db)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+
+        return
+            from tool in db.Tools.IgnoreQueryFilters()
+            join webSearch in db.WebSearchTools.IgnoreQueryFilters() on tool.Id equals webSearch.ToolId
+            where tool.TenantId == tenantId
+                  || (tool.State == ToolState.Enabled
+                      && (webSearch.Scope == ToolScopeKind.Global
+                          || (webSearch.Scope == ToolScopeKind.Tenant && webSearch.ScopeTenantIds.Contains(tenantId))))
+            select new WebSearchToolView { Tool = tool, Binding = webSearch };
+    }
 }
 
 /// <summary>A rag tool with its binding.</summary>
@@ -162,4 +187,12 @@ internal sealed class LookupToolView
     public required Tool Tool { get; init; }
 
     public required LookupTool Binding { get; init; }
+}
+
+/// <summary>A web search tool with its binding.</summary>
+internal sealed class WebSearchToolView
+{
+    public required Tool Tool { get; init; }
+
+    public required WebSearchTool Binding { get; init; }
 }
