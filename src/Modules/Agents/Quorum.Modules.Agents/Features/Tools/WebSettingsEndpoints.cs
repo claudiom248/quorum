@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
@@ -40,6 +41,7 @@ internal sealed class WebSettingsEndpoints : IEndpointGroup
         WebConfigurationDto request,
         AgentsDbContext db,
         TimeProvider clock,
+        WebFetchCache webFetchCache,
         CancellationToken cancellationToken)
     {
         var errors = Validate(request);
@@ -75,7 +77,6 @@ internal sealed class WebSettingsEndpoints : IEndpointGroup
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return TypedResults.NoContent();
         }
         catch (DbUpdateException exception) when (exception.IsUniqueViolation())
         {
@@ -97,8 +98,12 @@ internal sealed class WebSettingsEndpoints : IEndpointGroup
                 request.CacheTtlMinutes,
                 now);
             await db.SaveChangesAsync(cancellationToken);
-            return TypedResults.NoContent();
         }
+
+        // What the platform remembers was read under the policy being replaced: a page fetched while robots were respected, or
+        // with the old identity, would keep being served for the rest of its lifetime (spec 006, AC-8 and AC-14).
+        await webFetchCache.ClearAsync(cancellationToken);
+        return TypedResults.NoContent();
     }
 
     private static Dictionary<string, string[]> Validate(WebConfigurationDto request)

@@ -114,6 +114,28 @@ public sealed class WebFetchCacheTests(PostgresFixture postgres)
         Assert.Equal(2, site.Loads);
     }
 
+    [Fact] // AC-14
+    public async Task SavingTheWebSettingsForgetsThePageThePlatformRemembered()
+    {
+        var (app, admin, chat) = await StartAsync(script: s => s.ServeHtml(ArticleUrl, Page()));
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call(ArticleUrl)), ChatScript.Reply("Read it."));
+
+        await ChatApi.SendAsync(admin, chat, "Read the page");
+        Assert.Equal(1, PageRequestsOf(app, ArticleUrl));
+
+        // The admin saves a different policy: the page that was read under the old one must not answer for the new one.
+        using (var saved = await WebFetchApi.UpdateConfigurationAsync(
+                   admin, WebSearchApi.DefaultConfiguration with { FetchDelayMs = 0, UserAgent = "AcmeBot/2.0" }))
+        {
+            saved.EnsureSuccessStatusCode();
+        }
+
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call(ArticleUrl)), ChatScript.Reply("Read it again."));
+        await ChatApi.SendAsync(admin, chat, "Read it again");
+
+        Assert.Equal(2, PageRequestsOf(app, ArticleUrl));
+    }
+
     [Fact] // spec 006, cache key
     public void TheKeyOfAUrlIsItsOwnAndNotAnotherUrlThatLooksLikeIt()
     {
