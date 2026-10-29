@@ -82,14 +82,15 @@ internal static class WebFetchApi
 
     public sealed record CreatedBody(Guid Id, PreviewBody? Definition);
 
+    /// <param name="TokenBudgetPerPage">The tool's own override, or <see langword="null"/> when it inherits what the platform's row says (spec 006, AC-13).</param>
     public sealed record ToolBody(
         Guid Id,
         string Name,
         string Description,
-        int TokenBudgetPerPage,
-        int TotalTokenBudget,
-        int MaxUrlsPerInvocation,
-        int Timeout,
+        int? TokenBudgetPerPage,
+        int? TotalTokenBudget,
+        int? MaxUrlsPerInvocation,
+        int? Timeout,
         ScopeBody Scope,
         string State,
         string Policy,

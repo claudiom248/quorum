@@ -145,6 +145,33 @@ public sealed class WebFetchToolLimitsTests(PostgresFixture postgres)
         Assert.Contains("1 page was shortened to fit the tool's token budget", ResultOf(events), StringComparison.Ordinal);
     }
 
+    [Fact] // AC-13
+    public async Task AToolThatDoesNotOverrideFollowsThePlatformRowWhenTheAdminChangesIt()
+    {
+        var (app, admin, chat) = await StartAsync(script: s =>
+        {
+            s.ServeHtml(PageOne, Page("First", 9_000));
+            s.ServeHtml(PageTwo, Page("Second", 9_000));
+        });
+
+        // The platform allows 4000 tokens a page: those 9000 characters reach the model whole.
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call(PageOne)), ChatScript.Reply("Done."));
+        Assert.DoesNotContain("shortened", ResultOf(await ChatApi.SendAsync(admin, chat, "Read the first")), StringComparison.Ordinal);
+
+        using (var changed = await WebFetchApi.UpdateConfigurationAsync(
+                   admin, WebSearchApi.DefaultConfiguration with { FetchDelayMs = 0, FetchTokenBudgetPerPage = 500 }))
+        {
+            changed.EnsureSuccessStatusCode();
+        }
+
+        // The same tool, with nothing on it edited, answers inside the new default: the row is read when the call is made.
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call(PageTwo)), ChatScript.Reply("Done."));
+        var after = ResultOf(await ChatApi.SendAsync(admin, chat, "Read the second"));
+
+        Assert.Contains("1 page was shortened to fit the tool's token budget", after, StringComparison.Ordinal);
+        Assert.True(after.Length < 3_000, $"the model was given {after.Length} characters");
+    }
+
     /// <summary>An application with the platform's web row set, one web fetch tool activated, and a conversation to ask in.</summary>
     private async Task<(QuorumApp App, HttpClient Admin, Guid Chat)> StartAsync(
         WebSearchApi.WebConfigurationBody? web = null,

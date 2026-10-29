@@ -20,14 +20,36 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
         Assert.NotEqual(Guid.Empty, created.Id);
         var tool = await WebFetchApi.GetAsync(admin, created.Id);
         Assert.Equal("read", tool.Name);
-        Assert.Equal(4000, tool.TokenBudgetPerPage);
-        Assert.Equal(20000, tool.TotalTokenBudget);
-        Assert.Equal(5, tool.MaxUrlsPerInvocation);
-        Assert.Equal(30, tool.Timeout);
+
+        // A tool that was not given a number of its own keeps none: what it will use is what the platform's row says (AC-13).
+        Assert.Null(tool.TokenBudgetPerPage);
+        Assert.Null(tool.TotalTokenBudget);
+        Assert.Null(tool.MaxUrlsPerInvocation);
+        Assert.Null(tool.Timeout);
         Assert.Equal("Tenant", tool.Scope.Kind);
         Assert.Equal("Enabled", tool.State);
         Assert.Equal("Auto", tool.Policy);
         Assert.False(tool.Shared);
+
+        // The model is still told a number: the platform's, not an empty slot.
+        Assert.Equal(5, created.Definition!.Parameter("urls").GetProperty("maxItems").GetInt32());
+    }
+
+    [Fact] // AC-13
+    public async Task TheDefinitionOfAnInheritingToolSaysWhatThePlatformSaysNow()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
+
+        using var changed = await WebFetchApi.UpdateConfigurationAsync(
+            admin,
+            WebSearchApi.DefaultConfiguration with { FetchDelayMs = 0, FetchMaxUrlsPerInvocation = 2 });
+        changed.EnsureSuccessStatusCode();
+
+        var tool = await WebFetchApi.GetAsync(admin, created.Id);
+        Assert.Null(tool.MaxUrlsPerInvocation);
+        Assert.Equal(2, tool.Definition!.Parameter("urls").GetProperty("maxItems").GetInt32());
     }
 
     [Fact] // AC-1
