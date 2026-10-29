@@ -130,3 +130,83 @@ Every AC from AC-1 to AC-28 appears once as main owner.
 
 ## Open Questions
 None.
+
+---
+
+# Amendment 1: roles of a KB in a tool, one namespace, a `describe` that states only what applies
+
+**Spec:** `docs/specs/012-lookup-consolidation-and-lean-manifest.md`, Amendment 1 (Approved 2026-10-29).
+**Mode:** three implementation PRs, each from `main` on its own branch, merged in order: `feat/012-a1-tool-rules`, `feat/012-a1-describe`, `feat/012-a1-editor`. As for the rest of this plan, tests are kept to one per acceptance criterion plus unit tests of pure logic, and the full suite runs only at the end of the last PR.
+**Status:** Draft
+**Affected:** KnowledgeBases (Contracts, Features/Registry, Features/Lookups), Agents (Contracts, Features/Tools, Tools/Lookup), `Quorum.Web.Client` (lookup tool editor), `tests/Quorum.Integration.Tests`, docs.
+
+## What the code does today (checked before planning)
+- The lean `query` copies every key of `filters` into the arguments of the full function, and `CheckFilters` accepts only fields of the target's source KB. The attributes of an entity lookup reach the read only through the fixed `lookupFilters` of the tool (`LookupBinding.RowFiltersOf`), never from the model. So AC-A1-7 and AC-A1-8 need a new path: filters on attributes sent by the model.
+- Both manifests already have a `knowledge_base` parameter on `documents` and `count` (`LookupToolDefinition.KnowledgeBaseParameter`), so "a call reads one KB" is already the shape of the call; what changes is that the parameter names the KB and the cursor stops walking KBs.
+- `describe` takes the tool-wide `binding.FilterFields` for every KB target (`DescribeTarget`), and `ListFilters` for lists (already limited to the source KB's fields).
+- `KnowledgeBaseInfo` of the catalog contract carries `MapsDocumentId` but not the other roles; `LookupToolValidation` is where `knowledgeBaseIds` is validated; the mapping and the name of a KB are saved by `KnowledgeBaseEndpoints.UpdateAsync`, and a lookup is renamed by `LookupEditEndpoints`.
+
+## Decisions
+| Topic | Choice |
+|---|---|
+| Roles | `KnowledgeBaseInfo` gains `MapsText` and `MapsEntityName` next to `MapsDocumentId`. One helper in the Agents module, `LookupToolRoles`, answers "document KB" (`MapsText or MapsDocumentId`) and "entity KB"; validation, the definition builder, `describe` and the editor all call it. |
+| Save rules | `LookupToolValidation` checks in this order: the live KBs are document KBs (`knowledge_base_not_documentary`), none of them is the source KB of an entity lookup of the tool (`knowledge_base_both_views`), the names of the targets are distinct (`target_name_taken`). A name is the alias of a lookup when it has one, else its name, and the name of a KB. All three apply to `POST` and `PUT`. |
+| Guards on the other side | `ILookupToolUsage` (Agents.Contracts) gains `ToolsQueryingKnowledgeBaseAsync(kbId)` and `NameConflictsAsync(...)`. `KnowledgeBaseEndpoints.UpdateAsync` asks the first before it saves a mapping that removes a role (`knowledge_base.role_in_use`) and the second before a rename; `LookupEditEndpoints` asks the second for a lookup rename (`lookup_tool.target_name_taken`, 409, the tools listed). The tools listed are those the caller can see. |
+| Description source | One `LookupTargetDescription` per target is built in the Agents module from `IKnowledgeBaseLookups` and the catalog and is used by both `describe` and the validation of `query` (A1-6), so the two cannot drift. It holds the operations, the filters (name, type, operators, `valuesIn` only when that list is a target of the tool), the sortable fields and the limits. |
+| Attribute filters in `query` | `LookupQuorumTool` splits the `filters` object by target: keys of the target's description that are attributes become `LookupRowFilter`s passed in `LookupReadRequest.RowFilters` together with the fixed `lookupFilters` of the tool (the model's filter can only narrow them, D-7); keys that are dictionary fields keep their path. Operators `eq`, `in`, `min`, `max` as in D-5; a value that does not fit the attribute's type is the error result with the target's description. |
+| Entity lookups and dictionary fields | An entity lookup takes attribute filters only (A1-5). The dictionary-field filters that `EntityValuesAsync` applies today to the scan stay in the Live engine for the fixed `fixedFilters` of the tool but are not offered to the model for that target. |
+| Cursor | `DocumentsCursor` loses `KnowledgeBaseId`; `LiveLookupOperations.DocumentsAsync` takes the one KB the call names and no longer iterates. The `knowledge_base` parameter of `documents` and `count` is required when the tool has more than one live KB and implied when it has one. |
+| Full manifest | The `documents` and `count` descriptions and each filter parameter's description name the targets it applies to; no new parameter, and no attribute filter. |
+| Migration | None (A1-11). The development database is reset; the save rules are the only gate. No compatibility code for the old shape. |
+| Tests | The integration tests of 012 keep the sample project (`vendors` entity collection, `contracts` documents) and add one tool per case. AC-A1-8 is one test that reads `describe` for every target of the sample tool, sends each listed filter, operator and sort to `query`, and checks that what is not listed is rejected. |
+
+## Order
+PR 1 first (rules and guards, the contract changes both other PRs read), then PR 2 (the content of `describe` and `query`), then PR 3 (the editor). PR 3 needs the error codes of PR 1 and the `describe` figures of PR 2 for the token comparison.
+
+## Acceptance criteria map
+| PR | Acceptance criteria |
+|---|---|
+| 1 | AC-A1-1, AC-A1-3, AC-A1-4, AC-A1-5, AC-A1-11 |
+| 2 | AC-A1-2, AC-A1-6, AC-A1-7, AC-A1-8, AC-A1-9, AC-A1-10 |
+| 3 | AC-A1-12 |
+
+Every acceptance criterion from AC-A1-1 to AC-A1-12 appears once as main owner. (AC-A1-13 was removed from the spec.)
+
+## Steps
+
+### PR 1 - Rules of a tool and guards (`feat/012-a1-tool-rules`)
+1. Contracts: `KnowledgeBaseInfo` gains `MapsText` and `MapsEntityName`; `KnowledgeBaseCatalog` fills them from the mapping. `ILookupToolUsage` gains the two methods of Decisions. Additive.
+2. `LookupToolRoles` and the three save rules in `LookupToolValidation`, with the error codes and messages of the spec; the lookup-tool endpoints return them as 400. AC-A1-1, AC-A1-3, AC-A1-4.
+3. `LookupToolUsage` implements `ToolsQueryingKnowledgeBaseAsync` (live KBs and the entity lookups of those KBs) and `NameConflictsAsync` (the targets of the tools that bind the lookup or KB, by alias and name). A unit test of the name rule over aliases.
+4. `KnowledgeBaseEndpoints.UpdateAsync`: reject a mapping change that removes `text` and `documentId`, or `entityName`, while a tool relies on it, `409 knowledge_base.role_in_use` listing the tools. Rename of a KB and `LookupEditEndpoints` rename of a lookup: `409 lookup_tool.target_name_taken`. AC-A1-5, AC-A1-11.
+5. `LookupToolDefinition` and the resolver stop offering a KB that is not a document KB or that is also an entity source in the tool (a tool saved before the rules cannot exist after the reset; this only makes the builder consistent with the rules). Tests for AC-A1-1, 3, 4, 5, 11 against PostgreSQL.
+
+### PR 2 - A `describe` that states only what applies (`feat/012-a1-describe`)
+6. `LookupTargetDescription` and its builder from the binding, the catalog and `IKnowledgeBaseLookups`, per kind: live KB (fields its mapping maps, `eq` and `in`), computed list (fields of its source KB, `search`, `sort` name and count), entity or manual lookup (attributes with type and operators of D-5, sort by name or a number or date attribute), `valuesIn` only for a list that is a target of the tool. `describe` renders it; no tool-wide filter list remains. AC-A1-6, AC-A1-7, AC-A1-9.
+7. `query` validates against the same description and parses attribute filters into `LookupRowFilter`s combined with the fixed `lookupFilters`; the error result is the part of the description that applies. AC-A1-8.
+8. One call, one KB: `LiveLookupOperations.DocumentsAsync` takes the named KB, `DocumentsCursor` loses the KB, the `knowledge_base` parameter is required with more than one live KB and the error result names the live KBs when it is missing or wrong; the multi-KB loop and its cursor tests are removed. AC-A1-2.
+9. Full manifest: the descriptions of `documents`, `count` and of each filter parameter name the targets they apply to; no schema change. AC-A1-10. Re-measure `estimatedTokens` of both manifests on the sample project (AC-24 of the spec must still hold) and write the figures in "As built".
+
+### PR 3 - One selector in the editor (`feat/012-a1-editor`)
+10. `LookupToolForm`: one selector of targets (lists, lookups, document KBs); the KB list is filtered by the roles from the catalog; an entity lookup removes its KB from the live choices and the other way round. The messages of the new error codes are shown on the field. bUnit for `LookupToolForm`. AC-A1-12.
+11. Docs: `docs/knowledge-bases.md` (roles of a KB in a tool, one view of a KB with both roles, one namespace), `docs/database-schema.md` only if it names `knowledgeBaseIds` in a way that changes (it does not change the column), `docs/deferred.md` (the three rows of the Amendment).
+12. End-to-end check through the LiteLLM proxy on :4000 with a scoped key and `qwen3.5:9b` (project memory): lean, one tool with `vendors` as an entity lookup and `contracts` as a document KB, the questions "the vendors of Italy rated 4 or more", "how many contracts with ACME", and one that names a target wrongly; record what the model got wrong in "As built".
+
+## Verification
+As in the main plan: tests written along the way are few; nothing is run during the steps; at the end of PR 3 `dotnet build -c Release`, `dotnet format --verify-no-changes`, `get_diagnostics`, the tests of the impacted components (lookup tools, describe and query, mapping guard, editor), then the full suite once. PR 1 and PR 2 are each built in Release before they are opened (project memory) and run only the tests of their own components.
+
+## Risks
+- **Attribute filters from the model are new** (today only fixed filters reach the rows). Mitigation: they reuse `LookupFilters.ParseRows` and the same operators as the fixed ones, and the model's filter can only narrow the tool's fixed filters; a test with both.
+- **`describe` drifting from `query`.** Mitigation: both read one `LookupTargetDescription`; AC-A1-8 is a test over every target of the sample tool.
+- **Cross-module guards.** The mapping and rename guards call `ILookupToolUsage` from KnowledgeBases; a tenant filter mistake would list tools of another tenant. Mitigation: the methods take the tenant from the same scope as the existing `ILookupToolUsage` calls and the 409 lists only tools the caller can see; a test with two tenants.
+- **Mapping guard blocks an admin who is fixing a mapping.** Mitigation: the 409 lists the tools, so the way out is to edit them first.
+- **Removing the multi-KB read of `documents`** changes the cursor format. Mitigation: no stored cursor outlives an answer, and the database is reset.
+- **Release analyzers.** CI builds Release; each PR is built in Release before it is opened.
+
+## Details beyond the spec to confirm
+- The `knowledge_base` parameter of `documents` and `count` is required only when the tool has more than one live KB.
+- The dictionary-field filters of an entity lookup are no longer offered to the model, but a fixed `fixedFilters` on them keeps working in the Live engine.
+- A rename that collides is checked against the tools the caller can see; a tool of another tenant cannot hold the same lookup, so tenant scope is enough.
+
+## Open Questions
+None.
