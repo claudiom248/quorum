@@ -35,9 +35,23 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
                     });
             }
 
-            if (method == HttpMethod.Get && path == "/api/settings/web-search")
+            if (method == HttpMethod.Get && path == "/api/settings/web")
             {
-                return FakeApiHandler.Json(new { url = _instanceUrl, defaultTimeout = 90 });
+                // The platform's one web row (spec 006, Amendment 1 of spec 005): the page reads it to warn that no instance is set.
+                return FakeApiHandler.Json(new
+                {
+                    searchUrl = _instanceUrl,
+                    searchTimeoutSeconds = 90,
+                    fetchTimeoutSeconds = 30,
+                    fetchMaxUrlsPerInvocation = 5,
+                    fetchTokenBudgetPerPage = 4000,
+                    fetchTotalTokenBudget = 20000,
+                    userAgent = "Quorum/1.0",
+                    fetchDelayMs = 1000,
+                    respectRobotsTxt = true,
+                    cacheEnabled = true,
+                    cacheTtlMinutes = 10,
+                });
             }
 
             if (path == "/api/assistants")
