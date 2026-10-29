@@ -199,14 +199,13 @@ internal sealed class AssistantChat(
             {
                 var fetchSeconds = web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
                 var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : fetchSeconds;
+
+                // The platform's wait is only a ceiling: what each page is worth is on the tool itself (spec 006, AC-1).
                 webFetch = new WebFetchRuntime(
                     webFetchProvider,
                     webFetchCache,
                     numbering,
                     Math.Min(fetchSeconds, callSeconds),
-                    web?.FetchTokenBudgetPerPage ?? WebConfiguration.DefaultFetchTokenBudgetPerPage,
-                    web?.FetchTotalTokenBudget ?? WebConfiguration.DefaultFetchTotalTokenBudget,
-                    web?.FetchMaxUrlsPerInvocation ?? WebConfiguration.DefaultFetchMaxUrlsPerInvocation,
                     limits.MaxResultCharacters,
                     TimeSpan.FromMilliseconds(web?.FetchDelayMs ?? WebConfiguration.DefaultFetchDelayMs),
                     web?.RespectRobotsTxt ?? WebConfiguration.DefaultRespectRobotsTxt,

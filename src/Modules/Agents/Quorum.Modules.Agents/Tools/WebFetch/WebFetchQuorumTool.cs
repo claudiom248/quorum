@@ -10,24 +10,23 @@ namespace Quorum.Modules.Agents.Tools.WebFetch;
 /// <param name="Provider">How the URL is read.</param>
 /// <param name="Cache">The remembered pages in front of the provider.</param>
 /// <param name="Numbering">The shared counter for the [n] the model cites.</param>
-/// <param name="TimeoutSeconds">How long one URL may take, from the tool's binding.</param>
-/// <param name="TokenBudgetPerPage">How much one page may cost the model.</param>
-/// <param name="TotalTokenBudget">How much every page of one call may cost, together.</param>
-/// <param name="MaxUrlsPerInvocation">How many URLs one call may fetch.</param>
+/// <param name="MaxTimeoutSeconds">The most seconds one URL may take: the platform's own wait and the invoker's cut, whichever
+/// comes first. A tool's timeout can only ask for less than this.</param>
 /// <param name="ResultLimit">The tenant's cap on the text of a tool result.</param>
 /// <param name="FetchDelay">How long to wait between two reads of one call.</param>
 /// <param name="RespectRobotsTxt">Whether the site's robots.txt is read before its pages.</param>
 /// <param name="UserAgent">The identity the platform announces.</param>
 /// <param name="CacheTtl">How long a fetched page is remembered.</param>
 /// <param name="CacheEnabled">Whether the cache sits in front of the provider at all.</param>
+/// <remarks>
+/// What a page and a call are worth is not here: every web fetch tool has its own budgets on its binding (spec 006, AC-1), and the
+/// platform's row only says what a tool that was created without an override got.
+/// </remarks>
 internal sealed record WebFetchRuntime(
     IWebFetchProvider Provider,
     WebFetchCache Cache,
     SourceNumbering Numbering,
-    int TimeoutSeconds,
-    int TokenBudgetPerPage,
-    int TotalTokenBudget,
-    int MaxUrlsPerInvocation,
+    int MaxTimeoutSeconds,
     int ResultLimit,
     TimeSpan FetchDelay,
     bool RespectRobotsTxt,
@@ -62,6 +61,7 @@ internal sealed class WebFetchQuorumTool(ActiveTool descriptor, WebFetchRuntime 
         }
 
         var results = new List<WebFetchResponse>(urls.Count);
+        var timeoutSeconds = Math.Min(Binding.Timeout, runtime.MaxTimeoutSeconds);
         for (var i = 0; i < urls.Count; i++)
         {
             if (i > 0 && runtime.FetchDelay > TimeSpan.Zero)
@@ -71,7 +71,7 @@ internal sealed class WebFetchQuorumTool(ActiveTool descriptor, WebFetchRuntime 
             }
 
             var url = urls[i];
-            var request = new WebFetchRequest(url, runtime.TimeoutSeconds, runtime.UserAgent, runtime.RespectRobotsTxt);
+            var request = new WebFetchRequest(url, timeoutSeconds, runtime.UserAgent, runtime.RespectRobotsTxt);
             WebFetchResponse response;
             if (runtime.CacheEnabled)
             {
@@ -93,8 +93,8 @@ internal sealed class WebFetchQuorumTool(ActiveTool descriptor, WebFetchRuntime 
             urls,
             results,
             runtime.Numbering,
-            runtime.TokenBudgetPerPage,
-            runtime.TotalTokenBudget,
+            Binding.TokenBudgetPerPage,
+            Binding.TotalTokenBudget,
             runtime.ResultLimit);
     }
 
@@ -143,7 +143,8 @@ internal static class WebFetchResultFormat
         SourceNumbering numbering,
         int tokenBudgetPerPage,
         int totalTokenBudget,
-        int resultLimit)
+        int resultLimit,
+        string? delimiter = null)
     {
         ArgumentNullException.ThrowIfNull(urls);
         ArgumentNullException.ThrowIfNull(responses);
@@ -152,45 +153,50 @@ internal static class WebFetchResultFormat
         var charactersPerPage = tokenBudgetPerPage * ContextUsage.CharactersPerToken;
         var totalCharacters = totalTokenBudget * ContextUsage.CharactersPerToken;
 
-        var delimiter = AttachmentBlock.NewDelimiter();
+        var marker = delimiter ?? AttachmentBlock.NewDelimiter();
         var text = new StringBuilder(Notice);
 
-        // What the notice and the closing lines take; every page has to fit in what is left, or the invoker throws the whole
-        // result away as too large and the model is told to narrow arguments it never chose.
-        var room = Math.Max(0, resultLimit - Overhead);
-        var used = 0;
-        var contentRoom = Math.Max(0, totalCharacters);
+        // Two budgets and one cap hold at the same time: what the tool says a page and a whole call are worth, and the size the
+        // tenant allows for one tool answer. Past that cap the invoker throws the result away and tells the model to narrow
+        // arguments it never chose, so the renderer has to stop at it.
+        var freeBudget = Math.Max(0, totalCharacters);
+        var freeResult = Math.Max(0, resultLimit - Overhead);
         var sources = new List<ToolSource>(responses.Count);
         var taken = new List<SourceKey>(responses.Count);
         var distinct = new HashSet<SourceKey>();
+        var unread = new List<string>();
         var shown = 0;
-        var failed = 0;
         var truncated = 0;
 
         for (var i = 0; i < responses.Count; i++)
         {
             var url = urls[i];
             var response = responses[i];
+            var reference = Shorten(Sanitize(url));
 
             if (response.Outcome != WebFetchOutcome.Ok)
             {
-                failed++;
-                text.Append("\n\n[failed] ")
-                    .Append(Shorten(Sanitize(url)))
-                    .Append(" — ")
-                    .Append(Sanitize(response.FailureMessage ?? "the page could not be read"));
+                var reason = Sanitize(response.FailureMessage ?? "the page could not be read");
+                unread.Add($"{reference}: {reason}");
+                text.Append("\n\n[failed] ").Append(reference).Append(" — ").Append(reason);
                 continue;
             }
 
-            if (room <= 0)
+            if (freeResult <= 0)
             {
-                failed++;
+                unread.Add($"{reference}: no room left in the answer");
                 continue;
             }
 
             var key = new SourceKey(KnowledgeBaseName, null, response.Title, null, url);
             var number = numbering.NumberOf(key, out var isNew);
-            var block = Block(response, url, number, delimiter, Math.Min(charactersPerPage, contentRoom), out var wasTruncated);
+            var block = Block(
+                response,
+                url,
+                number,
+                marker,
+                Math.Min(charactersPerPage, Math.Min(freeBudget, freeResult)),
+                out var wasTruncated);
             if (block is null)
             {
                 if (isNew)
@@ -198,7 +204,7 @@ internal static class WebFetchResultFormat
                     numbering.Release([key]);
                 }
 
-                failed++;
+                unread.Add($"{reference}: no room left in the answer");
                 continue;
             }
 
@@ -207,7 +213,8 @@ internal static class WebFetchResultFormat
                 truncated++;
             }
 
-            contentRoom = Math.Max(0, contentRoom - block.Length);
+            freeBudget = Math.Max(0, freeBudget - block.Length);
+            freeResult -= block.Length;
             distinct.Add(key);
             if (isNew)
             {
@@ -216,15 +223,16 @@ internal static class WebFetchResultFormat
             }
 
             text.Append(block);
-            used += block.Length;
-            room -= block.Length;
             shown++;
         }
 
         if (shown == 0)
         {
             numbering.Release(taken);
-            throw new ToolFailedException("None of the pages could be read; try a different URL or ask the site later.");
+
+            // Which page failed and why is what the model has to work with (spec 006, edges 1, 2, 7): a bare "nothing could be
+            // read" would send it to try the same addresses again.
+            throw new ToolFailedException($"None of the pages could be read: {string.Join("; ", unread)}.");
         }
 
         if (truncated > 0)
@@ -235,11 +243,11 @@ internal static class WebFetchResultFormat
                 .Append(" shortened to fit the tool's token budget.");
         }
 
-        if (failed > 0)
+        if (unread.Count > 0)
         {
             text.Append("\n\n")
-                .Append(failed)
-                .Append(failed == 1 ? " page was" : " pages were")
+                .Append(unread.Count)
+                .Append(unread.Count == 1 ? " page was" : " pages were")
                 .Append(" not read.");
         }
 

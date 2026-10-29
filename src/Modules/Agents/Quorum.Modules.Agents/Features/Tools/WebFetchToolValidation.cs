@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools.WebFetch;
@@ -11,7 +12,7 @@ internal sealed record ValidatedWebFetchTool(string Name, string Description, To
 
 /// <summary>
 /// What an administrator may enter for a web fetch tool (spec 006, AC-1). The tool carries its own budgets and limits, so it does
-/// not need the platform to have anything set — the defaults only kick in when a per-tool field is left out of the request.
+/// not need the platform to have anything set — a field left out of the request takes the platform's current default (AC-13).
 /// </summary>
 internal sealed partial class WebFetchToolValidation(AgentsDbContext db)
 {
@@ -72,26 +73,29 @@ internal sealed partial class WebFetchToolValidation(AgentsDbContext db)
             policy = parsed;
         }
 
-        // Each field falls back on the platform's default if the request left it out; the range check applies to both.
-        var tokenBudgetPerPage = request.TokenBudgetPerPage ?? WebConfiguration.DefaultFetchTokenBudgetPerPage;
+        // A field the request left out takes the platform's current default: the Settings tabs (spec 006, AC-13) only reach a
+        // tool through this row, and the range check applies to what the request said and to the default alike.
+        var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+
+        var tokenBudgetPerPage = request.TokenBudgetPerPage ?? web?.FetchTokenBudgetPerPage ?? WebConfiguration.DefaultFetchTokenBudgetPerPage;
         if (tokenBudgetPerPage is < WebFetchTool.MinTokenBudgetPerPage or > WebFetchTool.MaxTokenBudgetPerPage)
         {
             return InvalidTokenBudgetPerPage;
         }
 
-        var totalTokenBudget = request.TotalTokenBudget ?? WebConfiguration.DefaultFetchTotalTokenBudget;
+        var totalTokenBudget = request.TotalTokenBudget ?? web?.FetchTotalTokenBudget ?? WebConfiguration.DefaultFetchTotalTokenBudget;
         if (totalTokenBudget is < WebFetchTool.MinTotalTokenBudget or > WebFetchTool.MaxTotalTokenBudget)
         {
             return InvalidTotalTokenBudget;
         }
 
-        var maxUrls = request.MaxUrlsPerInvocation ?? WebConfiguration.DefaultFetchMaxUrlsPerInvocation;
+        var maxUrls = request.MaxUrlsPerInvocation ?? web?.FetchMaxUrlsPerInvocation ?? WebConfiguration.DefaultFetchMaxUrlsPerInvocation;
         if (maxUrls is < WebFetchTool.MinMaxUrlsPerInvocation or > WebFetchTool.MaxMaxUrlsPerInvocation)
         {
             return InvalidMaxUrls;
         }
 
-        var timeout = request.Timeout ?? WebConfiguration.DefaultFetchTimeoutSeconds;
+        var timeout = request.Timeout ?? web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
         if (timeout is < WebFetchTool.MinTimeoutSeconds or > WebFetchTool.MaxTimeoutSeconds)
         {
             return InvalidTimeout;
