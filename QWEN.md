@@ -40,7 +40,7 @@ tests/
 
 - Each module exposes a single public registration extension (`Add<Module>Module`); handlers, consumers and DbContexts stay `internal`.
 - **Synchronous cross-module calls**: only through `Quorum.Modules.<X>.Contracts` projects (public interfaces and DTOs); a module never references another module's project. Integration events with Wolverine/outbox only when an asynchronous flow is needed.
-- **Tenants**: every application entity has `TenantId`, with an EF Core global query filter.
+- **Tenants**: every application entity has `TenantId`, with an EF Core global query filter. The one exception is `agents.web_search_configuration` — the platform has a single SearXNG instance that every tenant searches with, so that row is global by design and carries no filter (spec 005).
 - **Module internal architecture**: Vertical Slice (one file per operation in `Features/`). Evolve to Clean/DDD only in the module whose domain requires it.
 - Platform transactions spanning modules go through `IPlatformUnitOfWork` (shared kernel).
 
