@@ -1,4 +1,3 @@
-
 using System.Buffers;
 using Quorum.Shared.Results;
 using UglyToad.PdfPig;
@@ -9,21 +8,26 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.ReadingOrderDetector;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 using UglyToad.PdfPig.Exceptions;
 
-namespace Quorum.Modules.Conversations.Extraction;
+namespace Quorum.Shared.Extraction;
 
 /// <summary>
 /// Reads the text layer of a PDF, page by page. The parser is managed code: it does not run scripts, open attachments or
 /// fetch anything. A PDF without text (a scan) is rejected: OCR is out of scope.
 /// </summary>
-internal static class PdfText
+/// <remarks>
+/// In <c>Quorum.Shared</c> so both the attachments of a conversation and the web fetch of a PDF URL read a document the same way.
+/// </remarks>
+public static class PdfText
 {
-    private static readonly Error Unreadable = Error.Unprocessable(
-        DocumentTextExtractor.UnreadableCode,
-        "The PDF could not be read: it is damaged or protected with a password.");
+    /// <summary>The PDF is damaged, truncated or password-protected.</summary>
+    public const string UnreadableCode = "attachment.unreadable";
 
-    private static readonly Error NoText = Error.Unprocessable(
-        DocumentTextExtractor.NoTextCode,
-        "The PDF has no text layer (it looks scanned), so there is no text to use.");
+    /// <summary>The PDF has no text layer: it looks scanned, so OCR would be needed.</summary>
+    public const string NoTextCode = "attachment.no_text";
+
+    private static readonly Error Unreadable = Error.Unprocessable(UnreadableCode, "The PDF could not be read: it is damaged or protected with a password.");
+
+    private static readonly Error NoText = Error.Unprocessable(NoTextCode, "The PDF has no text layer (it looks scanned), so there is no text to use.");
 
     public static Result<string> Extract(byte[] content, CancellationToken cancellationToken)
     {
@@ -55,7 +59,7 @@ internal static class PdfText
     /// Replaces the ligature glyphs that PDF generators store as single characters (U+FB00 to U+FB06) with their letters, so
     /// that "ﬁsh" is read, searched and quoted as "fish".
     /// </summary>
-    internal static string NormalizeLigatures(string text) =>
+    public static string NormalizeLigatures(string text) =>
         text.AsSpan().IndexOfAny(LigatureCharacters) < 0
             ? text
             : text

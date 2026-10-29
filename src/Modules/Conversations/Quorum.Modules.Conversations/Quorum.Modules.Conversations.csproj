@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="PdfPig" />
+    <!-- No PdfPig here: a PDF's text is read by PdfText in Quorum.Shared, which carries the parser. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

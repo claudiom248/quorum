@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Conversations.Domain;
 using Quorum.Modules.Conversations.Extraction;
+using Quorum.Shared.Extraction;
 using Quorum.Modules.Conversations.Persistence;
 using Quorum.Modules.Conversations.Streaming;
 using Quorum.Shared.Endpoints;

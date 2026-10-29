@@ -24,7 +24,7 @@ public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
-        await WebSearchApi.UpdateConfigurationAsync(admin, new WebSearchApi.UpdateWebSearchConfigurationRequest("http://searxng.test", 1));
+        await WebSearchApi.UpdateConfigurationAsync(admin, WebSearchApi.DefaultConfiguration with { SearchUrl = "http://searxng.test", SearchTimeoutSeconds = 1 });
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
         await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
         app.Searxng.NeverAnswers();

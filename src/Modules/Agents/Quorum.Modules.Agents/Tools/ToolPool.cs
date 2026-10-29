@@ -21,6 +21,7 @@ internal sealed class PoolTool
         ToolOrigin.Rag => ToolNaming.Rag(Tool.Name),
         ToolOrigin.Lookup => ToolNaming.Lookup(Tool.Name),
         ToolOrigin.WebSearch => ToolNaming.WebSearch(Tool.Name),
+        ToolOrigin.WebFetch => ToolNaming.WebFetch(Tool.Name),
         _ => ToolNaming.Mcp(ServerName ?? throw new InvalidOperationException("An MCP tool has a server."), Tool.Name),
     };
 
@@ -52,6 +53,8 @@ internal static class ToolPool
             from lookup in lookups.DefaultIfEmpty()
             join webSearch in db.WebSearchTools.IgnoreQueryFilters() on tool.Id equals webSearch.ToolId into webSearches
             from webSearch in webSearches.DefaultIfEmpty()
+            join webFetch in db.WebFetchTools.IgnoreQueryFilters() on tool.Id equals webFetch.ToolId into webFetches
+            from webFetch in webFetches.DefaultIfEmpty()
             where tool.State == ToolState.Enabled
                   && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == tenantId)
                       || (server != null
@@ -71,7 +74,11 @@ internal static class ToolPool
                       || (webSearch != null
                           && (webSearch.Scope == ToolScopeKind.Global
                               || (webSearch.Scope == ToolScopeKind.Tenant && (webSearch.TenantId == tenantId || webSearch.ScopeTenantIds.Contains(tenantId)))
-                              || (webSearch.Scope == ToolScopeKind.Assistant && webSearch.TenantId == tenantId && webSearch.ScopeAssistantIds.Contains(assistantId)))))
+                              || (webSearch.Scope == ToolScopeKind.Assistant && webSearch.TenantId == tenantId && webSearch.ScopeAssistantIds.Contains(assistantId))))
+                      || (webFetch != null
+                          && (webFetch.Scope == ToolScopeKind.Global
+                              || (webFetch.Scope == ToolScopeKind.Tenant && (webFetch.TenantId == tenantId || webFetch.ScopeTenantIds.Contains(tenantId)))
+                              || (webFetch.Scope == ToolScopeKind.Assistant && webFetch.TenantId == tenantId && webFetch.ScopeAssistantIds.Contains(assistantId)))))
             select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
     }
 }
@@ -171,6 +178,24 @@ internal static class ToolVisibility
                           || (webSearch.Scope == ToolScopeKind.Tenant && webSearch.ScopeTenantIds.Contains(tenantId))))
             select new WebSearchToolView { Tool = tool, Binding = webSearch };
     }
+
+    /// <summary>
+    /// The web fetch tools the tenant can see with their bindings: its own and those shared with it (enabled only, as in <see cref="Tools"/>).
+    /// </summary>
+    public static IQueryable<WebFetchToolView> WebFetchTools(AgentsDbContext db)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+
+        return
+            from tool in db.Tools.IgnoreQueryFilters()
+            join webFetch in db.WebFetchTools.IgnoreQueryFilters() on tool.Id equals webFetch.ToolId
+            where tool.TenantId == tenantId
+                  || (tool.State == ToolState.Enabled
+                      && (webFetch.Scope == ToolScopeKind.Global
+                          || (webFetch.Scope == ToolScopeKind.Tenant && webFetch.ScopeTenantIds.Contains(tenantId))))
+            select new WebFetchToolView { Tool = tool, Binding = webFetch };
+    }
 }
 
 /// <summary>A rag tool with its binding.</summary>
@@ -195,4 +220,12 @@ internal sealed class WebSearchToolView
     public required Tool Tool { get; init; }
 
     public required WebSearchTool Binding { get; init; }
+}
+
+/// <summary>A web fetch tool with its binding.</summary>
+internal sealed class WebFetchToolView
+{
+    public required Tool Tool { get; init; }
+
+    public required WebFetchTool Binding { get; init; }
 }

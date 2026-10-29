@@ -1,4 +1,5 @@
 using System.Text;
+using Quorum.Shared.Extraction;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Conversations.Extraction;

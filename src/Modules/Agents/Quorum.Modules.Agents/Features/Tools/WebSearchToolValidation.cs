@@ -132,7 +132,7 @@ internal sealed partial class WebSearchToolValidation(AgentsDbContext db)
         }
 
         // The instance is the platform's, so a tool without one could only ever fail (AC-7).
-        if (await db.WebSearchConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken) is not { Url: { Length: > 0 } })
+        if (await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken) is not { SearchUrl: { Length: > 0 } })
         {
             return NotConfigured;
         }
