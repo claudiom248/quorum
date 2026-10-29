@@ -20,8 +20,9 @@ namespace Quorum.Modules.Agents.Features.Tools;
 /// <summary>
 /// The web fetch tools of the tenant (spec 006): a tool that reads the content of the pages the model names, configured by an
 /// administrator. Like the rag, lookup and web search tools they appear in <c>GET /api/tools</c>, are activated per assistant and
-/// audited; this is where their binding is edited. Unlike a web search tool, none needs the platform to have anything set: the
-/// defaults come from <see cref="WebConfiguration"/> and the tool can override them.
+/// audited; this is where their binding is edited. Unlike a web search tool, nothing here needs the platform to be set: a field the
+/// administrator leaves out is not a number but an inheritance, and the tool takes what <see cref="WebConfiguration"/> says when
+/// the call is made (spec 006, AC-13).
 /// </summary>
 internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
 {
@@ -99,7 +100,10 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
             return NotFound.ToProblem();
         }
 
-        return TypedResults.Ok(WebFetchToolDetail.From(view.Tool, view.Binding));
+        return TypedResults.Ok(WebFetchToolDetail.From(
+            view.Tool,
+            view.Binding,
+            await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken)));
     }
 
     private static async Task<Results<CreatedAtRoute<CreatedWebFetchTool>, ProblemHttpResult>> CreateAsync(
@@ -144,9 +148,10 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
             return NameTaken.ToProblem();
         }
 
-        LogSaved(logger, tool.Id, binding.MaxUrlsPerInvocation, "created");
+        var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        LogSaved(logger, tool.Id, WebFetchBinding.From(binding, web).MaxUrlsPerInvocation, "created");
         return TypedResults.CreatedAtRoute(
-            new CreatedWebFetchTool(tool.Id, Preview(tool, binding)),
+            new CreatedWebFetchTool(tool.Id, Preview(tool, binding, web)),
             "GetWebFetchTool",
             new RouteValueDictionary { ["id"] = tool.Id });
     }
@@ -195,7 +200,8 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
             return NameTaken.ToProblem();
         }
 
-        LogSaved(logger, id, binding.MaxUrlsPerInvocation, "updated");
+        var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        LogSaved(logger, id, WebFetchBinding.From(binding, web).MaxUrlsPerInvocation, "updated");
         return TypedResults.NoContent();
     }
 
@@ -212,10 +218,13 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
         return TypedResults.NoContent();
     }
 
-    /// <summary>The definition the model would get now: it depends only on the stored binding, unlike a rag tool's.</summary>
-    internal static WebFetchToolDefinitionPreview Preview(Tool tool, WebFetchTool binding)
+    /// <summary>
+    /// The definition the model would get now: the tool's own number of URLs where it has one, the platform's row where it does
+    /// not (spec 006, AC-13), unlike a rag tool's definition that comes from the catalog.
+    /// </summary>
+    internal static WebFetchToolDefinitionPreview Preview(Tool tool, WebFetchTool binding, WebConfiguration? web)
     {
-        var generated = WebFetchToolDefinition.Build(tool.Description, binding.MaxUrlsPerInvocation);
+        var generated = WebFetchToolDefinition.Build(tool.Description, WebFetchBinding.From(binding, web).MaxUrlsPerInvocation);
         var exposedName = ToolNaming.WebFetch(tool.Name);
         var characters = ToolDefinitionRenderer.Length([new ToolDefinition(exposedName, generated.Description, generated.InputSchema)]);
         using var schema = JsonDocument.Parse(generated.InputSchema);
@@ -269,16 +278,17 @@ internal sealed record WebFetchToolDetail(
     Guid Id,
     string Name,
     string Description,
-    int TokenBudgetPerPage,
-    int TotalTokenBudget,
-    int MaxUrlsPerInvocation,
-    int Timeout,
+    int? TokenBudgetPerPage,
+    int? TotalTokenBudget,
+    int? MaxUrlsPerInvocation,
+    int? Timeout,
     ScopeResponse Scope,
     string State,
     string Policy,
     WebFetchToolDefinitionPreview Definition)
 {
-    public static WebFetchToolDetail From(Tool tool, WebFetchTool binding) => new(
+    /// <param name="web">The platform's row, which the definition is resolved against; the override fields stay as the tool has them.</param>
+    public static WebFetchToolDetail From(Tool tool, WebFetchTool binding, WebConfiguration? web) => new(
         tool.Id,
         tool.Name,
         tool.Description,
@@ -289,5 +299,5 @@ internal sealed record WebFetchToolDetail(
         new ScopeResponse(binding.Scope.ToString(), binding.ScopeTenantIds, binding.ScopeAssistantIds),
         tool.State.ToString(),
         tool.Policy.ToString(),
-        WebFetchToolEndpoints.Preview(tool, binding));
+        WebFetchToolEndpoints.Preview(tool, binding, web));
 }

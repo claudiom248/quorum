@@ -21,14 +21,28 @@ internal static class WebFetchToolHash
             writer.WriteString("kind", "web_fetch");
             writer.WriteString("name", name);
             writer.WriteString("description", description);
-            writer.WriteNumber("tokenBudgetPerPage", configuration.TokenBudgetPerPage);
-            writer.WriteNumber("totalTokenBudget", configuration.TotalTokenBudget);
-            writer.WriteNumber("maxUrlsPerInvocation", configuration.MaxUrlsPerInvocation);
-            writer.WriteNumber("timeout", configuration.Timeout);
+
+            // An empty field is itself a choice: a tool that starts inheriting has another fingerprint than one that pinned the number.
+            WriteOptional("tokenBudgetPerPage", configuration.TokenBudgetPerPage);
+            WriteOptional("totalTokenBudget", configuration.TotalTokenBudget);
+            WriteOptional("maxUrlsPerInvocation", configuration.MaxUrlsPerInvocation);
+            WriteOptional("timeout", configuration.Timeout);
             writer.WriteString("scope", configuration.Scope.ToString());
             ToolHashWriter.WriteIds(writer, "scopeTenants", configuration.ScopeTenantIds);
             ToolHashWriter.WriteIds(writer, "scopeAssistants", configuration.ScopeAssistantIds);
             writer.WriteEndObject();
+
+            void WriteOptional(string field, int? value)
+            {
+                if (value is { } number)
+                {
+                    writer.WriteNumber(field, number);
+                }
+                else
+                {
+                    writer.WriteNull(field);
+                }
+            }
         }
 
         return Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));

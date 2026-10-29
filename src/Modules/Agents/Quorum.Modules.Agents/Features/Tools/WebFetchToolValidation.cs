@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools.WebFetch;
@@ -73,30 +72,28 @@ internal sealed partial class WebFetchToolValidation(AgentsDbContext db)
             policy = parsed;
         }
 
-        // A field the request left out takes the platform's current default: the Settings tabs (spec 006, AC-13) only reach a
-        // tool through this row, and the range check applies to what the request said and to the default alike.
-        var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-
-        var tokenBudgetPerPage = request.TokenBudgetPerPage ?? web?.FetchTokenBudgetPerPage ?? WebConfiguration.DefaultFetchTokenBudgetPerPage;
-        if (tokenBudgetPerPage is < WebFetchTool.MinTokenBudgetPerPage or > WebFetchTool.MaxTokenBudgetPerPage)
+        // A field that is left out stays empty: the tool inherits whatever the platform's row says when it is called (spec 006,
+        // AC-13), so nothing here resolves it to a number. Only what the administrator did write is range-checked.
+        if (request.TokenBudgetPerPage is { } tokenBudgetPerPage
+            && tokenBudgetPerPage is < WebFetchTool.MinTokenBudgetPerPage or > WebFetchTool.MaxTokenBudgetPerPage)
         {
             return InvalidTokenBudgetPerPage;
         }
 
-        var totalTokenBudget = request.TotalTokenBudget ?? web?.FetchTotalTokenBudget ?? WebConfiguration.DefaultFetchTotalTokenBudget;
-        if (totalTokenBudget is < WebFetchTool.MinTotalTokenBudget or > WebFetchTool.MaxTotalTokenBudget)
+        if (request.TotalTokenBudget is { } totalTokenBudget
+            && totalTokenBudget is < WebFetchTool.MinTotalTokenBudget or > WebFetchTool.MaxTotalTokenBudget)
         {
             return InvalidTotalTokenBudget;
         }
 
-        var maxUrls = request.MaxUrlsPerInvocation ?? web?.FetchMaxUrlsPerInvocation ?? WebConfiguration.DefaultFetchMaxUrlsPerInvocation;
-        if (maxUrls is < WebFetchTool.MinMaxUrlsPerInvocation or > WebFetchTool.MaxMaxUrlsPerInvocation)
+        if (request.MaxUrlsPerInvocation is { } maxUrls
+            && maxUrls is < WebFetchTool.MinMaxUrlsPerInvocation or > WebFetchTool.MaxMaxUrlsPerInvocation)
         {
             return InvalidMaxUrls;
         }
 
-        var timeout = request.Timeout ?? web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
-        if (timeout is < WebFetchTool.MinTimeoutSeconds or > WebFetchTool.MaxTimeoutSeconds)
+        if (request.Timeout is { } timeout
+            && timeout is < WebFetchTool.MinTimeoutSeconds or > WebFetchTool.MaxTimeoutSeconds)
         {
             return InvalidTimeout;
         }
@@ -112,10 +109,10 @@ internal sealed partial class WebFetchToolValidation(AgentsDbContext db)
             description,
             policy,
             new WebFetchToolConfiguration(
-                tokenBudgetPerPage,
-                totalTokenBudget,
-                maxUrls,
-                timeout,
+                request.TokenBudgetPerPage,
+                request.TotalTokenBudget,
+                request.MaxUrlsPerInvocation,
+                request.Timeout,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
                 scope.Value.AssistantIds));

@@ -526,7 +526,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("MaxUrlsPerInvocation")
+                    b.Property<int?>("MaxUrlsPerInvocation")
                         .HasColumnType("integer");
 
                     b.Property<string>("Scope")
@@ -545,13 +545,13 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("Timeout")
+                    b.Property<int?>("Timeout")
                         .HasColumnType("integer");
 
-                    b.Property<int>("TokenBudgetPerPage")
+                    b.Property<int?>("TokenBudgetPerPage")
                         .HasColumnType("integer");
 
-                    b.Property<int>("TotalTokenBudget")
+                    b.Property<int?>("TotalTokenBudget")
                         .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")

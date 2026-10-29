@@ -101,11 +101,17 @@ internal static class ActiveToolsQuery
                 .ToDictionaryAsync(webSearch => webSearch.ToolId, WebSearchBinding.From, cancellationToken);
 
         var webFetchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebFetch).Select(pooled => pooled.Tool.Id).ToList();
+
+        // A tool that never overrode a field inherits it now, not when it was created: the row is read with the tool, so an
+        // administrator changing the Settings tabs reaches the tools that follow it (spec 006, AC-13).
+        var webConfiguration = webFetchIds.Count == 0
+            ? null
+            : await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         var webFetchBindings = webFetchIds.Count == 0
             ? []
             : await db.WebFetchTools.IgnoreQueryFilters().AsNoTracking()
                 .Where(webFetch => webFetchIds.Contains(webFetch.ToolId))
-                .ToDictionaryAsync(webFetch => webFetch.ToolId, WebFetchBinding.From, cancellationToken);
+                .ToDictionaryAsync(webFetch => webFetch.ToolId, webFetch => WebFetchBinding.From(webFetch, webConfiguration), cancellationToken);
 
         return tools
             .Select(pooled =>

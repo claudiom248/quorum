@@ -4,7 +4,8 @@ namespace Quorum.Modules.Agents.Domain;
 /// The binding of a web fetch tool to the platform's web configuration (spec 006): how much a page costs the model, how many
 /// URLs one call may take, how long a fetch waits, and who may use the tool. The tool itself (name, description, state, policy,
 /// activation) is a <see cref="Tool"/> of origin <see cref="ToolOrigin.WebFetch"/>; this is its configuration, one row per tool.
-/// Every value here is an override of the platform's default in <see cref="WebConfiguration"/>.
+/// A number here is an override of the platform's default in <see cref="WebConfiguration"/>; <see langword="null"/> is not a value
+/// but the absence of one, so the tool follows what the row says at the time of the call (spec 006, AC-13).
 /// </summary>
 internal sealed class WebFetchTool
 {
@@ -33,17 +34,17 @@ internal sealed class WebFetchTool
     /// <summary>The owner: the only tenant that can change or delete the tool, whatever its scope.</summary>
     public Guid TenantId { get; private set; }
 
-    /// <summary>How much of one page's text the model reads at most; overrides the platform's default.</summary>
-    public int TokenBudgetPerPage { get; private set; }
+    /// <summary>How much of one page's text the model reads at most, or <see langword="null"/> to take the platform's default.</summary>
+    public int? TokenBudgetPerPage { get; private set; }
 
-    /// <summary>How much every page of one invocation costs the model together, at most; overrides the platform's default.</summary>
-    public int TotalTokenBudget { get; private set; }
+    /// <summary>How much every page of one invocation costs the model together, at most, or <see langword="null"/> for the platform's default.</summary>
+    public int? TotalTokenBudget { get; private set; }
 
-    /// <summary>The most URLs one invocation of the tool may fetch; overrides the platform's default.</summary>
-    public int MaxUrlsPerInvocation { get; private set; }
+    /// <summary>The most URLs one invocation of the tool may fetch, or <see langword="null"/> for the platform's default.</summary>
+    public int? MaxUrlsPerInvocation { get; private set; }
 
-    /// <summary>How long one URL fetch waits before it is called a failure; overrides the platform's default.</summary>
-    public int Timeout { get; private set; }
+    /// <summary>How long one URL fetch waits before it is called a failure, or <see langword="null"/> for the platform's default.</summary>
+    public int? Timeout { get; private set; }
 
     public ToolScopeKind Scope { get; private set; }
 
@@ -79,12 +80,15 @@ internal sealed class WebFetchTool
     }
 }
 
-/// <summary>What an administrator configures on a web fetch tool, validated: the content of a <see cref="WebFetchTool"/>.</summary>
+/// <summary>
+/// What an administrator configures on a web fetch tool, validated: the content of a <see cref="WebFetchTool"/>. A
+/// <see langword="null"/> is a field left out of the request, which keeps inheriting the platform's default.
+/// </summary>
 internal sealed record WebFetchToolConfiguration(
-    int TokenBudgetPerPage,
-    int TotalTokenBudget,
-    int MaxUrlsPerInvocation,
-    int Timeout,
+    int? TokenBudgetPerPage,
+    int? TotalTokenBudget,
+    int? MaxUrlsPerInvocation,
+    int? Timeout,
     ToolScopeKind Scope,
     IReadOnlyList<Guid> ScopeTenantIds,
     IReadOnlyList<Guid> ScopeAssistantIds);
