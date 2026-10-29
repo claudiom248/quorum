@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
 
 </Project>

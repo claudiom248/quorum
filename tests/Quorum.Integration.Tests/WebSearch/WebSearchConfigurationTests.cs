@@ -17,7 +17,8 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
         var config = await WebSearchApi.GetConfigurationAsync(admin);
 
         Assert.NotNull(config);
-        Assert.Equal(90, config.DefaultTimeout);
+        Assert.Null(config.SearchUrl);
+        Assert.Equal(90, config.SearchTimeoutSeconds);
     }
 
     [Fact] // AC-9
@@ -26,14 +27,18 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
 
-        var request = new WebSearchApi.UpdateWebSearchConfigurationRequest("https://searxng.example.com", 60);
+        var request = WebSearchApi.DefaultConfiguration with
+        {
+            SearchUrl = "https://searxng.example.com",
+            SearchTimeoutSeconds = 60,
+        };
         using var response = await WebSearchApi.UpdateConfigurationAsync(admin, request);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var config = await WebSearchApi.GetConfigurationAsync(admin);
-        Assert.Equal("https://searxng.example.com", config.Url);
-        Assert.Equal(60, config.DefaultTimeout);
+        Assert.Equal("https://searxng.example.com", config.SearchUrl);
+        Assert.Equal(60, config.SearchTimeoutSeconds);
     }
 
     [Fact] // AC-9
@@ -42,7 +47,7 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
 
-        var request = new WebSearchApi.UpdateWebSearchConfigurationRequest("not-a-url", 60);
+        var request = WebSearchApi.DefaultConfiguration with { SearchUrl = "not-a-url" };
         using var response = await WebSearchApi.UpdateConfigurationAsync(admin, request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -54,7 +59,11 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
 
-        var request = new WebSearchApi.UpdateWebSearchConfigurationRequest("https://searxng.example.com", 0);
+        var request = WebSearchApi.DefaultConfiguration with
+        {
+            SearchUrl = "https://searxng.example.com",
+            SearchTimeoutSeconds = 0,
+        };
         using var response = await WebSearchApi.UpdateConfigurationAsync(admin, request);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

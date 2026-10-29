@@ -1,5 +1,6 @@
 using System.Text;
 using Quorum.Modules.Conversations.Extraction;
+using Quorum.Shared.Extraction;
 using static Quorum.Integration.Tests.Attachments.DocumentFixtures;
 
 namespace Quorum.Integration.Tests.Attachments;

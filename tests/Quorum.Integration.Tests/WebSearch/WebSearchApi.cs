@@ -11,7 +11,11 @@ internal static class WebSearchApi
     /// <summary>How many engines one tool may name, as the server enforces it.</summary>
     public const int MaxEngines = 10;
 
-    public static Uri WebSearchSettings { get; } = new("/api/settings/web-search", UriKind.Relative);
+    /// <summary>The platform's one web configuration (spec 005, folded into spec 006).</summary>
+    public static Uri WebSettings { get; } = new("/api/settings/web", UriKind.Relative);
+
+    /// <summary>The web search API keeps the same name for the route; <see cref="WebSettings"/> is the shape of the unified endpoint.</summary>
+    public static Uri WebSearchSettings => WebSettings;
 
     public static Uri WebSearchTools { get; } = new("/api/tools/web-search", UriKind.Relative);
 
@@ -19,15 +23,29 @@ internal static class WebSearchApi
 
     public static object OwnTenant { get; } = new { kind = "Tenant" };
 
-    /// <summary>The SearXNG instance every web search tool needs (spec 005, AC-7).</summary>
+    /// <summary>The SearXNG instance every web search tool needs (spec 005, AC-7). Saves the whole web configuration with the platform's defaults and only the given search URL.</summary>
     public static async Task ConfigureAsync(HttpClient client, string url = "https://searxng.test") =>
-        (await UpdateConfigurationAsync(client, new UpdateWebSearchConfigurationRequest(url, 90))).EnsureSuccessStatusCode();
+        (await UpdateConfigurationAsync(client, DefaultConfiguration with { SearchUrl = url })).EnsureSuccessStatusCode();
 
-    public static async Task<WebSearchConfigurationBody> GetConfigurationAsync(HttpClient client)
-        => (await client.GetFromJsonAsync<WebSearchConfigurationBody>(WebSearchSettings, TestContext.Current.CancellationToken))!;
+    public static async Task<WebConfigurationBody> GetConfigurationAsync(HttpClient client)
+        => (await client.GetFromJsonAsync<WebConfigurationBody>(WebSettings, TestContext.Current.CancellationToken))!;
 
-    public static async Task<HttpResponseMessage> UpdateConfigurationAsync(HttpClient client, UpdateWebSearchConfigurationRequest request)
-        => await client.PutAsJsonAsync(WebSearchSettings, request, TestContext.Current.CancellationToken);
+    public static async Task<HttpResponseMessage> UpdateConfigurationAsync(HttpClient client, WebConfigurationBody request)
+        => await client.PutAsJsonAsync(WebSettings, request, TestContext.Current.CancellationToken);
+
+    /// <summary>A body carrying the platform's defaults, ready to have a few fields changed (with <c>with</c>).</summary>
+    public static readonly WebConfigurationBody DefaultConfiguration = new(
+        SearchUrl: null,
+        SearchTimeoutSeconds: 90,
+        FetchTimeoutSeconds: 30,
+        FetchMaxUrlsPerInvocation: 5,
+        FetchTokenBudgetPerPage: 4000,
+        FetchTotalTokenBudget: 20000,
+        UserAgent: "Quorum/1.0",
+        FetchDelayMs: 1000,
+        RespectRobotsTxt: true,
+        CacheEnabled: true,
+        CacheTtlMinutes: 10);
 
     public static object Body(
         string name = "web",
@@ -80,9 +98,19 @@ internal static class WebSearchApi
         return document.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
-    public sealed record WebSearchConfigurationBody(string Url, int DefaultTimeout);
-
-    public sealed record UpdateWebSearchConfigurationRequest(string Url, int DefaultTimeout);
+    /// <summary>The platform's one web configuration (spec 005, folded into spec 006).</summary>
+    public sealed record WebConfigurationBody(
+        string? SearchUrl,
+        int SearchTimeoutSeconds,
+        int FetchTimeoutSeconds,
+        int FetchMaxUrlsPerInvocation,
+        int FetchTokenBudgetPerPage,
+        int FetchTotalTokenBudget,
+        string UserAgent,
+        int FetchDelayMs,
+        bool RespectRobotsTxt,
+        bool CacheEnabled,
+        int CacheTtlMinutes);
 
     public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AssistantIds);
 

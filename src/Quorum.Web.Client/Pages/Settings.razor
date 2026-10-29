@@ -164,12 +164,14 @@
 
             @if (_webSearch)
             {
-                <MudTabPanel Text="Web search" data-tab="web-search">
-                    <form @onsubmit="SaveWebSearchAsync">
-                        <MudStack Spacing="3">
+                @* One tab for the platform's single web row: three sections of one form, saved together. *@
+                <MudTabPanel Text="Web" data-tab="web">
+                    <form @onsubmit="SaveWebAsync">
+                        <MudStack Spacing="4">
                             <MudText Typo="Typo.body2">
-                                One SearXNG instance serves the whole installation: every web search tool asks it. The address is used as you
-                                write it, and a tool cannot be created before one is set here.
+                                One row serves the whole installation: the SearXNG instance every web search asks, the defaults a web
+                                fetch tool falls back on when its own fields are left empty, and how the platform behaves towards every
+                                site it reads. A tool that overrides one of these numbers in its own form is not moved by changing it here.
                             </MudText>
 
                             @if (_webUrl is not { Length: > 0 })
@@ -179,22 +181,85 @@
                                 </MudAlert>
                             }
 
-                            <MudTextField T="string" @bind-Value="_webUrl" Label="Instance URL" Variant="Variant.Outlined" Required="true"
-                                          MaxLength="@WebSearchToolLimits.MaxUrlLength" data-web-search-url
-                                          HelperText="Where SearXNG answers, with its scheme: https://searxng.internal or http://localhost:8080." />
-                            <MudNumericField T="int" @bind-Value="_webTimeout" Label="Timeout (seconds)" Variant="Variant.Outlined"
-                                             Min="@WebSearchToolLimits.MinTimeoutSeconds" Max="@WebSearchToolLimits.MaxTimeoutSeconds" data-web-search-timeout
-                                             HelperText="How long one search may take, its retries included: past that the model is told the web is unavailable." />
+                            <MudDivider />
+                            <MudText Typo="Typo.subtitle1">Search</MudText>
+                            <MudGrid Spacing="3">
+                                <MudItem xs="12" sm="8">
+                                    <MudTextField T="string" @bind-Value="_webUrl" Label="Instance URL" Variant="Variant.Outlined" Required="true"
+                                                  MaxLength="@WebSearchToolLimits.MaxUrlLength" data-web-search-url
+                                                  HelperText="Where SearXNG answers, with its scheme: https://searxng.internal or http://localhost:8080." />
+                                </MudItem>
+                                <MudItem xs="12" sm="4">
+                                    <MudNumericField T="int" @bind-Value="_webTimeout" Label="Timeout (seconds)" Variant="Variant.Outlined"
+                                                     Min="@WebSearchToolLimits.MinTimeoutSeconds" Max="@WebSearchToolLimits.MaxTimeoutSeconds" data-web-search-timeout
+                                                     HelperText="How long one search may take, its retries included: past that the model is told the web is unavailable." />
+                                </MudItem>
+                            </MudGrid>
+
+                            <MudDivider />
+                            <MudText Typo="Typo.subtitle1">Reading defaults</MudText>
+                            <MudGrid Spacing="3">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" @bind-Value="_webFetchTimeout" Label="Timeout per page (seconds)" Variant="Variant.Outlined"
+                                                     Min="@WebConfigurationLimits.MinFetchTimeoutSeconds" Max="@WebConfigurationLimits.MaxFetchTimeoutSeconds" data-web-fetch-timeout
+                                                     HelperText="A site that does not answer in time is reported to the model as not read, and the other pages of the call are kept." />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" @bind-Value="_webFetchMaxUrls" Label="Most pages per call" Variant="Variant.Outlined"
+                                                     Min="@WebConfigurationLimits.MinFetchMaxUrlsPerInvocation" Max="@WebConfigurationLimits.MaxFetchMaxUrlsPerInvocation" data-web-fetch-urls
+                                                     HelperText="Also written into the tool's description, so the model knows the limit before it asks." />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" @bind-Value="_webFetchPerPage" Label="Tokens per page" Variant="Variant.Outlined"
+                                                     Min="@WebConfigurationLimits.MinFetchTokenBudgetPerPage" Max="@WebConfigurationLimits.MaxFetchTokenBudgetPerPage" data-web-fetch-per-page
+                                                     HelperText="The rest of a longer article is cut, and the model is told the page was shortened." />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" @bind-Value="_webFetchTotal" Label="Tokens per call" Variant="Variant.Outlined"
+                                                     Min="@WebConfigurationLimits.MinFetchTotalTokenBudget" Max="@WebConfigurationLimits.MaxFetchTotalTokenBudget" data-web-fetch-total
+                                                     HelperText="What every page of one call costs together: the later pages get what is left, or nothing." />
+                                </MudItem>
+                            </MudGrid>
+
+                            <MudDivider />
+                            <MudText Typo="Typo.subtitle1">Politeness and memory</MudText>
+                            <MudGrid Spacing="3">
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField T="string" @bind-Value="_userAgent" Label="User-Agent" Variant="Variant.Outlined" Required="true"
+                                                  MaxLength="@WebConfigurationLimits.MaxUserAgentLength" data-user-agent
+                                                  HelperText="Who the site sees asking. Quorum/1.0 says the software, not a fake browser." />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" @bind-Value="_fetchDelayMs" Label="Wait between pages (milliseconds)" Variant="Variant.Outlined"
+                                                     Min="@WebConfigurationLimits.MinFetchDelayMs" Max="@WebConfigurationLimits.MaxFetchDelayMs" data-fetch-delay
+                                                     HelperText="One reading does not send the whole batch of pages at once. Zero is allowed, and unfriendly to small sites." />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudStack Spacing="0">
+                                        <MudCheckBox T="bool" @bind-Value="_respectRobotsTxt" Label="Respect robots.txt" Color="Color.Primary" Dense="true" data-respect-robots />
+                                        <MudCheckBox T="bool" @bind-Value="_cacheEnabled" Label="Remember pages that were read" Color="Color.Primary" Dense="true" data-cache-enabled />
+                                        <MudText Typo="Typo.caption">
+                                            A site that forbids a page keeps it from the model; a robots.txt the platform cannot read blocks
+                                            nothing. Saving these settings drops what was remembered, so a change answers at once.
+                                        </MudText>
+                                    </MudStack>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField T="int" @bind-Value="_cacheTtlMinutes" Label="Remember a page for (minutes)" Variant="Variant.Outlined"
+                                                     Min="@WebConfigurationLimits.MinCacheTtlMinutes" Max="@WebConfigurationLimits.MaxCacheTtlMinutes" data-cache-ttl
+                                                     HelperText="How old a remembered page may be before the site is asked again." />
+                                </MudItem>
+                            </MudGrid>
 
                             <ProblemMessage Problem="_webProblem" />
                             @if (_webSaved)
                             {
-                                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Web search saved.</MudAlert>
+                                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Web settings saved.</MudAlert>
                             }
 
                             <MudStack Row="true" Justify="Justify.FlexEnd">
                                 <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
-                                           data-save-web-search>Save web search</MudButton>
+                                           data-save-web>Save web settings</MudButton>
                             </MudStack>
                         </MudStack>
                     </form>
@@ -233,8 +298,18 @@
     private bool _webSearch;
     private string? _webUrl;
     private int _webTimeout = WebSearchToolLimits.DefaultTimeoutSeconds;
+    private WebConfigurationInfo? _webConfiguration;
     private ApiProblem? _webProblem;
     private bool _webSaved;
+    private int _webFetchTimeout = WebConfigurationLimits.DefaultFetchTimeoutSeconds;
+    private int _webFetchMaxUrls = WebConfigurationLimits.DefaultFetchMaxUrlsPerInvocation;
+    private int _webFetchPerPage = WebConfigurationLimits.DefaultFetchTokenBudgetPerPage;
+    private int _webFetchTotal = WebConfigurationLimits.DefaultFetchTotalTokenBudget;
+    private string _userAgent = WebConfigurationLimits.DefaultUserAgent;
+    private int _fetchDelayMs = WebConfigurationLimits.DefaultFetchDelayMs;
+    private bool _respectRobotsTxt = true;
+    private bool _cacheEnabled = true;
+    private int _cacheTtlMinutes = WebConfigurationLimits.DefaultCacheTtlMinutes;
     private int _tab;
 
     private const int BehaviourTab = 1;
@@ -272,7 +347,7 @@
 
     private async Task LoadWebSearchAsync()
     {
-        var configuration = await Api.GetWebSearchConfigurationAsync();
+        var configuration = await Api.GetWebConfigurationAsync();
         if (!configuration.IsSuccess)
         {
             // Only an administrator sees the instance: as with the tools tab, a refusal simply leaves the tab out.
@@ -280,16 +355,44 @@
         }
 
         _webSearch = true;
-        _webUrl = configuration.Value.Url;
-        _webTimeout = configuration.Value.DefaultTimeout;
+        _webConfiguration = configuration.Value;
+        _webUrl = configuration.Value.SearchUrl;
+        _webTimeout = configuration.Value.SearchTimeoutSeconds;
+
+        // The Web tab is one row read at once: the instance, the fetch defaults and the properties come from the same answer.
+        _webFetchTimeout = configuration.Value.FetchTimeoutSeconds;
+        _webFetchMaxUrls = configuration.Value.FetchMaxUrlsPerInvocation;
+        _webFetchPerPage = configuration.Value.FetchTokenBudgetPerPage;
+        _webFetchTotal = configuration.Value.FetchTotalTokenBudget;
+        _userAgent = configuration.Value.UserAgent;
+        _fetchDelayMs = configuration.Value.FetchDelayMs;
+        _respectRobotsTxt = configuration.Value.RespectRobotsTxt;
+        _cacheEnabled = configuration.Value.CacheEnabled;
+        _cacheTtlMinutes = configuration.Value.CacheTtlMinutes;
     }
 
-    private async Task SaveWebSearchAsync()
+    // One form, one write: the row is the platform's single one, so a field typed here and not saved cannot be overwritten by
+    // another part of the same page, and two administrators see the same whole row.
+    private async Task SaveWebAsync()
     {
         _busy = true;
         _webProblem = null;
         _webSaved = false;
-        var result = await Api.UpdateWebSearchConfigurationAsync(_webUrl, _webTimeout);
+        var updated = (_webConfiguration ?? WebConfigurationLimits.Defaults) with
+        {
+            SearchUrl = _webUrl,
+            SearchTimeoutSeconds = _webTimeout,
+            FetchTimeoutSeconds = _webFetchTimeout,
+            FetchMaxUrlsPerInvocation = _webFetchMaxUrls,
+            FetchTokenBudgetPerPage = _webFetchPerPage,
+            FetchTotalTokenBudget = _webFetchTotal,
+            UserAgent = _userAgent,
+            FetchDelayMs = _fetchDelayMs,
+            RespectRobotsTxt = _respectRobotsTxt,
+            CacheEnabled = _cacheEnabled,
+            CacheTtlMinutes = _cacheTtlMinutes,
+        };
+        var result = await Api.UpdateWebConfigurationAsync(updated);
         _busy = false;
 
         if (!result.IsSuccess)
@@ -298,6 +401,7 @@
             return;
         }
 
+        _webConfiguration = updated;
         _webSaved = true;
     }
 

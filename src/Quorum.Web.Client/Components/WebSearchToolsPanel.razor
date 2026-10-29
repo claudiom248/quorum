@@ -1,11 +1,7 @@
-@page "/tools/web-search"
-@page "/tools/web-search/{Id}"
 @implements IDisposable
 @inject QuorumApi Api
 @inject NavigationManager Navigation
 @inject IDialogService Dialogs
-
-<PageTitle>Web search tools · Quorum</PageTitle>
 
 <ListPage Title="Web search tools"
           Description="A web search tool lets an assistant ask the platform's SearXNG instance for what is newest or for what it does not know. The instance itself is set in Settings; here you decide how a search answers: how many results, which engines, in which language, and how often one conversation may ask. Activate a tool on an assistant in its settings."
@@ -196,7 +192,7 @@
     {
         _screen = new ListScreen<WebSearchToolListItem>(
             Navigation,
-            "/tools/web-search",
+            "/tools/web/search",
             (query, cursor) => Api.ListWebSearchToolsPageAsync(query, ListScreen<WebSearchToolListItem>.PageSize, cursor),
             () => InvokeAsync(StateHasChanged));
 
@@ -206,8 +202,8 @@
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 
         // What the drawer has to warn about before anything is typed: a tool without an instance cannot be saved.
-        var instance = await Api.GetWebSearchConfigurationAsync();
-        _instanceIsSet = instance.IsSuccess && !string.IsNullOrWhiteSpace(instance.Value.Url);
+        var instance = await Api.GetWebConfigurationAsync();
+        _instanceIsSet = instance.IsSuccess && !string.IsNullOrWhiteSpace(instance.Value.SearchUrl);
 
         await _screen.ReloadAsync();
     }

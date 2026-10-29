@@ -1,10 +1,5 @@
 namespace Quorum.Web.Client.Api;
 
-/// <summary>The SearXNG instance of the platform (spec 005, AC-9).</summary>
-/// <param name="Url">Where the instance answers; <see langword="null"/> while nobody has set one.</param>
-/// <param name="DefaultTimeout">How many seconds one search may take, retries included.</param>
-public sealed record WebSearchConfigurationInfo(string? Url, int DefaultTimeout);
-
 /// <summary>The web search tool an administrator saves (spec 005).</summary>
 /// <param name="Shared"><see langword="true"/> for a tool of another tenant made visible by its scope: read-only, its binding is not shown.</param>
 public sealed record WebSearchToolListItem(

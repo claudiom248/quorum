@@ -35,9 +35,23 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
                     });
             }
 
-            if (method == HttpMethod.Get && path == "/api/settings/web-search")
+            if (method == HttpMethod.Get && path == "/api/settings/web")
             {
-                return FakeApiHandler.Json(new { url = _instanceUrl, defaultTimeout = 90 });
+                // The platform's one web row (spec 006, Amendment 1 of spec 005): the page reads it to warn that no instance is set.
+                return FakeApiHandler.Json(new
+                {
+                    searchUrl = _instanceUrl,
+                    searchTimeoutSeconds = 90,
+                    fetchTimeoutSeconds = 30,
+                    fetchMaxUrlsPerInvocation = 5,
+                    fetchTokenBudgetPerPage = 4000,
+                    fetchTotalTokenBudget = 20000,
+                    userAgent = "Quorum/1.0",
+                    fetchDelayMs = 1000,
+                    respectRobotsTxt = true,
+                    cacheEnabled = true,
+                    cacheTtlMinutes = 10,
+                });
             }
 
             if (path == "/api/assistants")
@@ -121,7 +135,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     [Fact] // AC-10
     public void TheToolsAreListedWithTheirNameDescriptionAndScope()
     {
-        var page = Visit<WebSearchTools>("/tools/web-search");
+        var page = Visit<WebTools>("/tools/web/search", p => p.Add(c => c.Section, "search"));
 
         var row = page.Find("[data-web-search-tool=research]").ParentElement!.ParentElement!;
         Assert.Contains("web_search__research", row.TextContent, StringComparison.Ordinal);
@@ -132,7 +146,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     [Fact] // AC-10
     public void AToolOfAnotherTenantIsReadOnlyInTheList()
     {
-        var page = Visit<WebSearchTools>("/tools/web-search");
+        var page = Visit<WebTools>("/tools/web/search", p => p.Add(c => c.Section, "search"));
 
         var row = page.Find("[data-web-search-tool=partner]").ParentElement!.ParentElement!;
         Assert.Contains("Shared with you", row.TextContent, StringComparison.Ordinal);
@@ -142,7 +156,11 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     [Fact] // AC-10
     public void EditingShowsTheSavedToolWithTheDefinitionTheModelGets()
     {
-        var page = Visit<WebSearchTools>($"/tools/web-search/{ToolId}", p => p.Add(c => c.Id, ToolId.ToString()));
+        var page = Visit<WebTools>($"/tools/web/search/{ToolId}", p =>
+        {
+            p.Add(c => c.Section, "search");
+            p.Add(c => c.Id, ToolId.ToString());
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-search]")));
 
         Assert.Contains("web_search__research", page.Find("[data-definition=web_search__research]").TextContent, StringComparison.Ordinal);
@@ -154,7 +172,11 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     [Fact] // AC-10
     public void SavingANewToolSendsWhatTheAdministratorTyped()
     {
-        var page = Visit<WebSearchTools>("/tools/web-search/new", p => p.Add(c => c.Id, "new"));
+        var page = Visit<WebTools>("/tools/web/search/new", p =>
+        {
+            p.Add(c => c.Section, "search");
+            p.Add(c => c.Id, "new");
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-search]")));
 
         var inputs = page.Find("[data-form=web-search]").QuerySelectorAll("input[type=text], textarea");
@@ -179,7 +201,11 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     {
         _createStatus = HttpStatusCode.BadRequest;
         _instanceUrl = null;
-        var page = Visit<WebSearchTools>("/tools/web-search/new", p => p.Add(c => c.Id, "new"));
+        var page = Visit<WebTools>("/tools/web/search/new", p =>
+        {
+            p.Add(c => c.Section, "search");
+            p.Add(c => c.Id, "new");
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-search]")));
         Assert.Contains("no search instance yet", page.Markup, StringComparison.Ordinal);
 
@@ -191,7 +217,11 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     [Fact] // AC-10
     public void DeletingAsksFirstAndThenRemovesTheTool()
     {
-        var page = Visit<WebSearchTools>($"/tools/web-search/{ToolId}", p => p.Add(c => c.Id, ToolId.ToString()));
+        var page = Visit<WebTools>($"/tools/web/search/{ToolId}", p =>
+        {
+            p.Add(c => c.Section, "search");
+            p.Add(c => c.Id, ToolId.ToString());
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-search]")));
 
         page.FindAll("[data-form=web-search] button").First(b => b.TextContent.Contains("Delete", StringComparison.Ordinal)).Click();
@@ -205,7 +235,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
     [Fact] // AC-10
     public void TheStateAndThePolicyAreChangedInTheList()
     {
-        var page = Visit<WebSearchTools>("/tools/web-search");
+        var page = Visit<WebTools>("/tools/web/search", p => p.Add(c => c.Section, "search"));
 
         page.Find("[data-web-search-tool=research]").ParentElement!.ParentElement!.QuerySelector("select")!.Change(Quorum.Web.Client.Api.ToolPolicies.Confirm);
 

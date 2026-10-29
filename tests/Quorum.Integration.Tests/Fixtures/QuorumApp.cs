@@ -13,6 +13,7 @@ using Quorum.Modules.Agents.Embeddings;
 using Quorum.Modules.Agents.Probing;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.KnowledgeBases.Features.Lookups;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
@@ -65,6 +66,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     /// <summary>The platform's SearXNG instance: tests script what it answers, or make it never answer (spec 005).</summary>
     public FakeSearxng Searxng { get; } = new();
+
+    /// <summary>The site a web fetch reads: tests script its pages and its robots.txt (spec 006).</summary>
+    public FakeWebFetchServer WebFetch { get; } = new();
 
     /// <summary>Holds the calls to Qdrant: tests set <see cref="QdrantGate.Hold"/>.</summary>
     internal QdrantGate Qdrant { get; } = new();
@@ -203,6 +207,8 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             services.AddHttpClient(QdrantConnector.HttpClientName).AddHttpMessageHandler(() => new QdrantGateHandler(Qdrant));
             // The platform's search instance is the fake above: no test reaches a real SearXNG.
             services.AddHttpClient(SearxngProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Searxng);
+            // The site a web fetch reads is the fake above: no test reaches a real web page (spec 006).
+            services.AddHttpClient(HttpWebFetchProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => WebFetch);
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);

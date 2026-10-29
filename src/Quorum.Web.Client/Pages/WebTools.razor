@@ -1,0 +1,49 @@
+@page "/tools/web"
+@page "/tools/web/{Section}"
+@page "/tools/web/{Section}/{Id}"
+@inject NavigationManager Navigation
+
+<PageTitle>Web tools · Quorum</PageTitle>
+
+@* One screen for the two kinds of web tool: the tabs choose which list shows, and each list keeps its own drawer in the
+   address so a link still opens the tool it names. Only the active panel is rendered, so one screen asks for one list. *@
+<MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-0"
+         ActivePanelIndex="@(_fetch ? 1 : 0)" ActivePanelIndexChanged="OpenSection">
+    <MudTabPanel Text="Web search" data-tab="web-search-tools">
+        @if (!_fetch)
+        {
+            <WebSearchToolsPanel Id="@_id" />
+        }
+    </MudTabPanel>
+    <MudTabPanel Text="Web fetch" data-tab="web-fetch-tools">
+        @if (_fetch)
+        {
+            <WebFetchToolsPanel Id="@_id" />
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    /// <summary>The section the address names for the reading tools; anything else is the search list.</summary>
+    private const string FetchSection = "fetch";
+
+    private string? _id;
+    private bool _fetch;
+
+    /// <summary>Which list shows: <c>search</c> (the default) or <c>fetch</c>.</summary>
+    [Parameter]
+    public string? Section { get; set; }
+
+    /// <summary>The drawer of the shown list: <c>new</c> or the id of the tool. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _fetch = string.Equals(Section, FetchSection, StringComparison.OrdinalIgnoreCase);
+        _id = Id;
+    }
+
+    private void OpenSection(int index) =>
+        Navigation.NavigateTo(index == 1 ? "/tools/web/fetch" : "/tools/web/search", replace: true);
+}

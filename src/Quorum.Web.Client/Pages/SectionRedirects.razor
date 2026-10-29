@@ -1,12 +1,38 @@
 @page "/tools"
 @page "/knowledge"
+@page "/tools/web-search"
+@page "/tools/web-search/{Id}"
+@page "/tools/web-fetch"
+@page "/tools/web-fetch/{Id}"
 @inject NavigationManager Navigation
 
 @code {
-    // The sections have no page of their own any more: the first page of each one opens.
+    private const string WebTools = "/tools/web";
+
+    // The sections have no page of their own any more: the first page of each one opens. The two web lists became one screen,
+    // and the address that named each one still arrives there with the same tool open.
     protected override void OnInitialized()
     {
         var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        var forwarded = Forward(path);
+        if (!string.Equals(forwarded, path, StringComparison.Ordinal))
+        {
+            Navigation.NavigateTo(forwarded, replace: true);
+            return;
+        }
+
         Navigation.NavigateTo(path.EndsWith("/knowledge", StringComparison.OrdinalIgnoreCase) ? "/knowledge/bases" : "/tools/mcp", replace: true);
+    }
+
+    private static string Forward(string path)
+    {
+        const string search = "/tools/web-search";
+        const string fetch = "/tools/web-fetch";
+        if (path.StartsWith(search, StringComparison.OrdinalIgnoreCase))
+        {
+            return WebTools + "/search" + path[search.Length..];
+        }
+
+        return path.StartsWith(fetch, StringComparison.OrdinalIgnoreCase) ? WebTools + "/fetch" + path[fetch.Length..] : path;
     }
 }

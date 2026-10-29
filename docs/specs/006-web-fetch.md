@@ -19,11 +19,11 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 - Supporto PDF (riuso di PdfPig, già presente nel modulo Conversations)
 - Gestione errori: timeout (30s per URL), retry con backoff, messaggi di errore al modello
 - Politeness: delay configurabile tra fetch (default 1s), User-Agent configurabile (default "Quorum/1.0"), rispetto robots.txt
-- Cache in-memory dei risultati (IMemoryCache, pattern esistente), TTL configurabile (default 10 minuti), toggle globale
+- Cache dei risultati (HybridCache, pattern di `LookupCache`: protezione stampede inclusa), TTL configurabile (default 10 minuti), toggle globale
 - Token budget per pagina (default 4000 token) e totale per invocazione (default 20000 token), con truncation e messaggio onesto se il contenuto è troppo grande
 - Citazione delle fonti nelle risposte (pattern esistente del RAG, riutilizzando MessageSource)
-- UI per la configurazione del tool web fetch (tab "Web Fetch" in Settings > Web Tools)
-- UI per le web properties globali (tab "Settings" in Settings > Web Tools): User-Agent, delay, cache, robots.txt
+- UI per la configurazione del tool web fetch (tab "Web Fetch" in Settings > Web Tools — dal Emendamento 1: sezione "Default di lettura" della tab unica "Web")
+- UI per le web properties globali (tab "Settings" in Settings > Web Tools — dal Emendamento 1: sezione "Cortesia e memoria" della tab unica "Web"): User-Agent, delay, cache, robots.txt
 
 ### Out
 
@@ -36,12 +36,19 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 
 ### Entità
 
-- **WebFetchConfiguration** (globale): configurazione globale del tool web fetch, una sola per piattaforma
-  - `DefaultTimeout` (default 30s): timeout per ogni fetch
-  - `MaxUrlsPerInvocation` (default 5): massimo numero di URL fetchabili in una singola invocazione
-  - `DefaultTokenBudgetPerPage` (default 4000): token budget per pagina
-  - `DefaultTotalTokenBudget` (default 20000): token budget totale per invocazione
-  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default
+- **WebConfiguration** (globale, unisce la vecchia `WebSearchConfiguration` della spec 005 con i default del web fetch e le web properties): una sola riga per piattaforma
+  - `SearchUrl` (stringa, opzionale): URL dell'istanza SearXNG (spec 005)
+  - `SearchTimeoutSeconds` (default 90s): timeout per le richieste di ricerca
+  - `FetchTimeoutSeconds` (default 30s, min 5, max 120): timeout per ogni fetch
+  - `FetchMaxUrlsPerInvocation` (default 5, min 1, max 10): massimo URL fetchabili in una singola invocazione
+  - `FetchTokenBudgetPerPage` (default 4000, min 500, max 20000): token budget per pagina
+  - `FetchTotalTokenBudget` (default 20000, min 2000, max 100000): token budget totale per invocazione
+  - `UserAgent` (default "Quorum/1.0", max 128 chars): User-Agent usato per tutte le richieste web (web search e web fetch)
+  - `FetchDelayMs` (default 1000, min 0, max 10000): delay in millisecondi tra fetch consecutivi
+  - `RespectRobotsTxt` (default true): se true, rispetta le regole robots.txt dei siti
+  - `CacheEnabled` (default true): se true, le pagine lette dal web fetch sono ricordate per un po' (la ricerca web non ha cache); il salvataggio della riga svuota la memoria
+  - `CacheTtlMinutes` (default 10, min 1, max 60): TTL della cache in minuti
+  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default. Un solo endpoint `/api/settings/web` (GET/PUT) espone tutti i campi; la UI li presenta in un'unica tab "Web" con tre sezioni e un solo salvataggio (Emendamento 1).
 
 - **WebFetchTool** (per tenant): configurazione del tool web fetch, simile a WebSearchTool
   - `ToolId`: riferimento al Tool (chiave primaria, relazione 1:1)
@@ -54,14 +61,6 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
   - `ScopeTenantIds` (lista Guid): tenant aggiuntivi che possono usare il tool (se Scope = Tenant)
   - `ScopeAssistantIds` (lista Guid): assistenti che possono usare il tool (se Scope = Assistant)
 
-- **WebProperties** (globale): configurazione globale delle web properties, una sola per piattaforma
-  - `UserAgent` (default "Quorum/1.0"): User-Agent usato per tutte le richieste web (web search e web fetch)
-  - `FetchDelayMs` (default 1000): delay in millisecondi tra fetch consecutivi
-  - `RespectRobotsTxt` (default true): se true, rispetta le regole robots.txt dei siti
-  - `CacheEnabled` (default true): se true, abilita la cache in-memory per web search e web fetch
-  - `CacheTtlMinutes` (default 10): TTL della cache in minuti
-  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default. Condivisa con web search (spec 005) per User-Agent, delay, cache.
-
 - **WebFetchResult**: risultato di un fetch (effimero, non persistito, cachato in-memory se CacheEnabled)
   - `Url`: URL fetchata
   - `Title`: titolo della pagina (estratto dall'HTML o dal PDF)
@@ -72,57 +71,38 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 
 ### Relazioni
 
-- `WebFetchConfiguration` è singola per piattaforma (1:1 con il sistema, senza TenantId)
+- `WebConfiguration` è singola per piattaforma (1:1 con il sistema, senza TenantId). **Unisce la `WebSearchConfiguration` della spec 005 (emendamento 1) con i default del web fetch e le web properties in un'unica riga.**
 - `WebFetchTool` ha una relazione 1:1 con `Tool` (ToolId come chiave primaria), simile a WebSearchTool
-- `WebProperties` è singola per piattaforma (1:1 con il sistema, senza TenantId). Condivisa con web search per User-Agent, delay, cache.
 - `WebFetchResult` è effimero: vive solo nel contesto della conversazione corrente (o nella cache per il TTL configurato)
 
 ### Lifecycle
 
-- `WebFetchConfiguration`: creata dall'admin del tenant default, modificabile. Non eliminabile (è una configurazione di piattaforma).
+- `WebConfiguration`: creata implicitamente dai default (la migration popola la riga singleton). Modificata dall'admin del tenant default. Non eliminabile — è una configurazione di piattaforma.
 - `WebFetchTool`: creato/modificato/eliminato da chi ha permessi di modifica sul tenant proprietario. Segue il pattern di WebSearchTool per lo scope.
-- `WebProperties`: creata dall'admin del tenant default, modificabile. Non eliminabile (è una configurazione di piattaforma).
 - `WebFetchResult`: creato dal tool durante l'esecuzione, garbage-collected alla fine della conversazione (o prima, se non serve più). Cachato in-memory per il TTL configurato se CacheEnabled.
 
 ## API Contract
 
-### Configurazione globale web fetch (admin del tenant default)
+### Configurazione globale del web (admin del tenant default)
+
+Un solo endpoint `/api/settings/web` espone tutta la configurazione globale della piattaforma per il web: istanza SearXNG (spec 005, vedi Emendamento 1), default web fetch, web properties condivise (User-Agent, delay, cache, robots.txt). La UI la espone in un'unica tab "Web" con tre sezioni e un solo salvataggio (Emendamento 1 della spec 006): la riga è una, e tre tab che riscrivevano ognuna per conto proprio perdevano le modifiche non salvate delle altre.
 
 | Verbo | Route | Request | Response | Errori |
 |-------|-------|---------|----------|--------|
-| GET | `/api/settings/web-fetch` | — | `WebFetchConfigurationResponse` | 401, 403 |
-| PUT | `/api/settings/web-fetch` | `UpdateWebFetchConfigurationRequest` | `WebFetchConfigurationResponse` | 400, 401, 403 |
+| GET | `/api/settings/web` | — | `WebConfigurationResponse` | 401, 403 |
+| PUT | `/api/settings/web` | `UpdateWebConfigurationRequest` | 204 | 400, 401, 403 |
 
-**WebFetchConfigurationResponse:**
+> **Storicamente**: prima dell'unificazione della spec 006, la parte di ricerca rispondeva su `/api/settings/web-search` (spec 005, ora rimosso) e la parte fetch su `/api/settings/web-fetch` e `/api/settings/web-properties` (proposti in una prima bozza della 006, mai spediti).
+
+**WebConfigurationResponse:**
 ```json
 {
-  "defaultTimeout": 30,
-  "maxUrlsPerInvocation": 5,
-  "defaultTokenBudgetPerPage": 4000,
-  "defaultTotalTokenBudget": 20000
-}
-```
-
-**UpdateWebFetchConfigurationRequest:**
-```json
-{
-  "defaultTimeout": 30,
-  "maxUrlsPerInvocation": 5,
-  "defaultTokenBudgetPerPage": 4000,
-  "defaultTotalTokenBudget": 20000
-}
-```
-
-### Web properties globali (admin del tenant default)
-
-| Verbo | Route | Request | Response | Errori |
-|-------|-------|---------|----------|--------|
-| GET | `/api/settings/web-properties` | — | `WebPropertiesResponse` | 401, 403 |
-| PUT | `/api/settings/web-properties` | `UpdateWebPropertiesRequest` | `WebPropertiesResponse` | 400, 401, 403 |
-
-**WebPropertiesResponse:**
-```json
-{
+  "searchUrl": "https://searxng.example.com",
+  "searchTimeoutSeconds": 90,
+  "fetchTimeoutSeconds": 30,
+  "fetchMaxUrlsPerInvocation": 5,
+  "fetchTokenBudgetPerPage": 4000,
+  "fetchTotalTokenBudget": 20000,
   "userAgent": "Quorum/1.0",
   "fetchDelayMs": 1000,
   "respectRobotsTxt": true,
@@ -131,16 +111,9 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 }
 ```
 
-**UpdateWebPropertiesRequest:**
-```json
-{
-  "userAgent": "Quorum/1.0",
-  "fetchDelayMs": 1000,
-  "respectRobotsTxt": true,
-  "cacheEnabled": true,
-  "cacheTtlMinutes": 10
-}
-```
+`searchUrl` è `null` finché l'admin non imposta un'istanza SearXNG; tutti gli altri campi rispondono sempre con il loro valore attuale, o con il default di piattaforma se nessuno li ha ancora cambiati.
+
+**UpdateWebConfigurationRequest:** la stessa shape della response — il PUT salva l'intera riga.
 
 ### Configurazione tool web fetch (chi può modificare il tenant)
 
@@ -360,3 +333,16 @@ Il tool di web fetch è invocato dal modello tramite function calling. Il contra
 ## Open Questions
 
 (nessuna)
+
+## Emendamento 1 — la configurazione del web in un solo posto (2026-10-29)
+
+Deciso rivedendo la PR #132: le impostazioni del web erano sparse su tre tab della pagina Settings e gli elenchi dei tool su due pagine distinte della NavMenu. La riga da scrivere è una sola, e lo schermo non conteneva più tutti i campi.
+
+- **Settings → una tab "Web"** (sostituisce AC-13 e AC-14): tre sezioni — Ricerca, Default di lettura, Cortesia e memoria — in una griglia a due colonne che a schermo stretto diventa una, con un solo pulsante "Save web settings" che scrive la riga intera. Le tab erano tre forme sullo stesso record: ognuna rimandava i campi letti all'apertura della pagina, quindi un valore non salvato in un'altra tab veniva sovrascritto in silenzio mentre a video restava il valore vecchio. Le tab della pagina passano da sette a cinque (Model, Behaviour, Tools, Integrations, Web).
+- **NavMenu → una voce "Web tools"** (sostituisce AC-15): la pagina `/tools/web` con due tab interne, `search` e `fetch`, che ospitano i due elenchi esistenti (`Components/WebSearchToolsPanel.razor`, `Components/WebFetchToolsPanel.razor`). L'indirizzo tiene il drawer: `/tools/web/fetch/{id}` apre lo stesso tool di prima, e i vecchi `/tools/web-search*` e `/tools/web-fetch*` sono inoltrati dalla pagina dei redirect di sezione.
+
+**AC-13 (emendata)**: Given l'admin accede a Settings, When apre la tab "Web", Then vede in una sola schermata l'istanza SearXNG, i default del web fetch e le web properties, e un solo salvataggio scrive la riga intera.
+
+**AC-14 (emendata)**: Given la stessa tab, When l'admin cambia User-Agent, delay, cache o robots.txt e salva, Then la riga è scritta per intero e la cache delle pagine lette è svuotata, così la nuova policy risponde subito.
+
+**AC-15 (emendata)**: Given l'admin accede a "/tools/web", Then vede i tool web search e i tool web fetch nella stessa schermata, su due tab, e può crearne, modificarne ed eliminarne in ciascuna.

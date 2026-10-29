@@ -13,6 +13,9 @@ internal enum ToolOrigin
 
     /// <summary>Configured by an administrator as a search of the open web through the platform's SearXNG instance; runs in-process (spec 005).</summary>
     WebSearch,
+
+    /// <summary>Configured by an administrator as a reader of the pages a search found, or of URLs the user names; runs in-process (spec 006).</summary>
+    WebFetch,
 }
 
 internal enum ToolState
@@ -121,6 +124,23 @@ internal sealed class Tool
         Id = Guid.CreateVersion7(),
         TenantId = tenantId,
         Origin = ToolOrigin.WebSearch,
+        Name = name,
+        Description = description,
+        InputSchema = "{}",
+        DefinitionHash = configurationHash,
+        State = ToolState.Enabled,
+        Policy = policy,
+    };
+
+    /// <summary>
+    /// A web fetch tool. As a rag tool's, its schema is generated from the binding when the tool is offered, so none is stored.
+    /// <paramref name="configurationHash"/> stands for the whole binding (see <c>WebFetchToolHash</c>).
+    /// </summary>
+    public static Tool CreateWebFetch(Guid tenantId, string name, string description, string configurationHash, ToolPolicy policy) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        Origin = ToolOrigin.WebFetch,
         Name = name,
         Description = description,
         InputSchema = "{}",

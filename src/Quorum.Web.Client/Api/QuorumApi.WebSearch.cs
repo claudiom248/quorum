@@ -1,14 +1,8 @@
 namespace Quorum.Web.Client.Api;
 
-// The web search tool and the platform's SearXNG instance (spec 005).
+// The web search tools (spec 005). The platform's SearXNG instance is part of the one web configuration, in QuorumApi.Web.cs.
 public sealed partial class QuorumApi
 {
-    public Task<ApiResult<WebSearchConfigurationInfo>> GetWebSearchConfigurationAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<WebSearchConfigurationInfo>("api/settings/web-search", cancellationToken);
-
-    public Task<ApiResult> UpdateWebSearchConfigurationAsync(string? url, int timeoutSeconds, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Put, "api/settings/web-search", new { url, defaultTimeout = timeoutSeconds }, setupToken: null, cancellationToken);
-
     public Task<ApiResult<List<WebSearchToolListItem>>> ListWebSearchToolsAsync(CancellationToken cancellationToken = default) =>
         ListAllAsync<WebSearchToolListItem>("api/tools/web-search", cancellationToken);
 
