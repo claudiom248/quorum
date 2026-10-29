@@ -149,9 +149,10 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
         }
 
         var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-        LogSaved(logger, tool.Id, WebFetchBinding.From(binding, web).MaxUrlsPerInvocation, "created");
+        var effective = WebFetchBinding.From(binding, web);
+        LogSaved(logger, tool.Id, effective.MaxUrlsPerInvocation, "created");
         return TypedResults.CreatedAtRoute(
-            new CreatedWebFetchTool(tool.Id, Preview(tool, binding, web)),
+            new CreatedWebFetchTool(tool.Id, Preview(tool, effective)),
             "GetWebFetchTool",
             new RouteValueDictionary { ["id"] = tool.Id });
     }
@@ -201,7 +202,8 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
         }
 
         var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-        LogSaved(logger, id, WebFetchBinding.From(binding, web).MaxUrlsPerInvocation, "updated");
+        var effective = WebFetchBinding.From(binding, web);
+        LogSaved(logger, id, effective.MaxUrlsPerInvocation, "updated");
         return TypedResults.NoContent();
     }
 
@@ -222,9 +224,9 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
     /// The definition the model would get now: the tool's own number of URLs where it has one, the platform's row where it does
     /// not (spec 006, AC-13), unlike a rag tool's definition that comes from the catalog.
     /// </summary>
-    internal static WebFetchToolDefinitionPreview Preview(Tool tool, WebFetchTool binding, WebConfiguration? web)
+    internal static WebFetchToolDefinitionPreview Preview(Tool tool, WebFetchBinding binding)
     {
-        var generated = WebFetchToolDefinition.Build(tool.Description, WebFetchBinding.From(binding, web).MaxUrlsPerInvocation);
+        var generated = WebFetchToolDefinition.Build(tool.Description, binding.MaxUrlsPerInvocation);
         var exposedName = ToolNaming.WebFetch(tool.Name);
         var characters = ToolDefinitionRenderer.Length([new ToolDefinition(exposedName, generated.Description, generated.InputSchema)]);
         using var schema = JsonDocument.Parse(generated.InputSchema);
@@ -299,5 +301,5 @@ internal sealed record WebFetchToolDetail(
         new ScopeResponse(binding.Scope.ToString(), binding.ScopeTenantIds, binding.ScopeAssistantIds),
         tool.State.ToString(),
         tool.Policy.ToString(),
-        WebFetchToolEndpoints.Preview(tool, binding, web));
+        WebFetchToolEndpoints.Preview(tool, WebFetchBinding.From(binding, web)));
 }
