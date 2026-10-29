@@ -11,25 +11,26 @@
 | Topic | Choice |
 |---|---|
 | HTML extraction | **SmartReader** (v0.11.1, port managed di Mozilla Readability, basato su AngleSharp). Estrae il contenuto principale rimuovendo nav/ads/footer, fornisce titolo, autore, data, tempo di lettura. 126K+ downloads, attivamente mantenuto. Dipendenza nuova: `AngleSharp ≥ 1.5.2` (transitiva). |
-| PDF extraction | **PdfPig** (riuso). Già presente nel modulo Conversations (`PdfText.Extract`). Stessa logica di estrazione testo page-by-page con reading order. |
+| PDF extraction | **PdfPig** (riuso). Già presente nel modulo Conversations (`PdfText.Extract`). Stessa logica di estrazione testo page-by-page con reading order. **Estratto in `Quorum.Shared`** in questo plan, così Agents e Conversations lo condividono. |
 | Cache | **HybridCache** (pattern esistente in `LookupCache`). In-memory con stampede protection, tag-based eviction, TTL configurabile. Nessuna cache distribuita per l'MVP. |
 | Token counting | `CharactersPerToken = 4` (pattern esistente in `ContextBreakdown`). Approssimazione sufficiente per il budgeting. |
-| Robots.txt | **Robots.Net** per il parsing. Rispettato quando `WebProperties.RespectRobotsTxt = true`. Fail-open in caso di errore di parsing. |
+| Robots.txt | **Robots.Net** per il parsing. Rispettato quando `WebConfiguration.RespectRobotsTxt = true`. Fail-open in caso di errore di parsing. |
 | HTTP client | `IHttpClientFactory` con named client `"quorum-web-fetch"` (pattern `SearxngProvider.HttpClientName`). Timeout per-fetch, non sul client. |
-| User-Agent | Configurabile in `WebProperties` (default `"Quorum/1.0"`). Condiviso con web search. |
-| Delay | Configurabile in `WebProperties` (default 1000ms). Per-conversazione, non globale. |
+| User-Agent | Configurabile in `WebConfiguration` (default `"Quorum/1.0"`). |
+| Delay | Configurabile in `WebConfiguration` (default 1000ms). Per-conversazione, non globale. |
 | Token budget | Per pagina: default 4000 token (≈16000 caratteri). Totale per invocazione: default 20000 token. Entrambi configurabili nel tool e nel global config. |
 | Max URL | Default 5 per invocazione, configurabile. |
 | Source citation | `MessageSource` con `KnowledgeBase = "web"` (come web search), `Title`, `Url`. Stessa `SourceNumbering` condivisa. |
 | Audit | Automatico tramite `ToolAuditEntry` (nessun lavoro aggiuntivo). |
-| UI layout | Settings > Web Tools: tabs "Web Search", "Web Fetch", "Settings". La tab "Settings" contiene le Web Properties globali (User-Agent, delay, cache, robots.txt). |
+| Config shape | **Una tabella sola `web_configuration`** con i campi search (spec 005), i default del web fetch e le web properties. Un unico endpoint `/api/settings/web` (GET/PUT). Sostituisce il vecchio `/api/settings/web-search` (Emendamento 1 della spec 005). |
+| UI layout | Settings > Web Tools: tabs "Web Search", "Web Fetch", "Web Properties". Ogni tab mostra la sua parte della stessa riga e salva l'intera config (il client UI preserva i campi delle altre tabs). |
 | Tool origin | `ToolOrigin.WebFetch` nel enum. Prefix `web_fetch__`, audit server `web_fetch`. |
 
 ## Acceptance criteria map
 | AC | Step |
 |---|---|
 | AC-1 (config globale + tool) | 2, 3, 20, 21 |
-| AC-2 (tool invocation) | 12, 17, 25, 26 |
+| AC-2 (tool invocation) | 12, 17, 24, 25 |
 | AC-3 (HTML extraction) | 14 |
 | AC-4 (PDF extraction) | 8, 13 |
 | AC-5 (unsupported content type) | 13 |
@@ -39,10 +40,10 @@
 | AC-9 (robots.txt block) | 13, 19 |
 | AC-10 (delay tra fetch) | 17 |
 | AC-11 (timeout) | 13 |
-| AC-12 (citazione fonti) | 18, 26 |
-| AC-13 (UI tab Web Fetch) | 30, 32 |
-| AC-14 (UI tab Settings/Web Properties) | 30, 32 |
-| AC-15 (UI lista tool) | 31 |
+| AC-12 (citazione fonti) | 18, 25 |
+| AC-13 (UI tab Web Fetch) | 29, 31 |
+| AC-14 (UI tab Web Properties) | 29, 31 |
+| AC-15 (UI lista tool) | 30 |
 
 ## Steps
 
@@ -50,13 +51,20 @@
 
 1. **NuGet**: aggiungere `SmartReader` e `Robots.Net` in `Directory.Packages.props`. `AngleSharp` è dipendenza transitiva di SmartReader.
 
-2. **`Domain/WebFetchConfiguration.cs`**: singleton globale (come `WebSearchConfiguration`).
-   - `SingletonId = new("00000000-0000-0000-0000-000000000002")`
-   - `DefaultTimeoutSeconds` (default 30, min 5, max 120)
-   - `DefaultMaxUrlsPerInvocation` (default 5, min 1, max 10)
-   - `DefaultTokenBudgetPerPage` (default 4000, min 500, max 20000)
-   - `DefaultTotalTokenBudget` (default 20000, min 2000, max 100000)
-   - Factory `Create(...)`, metodo `Change(...)`.
+2. **`Domain/WebConfiguration.cs` (unificato)**: singleton globale della piattaforma con **tutte** le configurazioni web non tool-specific. Sostituisce `WebSearchConfiguration` (spec 005, vedi Emendamento 1) e accorpa i default del web fetch e le web properties.
+   - `SingletonId = new("00000000-0000-0000-0000-000000000001")` (riusa il vecchio ID della spec 005)
+   - `SearchUrl`, `SearchTimeoutSeconds` (spec 005)
+   - `FetchTimeoutSeconds` (default 30, min 5, max 120)
+   - `FetchMaxUrlsPerInvocation` (default 5, min 1, max 10)
+   - `FetchTokenBudgetPerPage` (default 4000, min 500, max 20000)
+   - `FetchTotalTokenBudget` (default 20000, min 2000, max 100000)
+   - `UserAgent` (default `"Quorum/1.0"`, max 128 chars)
+   - `FetchDelayMs` (default 1000, min 0, max 10000)
+   - `RespectRobotsTxt` (default true)
+   - `CacheEnabled` (default true)
+   - `CacheTtlMinutes` (default 10, min 1, max 60)
+   - Factory `CreateDefault(...)`, metodo `Change(...)`.
+   - Sostituisce `WebSearchConfiguration.cs`.
 
 3. **`Domain/WebFetchTool.cs`**: entity con binding (come `WebSearchTool`).
    - `ToolId` (PK, 1:1 con Tool), `TenantId`
@@ -65,24 +73,17 @@
    - Factory `Create(...)`, metodo `Apply(WebFetchToolConfiguration, now)`.
    - Record `WebFetchToolConfiguration` per i dati validati.
 
-4. **`Domain/WebProperties.cs`**: singleton globale condiviso con web search.
-   - `SingletonId = new("00000000-0000-0000-0000-000000000003")`
-   - `UserAgent` (default `"Quorum/1.0"`, max 128 chars)
-   - `FetchDelayMs` (default 1000, min 0, max 10000)
-   - `RespectRobotsTxt` (default true)
-   - `CacheEnabled` (default true)
-   - `CacheTtlMinutes` (default 10, min 1, max 60)
-   - Factory `Create(...)`, metodo `Change(...)`.
+4. **`Domain/Tool.cs`**: aggiungere `ToolOrigin.WebFetch` e factory `CreateWebFetch(tenantId, name, description, configurationHash, policy)`.
 
-5. **`Domain/Tool.cs`**: aggiungere `ToolOrigin.WebFetch` e factory `CreateWebFetch(tenantId, name, description, configurationHash, policy)`.
+5. **`Persistence/AgentsDbContext.cs`**: sostituire `DbSet<WebSearchConfiguration>` con `DbSet<WebConfiguration>`; aggiungere `DbSet<WebFetchTool>`. Configurazione EF: tabella `web_configuration` (sostituisce `web_search_configuration`), tabella `web_fetch_tools`. Singleton rows con fixed ID, query filter su `WebFetchTool` per `TenantId`.
 
-6. **`Persistence/AgentsDbContext.cs`**: aggiungere `DbSet<WebFetchConfiguration>`, `DbSet<WebFetchTool>`, `DbSet<WebProperties>`. Configurazione EF: tabelle `web_fetch_configuration`, `web_fetch_tools`, `web_properties`. Singleton rows con fixed ID, query filter su `WebFetchTool` per `TenantId`.
+6. **Migration `ConsolidateWebConfiguration`** *(fatta nel Ciclo 1)*: crea `web_configuration` con tutti i campi, copia `Url`/`TimeoutSeconds` dalla vecchia `web_search_configuration`, imposta i default per i campi fetch e properties, drop la vecchia tabella. `Down` ripristina.
 
-7. **Migration**: unica `AddWebFetch` per le 3 tabelle.
+7. **Migration `AddWebFetchTools`**: crea la tabella `web_fetch_tools` (1:1 con `tools`, stesso pattern di `web_search_tools`).
 
 ### Shared
 
-8. **Estrazione `PdfText` in `Quorum.Shared`**: spostare `PdfText` da `Conversations/Extraction/PdfText.cs` a `Quorum.Shared/Extraction/PdfText.cs` (o namespace simile). Aggiornare i riferimenti nel modulo Conversations. Entrambi i moduli (Agents e Conversations) referenziano già Shared.
+8. **Estrazione `PdfText` in `Quorum.Shared`**: spostare `PdfText` da `Conversations/Extraction/PdfText.cs` a `Quorum.Shared/Extraction/PdfText.cs`. `PdfPig` è aggiunto in `Quorum.Shared.csproj`. Il modulo Conversations e il modulo Agents referenziano già Shared.
 
 ### Tool implementation
 
@@ -116,7 +117,7 @@
     - `Task<WebFetchResponse?> GetCachedAsync(string url, CancellationToken ct)`
     - `Task CacheAsync(string url, WebFetchResponse response, TimeSpan ttl, CancellationToken ct)`
     - Key: `"web-fetch:{sha256(url)}"`, tag: `"web-fetch"`.
-    - Rispetta `WebProperties.CacheEnabled`.
+    - Rispetta `WebConfiguration.CacheEnabled`.
 
 16. **`Tools/WebFetch/WebFetchRuntime.cs`**: record runtime (come `WebSearchRuntime`).
     - `WebFetchRuntime(IWebFetchProvider Provider, WebFetchCache Cache, SourceNumbering Numbering, int TimeoutSeconds, int TokenBudgetPerPage, int TotalTokenBudget, int MaxUrlsPerInvocation, int ResultLimit, TimeSpan FetchDelay, bool RespectRobotsTxt, string UserAgent, bool CacheEnabled, TimeSpan CacheTtl, Guid ConversationId)`
@@ -151,17 +152,9 @@
     - `DELETE /api/tools/web-fetch/{id}` → elimina
     - Validazione con `WebFetchToolValidation`.
 
-21. **`Features/Tools/WebFetchSettingsEndpoints.cs`**: config globale web fetch.
-    - `GET /api/settings/web-fetch` → leggi config
-    - `PUT /api/settings/web-fetch` → aggiorna config
-    - Singleton upsert (come `WebSearchSettingsEndpoints`).
+21. **`Features/Tools/WebSettingsEndpoints.cs` (sostituisce `WebSearchSettingsEndpoints.cs`)** *(fatto nel Ciclo 1)*: un unico endpoint `/api/settings/web` (GET/PUT) che legge e scrive l'intera riga di `WebConfiguration` — i campi search (spec 005), i default fetch e le web properties. Il vecchio `/api/settings/web-search` è rimosso (Emendamento 1 della spec 005).
 
-22. **`Features/Tools/WebPropertiesEndpoints.cs`**: web properties globali.
-    - `GET /api/settings/web-properties` → leggi properties
-    - `PUT /api/settings/web-properties` → aggiorna properties
-    - Singleton upsert.
-
-23. **`Features/Tools/WebFetchToolValidation.cs`**: validazione richieste.
+22. **`Features/Tools/WebFetchToolValidation.cs`**: validazione richieste tool web fetch.
     - Name: 1-40 chars, pattern `[a-z0-9][a-z0-9_-]*`
     - Description: 1-1000 chars
     - TokenBudgetPerPage: 500-20000
@@ -170,20 +163,20 @@
     - Timeout: 5-120
     - Scope: valid scope rules
 
-24. **`Tools/ToolDefinitions.cs`**: aggiungere `WebFetchPrefix = "web_fetch__"`, `WebFetchAuditServer = "web_fetch"`, metodo `WebFetch(string toolName)`.
+23. **`Tools/ToolDefinitions.cs`**: aggiungere `WebFetchPrefix = "web_fetch__"`, `WebFetchAuditServer = "web_fetch"`, metodo `WebFetch(string toolName)`.
 
-25. **`Tools/ToolPool.cs`**: aggiungere join su `db.WebFetchTools` nel pool query. Scope rule per `WebFetchTool`. Aggiungere `WebFetchTools()` in `ToolVisibility`.
+24. **`Tools/ToolPool.cs`**: aggiungere join su `db.WebFetchTools` nel pool query. Scope rule per `WebFetchTool`. Aggiungere `WebFetchTools()` in `ToolVisibility`.
 
-26. **`Tools/ActiveTools.cs`**: caricare `WebFetchBinding` per i tool web fetch. Aggiungere `WebFetchBinding?` al record `ActiveTool`. Generare definizione con `WebFetchToolDefinition.Build(...)`.
+25. **`Tools/ActiveTools.cs`**: caricare `WebFetchBinding` per i tool web fetch. Aggiungere `WebFetchBinding?` al record `ActiveTool`. Generare definizione con `WebFetchToolDefinition.Build(...)`.
 
-27. **`Tools/QuorumTool.cs`**: aggiungere case `ToolOrigin.WebFetch` in `QuorumToolFactory.Create`. Aggiungere `WebFetchRuntime?` parametro.
+26. **`Tools/QuorumTool.cs`**: aggiungere case `ToolOrigin.WebFetch` in `QuorumToolFactory.Create`. Aggiungere `WebFetchRuntime?` parametro.
 
-28. **`Chat/AssistantChat.cs`**: creare `WebFetchRuntime` se l'assistant ha tool web fetch.
-    - Leggere `WebFetchConfiguration` e `WebProperties` dal DB.
+27. **`Chat/AssistantChat.cs`**: creare `WebFetchRuntime` se l'assistant ha tool web fetch.
+    - Leggere `WebConfiguration` dal DB (la stessa riga che già serve per la ricerca).
     - Passare runtime al `toolFactory.Create(...)`.
     - Aggiungere `WebFetchQuorumTool` al check per `SearchCitationNotice`.
 
-29. **`AgentsModule.cs`**: registrare servizi.
+28. **`AgentsModule.cs`**: registrare servizi.
     - `services.AddScoped<IWebFetchProvider, HttpWebFetchProvider>()`
     - `services.AddScoped<WebFetchCache>()`
     - `services.AddScoped<RobotsCache>()`
@@ -191,39 +184,36 @@
 
 ### UI
 
-30. **`Api/WebFetchApiModels.cs`** e **`Api/QuorumApi.WebFetch.cs`**: DTOs, limits e API client methods.
-    - `WebFetchConfigurationInfo`, `WebFetchToolListItem`, `WebFetchToolDetail`, `WebFetchToolRequest`, `CreatedWebFetchTool`
-    - `WebPropertiesInfo`
+29. **`Api/WebFetchApiModels.cs`** e **`Api/QuorumApi.WebFetch.cs`**: DTOs, limits e API client methods per i tool web fetch. La config globale è già in `Api/WebApiModels.cs` e `Api/QuorumApi.Web.cs` (fatti nel Ciclo 1).
+    - `WebFetchToolListItem`, `WebFetchToolDetail`, `WebFetchToolRequest`, `CreatedWebFetchTool`
     - `WebFetchToolLimits` (costanti)
-    - Methods: `GetWebFetchConfigurationAsync`, `UpdateWebFetchConfigurationAsync`, `GetWebPropertiesAsync`, `UpdateWebPropertiesAsync`, `ListWebFetchToolsAsync`, `GetWebFetchToolAsync`, `CreateWebFetchToolAsync`, `UpdateWebFetchToolAsync`, `DeleteWebFetchToolAsync`
+    - Methods: `ListWebFetchToolsAsync`, `GetWebFetchToolAsync`, `CreateWebFetchToolAsync`, `UpdateWebFetchToolAsync`, `DeleteWebFetchToolAsync`
 
-31. **`Pages/WebFetchTools.razor`** e **`WebFetchToolForm.cs`**: list page con drawer form (come `WebSearchTools.razor`).
+30. **`Pages/WebFetchTools.razor`** e **`WebFetchToolForm.cs`**: list page con drawer form (come `WebSearchTools.razor`).
     - Lista tool con nome, descrizione, scope, stato.
     - Drawer con form: name, description, token budget, timeout, max URLs, scope, policy.
     - Route: `/tools/web-fetch`.
 
-32. **`Pages/Settings.razor`**: modificare tabs.
-    - Rinominare tab "Web search" → spostare in "Web Tools" group.
-    - Aggiungere tab "Web Fetch" per config globale web fetch.
-    - Aggiungere tab "Web Properties" per User-Agent, delay, cache, robots.txt.
+31. **`Pages/Settings.razor`**: aggiungere le tabs "Web Fetch" e "Web Properties" (la tab "Web Search" esiste già).
+    - Tab "Web Fetch": `fetchTimeoutSeconds`, `fetchMaxUrlsPerInvocation`, `fetchTokenBudgetPerPage`, `fetchTotalTokenBudget`.
+    - Tab "Web Properties": `userAgent`, `fetchDelayMs`, `respectRobotsTxt`, `cacheEnabled`, `cacheTtlMinutes`.
+    - Ogni tab carica l'intera `WebConfigurationInfo` e la rimanda integralmente nel PUT, così le altre tabs non perdono i loro campi.
 
-33. **`Components/NavMenu.razor`**: aggiornare navigazione.
-    - Sostituire "Web search tools" con "Web fetch tools" o riorganizzare in "Web Tools" group.
+32. **`Components/NavMenu.razor`**: aggiungere "Web fetch tools" sotto il group Tools.
 
 ### Tests
 
-34. **`tests/.../Fixtures/FakeWebServer.cs`**: fake HTTP server per test fetch.
+33. **`tests/.../Fixtures/FakeWebServer.cs`**: fake HTTP server per test fetch.
     - Serve HTML con contenuto noto, PDF, contenuti non supportati.
     - Supporto robots.txt configurabile.
     - Delay configurabile per test timeout.
 
-35. **`tests/.../WebFetch/WebFetchConfigurationTests.cs`**: test config globale e web properties.
-    - GET/PUT settings, singleton behavior, validazione.
+34. **`tests/.../WebFetch/WebFetchConfigurationTests.cs`** *(fatto nel Ciclo 1)*: test dei campi fetch e properties della `WebConfiguration` unificata.
 
-36. **`tests/.../WebFetch/WebFetchToolConfigurationTests.cs`**: test CRUD tool.
+35. **`tests/.../WebFetch/WebFetchToolConfigurationTests.cs`**: test CRUD tool.
     - Create, list, get, update, delete, scope, validazione.
 
-37. **`tests/.../WebFetch/WebFetchToolCallTests.cs`**: test invocazione tool.
+36. **`tests/.../WebFetch/WebFetchToolCallTests.cs`**: test invocazione tool.
     - AC-2: fetch singolo URL HTML, risultato con contenuto.
     - AC-3: estrazione HTML rimuove nav/ads.
     - AC-4: fetch PDF, estrazione testo.
@@ -233,19 +223,19 @@
     - AC-11: timeout → errore per-URL.
     - AC-12: fonti citate con MessageSource.
 
-38. **`tests/.../WebFetch/WebFetchToolLimitsTests.cs`**: test token budget.
+37. **`tests/.../WebFetch/WebFetchToolLimitsTests.cs`**: test token budget.
     - AC-6: contenuto > token budget per pagina → troncato.
     - AC-7: somma > token budget totale → pagine troncate in ordine.
     - Max URL superato → errore.
 
-39. **`tests/.../WebFetch/WebFetchCacheTests.cs`**: test cache.
+38. **`tests/.../WebFetch/WebFetchCacheTests.cs`**: test cache.
     - AC-8: cache hit → nessuna seconda richiesta HTTP.
     - Cache disabled → sempre fetch.
     - TTL scaduto → nuovo fetch.
 
 ### Verification
 
-40. `dotnet build -c Release` e `dotnet format --verify-no-changes`. Suite completa dei test.
+39. `dotnet build -c Release` e `dotnet format --verify-no-changes`. Suite completa dei test.
 
 ## Risks
 - **SmartReader qualità estrazione**: alcuni siti con layout complessi potrebbero non essere estratti bene. Mitigazione: fallback su AngleSharp puro per text content se SmartReader restituisce vuoto.
@@ -253,7 +243,8 @@
 - **PDF di grandi dimensioni**: un PDF con centinaia di pagine potrebbe superare il token budget. Mitigazione: estrazione page-by-page con stop quando il budget è raggiunto.
 - **Cache stampede**: HybridCache ha stampede protection nativa, ma il primo fetch di una URL popolare potrebbe essere lento. Mitigazione: il delay tra fetch e il timeout bounding limitano l'impatto.
 - **Migration conflict**: se un'altra migration è stata aggiunta al modulo Agents nel frattempo. Mitigazione: rebasing sul main più recente prima di migrare.
-- **PdfPig cross-module dependency**: `PdfText` è nel modulo Conversations, il tool è in Agents. **Decisione**: estrarre `PdfText` in `Quorum.Shared` (dove già vivono utility condivise). Entrambi i moduli referenziano Shared.
+- **Breaking change API `/api/settings/web-search`**: rimosso, sostituito da `/api/settings/web`. Non è ancora in produzione (PR #129 appena mergiata, non deployata). Spec 005 aggiornata con Emendamento 1.
+- **UI last-write-wins**: ogni tab della UI fa PUT dell'intera config; se due admin salvano tabs diverse in parallelo, l'ultimo vince e perde i campi dell'altro. Accettato per l'MVP, coerente con il pattern attuale. Da rivedere se serve concurrency.
 
 ## Open Questions
 None.

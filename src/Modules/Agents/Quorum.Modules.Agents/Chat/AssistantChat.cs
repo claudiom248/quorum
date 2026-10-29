@@ -173,15 +173,15 @@ internal sealed class AssistantChat(
         WebSearchRuntime? webSearch = null;
         if (numbering is not null && active.Any(tool => tool.WebSearch is not null))
         {
-            var instance = await db.WebSearchConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-            var seconds = instance?.TimeoutSeconds ?? WebSearchConfiguration.DefaultTimeoutSeconds;
+            var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            var seconds = web?.SearchTimeoutSeconds ?? WebConfiguration.DefaultSearchTimeoutSeconds;
 
             // A search that outlives the tenant's timeout on one call would be cut by the invoker, whose message says less than ours: ask for less.
             var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : seconds;
             webSearch = new WebSearchRuntime(
                 webSearchProvider,
                 numbering,
-                instance?.Url,
+                web?.SearchUrl,
                 Math.Min(seconds, callSeconds),
                 limits.MaxResultCharacters,
                 conversationId,

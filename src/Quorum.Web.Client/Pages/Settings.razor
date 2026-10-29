@@ -228,6 +228,7 @@
     private bool _webSearch;
     private string? _webUrl;
     private int _webTimeout = WebSearchToolLimits.DefaultTimeoutSeconds;
+    private WebConfigurationInfo? _webConfiguration;
     private ApiProblem? _webProblem;
     private bool _webSaved;
     private int _tab;
@@ -267,7 +268,7 @@
 
     private async Task LoadWebSearchAsync()
     {
-        var configuration = await Api.GetWebSearchConfigurationAsync();
+        var configuration = await Api.GetWebConfigurationAsync();
         if (!configuration.IsSuccess)
         {
             // Only an administrator sees the instance: as with the tools tab, a refusal simply leaves the tab out.
@@ -275,8 +276,9 @@
         }
 
         _webSearch = true;
-        _webUrl = configuration.Value.Url;
-        _webTimeout = configuration.Value.DefaultTimeout;
+        _webConfiguration = configuration.Value;
+        _webUrl = configuration.Value.SearchUrl;
+        _webTimeout = configuration.Value.SearchTimeoutSeconds;
     }
 
     private async Task SaveWebSearchAsync()
@@ -284,7 +286,13 @@
         _busy = true;
         _webProblem = null;
         _webSaved = false;
-        var result = await Api.UpdateWebSearchConfigurationAsync(_webUrl, _webTimeout);
+        // Every tab saves the whole row: the other fields keep the value the app read at the start of this page.
+        var updated = (_webConfiguration ?? WebConfigurationLimits.Defaults) with
+        {
+            SearchUrl = _webUrl,
+            SearchTimeoutSeconds = _webTimeout,
+        };
+        var result = await Api.UpdateWebConfigurationAsync(updated);
         _busy = false;
 
         if (!result.IsSuccess)
@@ -293,6 +301,7 @@
             return;
         }
 
+        _webConfiguration = updated;
         _webSaved = true;
     }
 

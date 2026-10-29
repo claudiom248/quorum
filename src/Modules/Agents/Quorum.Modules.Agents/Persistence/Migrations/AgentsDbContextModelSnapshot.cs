@@ -469,24 +469,53 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("tool_settings", "agents");
                 });
 
-            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchConfiguration", b =>
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebConfiguration", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("TimeoutSeconds")
+                    b.Property<bool>("CacheEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("CacheTtlMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<int>("FetchDelayMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FetchMaxUrlsPerInvocation")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FetchTimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FetchTokenBudgetPerPage")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FetchTotalTokenBudget")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("RespectRobotsTxt")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SearchTimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SearchUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Url")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
+                    b.Property<string>("UserAgent")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("web_search_configuration", "agents");
+                    b.ToTable("web_configuration", "agents");
                 });
 
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.WebSearchTool", b =>

@@ -206,8 +206,8 @@
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 
         // What the drawer has to warn about before anything is typed: a tool without an instance cannot be saved.
-        var instance = await Api.GetWebSearchConfigurationAsync();
-        _instanceIsSet = instance.IsSuccess && !string.IsNullOrWhiteSpace(instance.Value.Url);
+        var instance = await Api.GetWebConfigurationAsync();
+        _instanceIsSet = instance.IsSuccess && !string.IsNullOrWhiteSpace(instance.Value.SearchUrl);
 
         await _screen.ReloadAsync();
     }

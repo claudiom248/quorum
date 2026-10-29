@@ -29,7 +29,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<LookupTool> LookupTools => Set<LookupTool>();
 
-    public DbSet<WebSearchConfiguration> WebSearchConfigurations => Set<WebSearchConfiguration>();
+    public DbSet<WebConfiguration> WebConfigurations => Set<WebConfiguration>();
 
     public DbSet<WebSearchTool> WebSearchTools => Set<WebSearchTool>();
 
@@ -115,13 +115,14 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             lookup.HasQueryFilter(l => l.TenantId == CurrentTenantId);
         });
 
-        // Global on purpose: no tenant filter, because the platform has one SearXNG instance and every tenant searches with it (spec 005).
-        modelBuilder.Entity<WebSearchConfiguration>(configuration =>
+        // Global on purpose: no tenant filter, because the platform has one web configuration and every tenant reads it (specs 005, 006).
+        modelBuilder.Entity<WebConfiguration>(configuration =>
         {
-            configuration.ToTable("web_search_configuration");
+            configuration.ToTable("web_configuration");
             configuration.HasKey(c => c.Id);
             configuration.Property(c => c.Id).ValueGeneratedNever();
-            configuration.Property(c => c.Url).HasMaxLength(McpServerRules.MaxUrlLength);
+            configuration.Property(c => c.SearchUrl).HasMaxLength(McpServerRules.MaxUrlLength);
+            configuration.Property(c => c.UserAgent).HasMaxLength(WebConfiguration.MaxUserAgentLength);
         });
 
         modelBuilder.Entity<WebSearchTool>(webSearch =>

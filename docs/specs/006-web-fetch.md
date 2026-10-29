@@ -36,12 +36,19 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 
 ### Entità
 
-- **WebFetchConfiguration** (globale): configurazione globale del tool web fetch, una sola per piattaforma
-  - `DefaultTimeout` (default 30s): timeout per ogni fetch
-  - `MaxUrlsPerInvocation` (default 5): massimo numero di URL fetchabili in una singola invocazione
-  - `DefaultTokenBudgetPerPage` (default 4000): token budget per pagina
-  - `DefaultTotalTokenBudget` (default 20000): token budget totale per invocazione
-  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default
+- **WebConfiguration** (globale, unisce la vecchia `WebSearchConfiguration` della spec 005 con i default del web fetch e le web properties): una sola riga per piattaforma
+  - `SearchUrl` (stringa, opzionale): URL dell'istanza SearXNG (spec 005)
+  - `SearchTimeoutSeconds` (default 90s): timeout per le richieste di ricerca
+  - `FetchTimeoutSeconds` (default 30s, min 5, max 120): timeout per ogni fetch
+  - `FetchMaxUrlsPerInvocation` (default 5, min 1, max 10): massimo URL fetchabili in una singola invocazione
+  - `FetchTokenBudgetPerPage` (default 4000, min 500, max 20000): token budget per pagina
+  - `FetchTotalTokenBudget` (default 20000, min 2000, max 100000): token budget totale per invocazione
+  - `UserAgent` (default "Quorum/1.0", max 128 chars): User-Agent usato per tutte le richieste web (web search e web fetch)
+  - `FetchDelayMs` (default 1000, min 0, max 10000): delay in millisecondi tra fetch consecutivi
+  - `RespectRobotsTxt` (default true): se true, rispetta le regole robots.txt dei siti
+  - `CacheEnabled` (default true): se true, abilita la cache in-memory per web search e web fetch
+  - `CacheTtlMinutes` (default 10, min 1, max 60): TTL della cache in minuti
+  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default. Un solo endpoint `/api/settings/web` (GET/PUT) espone tutti i campi; la UI presenta tre tabs (Web Search, Web Fetch, Web Properties) che condividono lo stesso stato.
 
 - **WebFetchTool** (per tenant): configurazione del tool web fetch, simile a WebSearchTool
   - `ToolId`: riferimento al Tool (chiave primaria, relazione 1:1)
@@ -54,14 +61,6 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
   - `ScopeTenantIds` (lista Guid): tenant aggiuntivi che possono usare il tool (se Scope = Tenant)
   - `ScopeAssistantIds` (lista Guid): assistenti che possono usare il tool (se Scope = Assistant)
 
-- **WebProperties** (globale): configurazione globale delle web properties, una sola per piattaforma
-  - `UserAgent` (default "Quorum/1.0"): User-Agent usato per tutte le richieste web (web search e web fetch)
-  - `FetchDelayMs` (default 1000): delay in millisecondi tra fetch consecutivi
-  - `RespectRobotsTxt` (default true): se true, rispetta le regole robots.txt dei siti
-  - `CacheEnabled` (default true): se true, abilita la cache in-memory per web search e web fetch
-  - `CacheTtlMinutes` (default 10): TTL della cache in minuti
-  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default. Condivisa con web search (spec 005) per User-Agent, delay, cache.
-
 - **WebFetchResult**: risultato di un fetch (effimero, non persistito, cachato in-memory se CacheEnabled)
   - `Url`: URL fetchata
   - `Title`: titolo della pagina (estratto dall'HTML o dal PDF)
@@ -72,57 +71,38 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 
 ### Relazioni
 
-- `WebFetchConfiguration` è singola per piattaforma (1:1 con il sistema, senza TenantId)
+- `WebConfiguration` è singola per piattaforma (1:1 con il sistema, senza TenantId). **Unisce la `WebSearchConfiguration` della spec 005 (emendamento 1) con i default del web fetch e le web properties in un'unica riga.**
 - `WebFetchTool` ha una relazione 1:1 con `Tool` (ToolId come chiave primaria), simile a WebSearchTool
-- `WebProperties` è singola per piattaforma (1:1 con il sistema, senza TenantId). Condivisa con web search per User-Agent, delay, cache.
 - `WebFetchResult` è effimero: vive solo nel contesto della conversazione corrente (o nella cache per il TTL configurato)
 
 ### Lifecycle
 
-- `WebFetchConfiguration`: creata dall'admin del tenant default, modificabile. Non eliminabile (è una configurazione di piattaforma).
+- `WebConfiguration`: creata implicitamente dai default (la migration popola la riga singleton). Modificata dall'admin del tenant default. Non eliminabile — è una configurazione di piattaforma.
 - `WebFetchTool`: creato/modificato/eliminato da chi ha permessi di modifica sul tenant proprietario. Segue il pattern di WebSearchTool per lo scope.
-- `WebProperties`: creata dall'admin del tenant default, modificabile. Non eliminabile (è una configurazione di piattaforma).
 - `WebFetchResult`: creato dal tool durante l'esecuzione, garbage-collected alla fine della conversazione (o prima, se non serve più). Cachato in-memory per il TTL configurato se CacheEnabled.
 
 ## API Contract
 
-### Configurazione globale web fetch (admin del tenant default)
+### Configurazione globale del web (admin del tenant default)
+
+Un solo endpoint `/api/settings/web` espone tutta la configurazione globale della piattaforma per il web: istanza SearXNG (spec 005, vedi Emendamento 1), default web fetch, web properties condivise (User-Agent, delay, cache, robots.txt). La UI presenta tre tabs (Web Search, Web Fetch, Web Properties) che leggono e scrivono la stessa riga.
 
 | Verbo | Route | Request | Response | Errori |
 |-------|-------|---------|----------|--------|
-| GET | `/api/settings/web-fetch` | — | `WebFetchConfigurationResponse` | 401, 403 |
-| PUT | `/api/settings/web-fetch` | `UpdateWebFetchConfigurationRequest` | `WebFetchConfigurationResponse` | 400, 401, 403 |
+| GET | `/api/settings/web` | — | `WebConfigurationResponse` | 401, 403 |
+| PUT | `/api/settings/web` | `UpdateWebConfigurationRequest` | 204 | 400, 401, 403 |
 
-**WebFetchConfigurationResponse:**
+> **Storicamente**: prima dell'unificazione della spec 006, la parte di ricerca rispondeva su `/api/settings/web-search` (spec 005, ora rimosso) e la parte fetch su `/api/settings/web-fetch` e `/api/settings/web-properties` (proposti in una prima bozza della 006, mai spediti).
+
+**WebConfigurationResponse:**
 ```json
 {
-  "defaultTimeout": 30,
-  "maxUrlsPerInvocation": 5,
-  "defaultTokenBudgetPerPage": 4000,
-  "defaultTotalTokenBudget": 20000
-}
-```
-
-**UpdateWebFetchConfigurationRequest:**
-```json
-{
-  "defaultTimeout": 30,
-  "maxUrlsPerInvocation": 5,
-  "defaultTokenBudgetPerPage": 4000,
-  "defaultTotalTokenBudget": 20000
-}
-```
-
-### Web properties globali (admin del tenant default)
-
-| Verbo | Route | Request | Response | Errori |
-|-------|-------|---------|----------|--------|
-| GET | `/api/settings/web-properties` | — | `WebPropertiesResponse` | 401, 403 |
-| PUT | `/api/settings/web-properties` | `UpdateWebPropertiesRequest` | `WebPropertiesResponse` | 400, 401, 403 |
-
-**WebPropertiesResponse:**
-```json
-{
+  "searchUrl": "https://searxng.example.com",
+  "searchTimeoutSeconds": 90,
+  "fetchTimeoutSeconds": 30,
+  "fetchMaxUrlsPerInvocation": 5,
+  "fetchTokenBudgetPerPage": 4000,
+  "fetchTotalTokenBudget": 20000,
   "userAgent": "Quorum/1.0",
   "fetchDelayMs": 1000,
   "respectRobotsTxt": true,
@@ -131,16 +111,9 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 }
 ```
 
-**UpdateWebPropertiesRequest:**
-```json
-{
-  "userAgent": "Quorum/1.0",
-  "fetchDelayMs": 1000,
-  "respectRobotsTxt": true,
-  "cacheEnabled": true,
-  "cacheTtlMinutes": 10
-}
-```
+`searchUrl` è `null` finché l'admin non imposta un'istanza SearXNG; tutti gli altri campi rispondono sempre con il loro valore attuale, o con il default di piattaforma se nessuno li ha ancora cambiati.
+
+**UpdateWebConfigurationRequest:** la stessa shape della response — il PUT salva l'intera riga.
 
 ### Configurazione tool web fetch (chi può modificare il tenant)
 
