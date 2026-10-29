@@ -1,0 +1,386 @@
+@page "/tools/web-fetch"
+@page "/tools/web-fetch/{Id}"
+@implements IDisposable
+@inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<PageTitle>Web fetch tools · Quorum</PageTitle>
+
+<ListPage Title="Web fetch tools"
+          Description="A web fetch tool lets an assistant read the pages themselves: a search gives the model a snippet, this gives it what the article says. The wait between fetches, the identity the platform announces and the budgets a tool falls back on are set in Settings; here you decide what one tool allows. Activate a tool on an assistant in its settings."
+          AddLabel="Add web fetch tool" OnAdd="() => _screen.OpenDrawer(ListScreen<WebFetchToolListItem>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No web fetch tool is configured yet" EmptyText="Add one to let an assistant read a page instead of guessing from a snippet.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+                   StatusOptions="StatusOptions" SearchPlaceholder="Search by name or description" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem ?? _problem : _problem" />
+        <MudTable T="WebFetchToolListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="web-fetch">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>State</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="tool">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-fetch-tool="@tool.Name">web_fetch__@tool.Name</MudLink>
+                    <div class="tool-row-description">@tool.Description</div>
+                </MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Assistants="_assistants" Shared="tool.Shared" /></MudTd>
+                <MudTd DataLabel="State">
+                    <ToolStateCell @key="(tool.Id, _rowGeneration)" Tool="AsToolInfo(tool)" ReadOnly="tool.Shared" Busy="_busy" OnChange="ChangeToolAsync" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_screen.Cursor is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="_screen.Loading" OnClick="_screen.LoadMoreAsync">Load more</MudButton>
+        }
+    </ChildContent>
+</ListPage>
+
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="IsDirty" OnClose="_screen.CloseDrawer">
+    @if (_form is null)
+    {
+        @if (_drawerProblem is not null)
+        {
+            <ProblemMessage Problem="_drawerProblem" />
+        }
+        else
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+    }
+    else
+    {
+        var form = _form;
+        <div data-form="web-fetch">
+            <form @onsubmit="SaveAsync">
+                <MudStack Spacing="3">
+                    @if (_web is not null)
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                            A field you leave empty follows the platform, which allows @_web.FetchTokenBudgetPerPage tokens a page,
+                            @_web.FetchTotalTokenBudget in one call, @_web.FetchMaxUrlsPerInvocation pages and @_web.FetchTimeoutSeconds seconds
+                            each. Change them in <MudLink Href="settings">Settings</MudLink>.
+                        </MudAlert>
+                    }
+
+                    <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@WebFetchToolLimits.MaxNameLength"
+                                  HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as web_fetch__name." />
+                    <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3"
+                                  MaxLength="@WebFetchToolLimits.MaxDescriptionLength"
+                                  HelperText="For the model: when to read a page instead of answering from a search result or a knowledge base." />
+
+                    <MudNumericField T="int?" @bind-Value="form.TokenBudgetPerPage" Label="Tokens per page" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinTokenBudgetPerPage" Max="@WebFetchToolLimits.MaxTokenBudgetPerPage" data-web-fetch-per-page
+                                     HelperText="How much of one article the model reads. Leave it empty to take the platform's default." />
+                    <MudNumericField T="int?" @bind-Value="form.TotalTokenBudget" Label="Tokens per call" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinTotalTokenBudget" Max="@WebFetchToolLimits.MaxTotalTokenBudget" data-web-fetch-total
+                                     HelperText="What every page of one call costs together: the later pages get what is left. Empty takes the platform's default." />
+                    <MudNumericField T="int?" @bind-Value="form.MaxUrlsPerInvocation" Label="Most pages per call" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinMaxUrlsPerInvocation" Max="@WebFetchToolLimits.MaxMaxUrlsPerInvocation" data-web-fetch-urls
+                                     HelperText="The model is told this number in the tool's description. Empty takes the platform's default." />
+                    <MudNumericField T="int?" @bind-Value="form.Timeout" Label="Timeout per page (seconds)" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinTimeoutSeconds" Max="@WebFetchToolLimits.MaxTimeoutSeconds" data-web-fetch-timeout
+                                     HelperText="How long one site may take before the page is reported as not read. Empty takes the platform's default." />
+
+                    <label class="tool-policy">Policy
+                        <select aria-label="Policy" @bind="form.Policy">
+                            <option value="@ToolPolicies.Auto">Run without asking</option>
+                            <option value="@ToolPolicies.Confirm">Ask before running</option>
+                        </select>
+                    </label>
+
+                    <ScopePicker Form="form.Scope" Assistants="_assistants" Tenants="_tenants" Subject="tool"
+                                 GlobalWarning="Every tenant of this installation will see the tool and may read pages through it." />
+
+                    @if (_formProblems.Count > 0)
+                    {
+                        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                            <ul class="problem-list">
+                                @foreach (var message in _formProblems)
+                                {
+                                    <li>@message</li>
+                                }
+                            </ul>
+                        </MudAlert>
+                    }
+
+                    <ProblemMessage Problem="_formProblem" />
+
+                    <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                        @if (!form.IsNew)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy" OnClick="DeleteAsync" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                            <MudSpacer />
+                        }
+
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
+                                   data-save-web-fetch-tool>Save</MudButton>
+                    </MudStack>
+
+                    @if (_definition is not null)
+                    {
+                        <MudDivider />
+                        <MudText Typo="Typo.subtitle2">Definition the model gets</MudText>
+                        <div data-definition="@_definition.Name">
+                            <div class="tool-hint">
+                                <span class="tool-name">@_definition.Name</span> · @RagToolView.SizeText(_definition.EstimatedTokens)
+                            </div>
+                            <div class="tool-row-description">@_definition.Description</div>
+                            <details class="tool-detail">
+                                <summary>Input schema</summary>
+                                <pre class="tool-pre">@RagToolView.FormatSchema(_definition.InputSchema)</pre>
+                            </details>
+                        </div>
+                    }
+                </MudStack>
+            </form>
+        </div>
+    }
+</ListDrawer>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> StatusOptions =
+    [
+        new(ToolStates.Enabled, "Enabled"),
+        new(ToolStates.Disabled, "Disabled"),
+        new(ToolStates.PendingReview, "To review"),
+    ];
+
+    private ListDrawer? _drawer;
+    private ListScreen<WebFetchToolListItem> _screen = null!;
+    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<TenantSummary>? _tenants;
+    private WebConfigurationInfo? _web;
+    private ApiProblem? _problem;
+    private ApiProblem? _drawerProblem;
+    private ApiProblem? _formProblem;
+    private IReadOnlyList<string> _formProblems = [];
+    private bool _busy;
+    private int _rowGeneration;
+    private string? _notice;
+    private WebFetchToolForm? _form;
+    private string _initial = string.Empty;
+    private WebFetchToolDefinition? _definition;
+    private string? _openedId;
+
+    /// <summary>The drawer: <c>new</c> or the id of the tool. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _form is null ? "Web fetch tool" : _form.IsNew ? "Add web fetch tool" : $"Edit web_fetch__{_form.OriginalName}";
+
+    private bool IsDirty => _form is not null && !string.Equals(_initial, Snapshot(), StringComparison.Ordinal);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _screen = new ListScreen<WebFetchToolListItem>(
+            Navigation,
+            "/tools/web-fetch",
+            (query, cursor) => Api.ListWebFetchToolsPageAsync(query, ListScreen<WebFetchToolListItem>.PageSize, cursor),
+            () => InvokeAsync(StateHasChanged));
+
+        var assistants = await Api.ListAssistantsAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var tenants = await Api.ListTenantsAsync();
+        _tenants = tenants.IsSuccess ? tenants.Value : null;
+
+        // The drawer says what an empty field will fall back on, so the row is read before anything is typed.
+        var configuration = await Api.GetWebConfigurationAsync();
+        _web = configuration.IsSuccess ? configuration.Value : null;
+
+        await _screen.ReloadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _formProblems = [];
+        _formProblem = null;
+        _drawerProblem = null;
+        _definition = null;
+
+        if (Id is null)
+        {
+            _form = null;
+        }
+        else if (Id == ListScreen<WebFetchToolListItem>.NewId)
+        {
+            _form = new WebFetchToolForm();
+            _initial = Snapshot();
+        }
+        else if (Guid.TryParse(Id, out var id))
+        {
+            _form = null;
+            var detail = await Api.GetWebFetchToolAsync(id);
+            if (!detail.IsSuccess)
+            {
+                _drawerProblem = detail.Problem;
+            }
+            else
+            {
+                Open(detail.Value);
+            }
+        }
+        else
+        {
+            _form = null;
+            _drawerProblem = new ApiProblem(404, "web_fetch.not_found", "There is no such tool.", new Dictionary<string, string[]>());
+        }
+    }
+
+    private void Open(WebFetchToolDetail detail)
+    {
+        _form = WebFetchToolForm.From(detail);
+        _definition = detail.Definition;
+        _initial = Snapshot();
+    }
+
+    private string Snapshot() => System.Text.Json.JsonSerializer.Serialize(_form!.ToRequest());
+
+    // The tool row lets the admin enable, disable and set the policy like for any other tool.
+    private static ToolInfo AsToolInfo(WebFetchToolListItem tool) => new(
+        tool.Id,
+        "WebFetch",
+        null,
+        tool.Name,
+        tool.Description,
+        tool.State,
+        tool.Policy,
+        null);
+
+    private async Task ChangeToolAsync((ToolInfo Tool, string State, string Policy) change)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Api.UpdateToolAsync(change.Tool.Id, change.State, change.Policy);
+            if (!result.IsSuccess)
+            {
+                // The control already shows what the admin chose: draw the rows again from what the server has.
+                _problem = result.Problem;
+                _rowGeneration++;
+            }
+
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task SaveAsync()
+    {
+        var form = _form!;
+        _formProblem = null;
+        _formProblems = form.Problems();
+        if (_formProblems.Count > 0)
+        {
+            return;
+        }
+
+        var request = form.ToRequest();
+
+        await RunAsync(async () =>
+        {
+            Guid id;
+            if (form.Id is { } existing)
+            {
+                var updated = await Api.UpdateWebFetchToolAsync(existing, request);
+                if (!updated.IsSuccess)
+                {
+                    _formProblem = updated.Problem;
+                    return;
+                }
+
+                id = existing;
+            }
+            else
+            {
+                var created = await Api.CreateWebFetchToolAsync(request);
+                if (!created.IsSuccess)
+                {
+                    _formProblem = created.Problem;
+                    return;
+                }
+
+                id = created.Value.Id;
+            }
+
+            // The drawer stays open on the saved tool, with the definition the model gets.
+            var saved = await Api.GetWebFetchToolAsync(id);
+            if (saved.IsSuccess)
+            {
+                Open(saved.Value);
+                _notice = $"web_fetch__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                if (form.Id is null)
+                {
+                    _openedId = id.ToString();
+                    _drawer?.SkipNextGuard();
+                    Navigation.NavigateTo(_screen.DrawerUri(id.ToString()), replace: true);
+                }
+            }
+            else
+            {
+                _problem = saved.Problem;
+            }
+
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task DeleteAsync()
+    {
+        var form = _form!;
+        if (!await Confirmations.ConfirmDeleteAsync(
+                Dialogs,
+                $"Delete web_fetch__{form.OriginalName}?",
+                "It is removed from every assistant. The audit log keeps its name.",
+                "Delete tool"))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await Api.DeleteWebFetchToolAsync(form.Id!.Value);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"web_fetch__{form.OriginalName} was deleted.";
+            _form = null;
+            _definition = null;
+            _drawer?.SkipNextGuard();
+            _screen.CloseDrawer();
+            await _screen.ReloadAsync();
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _problem = null;
+        _notice = null;
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => _screen.Dispose();
+}
