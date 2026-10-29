@@ -77,7 +77,9 @@ public sealed record LookupListItem(
     string? Unit,
     ToolScope Scope,
     int ValueCount,
-    bool Shared);
+    bool Shared,
+    string Storage = "Snapshot",
+    string Freshness = "Ready");
 
 public static class LookupListKinds
 {

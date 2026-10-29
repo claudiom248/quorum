@@ -16,6 +16,10 @@ public sealed partial class QuorumApi
     public Task<ApiResult> UpdateDictionaryFieldAsync(Guid id, string? description, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, $"api/knowledge-bases/dictionary/{id}", new { description }, setupToken: null, cancellationToken);
 
+    /// <summary>Changes where an entity lookup is read from: <c>Live</c> reads the store, <c>Snapshot</c> keeps the rows (spec 012 D-4).</summary>
+    public Task<ApiResult> SetLookupStorageAsync(Guid lookupId, string storage, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/knowledge-bases/lookups/{lookupId}", new { storage }, setupToken: null, cancellationToken);
+
     public Task<ApiResult> DeleteDictionaryFieldAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, $"api/knowledge-bases/dictionary/{id}", body: null, setupToken: null, cancellationToken);
 

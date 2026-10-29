@@ -62,6 +62,13 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<Guid>("ToolId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Manifest")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("Full");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -105,6 +112,12 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasColumnType("uuid[]");
 
                     b.Property<string>("LookupAliases")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}");
+
+                    b.Property<string>("LookupFilters")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")

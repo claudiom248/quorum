@@ -1,0 +1,17 @@
+@page "/tools/search"
+
+<PageTitle>Search tools</PageTitle>
+
+@* One place for the tools that search knowledge: the rag tools and the lookup tools (spec 012 D-12). The lists keep their own routes. *@
+<MudTabs @bind-ActivePanelIndex="_tab" Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
+    <MudTabPanel Text="RAG">
+        <RagTools />
+    </MudTabPanel>
+    <MudTabPanel Text="Lookup">
+        <LookupTools />
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private int _tab;
+}

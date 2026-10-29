@@ -160,6 +160,7 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
+                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
@@ -175,8 +176,9 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Name")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Scope")
                         .HasMaxLength(20)
@@ -185,6 +187,11 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                     b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
+
+                    b.Property<string>("Storage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -312,6 +319,11 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
 
                     b.HasKey("SliceId", "Generation", "Position");
 
+                    b.HasIndex("Attributes")
+                        .HasDatabaseName("ix_lookup_values_attributes");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Attributes"), "gin");
+
                     b.HasIndex("SliceId", "Generation", "DocumentCount")
                         .IsDescending(false, false, true);
 
@@ -421,6 +433,37 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("KnowledgeBaseId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.OwnsMany("Quorum.Modules.KnowledgeBases.Domain.LookupAttribute", "Attributes", b1 =>
+                        {
+                            b1.Property<Guid>("LookupId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<Guid?>("DictionaryFieldId");
+
+                            b1.Property<string>("Key")
+                                .IsRequired();
+
+                            b1.Property<string>("Label");
+
+                            b1.Property<string>("Type")
+                                .IsRequired();
+
+                            b1.HasKey("LookupId", "__synthesizedOrdinal");
+
+                            b1.ToTable("lookups", "knowledge_base");
+
+                            b1
+                                .ToJson("Attributes")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("LookupId");
+                        });
+
+                    b.Navigation("Attributes");
                 });
 
             modelBuilder.Entity("Quorum.Modules.KnowledgeBases.Domain.LookupSlice", b =>

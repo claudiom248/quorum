@@ -203,7 +203,7 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
     {
         if (lookup.Kind == LookupKind.Entity)
         {
-            return await EntityValuesAsync(knowledgeBase, name, request, cancellationToken);
+            return await EntityValuesAsync(lookup.Attributes, knowledgeBase, name, request, cancellationToken);
         }
 
         if (lookup.Kind != LookupKind.Computed)
@@ -293,8 +293,15 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
     /// the mapping marks, like the stored list, but exact and as fresh as the store. A scan with a filter needs no index to work; one on
     /// a large collection is faster with it.
     /// </summary>
-    private async Task<LiveValues> EntityValuesAsync(KnowledgeBase knowledgeBase, string name, LiveValuesRequest request, CancellationToken cancellationToken)
+    private async Task<LiveValues> EntityValuesAsync(IReadOnlyList<LookupAttribute> definitions, KnowledgeBase knowledgeBase, string name, LiveValuesRequest request, CancellationToken cancellationToken)
     {
+        // The filters on the attributes are checked against the definitions first, then applied to the rows the scan reads (spec 012 D-5).
+        var rowFilters = LookupFilters.ParseRows(request.RowFilters, definitions);
+        if (!rowFilters.IsSuccess)
+        {
+            return new LiveValues(LiveOutcome.InvalidFilter, rowFilters.Error.Description);
+        }
+
         var filters = await SearchFilterInputs.ParseAsync(
             db,
             request.Scope.Filters,
@@ -350,7 +357,9 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
             while (cursor is not null && found.Count <= ceiling);
 
             var truncated = cursor is not null || found.Count > ceiling;
-            var matching = found.Take(ceiling).Where(v => request.Search is not { Length: > 0 } search || v.Value.Contains(search, StringComparison.OrdinalIgnoreCase));
+            var matching = found.Take(ceiling)
+                .Where(v => request.Search is not { Length: > 0 } search || v.Value.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .Where(v => LookupFilters.Accepts(v.Attributes, rowFilters.Value));
             var ordered = OrderEntities(matching, request).ToList();
 
             return new LiveValues(

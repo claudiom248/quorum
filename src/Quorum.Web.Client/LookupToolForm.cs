@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Quorum.Web.Client.Api;
 
@@ -100,6 +101,25 @@ public sealed partial class LookupToolForm : FilteredToolForm
 {
     public List<LookupBindingForm> Lookups { get; } = [];
 
+    /// <summary>The fixed conditions on attributes of entity and manual lists, as JSON (spec 012 D-7); empty for none.</summary>
+    public string LookupFilters { get; set; } = string.Empty;
+
+    /// <summary>Why the conditions do not read as JSON, or <see langword="null"/> when they do or are empty.</summary>
+    public string? LookupFiltersProblem => LookupFilters.Trim().Length == 0 || IsJsonObject(LookupFilters) ? null : "The conditions on attributes must be a JSON object, keyed by lookup id.";
+
+    private static bool IsJsonObject(string text)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     protected override string Prefix => "lookup";
 
     protected override int MaxExposedFields => LookupToolLimits.MaxExposedFields;
@@ -124,6 +144,7 @@ public sealed partial class LookupToolForm : FilteredToolForm
         form.Lookups.AddRange(detail.Lookups.Select(l => new LookupBindingForm(l.LookupId) { Alias = l.Alias ?? string.Empty }));
         form.KnowledgeBaseIds.AddRange(detail.KnowledgeBaseIds);
         form.LoadFilters(detail.ExposedFields, detail.FixedFilters, dictionary, mapped);
+        form.LookupFilters = detail.LookupFilters is { ValueKind: JsonValueKind.Object } conditions ? conditions.GetRawText() : string.Empty;
         return form;
     }
 
@@ -196,7 +217,8 @@ public sealed partial class LookupToolForm : FilteredToolForm
             [.. ExposedFieldIds.Select(id => new ExposedFieldRequest(id, AliasToSend(id, dictionary)))],
             filters is { Count: > 0 } ? filters : null,
             Scope.Build().Scope!,
-            Policy);
+            Policy,
+            LookupFilters.Trim().Length == 0 ? null : JsonDocument.Parse(LookupFilters).RootElement.Clone());
     }
 
     // The model tells the lists apart by name: the alias, or the lookup's own. Two lists with one name need an alias on one of them.

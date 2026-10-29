@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.KnowledgeBases.Contracts;
@@ -43,8 +44,169 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             LookupToolDefinition.ValuesOperation => await ValuesAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.DocumentsOperation when live => await DocumentsAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.CountOperation when live => await CountAsync(binding, asked, cancellationToken),
+            LookupLeanDefinition.DescribeOperation => Describe(binding, arguments),
+            LookupLeanDefinition.ListCountOperation => await ListCountAsync(binding, asked, cancellationToken),
+            LookupLeanDefinition.QueryOperation => await QueryAsync(binding, arguments, cancellationToken),
             _ => throw new ToolFailedException("This function is not available in this tool."),
         };
+    }
+
+    /// <summary>
+    /// The lean manifest's <c>describe</c> (spec 012 D-8): for each target named, its kind, its operations, the fields it can be filtered by,
+    /// the orders it can be sorted in and its limits. A field with allowed values names the list that holds them, never the values.
+    /// </summary>
+    private ToolOutput Describe(LookupBinding binding, JsonElement arguments)
+    {
+        var asked = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(LookupLeanDefinition.TargetsParameter, out var targets) && targets.ValueKind == JsonValueKind.Array
+            ? targets.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!).ToList()
+            : new List<string>();
+        if (asked.Count == 0)
+        {
+            throw new ToolFailedException("Name at least one list or knowledge base to describe.");
+        }
+
+        var described = new JsonArray();
+        foreach (var name in asked.Distinct(StringComparer.Ordinal))
+        {
+            described.Add(DescribeTarget(binding, name));
+        }
+
+        var text = new JsonObject { ["targets"] = described }.ToJsonString();
+        return new ToolOutput(text.Length <= ResultCharacters ? text : text[..ResultCharacters], SourceCount: described.Count);
+    }
+
+    private static JsonObject DescribeTarget(LookupBinding binding, string name)
+    {
+        if (binding.Targets.TryGetValue(name, out var list))
+        {
+            var fields = binding.ListFilters.TryGetValue(name, out var listed) ? listed : new List<string>();
+            var sortable = new JsonArray();
+            sortable.Add("name");
+            sortable.Add("count");
+            if (binding.SortableAttributes.TryGetValue(name, out var attributes))
+            {
+                foreach (var attribute in attributes)
+                {
+                    sortable.Add(attribute);
+                }
+            }
+
+            return new JsonObject
+            {
+                ["name"] = name,
+                ["kind"] = list.Kind.ToString().ToLowerInvariant(),
+                ["description"] = list.Description,
+                ["operations"] = new JsonArray(LookupLeanDefinition.LookupOperations.Select(o => (JsonNode)o).ToArray()),
+                ["filters"] = new JsonArray(fields.Select(FilterOf(binding)).ToArray()),
+                ["sort"] = sortable,
+                ["limit"] = LimitsOf(),
+            };
+        }
+
+        if (binding.KnowledgeBases.ContainsKey(name))
+        {
+            return new JsonObject
+            {
+                ["name"] = name,
+                ["kind"] = "knowledgeBase",
+                ["operations"] = new JsonArray(LookupLeanDefinition.KnowledgeBaseOperations.Select(o => (JsonNode)o).ToArray()),
+                ["filters"] = new JsonArray(binding.FilterFields.Keys.Order(StringComparer.Ordinal).Select(field => (JsonNode)FilterOf(binding)(field)).ToArray()),
+                ["limit"] = LimitsOf(),
+            };
+        }
+
+        throw new ToolFailedException($"'{LookupResultFormat.Clean(name)}' is not a list or a knowledge base of this tool. The targets are: {TargetNames(binding)}.");
+    }
+
+    /// <summary>A filter as <c>describe</c> states it: its operators, and the list that holds its allowed values when it has one.</summary>
+    private static Func<string, JsonObject> FilterOf(LookupBinding binding) => field =>
+    {
+        var filter = new JsonObject { ["name"] = field, ["operators"] = new JsonArray("eq", "in") };
+        if (binding.FilterLists.TryGetValue(field, out var holder))
+        {
+            filter["valuesIn"] = holder;
+        }
+
+        return filter;
+    };
+
+    private static JsonObject LimitsOf() => new() { ["default"] = LookupToolDefinition.DefaultLimit, ["max"] = LookupToolDefinition.MaxLimit };
+
+    /// <summary>
+    /// The lean manifest's <c>query</c> (spec 012 D-8): the target, the operation and the filters become the arguments of the function
+    /// that does the read, and that function answers. Nothing is read here that the full manifest would not read.
+    /// </summary>
+    private async Task<ToolOutput> QueryAsync(LookupBinding binding, JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var target = StringOf(arguments, LookupLeanDefinition.TargetParameter) ?? throw new ToolFailedException($"Name the target to read. The targets are: {TargetNames(binding)}.");
+        var operation = StringOf(arguments, LookupLeanDefinition.OperationParameter) ?? throw new ToolFailedException("Name the operation, as describe lists it for the target.");
+
+        var inner = new JsonObject();
+        string mapped;
+        if (binding.Targets.ContainsKey(target))
+        {
+            if (!LookupLeanDefinition.LookupOperations.Contains(operation, StringComparer.Ordinal))
+            {
+                throw new ToolFailedException($"The list '{LookupResultFormat.Clean(target)}' takes the operation values only.");
+            }
+
+            mapped = operation == LookupToolDefinition.CountOperation ? LookupLeanDefinition.ListCountOperation : LookupToolDefinition.ValuesOperation;
+            inner[LookupToolDefinition.LookupParameter] = target;
+        }
+        else if (binding.KnowledgeBases.ContainsKey(target))
+        {
+            if (!LookupLeanDefinition.KnowledgeBaseOperations.Contains(operation, StringComparer.Ordinal))
+            {
+                throw new ToolFailedException($"The knowledge base '{LookupResultFormat.Clean(target)}' takes the operations documents and count.");
+            }
+
+            mapped = operation;
+            inner[LookupToolDefinition.KnowledgeBaseParameter] = target;
+        }
+        else
+        {
+            throw new ToolFailedException($"'{LookupResultFormat.Clean(target)}' is not a list or a knowledge base of this tool. The targets are: {TargetNames(binding)}.");
+        }
+
+        foreach (var parameter in new[] { LookupToolDefinition.SearchParameter, LookupToolDefinition.SortParameter, LookupToolDefinition.CursorParameter, LookupToolDefinition.LimitParameter })
+        {
+            if (arguments.TryGetProperty(parameter, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+            {
+                inner[parameter] = JsonNode.Parse(value.GetRawText());
+            }
+        }
+
+        if (arguments.TryGetProperty(LookupLeanDefinition.FiltersParameter, out var filters) && filters.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var filter in filters.EnumerateObject())
+            {
+                inner[filter.Name] = JsonNode.Parse(filter.Value.GetRawText());
+            }
+        }
+
+        var function = Descriptor with { Lookup = binding with { Operation = mapped } };
+        var read = new LookupQuorumTool(function, runtime);
+        return await read.RunWithSourcesAsync(JsonSerializer.SerializeToElement(inner), cancellationToken);
+    }
+
+    private static string? StringOf(JsonElement arguments, string name) =>
+        arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text
+            ? text
+            : null;
+
+    private static string TargetNames(LookupBinding binding) => string.Join(", ", binding.Targets.Keys.Concat(binding.KnowledgeBases.Keys).Order(StringComparer.Ordinal));
+
+    /// <summary>How many values of a list match its search: the count the lean manifest offers for a list (spec 012 D-5, D-8).</summary>
+    private async Task<ToolOutput> ListCountAsync(LookupBinding binding, Arguments asked, CancellationToken cancellationToken)
+    {
+        if (asked.Filters.Count > 0)
+        {
+            throw new ToolFailedException("A count of a list takes the search only. Read the values with the filters to count them.");
+        }
+
+        var (name, lookupId) = Target(binding, asked.Lookup);
+        var read = await ReadAsync(lookupId, binding.SliceFilters(), asked.Search, LookupSortOrder.Count, null, 1, null, name, binding, cancellationToken, countMatching: true);
+        return new ToolOutput($"{LookupResultFormat.Clean(name)}: {read.Matching ?? 0} values match.", SourceCount: 0);
     }
 
     private async Task<ToolOutput> ValuesAsync(LookupBinding binding, Arguments asked, int limit, CancellationToken cancellationToken)
@@ -282,10 +444,11 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         string? cursor,
         string name,
         LookupBinding binding,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool countMatching = false)
     {
         var read = await runtime.Lookups.ReadAsync(
-            new LookupReadRequest(runtime.TenantId, runtime.AssistantId, lookupId, filters, search, sort, limit, cursor, attribute),
+            new LookupReadRequest(runtime.TenantId, runtime.AssistantId, lookupId, filters, search, sort, limit, cursor, attribute, binding.RowFiltersOf(lookupId), countMatching),
             cancellationToken);
 
         // The messages are written for the model and carry no address, key, id or internal detail.

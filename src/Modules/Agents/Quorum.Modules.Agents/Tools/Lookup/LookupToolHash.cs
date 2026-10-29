@@ -34,6 +34,14 @@ internal static class LookupToolHash
                 ToolDefinitionHash.WriteCanonical(writer, filters.RootElement);
             }
 
+            // Only when there are conditions, so that the hash of a tool saved before them does not change.
+            if (configuration.LookupFilters != "{}")
+            {
+                writer.WritePropertyName("lookupFilters");
+                using var lookupFilters = JsonDocument.Parse(configuration.LookupFilters);
+                ToolDefinitionHash.WriteCanonical(writer, lookupFilters.RootElement);
+            }
+
             writer.WriteString("scope", configuration.Scope.ToString());
             ToolHashWriter.WriteIds(writer, "scopeTenants", configuration.ScopeTenantIds);
             ToolHashWriter.WriteIds(writer, "scopeAssistants", configuration.ScopeAssistantIds);

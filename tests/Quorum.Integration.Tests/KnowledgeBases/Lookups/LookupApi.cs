@@ -28,7 +28,7 @@ internal static class LookupApi
 
     public static object ManualBody(
         string name = "nationality",
-        string? description = null,
+        string description = "A list of values.",
         string scope = "Tenant",
         Guid[]? scopeTenantIds = null,
         object[]? values = null) => new
@@ -83,7 +83,7 @@ internal static class LookupApi
         var db = services.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
         var registration = KnowledgeBaseFixtures.Create(tenantId, $"policies-{Guid.NewGuid():N}"[..20], "http://qdrant.test:6334", "docs", KnowledgeBaseScope.Tenant, []);
         db.KnowledgeBases.Add(registration);
-        var lookup = Lookup.Computed(tenantId, registration.Id, Guid.NewGuid(), unit, Now);
+        var lookup = Lookup.Computed(tenantId, registration.Id, Guid.NewGuid(), unit, $"list-{Guid.NewGuid():N}", "A list of values.", Now);
         var slice = LookupSlice.Create(tenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, Now);
         db.Lookups.Add(lookup);
         db.LookupSlices.Add(slice);
@@ -158,8 +158,8 @@ internal static class LookupApi
             lookupRefreshHours: refreshHours);
         db.KnowledgeBases.Add(registration);
         var lookup = kind == LookupKind.Entity
-            ? Lookup.Entity(tenantId, registration.Id, "People.", now)
-            : Lookup.Computed(tenantId, registration.Id, Guid.NewGuid(), LookupUnit.Documents, now);
+            ? Lookup.Entity(tenantId, registration.Id, "people", "People.", now)
+            : Lookup.Computed(tenantId, registration.Id, Guid.NewGuid(), LookupUnit.Documents, $"list-{Guid.NewGuid():N}", "A list of values.", now);
         var slice = LookupSlice.Create(tenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now);
         db.Lookups.Add(lookup);
         db.LookupSlices.Add(slice);

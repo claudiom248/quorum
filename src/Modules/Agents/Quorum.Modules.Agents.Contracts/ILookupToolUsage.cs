@@ -12,4 +12,10 @@ public interface ILookupToolUsage
 
 /// <param name="LookupIds">The lookups the tool binds.</param>
 /// <param name="FieldIds">The dictionary fields the tool exposes to the model or fixes a filter on.</param>
-public sealed record LookupToolUse(Guid TenantId, string ToolName, IReadOnlyList<Guid> LookupIds, IReadOnlyList<Guid> FieldIds);
+/// <param name="AttributeKeys">The attributes the tool fixes a condition on (spec 012 D-7), by lookup id.</param>
+public sealed record LookupToolUse(
+    Guid TenantId,
+    string ToolName,
+    IReadOnlyList<Guid> LookupIds,
+    IReadOnlyList<Guid> FieldIds,
+    IReadOnlyDictionary<Guid, IReadOnlyList<string>>? AttributeKeys = null);

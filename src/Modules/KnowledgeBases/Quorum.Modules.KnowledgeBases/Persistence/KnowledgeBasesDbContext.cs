@@ -85,8 +85,14 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
         {
             lookup.ToTable("lookups");
             lookup.Property(l => l.Kind).HasConversion<string>().HasMaxLength(20);
-            lookup.Property(l => l.Name).HasMaxLength(Lookup.MaxNameLength);
-            lookup.Property(l => l.Description).HasMaxLength(Lookup.MaxDescriptionLength);
+            lookup.Property(l => l.Name).IsRequired().HasMaxLength(Lookup.MaxNameLength);
+            lookup.Property(l => l.Description).IsRequired().HasMaxLength(Lookup.MaxDescriptionLength);
+            lookup.Property(l => l.Storage).HasConversion<string>().HasMaxLength(20);
+            lookup.OwnsMany(l => l.Attributes, attribute =>
+            {
+                attribute.ToJson();
+                attribute.Property(a => a.Type).HasConversion<string>();
+            });
             lookup.Property(l => l.Scope).HasConversion<string>().HasMaxLength(20);
             lookup.Property(l => l.Unit).HasConversion<string>().HasMaxLength(20);
 
@@ -125,6 +131,8 @@ internal sealed class KnowledgeBasesDbContext(DbContextOptions<KnowledgeBasesDbC
             value.Property(v => v.Value).HasMaxLength(LookupValue.MaxValueLength);
             value.Property(v => v.Label).HasMaxLength(LookupValue.MaxValueLength);
             value.Property(v => v.Attributes).HasColumnType("jsonb");
+            // The containment and any-of tests on the attributes of a list (spec 012 D-5); the comparisons on a single attribute are measured, not indexed.
+            value.HasIndex(v => v.Attributes).HasMethod("gin").HasDatabaseName("ix_lookup_values_attributes");
 
             value.HasOne<LookupSlice>().WithMany().HasForeignKey(v => v.SliceId).OnDelete(DeleteBehavior.Cascade);
 

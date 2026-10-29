@@ -212,8 +212,8 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
         var (_, computed) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         var manual = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "department"));
 
-        using var clash = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(computed), LookupToolApi.Bind(manual)]));
-        var fixedByAlias = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(computed), LookupToolApi.Bind(manual, "department_codes")]));
+        using var clash = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(computed, "department"), LookupToolApi.Bind(manual)]));
+        var fixedByAlias = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(computed, "department"), LookupToolApi.Bind(manual, "department_codes")]));
 
         Assert.Equal(HttpStatusCode.BadRequest, clash.StatusCode);
         Assert.Equal("lookup_tool.alias_conflict", await LookupToolApi.ProblemCodeAsync(clash));

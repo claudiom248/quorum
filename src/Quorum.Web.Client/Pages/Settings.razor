@@ -82,6 +82,11 @@
                                 @foreach (var tool in group.Tools)
                                 {
                                     <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
+                                    @if (tool.Manifest is not null)
+                                    {
+                                        // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
+                                        <MudSwitch T="bool" @bind-Value="tool.Lean" Label="Lean manifest" Color="Color.Secondary" Disabled="!tool.Active" />
+                                    }
                                 }
                             }
 
@@ -463,7 +468,7 @@
             return;
         }
 
-        _pool = tools.Value.Pool.Select(t => new PoolEntry(t.ToolId, ToolCallView.DisplayNameOf(t.Name), SourceOf(t.Name)) { Active = t.Active }).ToList();
+        _pool = tools.Value.Pool.Select(t => new PoolEntry(t.ToolId, ToolCallView.DisplayNameOf(t.Name), SourceOf(t.Name)) { Active = t.Active, Manifest = t.Manifest }).ToList();
         _warnings = tools.Value.Warnings;
     }
 
@@ -570,7 +575,8 @@
         _busy = true;
         _toolsProblem = null;
         _toolsSaved = false;
-        var result = await Api.SetAssistantToolsAsync(assistantId, _pool.Where(t => t.Active).Select(t => t.ToolId).ToList());
+        var manifests = _pool.Where(t => t.Active && t.Manifest is not null).ToDictionary(t => t.ToolId, t => t.Manifest!);
+        var result = await Api.SetAssistantToolsAsync(assistantId, _pool.Where(t => t.Active).Select(t => t.ToolId).ToList(), manifests);
         _busy = false;
 
         if (!result.IsSuccess)
@@ -590,5 +596,14 @@
     private sealed record PoolEntry(Guid ToolId, string Label, string Source)
     {
         public bool Active { get; set; }
+
+        /// <summary>For a lookup tool: <c>Full</c> or <c>Lean</c>; <see langword="null"/> for the other tools.</summary>
+        public string? Manifest { get; set; }
+
+        public bool Lean
+        {
+            get => Manifest == "Lean";
+            set => Manifest = value ? "Lean" : "Full";
+        }
     }
 }

@@ -143,9 +143,14 @@
                 <div class="tool-row-head">
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@item.Kind</MudChip>
                     <ScopeBadge Scope="item.Scope" Assistants="_assistants" Shared="item.Shared" />
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" data-freshness="@item.Freshness">@item.Freshness</MudChip>
                     @if (item.Unit is not null)
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Counts @LookupAdminView.UnitLabel(item.Unit)</MudChip>
+                    }
+                    @if (item.Storage == "Live")
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Live</MudChip>
                     }
                 </div>
 
@@ -154,6 +159,17 @@
                     <div class="tool-hint">
                         Computed from <MudLink Href="@($"/knowledge/bases/{source.Id}")">@source.Name</MudLink>@(item.Field is null ? string.Empty : $", field {item.Field}").
                         Refreshing and the fields it lists are set in the registration of the knowledge base.
+                    </div>
+                    @if (item.Kind == LookupListKinds.Derived && item.Field is null && !item.Shared)
+                    {
+                        // Live reads the store at each request and keeps no copy; switching back to Snapshot computes the rows again (spec 012 D-4).
+                        <MudSwitch T="bool" Value="@(item.Storage == "Live")" ValueChanged="@((bool live) => SetStorageAsync(item, live))" Label="Read from the store (Live)" Color="Color.Info" />
+                        @if (_storageProblem is not null)
+                        {
+                            <ProblemMessage Problem="_storageProblem" />
+                        }
+                    }
+                    <div class="tool-hint">
                     </div>
                 }
                 else if (item.Shared)
@@ -184,6 +200,7 @@
     private IReadOnlyList<LookupKnowledgeBaseRef> _knowledgeBases = [];
     private ApiProblem? _drawerProblem;
     private ApiProblem? _formProblem;
+    private ApiProblem? _storageProblem;
     private bool _busy;
     private string? _notice;
     private string? _imported;
@@ -288,6 +305,19 @@
         while (cursor is not null);
 
         return null;
+    }
+
+    private async Task SetStorageAsync(LookupListItem item, bool live)
+    {
+        _storageProblem = null;
+        var result = await Api.SetLookupStorageAsync(item.Id, live ? "Live" : "Snapshot");
+        if (!result.IsSuccess)
+        {
+            _storageProblem = result.Problem;
+            return;
+        }
+
+        await _screen.ReloadAsync();
     }
 
     private async Task OpenFormAsync(LookupListItem item)

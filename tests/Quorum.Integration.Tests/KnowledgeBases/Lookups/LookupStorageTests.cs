@@ -49,7 +49,7 @@ public sealed class LookupStorageTests(PostgresFixture postgres)
 
     private static async Task<(Lookup Lookup, LookupSlice Slice)> AddLookupAsync(KnowledgeBasesDbContext db, Guid tenantId, KnowledgeBase knowledgeBase, int values = 3)
     {
-        var lookup = Lookup.Computed(tenantId, knowledgeBase.Id, Guid.NewGuid(), LookupUnit.Documents, Now);
+        var lookup = Lookup.Computed(tenantId, knowledgeBase.Id, Guid.NewGuid(), LookupUnit.Documents, $"list-{Guid.NewGuid():N}", "A list of values.", Now);
         var slice = LookupSlice.Create(tenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, Now);
         db.Lookups.Add(lookup);
         db.LookupSlices.Add(slice);
@@ -173,10 +173,10 @@ public sealed class LookupStorageTests(PostgresFixture postgres)
         var knowledgeBase = NewKnowledgeBase(tenantId);
         db.KnowledgeBases.Add(knowledgeBase);
         var fieldId = Guid.NewGuid();
-        db.Lookups.Add(Lookup.Computed(tenantId, knowledgeBase.Id, fieldId, LookupUnit.Documents, Now));
+        db.Lookups.Add(Lookup.Computed(tenantId, knowledgeBase.Id, fieldId, LookupUnit.Documents, $"list-{Guid.NewGuid():N}", "A list of values.", Now));
         await db.SaveChangesAsync(Ct);
 
-        db.Lookups.Add(Lookup.Computed(tenantId, knowledgeBase.Id, fieldId, LookupUnit.Chunks, Now));
+        db.Lookups.Add(Lookup.Computed(tenantId, knowledgeBase.Id, fieldId, LookupUnit.Chunks, $"list-{Guid.NewGuid():N}", "A list of values.", Now));
         var exception = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
 
         Assert.True(exception.IsUniqueViolation());
@@ -189,10 +189,10 @@ public sealed class LookupStorageTests(PostgresFixture postgres)
         await using var _ = app;
         await using var scope = TenantScope.Open(app, tenantId);
         var db = scope.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
-        db.Lookups.Add(Lookup.Manual(tenantId, "nationality", null, LookupScope.Global, [], Now));
+        db.Lookups.Add(Lookup.Manual(tenantId, "nationality", "A list.", LookupScope.Global, [], Now));
         await db.SaveChangesAsync(Ct);
 
-        db.Lookups.Add(Lookup.Manual(tenantId, "nationality", null, LookupScope.Tenant, [], Now));
+        db.Lookups.Add(Lookup.Manual(tenantId, "nationality", "A list.", LookupScope.Tenant, [], Now));
         var exception = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
 
         Assert.True(exception.IsUniqueViolation());

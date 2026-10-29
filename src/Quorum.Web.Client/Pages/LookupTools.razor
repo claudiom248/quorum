@@ -165,6 +165,15 @@
                         }
                     }
 
+                    <MudText Typo="Typo.subtitle2">Conditions on attributes</MudText>
+                    <div class="tool-hint">
+                        Always applied to the rows of entity and manual lists, by lookup id: <code>{"&lt;lookupId&gt;": {"&lt;attribute&gt;": {"eq": "IT"}}}</code>.
+                        Operators are eq, in, min and max; the model never sees them.
+                    </div>
+                    <MudTextField T="string" Label="Conditions (JSON)" Variant="Variant.Outlined" Lines="4" Value="@_form!.LookupFilters"
+                                  ValueChanged="@((string value) => _form!.LookupFilters = value)" Error="@(_form!.LookupFiltersProblem is not null)"
+                                  ErrorText="@_form!.LookupFiltersProblem" data-lookup-filters="" />
+
                     <MudText Typo="Typo.subtitle2">Fixed filters</MudText>
                     <div class="tool-hint">
                         Always applied, combined with AND, never visible to the model and never overridden by it. They cut a slice out of
@@ -261,6 +270,16 @@
                     {
                         <div class="tool-hint" data-definitions-total>@RagToolView.SizeText(_definitions.Sum(d => d.EstimatedTokens)) in all</div>
                     }
+                    @if (_manifests.Count > 0)
+                    {
+                        // The two manifests side by side, so the administrator sees what Lean saves before choosing it per assistant (spec 012 D-12).
+                        <div class="tool-hint" data-manifests>
+                            @foreach (var manifest in _manifests)
+                            {
+                                <span class="me-3">@manifest.Manifest: @RagToolView.SizeText(manifest.EstimatedTokens)</span>
+                            }
+                        </div>
+                    }
 
                     @foreach (var definition in _definitions)
                     {
@@ -315,6 +334,8 @@
     private IReadOnlyList<string> _formProblems = [];
     private ApiProblem? _formProblem;
     private IReadOnlyList<LookupToolDefinitionInfo> _definitions = [];
+
+    private IReadOnlyList<LookupManifestInfo> _manifests = [];
     private IReadOnlyList<ToolWarning> _formWarnings = [];
 
     /// <summary>The drawer: <c>new</c> or the id of the tool. Without it only the list shows.</summary>
@@ -352,6 +373,7 @@
         _formProblem = null;
         _drawerProblem = null;
         _definitions = [];
+        _manifests = [];
         _formWarnings = [];
 
         if (Id is null)
@@ -486,6 +508,7 @@
         _initial = Snapshot();
         // One function for each thing the tool does; a server that sends only one definition still shows it.
         _definitions = detail.Definitions is { Count: > 0 } ? detail.Definitions : detail.Definition is null ? [] : [detail.Definition];
+        _manifests = detail.Manifests ?? [];
         _formWarnings = detail.Warnings;
         _ = AddLiveWarningsAsync(detail.Id);
         _formProblems = [];

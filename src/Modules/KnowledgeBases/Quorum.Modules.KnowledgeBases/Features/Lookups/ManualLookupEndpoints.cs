@@ -88,6 +88,7 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         var now = clock.GetUtcNow();
         var tenantId = tenant.TenantId!.Value;
         var lookup = Lookup.Manual(tenantId, manual.Name, manual.Description, manual.Scope, manual.ScopeTenantIds, now);
+        lookup.SetAttributes(manual.Attributes);
         var slice = LookupSlice.Create(tenantId, lookup.Id, LookupSliceKey.WholeKnowledgeBase.Hash, LookupSliceKey.WholeKnowledgeBase.Filters, now);
         const int FirstGeneration = 1;
         slice.Publish(FirstGeneration, manual.Values.Count, now, nextRefreshAt: null);
@@ -144,6 +145,7 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
         var previous = slice.CurrentGeneration;
         var generation = previous + 1;
         lookup.Revise(manual.Name, manual.Description, manual.Scope, manual.ScopeTenantIds);
+        lookup.SetAttributes(manual.Attributes);
         slice.Publish(generation, manual.Values.Count, clock.GetUtcNow(), nextRefreshAt: null);
         db.LookupValues.AddRange(ToRows(lookup.TenantId, slice.Id, generation, manual.Values));
         try
@@ -198,18 +200,28 @@ internal sealed class ManualLookupEndpoints : IEndpointGroup
 
     // The typed order is the order of the list: a manual lookup has no counts to rank by.
     private static IEnumerable<LookupValue> ToRows(Guid tenantId, Guid sliceId, int generation, List<ManualValue> values) =>
-        values.Select((value, position) => LookupValue.Create(tenantId, sliceId, generation, position, value.Value, label: value.Label, synonyms: value.Synonyms));
+        values.Select((value, position) => LookupValue.Create(tenantId, sliceId, generation, position, value.Value, label: value.Label, synonyms: value.Synonyms, attributes: value.Attributes));
 }
 
 internal sealed record CreatedLookupDto(Guid Id);
 
 /// <param name="Shared"><see langword="true"/> for a lookup of another tenant: it can be read but not changed or deleted.</param>
 /// <param name="Scope">The tenants a Tenant scope lists are the owner's to see: a lookup of another tenant shows its kind only.</param>
-internal sealed record ManualLookupDto(Guid Id, string Name, string? Description, ScopeResponse Scope, int ValueCount, bool Shared)
+/// <param name="Storage">Always <c>Snapshot</c>: a manual lookup is its own source (spec 012 D-4).</param>
+/// <param name="Attributes">The attributes the values carry (spec 012 D-3).</param>
+internal sealed record ManualLookupDto(Guid Id, string Name, string? Description, ScopeResponse Scope, int ValueCount, bool Shared, string Storage, List<LookupAttributeResponse> Attributes)
 {
     public static ManualLookupDto From(Lookup lookup, int valueCount, Guid? currentTenantId)
     {
         var shared = lookup.TenantId != currentTenantId;
-        return new ManualLookupDto(lookup.Id, lookup.Name!, lookup.Description, new ScopeResponse(lookup.Scope!.Value.ToString(), shared ? [] : lookup.ScopeTenantIds, []), valueCount, shared);
+        return new ManualLookupDto(
+            lookup.Id,
+            lookup.Name,
+            lookup.Description,
+            new ScopeResponse(lookup.Scope!.Value.ToString(), shared ? [] : lookup.ScopeTenantIds, []),
+            valueCount,
+            shared,
+            lookup.Storage.ToString(),
+            [.. lookup.Attributes.Select(a => new LookupAttributeResponse(a.Key, a.Label, a.Type.ToString(), a.DictionaryFieldId))]);
     }
 }

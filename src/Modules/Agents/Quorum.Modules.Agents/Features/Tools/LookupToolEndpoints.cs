@@ -145,7 +145,42 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
                 .. LookupToolWarnings.Evaluate(view.Binding, seenLookups, seen),
                 .. (live == false ? [] : await LookupToolWarnings.UnindexedAsync(lookups, tenantId, view.Binding, seenLookups, cancellationToken)),
             ],
-            seen));
+            seen,
+            await ManifestsAsync(resolver, tenantId, view.Tool, view.Binding, cancellationToken)));
+    }
+
+    /// <summary>What the model is offered under each manifest, with the context each takes (spec 012 D-8, the editor shows both side by side).</summary>
+    private static async Task<IReadOnlyList<LookupManifestPreview>> ManifestsAsync(LookupToolResolver resolver, Guid tenantId, Tool tool, LookupTool binding, CancellationToken cancellationToken)
+    {
+        var resolved = await resolver.ResolveAsync(
+            tenantId,
+            assistantId: null,
+            [new LookupToolToDescribe(tool.Id, tool.Name, tool.Description, LookupBinding.From(binding))],
+            cancellationToken);
+        if (!resolved.TryGetValue(tool.Id, out var found))
+        {
+            return [];
+        }
+
+        return
+        [
+            new LookupManifestPreview(LookupManifest.Full, Previews(tool.Name, found.Definition.Functions)),
+            new LookupManifestPreview(LookupManifest.Lean, Previews(tool.Name, LookupLeanDefinition.Build(tool.Name, tool.Description, found).Functions)),
+        ];
+    }
+
+    private static List<LookupToolDefinitionPreview> Previews(string toolName, IReadOnlyList<GeneratedLookupFunction> functions)
+    {
+        var previews = new List<LookupToolDefinitionPreview>();
+        foreach (var function in functions)
+        {
+            var exposedName = ToolNaming.LookupFunction(toolName, function.Operation);
+            var characters = ToolDefinitionRenderer.Length([new ToolDefinition(exposedName, function.Description, function.InputSchema)]);
+            using var schema = JsonDocument.Parse(function.InputSchema);
+            previews.Add(new LookupToolDefinitionPreview(exposedName, function.Description, schema.RootElement.Clone(), (characters + ContextUsage.CharactersPerToken - 1) / ContextUsage.CharactersPerToken));
+        }
+
+        return previews;
     }
 
     /// <summary>
@@ -418,6 +453,12 @@ internal sealed record LookupToolListItem(
 /// <param name="EstimatedTokens">What the definition takes of the context, the figure the context gauge counts.</param>
 internal sealed record LookupToolDefinitionPreview(string Name, string Description, JsonElement InputSchema, int EstimatedTokens);
 
+/// <summary>The functions a manifest offers the model, and what they take of the context together (spec 012 D-8).</summary>
+internal sealed record LookupManifestPreview(string Manifest, IReadOnlyList<LookupToolDefinitionPreview> Functions)
+{
+    public int EstimatedTokens => Functions.Sum(f => f.EstimatedTokens);
+}
+
 /// <param name="Definition">The function that reads the lists, kept for clients that show one definition; <paramref name="Definitions"/> has them all.</param>
 internal sealed record CreatedLookupTool(Guid Id, LookupToolDefinitionPreview? Definition, IReadOnlyList<LookupToolDefinitionPreview> Definitions, IReadOnlyList<ToolWarning> Warnings);
 
@@ -437,11 +478,14 @@ internal sealed record LookupToolDetail(
     string Policy,
     LookupToolDefinitionPreview? Definition,
     IReadOnlyList<LookupToolDefinitionPreview> Definitions,
-    IReadOnlyList<ToolWarning> Warnings)
+    IReadOnlyList<ToolWarning> Warnings,
+    IReadOnlyList<LookupManifestPreview> Manifests,
+    JsonElement LookupFilters)
 {
-    public static LookupToolDetail From(Tool tool, LookupTool binding, IReadOnlyList<LookupToolDefinitionPreview> definitions, IReadOnlyList<ToolWarning> warnings, BindingDescription seen)
+    public static LookupToolDetail From(Tool tool, LookupTool binding, IReadOnlyList<LookupToolDefinitionPreview> definitions, IReadOnlyList<ToolWarning> warnings, BindingDescription seen, IReadOnlyList<LookupManifestPreview> manifests)
     {
         using var filters = JsonDocument.Parse(binding.FixedFilters);
+        using var lookupFilters = JsonDocument.Parse(binding.LookupFilters);
         var current = LookupBinding.From(binding);
         return new LookupToolDetail(
             tool.Id,
@@ -460,6 +504,8 @@ internal sealed record LookupToolDetail(
             tool.Policy.ToString(),
             definitions.Count > 0 ? definitions[0] : null,
             definitions,
-            warnings);
+            warnings,
+            manifests,
+            lookupFilters.RootElement.Clone());
     }
 }

@@ -122,6 +122,26 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
             return NotVisible;
         }
 
+        // A field that a single value fixes is not offered to the model at all: exposing it would only invite a value it cannot change (spec 012 D-7).
+        if (exposed.Value.Ids.Count > 0 && request.FixedFilters is { ValueKind: JsonValueKind.Object } fixedJson)
+        {
+            foreach (var id in exposed.Value.Ids)
+            {
+                var field = seen.Fields.FirstOrDefault(f => f.Id == id);
+                var parameter = exposed.Value.Aliases.GetValueOrDefault(id) ?? field?.Name;
+                if (parameter is not null && fixedJson.TryGetProperty(parameter, out var fixedValue) && IsSingleValue(fixedValue))
+                {
+                    return Error.Validation("lookup_tool.field_fixed", $"The field '{parameter}' is fixed by a filter with one value: remove it from the exposed fields or widen the filter.");
+                }
+            }
+        }
+
+        var lookupFilters = ValidateLookupFilters(request.LookupFilters, lookupIds, seenLookups);
+        if (!lookupFilters.IsSuccess)
+        {
+            return lookupFilters.Error;
+        }
+
         var fixedFilters = await filters.ValidateAsync(
             seen,
             exposed.Value,
@@ -159,8 +179,84 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
                 fixedFilters.Value.FieldIds,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
-                scope.Value.AssistantIds));
+                scope.Value.AssistantIds,
+                lookupFilters.Value));
     }
+
+    private static readonly Error InvalidLookupFilter = Error.Validation("lookup_tool.invalid_filter", "The fixed filters on lookup attributes do not match the lookups the tool binds.");
+
+    /// <summary>
+    /// The fixed conditions on attributes of entity and manual lookups (spec 012 D-7): each names a bound lookup and one of its attributes,
+    /// with an operator that the attribute's type takes and a value that fits the type. Returns the JSON to store.
+    /// </summary>
+    private static Result<string> ValidateLookupFilters(JsonElement? json, IReadOnlyList<Guid> bound, IReadOnlyList<LookupInfo> seen)
+    {
+        if (json is null || json.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return "{}";
+        }
+
+        if (json.Value.ValueKind != JsonValueKind.Object)
+        {
+            return InvalidLookupFilter;
+        }
+
+        foreach (var perLookup in json.Value.EnumerateObject())
+        {
+            if (!Guid.TryParse(perLookup.Name, out var lookupId) || !bound.Contains(lookupId) || seen.FirstOrDefault(l => l.Id == lookupId) is not { } info)
+            {
+                return InvalidLookupFilter;
+            }
+
+            if (perLookup.Value.ValueKind != JsonValueKind.Object)
+            {
+                return InvalidLookupFilter;
+            }
+
+            foreach (var attribute in perLookup.Value.EnumerateObject())
+            {
+                var definition = info.Attributes?.FirstOrDefault(a => a.Key == attribute.Name);
+                if (definition is null || attribute.Value.ValueKind != JsonValueKind.Object)
+                {
+                    return InvalidLookupFilter;
+                }
+
+                foreach (var condition in attribute.Value.EnumerateObject())
+                {
+                    if (!FitsCondition(definition.Type, condition.Name, condition.Value))
+                    {
+                        return InvalidLookupFilter;
+                    }
+                }
+            }
+        }
+
+        return json.Value.GetRawText();
+    }
+
+    /// <summary>The operators of spec 012 D-5 that the type takes, with a value of the type; <c>min</c> and <c>max</c> are for numbers and dates.</summary>
+    private static bool FitsCondition(string type, string operatorName, JsonElement value) => operatorName switch
+    {
+        "eq" => FitsValue(type, value),
+        "in" => value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0 && value.EnumerateArray().All(item => FitsValue(type, item)),
+        "min" or "max" => type is "Number" or "Date" && FitsValue(type, value),
+        _ => false,
+    };
+
+    /// <summary>A fixed filter with one value: a scalar, or a list of exactly one.</summary>
+    private static bool IsSingleValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Array => value.GetArrayLength() == 1,
+        JsonValueKind.Null or JsonValueKind.Undefined => false,
+        _ => true,
+    };
+
+    private static bool FitsValue(string type, JsonElement value) => type switch
+    {
+        "Number" => value.ValueKind == JsonValueKind.Number,
+        "Date" => value.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(value.GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out _),
+        _ => value.ValueKind == JsonValueKind.String,
+    };
 
     private static Result<BoundLookups> ParseLookups(List<LookupBindingRequest>? requests)
     {
@@ -222,6 +318,7 @@ internal sealed record LookupToolRequest(
     List<ExposedFieldRequest>? ExposedFields,
     JsonElement? FixedFilters,
     ScopeRequest? Scope,
-    string? Policy);
+    string? Policy,
+    JsonElement? LookupFilters = null);
 
 internal sealed record LookupBindingRequest(Guid? LookupId, string? Alias = null);

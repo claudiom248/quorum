@@ -37,7 +37,12 @@ public sealed record LookupToolDetail(
     string Policy,
     LookupToolDefinitionInfo? Definition,
     IReadOnlyList<ToolWarning> Warnings,
-    IReadOnlyList<LookupToolDefinitionInfo>? Definitions = null);
+    IReadOnlyList<LookupToolDefinitionInfo>? Definitions = null,
+    IReadOnlyList<LookupManifestInfo>? Manifests = null,
+    JsonElement? LookupFilters = null);
+
+/// <summary>What the model is offered under one manifest, and what the functions take of the context together (spec 012 D-8).</summary>
+public sealed record LookupManifestInfo(string Manifest, IReadOnlyList<LookupToolDefinitionInfo> Functions, int EstimatedTokens);
 
 public sealed record LookupBindingRequest(Guid LookupId, string? Alias);
 
@@ -52,7 +57,8 @@ public sealed record LookupToolRequest(
     IReadOnlyList<ExposedFieldRequest> ExposedFields,
     IReadOnlyDictionary<string, object>? FixedFilters,
     ToolScope Scope,
-    string? Policy);
+    string? Policy,
+    JsonElement? LookupFilters = null);
 
 public sealed record CreatedLookupTool(Guid Id, LookupToolDefinitionInfo? Definition, IReadOnlyList<ToolWarning> Warnings);
 

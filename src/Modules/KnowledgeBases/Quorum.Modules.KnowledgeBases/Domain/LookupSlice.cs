@@ -88,6 +88,21 @@ internal sealed class LookupSlice
 
     public void BeginComputation(DateTimeOffset now) => ComputingSince = now;
 
+    /// <summary>Forgets every generation: the slice is read from the store and has nothing to compute (spec 012 D-4).</summary>
+    public void Empty()
+    {
+        CurrentGeneration = 0;
+        ValueCount = 0;
+        SkippedValueCount = 0;
+        Truncated = false;
+        Stale = false;
+        LastError = null;
+        ComputedAt = null;
+        NextRefreshAt = null;
+        ComputingSince = null;
+        Status = LookupStatus.Pending;
+    }
+
     /// <summary>Makes the slice due now, as the mapping it was computed from changed. The generation served stays until the new one is ready.</summary>
     public void RequestRefresh(DateTimeOffset now) => NextRefreshAt = now;
 
