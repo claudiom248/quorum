@@ -14,7 +14,7 @@
 | PDF extraction | **PdfPig** (riuso). Già presente nel modulo Conversations (`PdfText.Extract`). Stessa logica di estrazione testo page-by-page con reading order. **Estratto in `Quorum.Shared`** in questo plan, così Agents e Conversations lo condividono. |
 | Cache | **HybridCache** (pattern esistente in `LookupCache`). In-memory con stampede protection, tag-based eviction, TTL configurabile. Nessuna cache distribuita per l'MVP. |
 | Token counting | `CharactersPerToken = 4` (pattern esistente in `ContextBreakdown`). Approssimazione sufficiente per il budgeting. |
-| Robots.txt | **Robots.Net** per il parsing. Rispettato quando `WebConfiguration.RespectRobotsTxt = true`. Fail-open in caso di errore di parsing. |
+| Robots.txt | **Custom parser** (~80 righe): segue la specifica Google 2025 con matching by line length, wildcards `*` e `$`, e l'RFC 9309 per Allow/Disallow. Rispettato quando `WebConfiguration.RespectRobotsTxt = true`. Fail-open in caso di errore di parsing o di fetch del robots.txt. |
 | HTTP client | `IHttpClientFactory` con named client `"quorum-web-fetch"` (pattern `SearxngProvider.HttpClientName`). Timeout per-fetch, non sul client. |
 | User-Agent | Configurabile in `WebConfiguration` (default `"Quorum/1.0"`). |
 | Delay | Configurabile in `WebConfiguration` (default 1000ms). Per-conversazione, non globale. |
@@ -137,10 +137,11 @@
     - Gestione truncation: messaggio onesto se contenuto troncato.
     - Gestione errori per-URL: messaggio nell'output.
 
-19. **`Tools/WebFetch/RobotsCache.cs`**: cache per-origine del robots.txt.
+19. **`Tools/WebFetch/RobotsCache.cs`**: cache per-origine del robots.txt con parser custom.
     - `Task<bool> IsAllowedAsync(string url, string userAgent, CancellationToken ct)`
     - Cache in-memory del robots.txt per (scheme+host+port) con TTL 1 ora.
-    - Usa `Robots.Net` per il parsing.
+    - Parser: specifiche Google 2025 — matching by line length (il match più lungo vince, Allow > Disallow a pari lunghezza), wildcards `*` e `$` (fine-stringa), gruppi User-Agent multipli (`User-agent: googlebot`, `User-agent: g*bot`).
+    - Fall-back: se il parsing fallisce o il fetch del robots.txt fallisce, si permette il fetch (fail-open).
 
 ### Integration
 

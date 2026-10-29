@@ -1,4 +1,4 @@
-using Quorum.Modules.Conversations.Extraction;
+using Quorum.Shared.Extraction;
 
 namespace Quorum.Integration.Tests.Attachments;
 
