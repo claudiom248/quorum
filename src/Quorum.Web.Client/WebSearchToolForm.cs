@@ -50,67 +50,52 @@ public sealed class WebSearchToolForm
         Scope = ScopeForm.From(detail.Scope),
     };
 
-    /// <summary>The request to send, or what is wrong with what was typed. The server checks the values again.</summary>
-    public (WebSearchToolRequest? Request, string? Error) Build()
+    /// <summary>What is wrong with what was typed. The server checks every value again; this only saves the round trip.</summary>
+    public IReadOnlyList<string> Problems()
     {
+        var problems = new List<string>();
+
         if (string.IsNullOrWhiteSpace(Name))
         {
-            return (null, "Give the tool a name.");
+            problems.Add("Give the tool a name.");
         }
 
         if (string.IsNullOrWhiteSpace(Description))
         {
-            return (null, "Say in one line when the model should search the web: it reads this to decide.");
+            problems.Add("Say in one line when the model should search the web: it reads this to decide.");
         }
 
-        var (engines, error) = ParseEngines();
-        if (error is not null)
+        if (Engines().Count > WebSearchToolLimits.MaxSearchEngines)
         {
-            return (null, error);
+            problems.Add($"At most {WebSearchToolLimits.MaxSearchEngines} engines, one per line.");
         }
 
-        var (scope, scopeError) = Scope.Build();
-        if (scopeError is not null)
+        if (Scope.Build().Error is { } scope)
         {
-            return (null, scopeError);
+            problems.Add(scope);
         }
 
-        return (new WebSearchToolRequest(
-            Name.Trim(),
-            Description.Trim(),
-            TopN,
-            engines,
-            string.IsNullOrWhiteSpace(Language) ? null : Language.Trim().ToLowerInvariant(),
-            SafeSearch,
-            string.IsNullOrWhiteSpace(TimeRange) ? null : TimeRange,
-            MaxInvocations,
-            scope!,
-            Policy), null);
+        return problems;
     }
 
-    private (IReadOnlyList<string>? Engines, string? Error) ParseEngines()
-    {
-        if (string.IsNullOrWhiteSpace(EnginesText))
-        {
-            return (null, null);
-        }
+    /// <summary>The request to send. Call it when <see cref="Problems"/> is empty.</summary>
+    public WebSearchToolRequest ToRequest() => new(
+        Name.Trim(),
+        Description.Trim(),
+        TopN,
+        Engines() is { Count: > 0 } engines ? engines : null,
+        string.IsNullOrWhiteSpace(Language) ? null : Language.Trim().ToLowerInvariant(),
+        SafeSearch,
+        string.IsNullOrWhiteSpace(TimeRange) ? null : TimeRange,
+        MaxInvocations,
+        Scope.Build().Scope!,
+        Policy);
 
-        var engines = EnginesText.Split(['\r', '\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(engine => engine.ToLowerInvariant())
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToList();
-
-        if (engines.Count == 0)
-        {
-            return (null, "Write one engine per line, as the instance names it.");
-        }
-
-        if (engines.Count > WebSearchToolLimits.MaxSearchEngines)
-        {
-            return (null, $"At most {WebSearchToolLimits.MaxSearchEngines} engines.");
-        }
-
-        return (engines, null);
-    }
+    /// <summary>One engine per line (or separated by commas), as the instance names it; the server keeps them in its own order.</summary>
+    private List<string> Engines() => EnginesText
+        .Split(['\r', '\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(engine => engine.ToLowerInvariant())
+        .Distinct(StringComparer.Ordinal)
+        .Order(StringComparer.Ordinal)
+        .ToList();
 }

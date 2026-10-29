@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
@@ -153,6 +154,64 @@ public sealed class WebSearchToolCallTests(PostgresFixture postgres)
     }
 
     [Fact] // AC-3
+    public async Task ARefusedSearchIsTriedAgainAndTheModelStillGetsItsResults()
+    {
+        var (app, admin, chat) = await StartAsync(script: s =>
+        {
+            s.Answers(("One", "https://a.test/1", "first"));
+            s.FailsFirst(HttpStatusCode.TooManyRequests);
+        });
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("x")), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Hello");
+
+        Assert.Equal("succeeded", StatusOf(events));
+        Assert.Contains("[1] One", ResultOf(events), StringComparison.Ordinal);
+        Assert.Equal(2, app.Searxng.Attempts);
+    }
+
+    [Fact] // AC-3
+    public async Task AnInstanceThatAnswersWithAPageIsToldToTheModelAsUnreachable()
+    {
+        // The usual cause: the instance does not have json among its formats. Asking again changes nothing.
+        var (app, admin, chat) = await StartAsync(script: s => s.AnswersRaw("<html><body>a page, not a search</body></html>"));
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("x")), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Hello");
+
+        Assert.Equal("failed", StatusOf(events));
+        Assert.Contains("could not be reached after 1 attempt", ResultOf(events), StringComparison.Ordinal);
+        Assert.Equal(1, app.Searxng.Attempts);
+    }
+
+    [Fact] // AC-2
+    public async Task AToolWithNothingConfiguredAsksOnlyForTheQuery()
+    {
+        var (app, admin, chat) = await StartAsync(script: s => s.Answers(("One", "https://a.test/1", "first")));
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("x")), ChatScript.Reply("Done."));
+
+        await ChatApi.SendAsync(admin, chat, "Hello");
+
+        var query = app.Searxng.QueryOf(0);
+        Assert.False(query.ContainsKey("engines"));
+        Assert.False(query.ContainsKey("language"));
+        Assert.False(query.ContainsKey("time_range"));
+    }
+
+    [Fact] // AC-2
+    public async Task AnEmptyQueryIsRefusedBeforeTheInstanceIsAsked()
+    {
+        var (app, admin, chat) = await StartAsync(script: s => s.Answers(("One", "https://a.test/1", "first")));
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("   ")), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Hello");
+
+        Assert.Equal("failed", StatusOf(events));
+        Assert.Contains("Say what to search for", ResultOf(events), StringComparison.Ordinal);
+        Assert.Equal(0, app.Searxng.Attempts);
+    }
+
+    [Fact] // AC-3
     public void ASearchThatNeverAnsweredSaysSoWithTheTimeItWaited()
     {
         var failure = Record.Exception(() => WebSearchResultFormat.Render(
@@ -163,5 +222,74 @@ public sealed class WebSearchToolCallTests(PostgresFixture postgres)
 
         Assert.IsType<ToolFailedException>(failure);
         Assert.Equal("Web search unavailable: SearXNG did not respond within 90 seconds.", failure!.Message);
+    }
+
+    [Fact] // AC-3
+    public void OneFailedAttemptIsNotCalledAttempts()
+    {
+        var failure = Record.Exception(() => WebSearchResultFormat.Render(
+            new WebSearchResponse(WebSearchOutcome.Unreachable, [], "x"),
+            new SourceNumbering(),
+            timeoutSeconds: 90,
+            resultLimit: 20_000));
+
+        Assert.Equal("Web search unavailable: SearXNG could not be reached after 1 attempt.", failure!.Message);
+    }
+
+    [Fact] // AC-6
+    public void ACitedAddressIsGivenWholeHoweverLongItIs()
+    {
+        var url = $"https://example.com/{new string('x', 300)}";
+        var output = WebSearchResultFormat.Render(
+            new WebSearchResponse(WebSearchOutcome.Ok, [new WebSearchHit("Long", url, "extract", "google")]),
+            new SourceNumbering(),
+            timeoutSeconds: 90,
+            resultLimit: 20_000);
+
+        // A link that loses its end is worse than a long one: the model must be able to repeat the address it was given.
+        Assert.Contains(url, output.Text, StringComparison.Ordinal);
+        Assert.Equal(url, output.Sources![0].Url);
+    }
+
+    [Fact] // spec 005, limits
+    public void OnlyTheResultsThatFitAreGivenAndTheLimitIsNeverBroken()
+    {
+        var response = new WebSearchResponse(WebSearchOutcome.Ok,
+            [.. Enumerable.Range(1, 5).Select(i => new WebSearchHit($"Page {i}", $"https://a.test/{i}", new string('s', 700), "google", 1.0))]);
+
+        var output = WebSearchResultFormat.Render(response, new SourceNumbering(), timeoutSeconds: 90, resultLimit: 2_000);
+
+        Assert.True(output.Text.Length <= 2_000, $"the text is {output.Text.Length} characters");
+        Assert.NotEmpty(output.Sources!);
+        Assert.True(output.Sources!.Count < 5);
+        Assert.Contains("did not fit and were left out", output.Text, StringComparison.Ordinal);
+    }
+
+    [Fact] // spec 005, limits
+    public void EvenTheFirstResultComesWithoutItsExtractWhenTheRoomIsSmall()
+    {
+        var output = WebSearchResultFormat.Render(
+            new WebSearchResponse(WebSearchOutcome.Ok, [new WebSearchHit("AI News", "https://example.com/ai-news", new string('s', 700), "google", 0.9)]),
+            new SourceNumbering(),
+            timeoutSeconds: 90,
+            resultLimit: 1_000);
+
+        // 1000 is the smallest limit a tenant may set: the search has to answer inside it, not come back too large to be returned.
+        Assert.True(output.Text.Length <= 1_000, $"the text is {output.Text.Length} characters");
+        Assert.Contains("[1] AI News · https://example.com/ai-news", output.Text, StringComparison.Ordinal);
+        Assert.Single(output.Sources!);
+    }
+
+    [Fact] // spec 005, limits
+    public void WhenNotEvenTheReferenceLineFitsTheModelIsToldTheLimitIsTooSmall()
+    {
+        var output = WebSearchResultFormat.Render(
+            new WebSearchResponse(WebSearchOutcome.Ok, [new WebSearchHit("AI News", "https://example.com/ai-news", "extract", "google", 0.9)]),
+            new SourceNumbering(),
+            timeoutSeconds: 90,
+            resultLimit: 200);
+
+        Assert.Empty(output.Sources!);
+        Assert.Contains("larger than this tool's result size limit", output.Text, StringComparison.Ordinal);
     }
 }

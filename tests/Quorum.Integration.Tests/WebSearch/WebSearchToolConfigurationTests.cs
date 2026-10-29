@@ -143,6 +143,21 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
         Assert.Equal(code, await WebSearchApi.ProblemCodeAsync(response));
     }
 
+    [Fact] // AC-1
+    public async Task MoreEnginesThanTheInstanceCanBeAskedForAreRefused()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        await WebSearchApi.ConfigureAsync(admin);
+
+        using var response = await WebSearchApi.CreateAsync(
+            admin,
+            WebSearchApi.Body(searchEngines: [.. Enumerable.Range(1, WebSearchApi.MaxEngines + 1).Select(i => $"engine{i}")]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("web_search.invalid_search_engine", await WebSearchApi.ProblemCodeAsync(response));
+    }
+
     [Fact] // AC-10
     public async Task AdminCanUpdateTheParametersOfAWebSearchTool()
     {

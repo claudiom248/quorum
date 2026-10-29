@@ -94,7 +94,7 @@ internal sealed partial class SearxngProvider(IHttpClientFactory httpClientFacto
                 break;
             }
 
-            LogRetry(logger, asked, attempts);
+            LogRetry(logger, attempts);
             attempts++;
             try
             {
@@ -246,8 +246,9 @@ internal sealed partial class SearxngProvider(IHttpClientFactory httpClientFacto
             ? number
             : null;
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Web search retried after a failed attempt: {Query} (attempt {Attempt})")]
-    private static partial void LogRetry(ILogger logger, string query, int attempt);
+    // What was searched for is user data and stays out of the log.
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Web search retried after a failed attempt (attempt {Attempt})")]
+    private static partial void LogRetry(ILogger logger, int attempt);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "SearXNG refused the search with status {Status}")]
     private static partial void LogRefused(ILogger logger, int status);

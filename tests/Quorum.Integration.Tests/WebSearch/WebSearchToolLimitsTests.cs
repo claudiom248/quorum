@@ -2,6 +2,7 @@ using System.Text.Json;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.Tools;
+using Quorum.Modules.Agents.Domain;
 using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 
 namespace Quorum.Integration.Tests.WebSearch;
@@ -87,5 +88,27 @@ public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
         Assert.Equal("failed", StatusOf(third));
         Assert.Contains("Max invocations reached: 2", ResultOf(third), StringComparison.Ordinal);
         Assert.Equal(3, app.Searxng.Attempts);
+    }
+
+    [Fact] // AC-5
+    public async Task ACallTheUserRefusedDoesNotUseTheConversationsBudget()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var admin = await app.SetUpAsync();
+        await WebSearchApi.ConfigureAsync(admin);
+        await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 1));
+        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        app.Searxng.Answers(("One", "https://a.test/1", "first"));
+        var chat = await ChatApi.CreateConversationAsync(admin);
+
+        // Two calls the user refused never reached the instance: the one call the tool allows is still there for the model.
+        await ToolFixtures.AddAuditEntryAsync(app, DateTimeOffset.UtcNow, tool: "research", server: "web_search", outcome: ToolOutcome.Denied, conversationId: chat);
+        await ToolFixtures.AddAuditEntryAsync(app, DateTimeOffset.UtcNow, tool: "research", server: "web_search", outcome: ToolOutcome.Denied, conversationId: chat);
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("now", "call_1")), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Search");
+
+        Assert.Equal("succeeded", StatusOf(events));
+        Assert.Equal(1, app.Searxng.Attempts);
     }
 }

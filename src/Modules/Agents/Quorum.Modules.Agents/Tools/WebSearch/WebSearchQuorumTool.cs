@@ -86,6 +86,9 @@ internal static class WebSearchResultFormat
 
     private const int MaxSnippetCharacters = 700;
 
+    /// <summary>How long a title or an engine name is shown; an address is never cut.</summary>
+    private const int MaxReferenceCharacters = 200;
+
     /// <summary>What the notice and the closing lines take besides the results.</summary>
     private const int Overhead = 500;
 
@@ -111,12 +114,17 @@ internal static class WebSearchResultFormat
 
         if (response.Outcome == WebSearchOutcome.Unreachable)
         {
-            throw new ToolFailedException($"Web search unavailable: SearXNG could not be reached after {response.Attempts} attempts.");
+            throw new ToolFailedException(
+                $"Web search unavailable: SearXNG could not be reached after {response.Attempts} {(response.Attempts == 1 ? "attempt" : "attempts")}.");
         }
 
         delimiter ??= AttachmentBlock.NewDelimiter();
         var text = new StringBuilder(Notice);
-        var budget = Math.Max(0, resultLimit - Overhead);
+
+        // What the notice and the closing lines take; every result has to fit in what is left, or the invoker throws the whole
+        // result away as too large and the model is told to narrow arguments it never chose.
+        var room = Math.Max(0, resultLimit - Overhead);
+        var used = 0;
         var sources = new List<ToolSource>(response.Hits.Count);
         var taken = new List<SourceKey>(response.Hits.Count);
         var distinct = new HashSet<SourceKey>();
@@ -127,9 +135,10 @@ internal static class WebSearchResultFormat
             var key = new SourceKey(KnowledgeBaseName, null, hit.Title, null, hit.Url);
             var number = numbering.NumberOf(key, out var isNew);
 
-            // A result that does not fit is left out rather than cut in the middle of its text, and gives back the number it took.
-            var block = Block(hit, delimiter, number);
-            if (shown > 0 && text.Length + block.Length > budget)
+            // A result whose extract no longer fits comes back without it; one whose reference line does not fit at all is left out,
+            // and gives back the number it took so the list the model reads stays without gaps.
+            var block = Block(hit, delimiter, number, room - used);
+            if (block is null)
             {
                 if (isNew)
                 {
@@ -147,20 +156,28 @@ internal static class WebSearchResultFormat
             }
 
             text.Append(block);
+            used += block.Length;
             shown++;
         }
 
         if (response.Hits.Count == 0)
         {
             // What the instance says it looked for, so the model can tell a query that found nothing from one it did not mean.
-            text.Append("\n\nNo results found for query '").Append(Clean(response.EchoedQuery ?? string.Empty)).Append('\'');
+            text.Append("\n\nNo results found for query '").Append(Sanitize(response.EchoedQuery ?? string.Empty)).Append('\'');
+            return new ToolOutput(text.ToString(), [], SourceCount: 0);
+        }
+
+        if (shown == 0)
+        {
+            text.Append("\n\nThe first result is larger than this tool's result size limit, so nothing was returned. " +
+                        "An administrator has to raise it in the settings of the tenant.");
             return new ToolOutput(text.ToString(), [], SourceCount: 0);
         }
 
         if (shown < response.Hits.Count)
         {
             text.Append("\n\n")
-                .Append((response.Hits.Count - shown))
+                .Append(response.Hits.Count - shown)
                 .Append(response.Hits.Count - shown == 1 ? " result" : " results")
                 .Append(" did not fit and were left out.");
         }
@@ -168,42 +185,56 @@ internal static class WebSearchResultFormat
         return new ToolOutput(text.ToString(), sources, () => numbering.Release(taken), distinct.Count);
     }
 
-    private static string Block(WebSearchHit hit, string delimiter, int number)
+    /// <summary>The line of one result, with its extract when <paramref name="room"/> has space for it; <see langword="null"/> when not even the line fits.</summary>
+    private static string? Block(WebSearchHit hit, string delimiter, int number, int room)
     {
-        var text = new StringBuilder("\n\n[").Append(number).Append("] ").Append(Clean(hit.Title)).Append(" · ").Append(Clean(hit.Url));
-        if (hit.Snippet is { Length: > 0 } snippet)
+        if (room <= 0)
         {
-            text.Append("\n<<<SOURCE-").Append(delimiter).Append(">>>\n");
-
-            // What a page happens to contain of the delimiter cannot open or close a block of its own.
-            var body = snippet.Length > MaxSnippetCharacters ? snippet[..MaxSnippetCharacters] : snippet;
-            text.Append(body.Replace(delimiter, "[delimiter removed]", StringComparison.Ordinal));
-            text.Append("\n<<<END-SOURCE-").Append(delimiter).Append(">>>");
+            return null;
         }
 
-        if (hit.Engine is { Length: > 0 } || hit.Score is not null)
-        {
-            text.Append("\n(from ").Append(hit.Engine is { Length: > 0 } named ? Clean(named) : "the instance");
-            if (hit.Score is { } score)
-            {
-                text.Append(", score ").Append(score.ToString("0.###", CultureInfo.InvariantCulture));
-            }
+        var line = $"\n\n[{number}] {Shorten(Sanitize(hit.Title))} · {Sanitize(hit.Url)}";
+        var engine = hit.Engine is { Length: > 0 } named ? Shorten(Sanitize(named)) : "the instance";
+        var found = hit.Engine is { Length: > 0 } || hit.Score is not null
+            ? $"\n(from {engine}{Score(hit.Score)})"
+            : string.Empty;
 
-            text.Append(')');
+        if (line.Length + found.Length > room)
+        {
+            return null;
         }
 
-        return text.ToString();
+        var (start, end) = Markers(delimiter);
+        if (hit.Snippet is not { Length: > 0 } snippet || room - line.Length - found.Length <= start.Length + end.Length)
+        {
+            return line + found;
+        }
+
+        // What a page happens to contain of the delimiter cannot open or close a block of its own.
+        var characters = Math.Min(Math.Min(snippet.Length, MaxSnippetCharacters), room - line.Length - found.Length - start.Length - end.Length);
+        var body = snippet[..characters];
+        return string.Concat(line, start, body.Replace(delimiter, "[delimiter removed]", StringComparison.Ordinal), end, found);
     }
 
-    /// <summary>A reference as one line of plain characters, so a title cannot end its line or look like a delimiter.</summary>
-    private static string Clean(string value)
+    private static (string Start, string End) Markers(string delimiter) =>
+        ($"\n<<<SOURCE-{delimiter}>>>\n", $"\n<<<END-SOURCE-{delimiter}>>>");
+
+    private static string Score(double? score) => score is { } value
+        ? $", score {value.ToString("0.###", CultureInfo.InvariantCulture)}"
+        : string.Empty;
+
+    /// <summary>A title or an engine as one line of plain characters, so it cannot end its line or look like a delimiter.</summary>
+    private static string Sanitize(string value)
     {
-        var cleaned = new StringBuilder(Math.Min(value.Length, 200));
-        foreach (var character in value.Take(200))
+        var cleaned = new StringBuilder(value.Length);
+        foreach (var character in value)
         {
             cleaned.Append(char.IsControl(character) || character is '<' or '>' ? '_' : character);
         }
 
         return cleaned.ToString();
     }
+
+    // An address is never shortened: a cited link that loses its end is worse than a long one.
+    private static string Shorten(string value) => value.Length <= MaxReferenceCharacters ? value : string.Concat(value[..MaxReferenceCharacters], "…");
 }

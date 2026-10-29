@@ -261,7 +261,7 @@
         _initial = Snapshot();
     }
 
-    private string Snapshot() => System.Text.Json.JsonSerializer.Serialize(_form!.Build().Request);
+    private string Snapshot() => System.Text.Json.JsonSerializer.Serialize(_form!.ToRequest());
 
     // The tool row lets the admin enable, disable and set the policy like for any other tool.
     private static ToolInfo AsToolInfo(WebSearchToolListItem tool) => new(
@@ -293,13 +293,14 @@
     private async Task SaveAsync()
     {
         var form = _form!;
-        var (request, error) = form.Build();
         _formProblem = null;
-        _formProblems = error is null ? [] : [error];
-        if (request is null)
+        _formProblems = form.Problems();
+        if (_formProblems.Count > 0)
         {
             return;
         }
+
+        var request = form.ToRequest();
 
         await RunAsync(async () =>
         {

@@ -8,6 +8,9 @@ namespace Quorum.Integration.Tests.WebSearch;
 /// <summary>Routes and body shapes of the web search API, as a client would use them.</summary>
 internal static class WebSearchApi
 {
+    /// <summary>How many engines one tool may name, as the server enforces it.</summary>
+    public const int MaxEngines = 10;
+
     public static Uri WebSearchSettings { get; } = new("/api/settings/web-search", UriKind.Relative);
 
     public static Uri WebSearchTools { get; } = new("/api/tools/web-search", UriKind.Relative);

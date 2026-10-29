@@ -11,6 +11,7 @@ namespace Quorum.Integration.Tests.Fixtures;
 /// </summary>
 public sealed class FakeSearxng : HttpMessageHandler
 {
+    private readonly Queue<Func<HttpRequestMessage, HttpResponseMessage>> _first = new();
     private string? _json;
     private HttpStatusCode _status = HttpStatusCode.OK;
     private bool _hang;
@@ -29,6 +30,10 @@ public sealed class FakeSearxng : HttpMessageHandler
                 parts => Uri.UnescapeDataString(parts[0]),
                 parts => Uri.UnescapeDataString(parts.Length > 1 ? parts[1] : string.Empty),
                 StringComparer.Ordinal);
+
+    /// <summary>Answers the next searches with a failure that could be a passing moment, then with what was scripted after it.</summary>
+    public void FailsFirst(HttpStatusCode status, string json = "{}") => _first.Enqueue(
+        _ => new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") });
 
     /// <summary>Answers every search with these results, in the shape SearXNG sends.</summary>
     public void Answers(params (string Title, string Url, string Content)[] results) =>
@@ -55,6 +60,11 @@ public sealed class FakeSearxng : HttpMessageHandler
             await Task.Delay(Timeout.Infinite, cancellationToken);
         }
 
+        if (_first.TryDequeue(out var failing))
+        {
+            return failing(request);
+        }
+
         if (_json is null)
         {
             throw new InvalidOperationException("The test has not scripted what the SearXNG instance answers.");
@@ -67,6 +77,7 @@ public sealed class FakeSearxng : HttpMessageHandler
     private void Set(Action script)
     {
         script();
+        _first.Clear();
         while (!Requests.IsEmpty)
         {
             Requests.TryDequeue(out _);

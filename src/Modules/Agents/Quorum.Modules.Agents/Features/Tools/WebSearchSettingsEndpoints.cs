@@ -7,6 +7,7 @@ using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Endpoints;
+using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
 
@@ -51,14 +52,22 @@ internal sealed class WebSearchSettingsEndpoints : IEndpointGroup
         var configuration = await db.WebSearchConfigurations.SingleOrDefaultAsync(cancellationToken);
         if (configuration is null)
         {
-            configuration = WebSearchConfiguration.Create(url, request.DefaultTimeout, now);
-            db.WebSearchConfigurations.Add(configuration);
-        }
-        else
-        {
-            configuration.Change(url, request.DefaultTimeout, now);
+            db.WebSearchConfigurations.Add(WebSearchConfiguration.Create(url, request.DefaultTimeout, now));
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return TypedResults.NoContent();
+            }
+            catch (DbUpdateException exception) when (exception.IsUniqueViolation())
+            {
+                // The row is a singleton on a fixed key, so two administrators saving the first one at once cannot both create it:
+                // the one that lost takes the row that won instead of answering with an error.
+                db.ChangeTracker.Clear();
+                configuration = await db.WebSearchConfigurations.SingleAsync(cancellationToken);
+            }
         }
 
+        configuration.Change(url, request.DefaultTimeout, now);
         await db.SaveChangesAsync(cancellationToken);
         return TypedResults.NoContent();
     }
