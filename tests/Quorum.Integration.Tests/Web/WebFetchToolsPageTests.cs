@@ -128,7 +128,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15
     public void TheToolsAreListedWithTheirNameDescriptionAndScope()
     {
-        var page = Visit<WebFetchTools>("/tools/web-fetch");
+        var page = Visit<WebTools>("/tools/web/fetch", p => p.Add(c => c.Section, "fetch"));
 
         var row = page.Find("[data-web-fetch-tool=reader]").ParentElement!.ParentElement!;
         Assert.Contains("web_fetch__reader", row.TextContent, StringComparison.Ordinal);
@@ -139,7 +139,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15
     public void AToolOfAnotherTenantIsReadOnlyInTheList()
     {
-        var page = Visit<WebFetchTools>("/tools/web-fetch");
+        var page = Visit<WebTools>("/tools/web/fetch", p => p.Add(c => c.Section, "fetch"));
 
         var row = page.Find("[data-web-fetch-tool=partner]").ParentElement!.ParentElement!;
         Assert.Contains("Shared with you", row.TextContent, StringComparison.Ordinal);
@@ -149,7 +149,11 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15, AC-13
     public void TheDrawerShowsTheOverrideAndLeavesAnInheritedFieldEmpty()
     {
-        var page = Visit<WebFetchTools>($"/tools/web-fetch/{ToolId}", p => p.Add(c => c.Id, ToolId.ToString()));
+        var page = Visit<WebTools>($"/tools/web/fetch/{ToolId}", p =>
+        {
+            p.Add(c => c.Section, "fetch");
+            p.Add(c => c.Id, ToolId.ToString());
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-fetch]")));
 
         // What the tool decided for itself is shown; what it leaves to the platform is an empty field, not the platform's number.
@@ -161,7 +165,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
         Assert.Contains("Delete", page.Find("[data-form=web-fetch]").TextContent, StringComparison.Ordinal);
     }
 
-    private static void AssertFieldEmpty(IRenderedComponent<WebFetchTools> page, string attribute)
+    private static void AssertFieldEmpty(IRenderedComponent<WebTools> page, string attribute)
     {
         var value = page.Find($"input[{attribute}]").GetAttribute("value");
         Assert.True(string.IsNullOrEmpty(value), $"the field carries {value}");
@@ -170,7 +174,11 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15, AC-1
     public void SavingAFormWithNothingInItsBudgetFieldsAsksThePlatformToDecide()
     {
-        var page = Visit<WebFetchTools>("/tools/web-fetch/new", p => p.Add(c => c.Id, "new"));
+        var page = Visit<WebTools>("/tools/web/fetch/new", p =>
+        {
+            p.Add(c => c.Section, "fetch");
+            p.Add(c => c.Id, "new");
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-fetch]")));
 
         page.Find("input[data-web-fetch-urls]").Change("3");
@@ -189,7 +197,11 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15
     public void AToolCannotBeSavedWithoutANameAndThePageSaysWhy()
     {
-        var page = Visit<WebFetchTools>("/tools/web-fetch/new", p => p.Add(c => c.Id, "new"));
+        var page = Visit<WebTools>("/tools/web/fetch/new", p =>
+        {
+            p.Add(c => c.Section, "fetch");
+            p.Add(c => c.Id, "new");
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-fetch]")));
 
         page.Find("[data-form=web-fetch] input[type=text]").Change(string.Empty);
@@ -202,7 +214,11 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15
     public void TheNumberTheModelIsGivenComesFromTheSavedTool()
     {
-        var page = Visit<WebFetchTools>($"/tools/web-fetch/{ToolId}", p => p.Add(c => c.Id, ToolId.ToString()));
+        var page = Visit<WebTools>($"/tools/web/fetch/{ToolId}", p =>
+        {
+            p.Add(c => c.Section, "fetch");
+            p.Add(c => c.Id, ToolId.ToString());
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-fetch]")));
 
         Assert.NotNull(page.Find("[data-definition=web_fetch__reader]"));
@@ -212,7 +228,11 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15
     public void DeletingAsksFirstAndThenRemovesTheTool()
     {
-        var page = Visit<WebFetchTools>($"/tools/web-fetch/{ToolId}", p => p.Add(c => c.Id, ToolId.ToString()));
+        var page = Visit<WebTools>($"/tools/web/fetch/{ToolId}", p =>
+        {
+            p.Add(c => c.Section, "fetch");
+            p.Add(c => c.Id, ToolId.ToString());
+        });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-fetch]")));
 
         page.FindAll("[data-form=web-fetch] button").First(b => b.TextContent.Contains("Delete", StringComparison.Ordinal)).Click();
@@ -226,7 +246,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
     [Fact] // AC-15
     public void TheStateAndThePolicyAreChangedInTheList()
     {
-        var page = Visit<WebFetchTools>("/tools/web-fetch");
+        var page = Visit<WebTools>("/tools/web/fetch", p => p.Add(c => c.Section, "fetch"));
 
         page.Find("[data-web-fetch-tool=reader]").ParentElement!.ParentElement!.QuerySelector("select")!.Change(Quorum.Web.Client.Api.ToolPolicies.Confirm);
 

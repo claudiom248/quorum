@@ -79,7 +79,7 @@ public sealed class WebSearchSettingsTests : BunitContext
         var page = Open();
         page.WaitForState(() => !page.Markup.Contains("mud-progress-linear", StringComparison.Ordinal));
 
-        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Web search", StringComparison.Ordinal)).Click();
+        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Web", StringComparison.Ordinal)).Click();
 
         Assert.NotNull(page.Find("input[data-web-search-url]"));
         Assert.Equal("https://searxng.example.test", page.Find("input[data-web-search-url]").GetAttribute("value"));
@@ -91,17 +91,17 @@ public sealed class WebSearchSettingsTests : BunitContext
     {
         var page = Open();
         page.WaitForState(() => !page.Markup.Contains("mud-progress-linear", StringComparison.Ordinal));
-        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Web search", StringComparison.Ordinal)).Click();
+        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Web", StringComparison.Ordinal)).Click();
 
         page.Find("input[data-web-search-url]").Change("http://search.internal:8080");
         page.Find("input[data-web-search-timeout]").Change("120");
-        page.Find("button[data-save-web-search]").Click();
+        page.Find("button[data-save-web]").Click();
         page.WaitForState(() => _api.Count(HttpMethod.Put, "settings/web") > 0);
 
         Assert.Contains("http://search.internal:8080", _api.LastBody(HttpMethod.Put, "settings/web"), StringComparison.Ordinal);
         Assert.Contains("120", _api.LastBody(HttpMethod.Put, "settings/web"), StringComparison.Ordinal);
         page.WaitForElement("[role=status]");
-        Assert.Contains("Web search saved", page.Find("[role=status]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Web settings saved", page.Find("[role=status]").TextContent, StringComparison.Ordinal);
     }
 
     [Fact] // AC-9
@@ -112,7 +112,7 @@ public sealed class WebSearchSettingsTests : BunitContext
         var page = Open();
         page.WaitForState(() => !page.Markup.Contains("mud-progress-linear", StringComparison.Ordinal));
 
-        Assert.DoesNotContain(page.FindAll(".mud-tab"), t => t.TextContent.Contains("Web search", StringComparison.Ordinal));
+        Assert.DoesNotContain(page.FindAll(".mud-tab"), t => t.TextContent.Contains("Web", StringComparison.Ordinal));
     }
 
     [Fact] // AC-9
@@ -123,7 +123,7 @@ public sealed class WebSearchSettingsTests : BunitContext
 
         var page = Open();
         page.WaitForState(() => !page.Markup.Contains("mud-progress-linear", StringComparison.Ordinal));
-        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Web search", StringComparison.Ordinal)).Click();
+        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Web", StringComparison.Ordinal)).Click();
 
         Assert.Equal("90", page.Find("input[data-web-search-timeout]").GetAttribute("value"));
         Assert.Contains("No instance is set", page.Markup, StringComparison.Ordinal);

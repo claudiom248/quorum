@@ -1,25 +1,21 @@
-@page "/tools/web-search"
-@page "/tools/web-search/{Id}"
 @implements IDisposable
 @inject QuorumApi Api
 @inject NavigationManager Navigation
 @inject IDialogService Dialogs
 
-<PageTitle>Web search tools · Quorum</PageTitle>
-
-<ListPage Title="Web search tools"
-          Description="A web search tool lets an assistant ask the platform's SearXNG instance for what is newest or for what it does not know. The instance itself is set in Settings; here you decide how a search answers: how many results, which engines, in which language, and how often one conversation may ask. Activate a tool on an assistant in its settings."
-          AddLabel="Add web search tool" OnAdd="() => _screen.OpenDrawer(ListScreen<WebSearchToolListItem>.NewId)" Notice="@_notice"
+<ListPage Title="Web fetch tools"
+          Description="A web fetch tool lets an assistant read the pages themselves: a search gives the model a snippet, this gives it what the article says. The wait between fetches, the identity the platform announces and the budgets a tool falls back on are set in Settings; here you decide what one tool allows. Activate a tool on an assistant in its settings."
+          AddLabel="Add web fetch tool" OnAdd="() => _screen.OpenDrawer(ListScreen<WebFetchToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
-          EmptyTitle="No web search tool is configured yet" EmptyText="Add one to let an assistant search the web.">
+          EmptyTitle="No web fetch tool is configured yet" EmptyText="Add one to let an assistant read a page instead of guessing from a snippet.">
     <FilterContent>
         <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
                    StatusOptions="StatusOptions" SearchPlaceholder="Search by name or description" />
     </FilterContent>
     <ChildContent>
         <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem ?? _problem : _problem" />
-        <MudTable T="WebSearchToolListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="web-search">
+        <MudTable T="WebFetchToolListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="web-fetch">
             <HeaderContent>
                 <MudTh>Name</MudTh>
                 <MudTh>Scope</MudTh>
@@ -27,7 +23,7 @@
             </HeaderContent>
             <RowTemplate Context="tool">
                 <MudTd DataLabel="Name">
-                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-search-tool="@tool.Name">web_search__@tool.Name</MudLink>
+                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-fetch-tool="@tool.Name">web_fetch__@tool.Name</MudLink>
                     <div class="tool-row-description">@tool.Description</div>
                 </MudTd>
                 <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Assistants="_assistants" Shared="tool.Shared" /></MudTd>
@@ -59,50 +55,37 @@
     else
     {
         var form = _form;
-        <div data-form="web-search">
+        <div data-form="web-fetch">
             <form @onsubmit="SaveAsync">
                 <MudStack Spacing="3">
-                    @if (!_instanceIsSet)
+                    @if (_web is not null)
                     {
-                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
-                            The platform has no search instance yet, so a tool saved now will be refused.
-                            Set one in <MudLink Href="settings">Settings</MudLink> first.
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                            A field you leave empty follows the platform, which allows @_web.FetchTokenBudgetPerPage tokens a page,
+                            @_web.FetchTotalTokenBudget in one call, @_web.FetchMaxUrlsPerInvocation pages and @_web.FetchTimeoutSeconds seconds
+                            each. Change them in <MudLink Href="settings">Settings</MudLink>.
                         </MudAlert>
                     }
 
-                    <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@WebSearchToolLimits.MaxNameLength"
-                                  HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as web_search__name." />
+                    <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@WebFetchToolLimits.MaxNameLength"
+                                  HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as web_fetch__name." />
                     <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3"
-                                  MaxLength="@WebSearchToolLimits.MaxDescriptionLength"
-                                  HelperText="For the model: when to search the web instead of answering from what it knows or from a knowledge base." />
+                                  MaxLength="@WebFetchToolLimits.MaxDescriptionLength"
+                                  HelperText="For the model: when to read a page instead of answering from a search result or a knowledge base." />
 
-                    <MudNumericField T="int" @bind-Value="form.TopN" Label="Results per search" Variant="Variant.Outlined"
-                                     Min="@WebSearchToolLimits.MinTopN" Max="@WebSearchToolLimits.MaxTopN" data-web-search-top-n
-                                     HelperText="@($"From {WebSearchToolLimits.MinTopN} to {WebSearchToolLimits.MaxTopN}. Each one comes back with its title, address and a short extract.")" />
-                    <MudNumericField T="int" @bind-Value="form.MaxInvocations" Label="Most calls per conversation" Variant="Variant.Outlined"
-                                     Min="@WebSearchToolLimits.MinMaxInvocations" Max="@WebSearchToolLimits.MaxMaxInvocations" data-web-search-invocations
-                                     HelperText="After that the model is told it stopped, so one question cannot spend the whole answer searching." />
-                    <MudTextField @bind-Value="form.Language" Label="Language" Variant="Variant.Outlined" MaxLength="5"
-                                  HelperText="A two-letter code, with an optional region: it, en, en-us. Leave it empty to let the instance decide." />
-                    <MudTextField @bind-Value="form.EnginesText" Label="Engines" Variant="Variant.Outlined" Lines="3"
-                                  HelperText="One per line, as the instance names them: google, bing, duckduckgo. Leave it empty to ask all the ones it enables." />
+                    <MudNumericField T="int?" @bind-Value="form.TokenBudgetPerPage" Label="Tokens per page" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinTokenBudgetPerPage" Max="@WebFetchToolLimits.MaxTokenBudgetPerPage" data-web-fetch-per-page
+                                     HelperText="How much of one article the model reads. Leave it empty to take the platform's default." />
+                    <MudNumericField T="int?" @bind-Value="form.TotalTokenBudget" Label="Tokens per call" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinTotalTokenBudget" Max="@WebFetchToolLimits.MaxTotalTokenBudget" data-web-fetch-total
+                                     HelperText="What every page of one call costs together: the later pages get what is left. Empty takes the platform's default." />
+                    <MudNumericField T="int?" @bind-Value="form.MaxUrlsPerInvocation" Label="Most pages per call" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinMaxUrlsPerInvocation" Max="@WebFetchToolLimits.MaxMaxUrlsPerInvocation" data-web-fetch-urls
+                                     HelperText="The model is told this number in the tool's description. Empty takes the platform's default." />
+                    <MudNumericField T="int?" @bind-Value="form.Timeout" Label="Timeout per page (seconds)" Variant="Variant.Outlined"
+                                     Min="@WebFetchToolLimits.MinTimeoutSeconds" Max="@WebFetchToolLimits.MaxTimeoutSeconds" data-web-fetch-timeout
+                                     HelperText="How long one site may take before the page is reported as not read. Empty takes the platform's default." />
 
-                    <label class="tool-policy">Safe search
-                        <select aria-label="Safe search" @bind="form.SafeSearch">
-                            <option value="0">Off</option>
-                            <option value="1">Moderate</option>
-                            <option value="2">Strict</option>
-                        </select>
-                    </label>
-                    <label class="tool-policy">Only results from
-                        <select aria-label="Time range" @bind="form.TimeRange">
-                            <option value="">Any time</option>
-                            @foreach (var (value, label) in WebSearchToolLimits.TimeRanges)
-                            {
-                                <option value="@value">@label</option>
-                            }
-                        </select>
-                    </label>
                     <label class="tool-policy">Policy
                         <select aria-label="Policy" @bind="form.Policy">
                             <option value="@ToolPolicies.Auto">Run without asking</option>
@@ -111,7 +94,7 @@
                     </label>
 
                     <ScopePicker Form="form.Scope" Assistants="_assistants" Tenants="_tenants" Subject="tool"
-                                 GlobalWarning="Every tenant of this installation will see the tool and may search the web through it." />
+                                 GlobalWarning="Every tenant of this installation will see the tool and may read pages through it." />
 
                     @if (_formProblems.Count > 0)
                     {
@@ -135,7 +118,7 @@
                         }
 
                         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
-                                   data-save-web-search-tool>Save</MudButton>
+                                   data-save-web-fetch-tool>Save</MudButton>
                     </MudStack>
 
                     @if (_definition is not null)
@@ -168,10 +151,10 @@
     ];
 
     private ListDrawer? _drawer;
-    private ListScreen<WebSearchToolListItem> _screen = null!;
+    private ListScreen<WebFetchToolListItem> _screen = null!;
     private IReadOnlyList<AssistantSummary> _assistants = [];
     private IReadOnlyList<TenantSummary>? _tenants;
-    private bool _instanceIsSet;
+    private WebConfigurationInfo? _web;
     private ApiProblem? _problem;
     private ApiProblem? _drawerProblem;
     private ApiProblem? _formProblem;
@@ -179,25 +162,25 @@
     private bool _busy;
     private int _rowGeneration;
     private string? _notice;
-    private WebSearchToolForm? _form;
+    private WebFetchToolForm? _form;
     private string _initial = string.Empty;
-    private WebSearchToolDefinition? _definition;
+    private WebFetchToolDefinition? _definition;
     private string? _openedId;
 
     /// <summary>The drawer: <c>new</c> or the id of the tool. Without it only the list shows.</summary>
     [Parameter]
     public string? Id { get; set; }
 
-    private string DrawerTitle => _form is null ? "Web search tool" : _form.IsNew ? "Add web search tool" : $"Edit web_search__{_form.OriginalName}";
+    private string DrawerTitle => _form is null ? "Web fetch tool" : _form.IsNew ? "Add web fetch tool" : $"Edit web_fetch__{_form.OriginalName}";
 
     private bool IsDirty => _form is not null && !string.Equals(_initial, Snapshot(), StringComparison.Ordinal);
 
     protected override async Task OnInitializedAsync()
     {
-        _screen = new ListScreen<WebSearchToolListItem>(
+        _screen = new ListScreen<WebFetchToolListItem>(
             Navigation,
-            "/tools/web-search",
-            (query, cursor) => Api.ListWebSearchToolsPageAsync(query, ListScreen<WebSearchToolListItem>.PageSize, cursor),
+            "/tools/web/fetch",
+            (query, cursor) => Api.ListWebFetchToolsPageAsync(query, ListScreen<WebFetchToolListItem>.PageSize, cursor),
             () => InvokeAsync(StateHasChanged));
 
         var assistants = await Api.ListAssistantsAsync();
@@ -205,9 +188,9 @@
         var tenants = await Api.ListTenantsAsync();
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 
-        // What the drawer has to warn about before anything is typed: a tool without an instance cannot be saved.
-        var instance = await Api.GetWebConfigurationAsync();
-        _instanceIsSet = instance.IsSuccess && !string.IsNullOrWhiteSpace(instance.Value.SearchUrl);
+        // The drawer says what an empty field will fall back on, so the row is read before anything is typed.
+        var configuration = await Api.GetWebConfigurationAsync();
+        _web = configuration.IsSuccess ? configuration.Value : null;
 
         await _screen.ReloadAsync();
     }
@@ -229,15 +212,15 @@
         {
             _form = null;
         }
-        else if (Id == ListScreen<WebSearchToolListItem>.NewId)
+        else if (Id == ListScreen<WebFetchToolListItem>.NewId)
         {
-            _form = new WebSearchToolForm();
+            _form = new WebFetchToolForm();
             _initial = Snapshot();
         }
         else if (Guid.TryParse(Id, out var id))
         {
             _form = null;
-            var detail = await Api.GetWebSearchToolAsync(id);
+            var detail = await Api.GetWebFetchToolAsync(id);
             if (!detail.IsSuccess)
             {
                 _drawerProblem = detail.Problem;
@@ -250,13 +233,13 @@
         else
         {
             _form = null;
-            _drawerProblem = new ApiProblem(404, "web_search.not_found", "There is no such tool.", new Dictionary<string, string[]>());
+            _drawerProblem = new ApiProblem(404, "web_fetch.not_found", "There is no such tool.", new Dictionary<string, string[]>());
         }
     }
 
-    private void Open(WebSearchToolDetail detail)
+    private void Open(WebFetchToolDetail detail)
     {
-        _form = WebSearchToolForm.From(detail);
+        _form = WebFetchToolForm.From(detail);
         _definition = detail.Definition;
         _initial = Snapshot();
     }
@@ -264,9 +247,9 @@
     private string Snapshot() => System.Text.Json.JsonSerializer.Serialize(_form!.ToRequest());
 
     // The tool row lets the admin enable, disable and set the policy like for any other tool.
-    private static ToolInfo AsToolInfo(WebSearchToolListItem tool) => new(
+    private static ToolInfo AsToolInfo(WebFetchToolListItem tool) => new(
         tool.Id,
-        "WebSearch",
+        "WebFetch",
         null,
         tool.Name,
         tool.Description,
@@ -307,7 +290,7 @@
             Guid id;
             if (form.Id is { } existing)
             {
-                var updated = await Api.UpdateWebSearchToolAsync(existing, request);
+                var updated = await Api.UpdateWebFetchToolAsync(existing, request);
                 if (!updated.IsSuccess)
                 {
                     _formProblem = updated.Problem;
@@ -318,7 +301,7 @@
             }
             else
             {
-                var created = await Api.CreateWebSearchToolAsync(request);
+                var created = await Api.CreateWebFetchToolAsync(request);
                 if (!created.IsSuccess)
                 {
                     _formProblem = created.Problem;
@@ -329,11 +312,11 @@
             }
 
             // The drawer stays open on the saved tool, with the definition the model gets.
-            var saved = await Api.GetWebSearchToolAsync(id);
+            var saved = await Api.GetWebFetchToolAsync(id);
             if (saved.IsSuccess)
             {
                 Open(saved.Value);
-                _notice = $"web_search__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"web_fetch__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();
@@ -355,7 +338,7 @@
         var form = _form!;
         if (!await Confirmations.ConfirmDeleteAsync(
                 Dialogs,
-                $"Delete web_search__{form.OriginalName}?",
+                $"Delete web_fetch__{form.OriginalName}?",
                 "It is removed from every assistant. The audit log keeps its name.",
                 "Delete tool"))
         {
@@ -364,14 +347,14 @@
 
         await RunAsync(async () =>
         {
-            var result = await Api.DeleteWebSearchToolAsync(form.Id!.Value);
+            var result = await Api.DeleteWebFetchToolAsync(form.Id!.Value);
             if (!result.IsSuccess)
             {
                 _formProblem = result.Problem;
                 return;
             }
 
-            _notice = $"web_search__{form.OriginalName} was deleted.";
+            _notice = $"web_fetch__{form.OriginalName} was deleted.";
             _form = null;
             _definition = null;
             _drawer?.SkipNextGuard();

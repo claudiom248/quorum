@@ -266,6 +266,12 @@ public sealed partial class QuorumApi(HttpClient http)
         {
             return ApiResult.Fail<T>(ApiProblem.Unreachable);
         }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A wait that ran out is not the caller giving up: the client's own timeout would otherwise leave every save
+            // button on the page disabled, because the code after the call never runs.
+            return ApiResult.Fail<T>(ApiProblem.Unreachable);
+        }
     }
 
     private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string uri, object? body, string? setupToken, CancellationToken cancellationToken)
@@ -277,6 +283,10 @@ public sealed partial class QuorumApi(HttpClient http)
             return await ReadAsync<T>(response, cancellationToken);
         }
         catch (HttpRequestException)
+        {
+            return ApiResult.Fail<T>(ApiProblem.Unreachable);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return ApiResult.Fail<T>(ApiProblem.Unreachable);
         }
@@ -293,6 +303,10 @@ public sealed partial class QuorumApi(HttpClient http)
                 : ApiResult.Failure(await ApiProblem.ReadAsync(response, cancellationToken));
         }
         catch (HttpRequestException)
+        {
+            return ApiResult.Failure(ApiProblem.Unreachable);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return ApiResult.Failure(ApiProblem.Unreachable);
         }
