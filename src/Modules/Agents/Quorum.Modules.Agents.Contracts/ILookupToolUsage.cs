@@ -12,10 +12,14 @@ public interface ILookupToolUsage
 
 /// <param name="LookupIds">The lookups the tool binds.</param>
 /// <param name="FieldIds">The dictionary fields the tool exposes to the model or fixes a filter on.</param>
+/// <param name="KnowledgeBaseIds">The live knowledge bases the tool queries (spec 012 A1-2).</param>
+/// <param name="LookupAliases">The alias a lookup was bound with, by lookup id; a lookup without one is known by its own name.</param>
 /// <param name="AttributeKeys">The attributes the tool fixes a condition on (spec 012 D-7), by lookup id.</param>
 public sealed record LookupToolUse(
     Guid TenantId,
     string ToolName,
     IReadOnlyList<Guid> LookupIds,
     IReadOnlyList<Guid> FieldIds,
+    IReadOnlyList<Guid> KnowledgeBaseIds,
+    IReadOnlyDictionary<Guid, string> LookupAliases,
     IReadOnlyDictionary<Guid, IReadOnlyList<string>>? AttributeKeys = null);

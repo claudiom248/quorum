@@ -14,7 +14,7 @@ internal sealed class LookupToolUsage(AgentsDbContext db) : ILookupToolUsage
         var tools = await (
             from tool in db.Tools.IgnoreQueryFilters()
             join lookup in db.LookupTools.IgnoreQueryFilters() on tool.Id equals lookup.ToolId
-            select new { tool.TenantId, tool.Name, lookup.LookupIds, lookup.ExposedFieldIds, lookup.FixedFilterFieldIds, lookup.LookupFilters })
+            select new { tool.TenantId, tool.Name, lookup.LookupIds, lookup.LookupAliases, lookup.KnowledgeBaseIds, lookup.ExposedFieldIds, lookup.FixedFilterFieldIds, lookup.LookupFilters })
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
@@ -23,6 +23,8 @@ internal sealed class LookupToolUsage(AgentsDbContext db) : ILookupToolUsage
             t.Name,
             [.. t.LookupIds],
             [.. t.ExposedFieldIds.Concat(t.FixedFilterFieldIds).Distinct()],
+            [.. t.KnowledgeBaseIds],
+            JsonSerializer.Deserialize<Dictionary<Guid, string>>(t.LookupAliases) ?? [],
             AttributeKeysOf(t.LookupFilters)))];
     }
 

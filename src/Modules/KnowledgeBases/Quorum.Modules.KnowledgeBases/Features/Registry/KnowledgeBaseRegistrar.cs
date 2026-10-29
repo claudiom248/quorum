@@ -29,6 +29,7 @@ internal sealed partial class KnowledgeBaseRegistrar(
     IAssistantDirectory assistants,
     LookupRefreshSignal refreshSignal,
     LookupCache lookupCache,
+    ILookupToolUsage lookupTools,
     TimeProvider clock,
     ILogger<KnowledgeBaseRegistrar> logger)
 {
@@ -101,6 +102,11 @@ internal sealed partial class KnowledgeBaseRegistrar(
         }
 
         var input = prepared.Value;
+        if (await LookupToolGuards.KnowledgeBaseAsync(db, lookupTools, registration, input.Name, input.Mapping, cancellationToken) is { } blocked)
+        {
+            return blocked;
+        }
+
         var now = clock.GetUtcNow();
         var before = registration.Mapping;
         var (kindBefore, connectionBefore) = (registration.Kind, registration.Connection.Members.ToJsonString());
