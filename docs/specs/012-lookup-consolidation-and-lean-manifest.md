@@ -1,6 +1,6 @@
 # Spec 012: Lookup Consolidation and Lean Manifest
 
-**Status:** Approved (2026-10-29)
+**Status:** Approved (2026-10-29); Amendment 1 Approved (2026-10-29)
 **Date:** 2026-10-29
 
 ## Problem
@@ -153,4 +153,78 @@ Errors use ProblemDetails with a stable `code`; routes are under `/api`. Permiss
 | Indexes on the attributes of `lookup_values` | The plan picks them (for instance a GIN index on the jsonb) and measures them on the sample project with 50,000 rows | The measure shows a query over 1 s |
 
 ## Open Questions
+None.
+
+## Amendment 1: roles of a KB in a tool, one namespace, a `describe` that states only what applies (spec 012)
+Used with real assistants, the lean manifest (D-8) shows that the targets of a lookup tool are not told apart well enough. A tool can bind a lookup and the knowledge base it comes from under the same name (an entity lookup is named `<kb>`, D-2), and `describe` and `query` resolve the lookup first, so the KB cannot be reached. `describe` lists the filters of the whole tool on every knowledge base, whether that KB maps them or not, and it lists no filter at all for the attributes of an entity lookup, which D-5 makes filterable. The tool editor asks for the lists and, separately, for the "knowledge bases to ask live", so the same KB is chosen twice and an entity KB can be offered as a document source it was never meant to be.
+
+This amendment fixes the roles a KB can have in a tool, so that a KB is never both an entity lookup and a document target of the same tool, gives the targets one namespace, and makes `describe` state, for each target, only what that target applies. It amends D-1, D-8, D-10 and D-12, the acceptance criteria AC-14, AC-15, AC-22 and AC-27, and the function parameter of spec 007 A1 that names the knowledge bases asked live.
+
+### Scope
+**In:** the roles of a KB in a tool, the live KBs of a tool, one namespace of targets, the content of `describe`, the single selector of the editor, the guard on mappings, the removal of the migration.
+**Out:** moving entities out of the KB model (an entity lookup keeps reading the KB's connection, mapping and snapshots), the layout of the editor beyond the single selector, any change to the full manifest's per-function filters (A1-8).
+
+### Decisions
+| # | Decision |
+|---|---|
+| A1-1 | **Roles of a KB in a lookup tool.** A KB is a **document KB** when its mapping sets `text` or `documentId`, and an **entity KB** when it sets `entityName`; it can be both. Only a document KB can be the live KB of a tool (`documents`, `count`). An entity KB that is not a document KB gives lookups only. A KB that has neither role gives computed lists only. A KB that is both is a live KB or the source of an entity lookup in a tool, never both (A1-3). |
+| A1-2 | **Live KBs of a tool.** A tool can have several live KBs, all document KBs, up to `MaxKnowledgeBases` as today (`knowledgeBaseIds[]` stays). Each is a target of its own with its own name (A1-4) and its own description (A1-5). A call of `documents` or `count` reads **one** KB, the one the call names (the lean `query` already takes the KB as its target), so the cursor of `documents` no longer walks from one KB to the next and no longer names a KB. The lookups of the tool (computed, entity, manual) can come from any KB the tenant sees, and the computed lists of a live KB are allowed. This amends 007 A1 and D-8 (b). |
+| A1-3 | **One view of a KB with both roles.** A tool that has the entity lookup of a KB cannot have the same KB among its live KBs, and the other way round (400 `lookup_tool.knowledge_base_both_views`); the admin makes a second tool for the other view. The computed lists of the live KB stay allowed. |
+| A1-4 | **One namespace.** The targets of a tool, that is its lookups (by alias when there is one, else by name) and its live KB (by name), have distinct names. A name used twice is refused (400 `lookup_tool.target_name_taken`), in both manifests, and neither `describe` nor `query` picks one of two. A rename of a lookup or of a KB that would make two targets of a tool share a name is refused with 409 `lookup_tool.target_name_taken`, listing the tools. |
+| A1-5 | **`describe` states only what the target applies.** For each target the answer names the operations, the filters, the sort and the limits that **that target** takes, and nothing else. A live KB: the exposed fields its mapping maps, with `eq` and `in`. A computed list: the exposed fields its source KB maps, `search`, `sort` by name or count. An entity or manual lookup: its attributes with their type and the operators of D-5 (`eq` and `in` for every type, `min` and `max` for `number` and `date`), and `sort` by the name or by an attribute of type `number` or `date`; the dictionary fields of its source KB are not listed for it. A filter that the tool does not offer, or that the target does not map, appears nowhere in the answer for that target. There are no filters "of the tool" shared by every target. |
+| A1-6 | **`describe` and `query` agree.** What `describe` lists for a target is accepted by `query` for it, and what `query` rejects for a target is not in `describe`. A call that names a field, operator, sort or operation the target does not list returns the error result of D-8 with the schema of that target. |
+| A1-7 | **`valuesIn` points to a callable target.** A filter names the list that holds its values only when that list is a target of the tool; otherwise the field is described with no pointer, and the description says so in words. |
+| A1-8 | **Full manifest.** The roles (A1-1), the live KB (A1-2, A1-3) and the namespace (A1-4) apply to both manifests. The full manifest keeps one set of filter parameters per function (007 A1) and states in each parameter's description which targets it applies to; the filters on the attributes of entity lookups exist in the lean manifest only. |
+| A1-9 | **Guard on the mapping.** A change of the mapping of a KB that removes the role a tool relies on (the document roles of a live KB, `entityName` of an entity lookup) is refused with 409 `knowledge_base.role_in_use`, listing the tools. |
+| A1-10 | **One selector in the editor.** The editor of the tool has one selector of targets: the lists, the entity and manual lookups, and the live KBs chosen among the document KBs. The separate "knowledge bases to ask live" disappears. A KB that is not a document KB is never offered as a live KB, and a KB that is already a lookup source in the tool as an entity is not offered either (A1-3). This amends D-12. |
+| A1-11 | **No migration.** D-10 is amended: tools are not converted. The development database is reset, the rules of A1-2 to A1-4 apply when a tool is saved, and a stored tool that does not follow them is deleted, never served. The compatibility of the `knowledgeBaseIds[]` field is dropped. |
+
+### API Contract
+| Verb | Route | Change | Errors |
+|---|---|---|---|
+| POST, PUT | `/tools/lookup` | `knowledgeBaseIds[]` stays and is validated against A1-1 and A1-3 | 400 `lookup_tool.knowledge_base_not_documentary` (A1-1), `lookup_tool.knowledge_base_both_views` (A1-3), `lookup_tool.target_name_taken` (A1-4) |
+| PUT | `/knowledge-bases/{id}` (mapping) | A change that removes a role in use (A1-9) | 409 `knowledge_base.role_in_use` |
+| PUT | `/knowledge-bases/lookups/{lookupId}`, `/knowledge-bases/{id}` (rename) | A rename that makes two targets of a tool share a name | 409 `lookup_tool.target_name_taken` |
+
+Chat: no new route; `lookup_describe__<name>` and `lookup_query__<name>` as in D-8, with the content of A1-5.
+
+### Authorization
+Unchanged: `tools.manage` for the tool, `knowledge_base.manage` for the mapping and the names, `tools.use` for `describe` and `query`. The 409 lists name the tools the caller can see.
+
+### Edge Cases & Failure Modes
+- **A name collision between a target of a tool and a lookup renamed later**: refused at the rename (A1-4), so a saved tool never holds two targets with one name.
+- **A live KB that is deleted, or that stops being visible to the assistant**: the tool is served without it, as today (012 "Edge Cases"), and the editor warns.
+- **A KB that gains `entityName` or `text` after the tool was saved**: nothing changes for the tool, which keeps its single view; the new role is available to other tools.
+- **A `describe` of a target whose snapshot is not ready**: as in D-8; the answer says it is not ready and lists no filters it cannot yet apply.
+- **A manual lookup, which has no KB**: it is a target like the others; it takes no dictionary-field filters.
+
+### Non-Functional Requirements
+- The lean manifest stays smaller than the full one (AC-24), measured again with the sample project after the change: `describe` no longer repeats the same filters on every target.
+- `describe` is computed from the same definitions `query` validates against (A1-6), so it cannot drift from what the tool accepts.
+
+### Integrations
+None new. The KnowledgeBases module exposes the role of a KB and the attributes of a lookup through `IKnowledgeBaseLookups` (spec 007); the Agents module builds the descriptions from them.
+
+### Acceptance Criteria
+- **AC-A1-1** Given an entity KB with `entityName` and neither `text` nor `documentId`, When it is saved as the live KB of a tool, Then it returns 400 `lookup_tool.knowledge_base_not_documentary`; given a document KB, Then it is accepted.
+- **AC-A1-2** Given a tool with two document KBs as live KBs, When `documents` or `count` is called with one of them as the KB, Then only that KB is read and the cursor of `documents` does not name a KB; given a call that names a KB that is not a live KB of the tool, Then it returns an error result that names the valid ones.
+- **AC-A1-3** Given a KB with both roles, When a tool that has its entity lookup is saved with the same KB as its live KB, Then it returns 400 `lookup_tool.knowledge_base_both_views`; given a tool with its computed lists and the KB as live KB, Then it is accepted.
+- **AC-A1-4** Given a tool with the lookup `vendors` and a live KB named `vendors`, When it is saved, Then it returns 400 `lookup_tool.target_name_taken`; given an alias that makes the names distinct, Then it is accepted and both targets can be reached in the lean manifest.
+- **AC-A1-5** Given a tool whose lookup is renamed to the name of its live KB, When the rename is sent, Then it returns 409 `lookup_tool.target_name_taken` listing the tool.
+- **AC-A1-6** Given `describe` on a live KB and on a computed list that come from two KBs that map different fields, When called, Then each target lists only the exposed fields its own KB maps, and a field mapped by one is absent from the other.
+- **AC-A1-7** Given `describe` on an entity lookup with `country` (text), `rating` (number) and `since` (date), When called, Then it lists the three attributes with their type and operators (`eq`, `in`; `min`, `max` for `rating` and `since`), and sort by name, `rating` and `since`, and no dictionary field of its KB.
+- **AC-A1-8** Given every target of the sample project, When `describe` is read and each listed filter, operator and sort is sent to `query`, Then `query` accepts them all; given a filter that `describe` does not list for a target, Then `query` rejects it with that target's schema.
+- **AC-A1-9** Given a filter whose list of values is not a target of the tool, When `describe` is read, Then the filter has no `valuesIn` and its description says the values are not listed.
+- **AC-A1-10** Given a full manifest, When generated for a tool with an entity lookup, Then it has no parameter for the attributes of the lookup, and each filter parameter's description names the targets it applies to.
+- **AC-A1-11** Given a KB used as a live KB or as an entity source by a tool, When a mapping change removes that role, Then it returns 409 `knowledge_base.role_in_use` listing the tools; given a change that keeps it, Then it is accepted.
+- **AC-A1-12** Given the editor of the tool, When opened, Then it has one selector of targets, the live KBs are chosen among the document KBs only, and an entity KB is offered only as a lookup.
+
+### Deferred Decisions
+| Decision | Chosen fallback | Revisit when |
+|---|---|---|
+| Filters on the attributes of entity lookups in the full manifest | Not offered (A1-8) | A model that cannot use the lean manifest needs them |
+| One call of `documents` or `count` across several live KBs | Not offered (A1-2): a call reads one KB | A real case needs one answer across two document KBs |
+| Moving entities out of the KB model | An entity lookup keeps its KB as the source | The roles of a KB become awkward for the admin even with A1-1 |
+
+### Open Questions
 None.
