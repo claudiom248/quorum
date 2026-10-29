@@ -1,0 +1,15 @@
+# The SearXNG instance of the platform (spec 005). Only what Quorum needs is written here; everything else stays SearXNG's own default.
+#
+# The secret is not in this file: SearXNG takes it from SEARXNG_SECRET, which docker-compose reads from .env.
+use_default_settings: true
+
+search:
+  # Quorum asks /search?format=json. Without json listed here the instance answers with a web page, and a search of the web is
+  # reported to the model as unavailable.
+  formats:
+    - html
+    - json
+
+server:
+  # A private instance behind the compose network: the limiter is for public ones, and it would need a valkey to keep its tokens in.
+  limiter: false

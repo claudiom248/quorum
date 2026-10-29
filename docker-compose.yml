@@ -6,7 +6,8 @@
 # To stamp the real version on the image (shown by /api/version), run docker compose through deploy/compose.sh:
 #   sh deploy/compose.sh --profile bundled-db up --build -d
 #
-# Profiles combine: --profile bundled-db (PostgreSQL), --profile qdrant and --profile pgvector (vector stores for knowledge bases).
+# Profiles combine: --profile bundled-db (PostgreSQL), --profile qdrant and --profile pgvector (vector stores for knowledge bases),
+# --profile searxng (the instance a web search tool asks).
 #
 # The image is built from the sources inside Docker (no step to run beforehand).
 #
@@ -92,6 +93,22 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # The SearXNG instance the platform searches with (profile "searxng", spec 005). Register it in Settings > Web search as
+  # http://searxng:8080 from inside this network, or http://127.0.0.1:8888 when Quorum runs on the host. The settings file enables
+  # the json answer format, without which a search of the web cannot work; the secret comes from .env and is not in the file.
+  # The published port is for checking the instance from a browser and stays on loopback.
+  searxng:
+    profiles: [searxng]
+    image: searxng/searxng:2026.10.13-22c64b8d3
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET in .env}
+      SEARXNG_BASE_URL: http://searxng:8080/
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8888}:8080"
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
 
 volumes:
   quorum-keys:
