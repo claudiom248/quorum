@@ -49,6 +49,7 @@ public static class AgentsModule
         services.AddScoped<RagToolValidation>();
         services.AddScoped<LookupToolValidation>();
         services.AddScoped<WebSearchToolValidation>();
+        services.AddScoped<WebFetchToolValidation>();
         services.AddScoped<IModelEndpointProbe, ModelEndpointProbe>();
         services.AddScoped<IAssistantProvisioning, AssistantProvisioning>();
         services.AddScoped<AssistantChat>();

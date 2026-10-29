@@ -3,6 +3,7 @@ using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Modules.Agents.Tools.WebSearch;
 
 namespace Quorum.Modules.Agents.Tools;
@@ -12,6 +13,7 @@ namespace Quorum.Modules.Agents.Tools;
 /// <param name="Rag">The binding of a rag tool; <see langword="null"/> for the others.</param>
 /// <param name="Lookup">The binding of a lookup tool; <see langword="null"/> for the others.</param>
 /// <param name="WebSearch">The binding of a web search tool; <see langword="null"/> for the others.</param>
+/// <param name="WebFetch">The binding of a web fetch tool; <see langword="null"/> for the others.</param>
 /// <param name="DefinitionHash">The hash of the definition the model is offered; a call is refused when the stored one differs by then.</param>
 internal sealed record ActiveTool(
     Guid ToolId,
@@ -25,7 +27,8 @@ internal sealed record ActiveTool(
     McpServerEndpoint? Server = null,
     RagBinding? Rag = null,
     LookupBinding? Lookup = null,
-    WebSearchBinding? WebSearch = null);
+    WebSearchBinding? WebSearch = null,
+    WebFetchBinding? WebFetch = null);
 
 /// <summary>What a call needs to reach an MCP server: its identity, address and the encrypted static headers.</summary>
 internal sealed record McpServerEndpoint(Guid ServerId, string Url, string? ProtectedHeaders);
@@ -97,27 +100,50 @@ internal static class ActiveToolsQuery
                 .Where(webSearch => webSearchIds.Contains(webSearch.ToolId))
                 .ToDictionaryAsync(webSearch => webSearch.ToolId, WebSearchBinding.From, cancellationToken);
 
+        var webFetchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebFetch).Select(pooled => pooled.Tool.Id).ToList();
+        var webFetchBindings = webFetchIds.Count == 0
+            ? []
+            : await db.WebFetchTools.IgnoreQueryFilters().AsNoTracking()
+                .Where(webFetch => webFetchIds.Contains(webFetch.ToolId))
+                .ToDictionaryAsync(webFetch => webFetch.ToolId, WebFetchBinding.From, cancellationToken);
+
         return tools
             .Select(pooled =>
             {
                 var webSearch = webSearchBindings.GetValueOrDefault(pooled.Tool.Id);
+                var webFetch = webFetchBindings.GetValueOrDefault(pooled.Tool.Id);
 
-                // A web search tool's definition comes from its binding, the way a rag tool's comes from the catalog; unlike a rag
-                // tool's it needs nothing from outside the row, so it is written here and not by a resolver.
-                var generated = webSearch is null ? null : WebSearchToolDefinition.Build(pooled.Tool.Description, webSearch.TopN);
+                // A web search or fetch tool's definition comes from its binding, the way a rag tool's comes from the catalog; unlike
+                // a rag tool's it needs nothing from outside the row, so it is written here and not by a resolver.
+                string generatedDescription = pooled.Tool.Description;
+                string generatedSchema = pooled.Tool.InputSchema;
+                if (webSearch is not null)
+                {
+                    var generatedSearch = WebSearchToolDefinition.Build(pooled.Tool.Description, webSearch.TopN);
+                    generatedDescription = generatedSearch.Description;
+                    generatedSchema = generatedSearch.InputSchema;
+                }
+                else if (webFetch is not null)
+                {
+                    var generatedFetch = WebFetchToolDefinition.Build(pooled.Tool.Description, webFetch.MaxUrlsPerInvocation);
+                    generatedDescription = generatedFetch.Description;
+                    generatedSchema = generatedFetch.InputSchema;
+                }
+
                 return new ActiveTool(
                     pooled.Tool.Id,
                     pooled.Tool.Origin,
                     pooled.Tool.Name,
                     pooled.ExposedName,
                     AuditServerOf(pooled),
-                    generated?.Description ?? pooled.Tool.Description,
-                    generated?.InputSchema ?? pooled.Tool.InputSchema,
+                    generatedDescription,
+                    generatedSchema,
                     pooled.Tool.DefinitionHash,
                     pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null,
                     bindings.GetValueOrDefault(pooled.Tool.Id),
                     lookupBindings.GetValueOrDefault(pooled.Tool.Id),
-                    webSearch);
+                    webSearch,
+                    webFetch);
             })
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
             .ToList();
@@ -128,6 +154,7 @@ internal static class ActiveToolsQuery
         ToolOrigin.Rag => ToolNaming.RagAuditServer,
         ToolOrigin.Lookup => ToolNaming.LookupAuditServer,
         ToolOrigin.WebSearch => ToolNaming.WebSearchAuditServer,
+        ToolOrigin.WebFetch => ToolNaming.WebFetchAuditServer,
         _ => pooled.ServerName,
     };
 }

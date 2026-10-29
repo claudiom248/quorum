@@ -24,6 +24,8 @@ internal static class ToolNaming
 
     public const string WebSearchPrefix = "web_search__";
 
+    public const string WebFetchPrefix = "web_fetch__";
+
     public const string LookupValuesPrefix = "lookup_values__";
 
     public const string LookupDocumentsPrefix = "lookup_documents__";
@@ -39,6 +41,9 @@ internal static class ToolNaming
     /// <summary>What the audit log records as the server of a web search tool, as <see cref="RagAuditServer"/> does for rag tools.</summary>
     public const string WebSearchAuditServer = "web_search";
 
+    /// <summary>What the audit log records as the server of a web fetch tool, as <see cref="WebSearchAuditServer"/> does for web search tools.</summary>
+    public const string WebFetchAuditServer = "web_fetch";
+
     /// <summary>The longest name the model APIs accept (D-16).</summary>
     public const int MaxLength = 64;
 
@@ -51,6 +56,8 @@ internal static class ToolNaming
     public static string Lookup(string toolName) => LookupPrefix + toolName;
 
     public static string WebSearch(string toolName) => WebSearchPrefix + toolName;
+
+    public static string WebFetch(string toolName) => WebFetchPrefix + toolName;
 
     /// <summary>The function that reads the lists of a lookup tool; its sisters ask the knowledge bases (spec 007 A1).</summary>
     public static string LookupValues(string toolName) => LookupValuesPrefix + toolName;

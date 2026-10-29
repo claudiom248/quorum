@@ -33,6 +33,8 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<WebSearchTool> WebSearchTools => Set<WebSearchTool>();
 
+    public DbSet<WebFetchTool> WebFetchTools => Set<WebFetchTool>();
+
     /// <summary>
     /// The tenant of the request. Queries that must also see what other tenants share with this one (a server's scope) turn the
     /// tenant filter off and state the rule themselves, with this value.
@@ -134,6 +136,17 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             webSearch.HasIndex(w => w.TenantId);
             webSearch.HasOne<Tool>().WithOne().HasForeignKey<WebSearchTool>(w => w.ToolId).OnDelete(DeleteBehavior.Cascade);
             webSearch.HasQueryFilter(w => w.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<WebFetchTool>(webFetch =>
+        {
+            webFetch.ToTable("web_fetch_tools");
+            webFetch.HasKey(w => w.ToolId);
+            webFetch.Property(w => w.ToolId).ValueGeneratedNever();
+            webFetch.Property(w => w.Scope).HasConversion<string>().HasMaxLength(20);
+            webFetch.HasIndex(w => w.TenantId);
+            webFetch.HasOne<Tool>().WithOne().HasForeignKey<WebFetchTool>(w => w.ToolId).OnDelete(DeleteBehavior.Cascade);
+            webFetch.HasQueryFilter(w => w.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AssistantTool>(activation =>
