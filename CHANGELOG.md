@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/claudiom248/quorum/compare/v0.14.0...v0.15.0) (2026-10-29)
+
+
+### Features
+
+* lookup consolidation and lean manifest (spec 012) ([#135](https://github.com/claudiom248/quorum/issues/135)) ([0b737a6](https://github.com/claudiom248/quorum/commit/0b737a615dbaa0d32b753741e0bb92dbf7cc821b))
+* web fetch tool reading pages for the agent (spec 006) ([#132](https://github.com/claudiom248/quorum/issues/132)) ([c1d9863](https://github.com/claudiom248/quorum/commit/c1d986350a5ed770b49466e389caaf8c587e9b8a))
+
 ## [0.14.0](https://github.com/claudiom248/quorum/compare/v0.13.0...v0.14.0) (2026-10-29)
 
 
