@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
@@ -12,6 +13,7 @@ using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.Agents.Tools.Builtin;
 using Quorum.Shared.Networking;
@@ -76,6 +78,17 @@ public static class AgentsModule
         services.AddSingleton<IWebSearchProvider, SearxngProvider>();
         services.AddScoped<WebSearchInvocationCounter>();
         services.AddServerHttpClient(SearxngProvider.HttpClientName);
+
+        // Web fetch (spec 006): the reader of the pages a search found, or of URLs the model names. Same rule as SearXNG — the
+        // fetch bounds its own wait, so the client has none of its own. HybridCache sits in front to spare the sites and the model's patience.
+        services.AddMemoryCache();
+        services.AddHybridCache();
+        // RobotsCache and WebFetchCache depend only on singletons (IMemoryCache, IHttpClientFactory, HybridCache), so the provider that
+        // uses them is a singleton like SearxngProvider. The cache lives for the process; a save of the settings refreshes at its TTL.
+        services.AddSingleton<RobotsCache>();
+        services.AddSingleton<WebFetchCache>();
+        services.AddSingleton<IWebFetchProvider, HttpWebFetchProvider>();
+        services.AddServerHttpClient(HttpWebFetchProvider.HttpClientName);
 
         return services;
     }

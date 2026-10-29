@@ -8,6 +8,7 @@ using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Shared.Results;
@@ -25,6 +26,8 @@ internal sealed class AssistantChat(
     IKnowledgeBaseSearch knowledgeBaseSearch,
     IKnowledgeBaseLookups knowledgeBaseLookups,
     IWebSearchProvider webSearchProvider,
+    IWebFetchProvider webFetchProvider,
+    WebFetchCache webFetchCache,
     WebSearchInvocationCounter invocations) : IAssistantChat, IAssistantCatalog
 {
     // Added to the system prompt only when tools are offered (D-31); attached documents carry the same warning in their own block.
@@ -169,26 +172,51 @@ internal sealed class AssistantChat(
         var rag = caller is null ? null : new RagRuntime(knowledgeBaseSearch, numbering!, caller.TenantId, assistantId, limits.MaxResultCharacters);
         var lookup = caller is null ? null : new LookupRuntime(knowledgeBaseLookups, caller.TenantId, assistantId, limits.MaxResultCharacters);
 
-        // The instance is the platform's, and only an assistant with a web search tool has to read it.
+        // The web configuration is the platform's one row, read once when any web tool is offered.
         WebSearchRuntime? webSearch = null;
-        if (numbering is not null && active.Any(tool => tool.WebSearch is not null))
+        WebFetchRuntime? webFetch = null;
+        if (numbering is not null && active.Any(tool => tool.WebSearch is not null || tool.WebFetch is not null))
         {
             var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-            var seconds = web?.SearchTimeoutSeconds ?? WebConfiguration.DefaultSearchTimeoutSeconds;
 
-            // A search that outlives the tenant's timeout on one call would be cut by the invoker, whose message says less than ours: ask for less.
-            var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : seconds;
-            webSearch = new WebSearchRuntime(
-                webSearchProvider,
-                numbering,
-                web?.SearchUrl,
-                Math.Min(seconds, callSeconds),
-                limits.MaxResultCharacters,
-                conversationId,
-                invocations);
+            if (active.Any(tool => tool.WebSearch is not null))
+            {
+                var seconds = web?.SearchTimeoutSeconds ?? WebConfiguration.DefaultSearchTimeoutSeconds;
+
+                // A search that outlives the tenant's timeout on one call would be cut by the invoker, whose message says less than ours: ask for less.
+                var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : seconds;
+                webSearch = new WebSearchRuntime(
+                    webSearchProvider,
+                    numbering,
+                    web?.SearchUrl,
+                    Math.Min(seconds, callSeconds),
+                    limits.MaxResultCharacters,
+                    conversationId,
+                    invocations);
+            }
+
+            if (active.Any(tool => tool.WebFetch is not null))
+            {
+                var fetchSeconds = web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
+                var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : fetchSeconds;
+                webFetch = new WebFetchRuntime(
+                    webFetchProvider,
+                    webFetchCache,
+                    numbering,
+                    Math.Min(fetchSeconds, callSeconds),
+                    web?.FetchTokenBudgetPerPage ?? WebConfiguration.DefaultFetchTokenBudgetPerPage,
+                    web?.FetchTotalTokenBudget ?? WebConfiguration.DefaultFetchTotalTokenBudget,
+                    web?.FetchMaxUrlsPerInvocation ?? WebConfiguration.DefaultFetchMaxUrlsPerInvocation,
+                    limits.MaxResultCharacters,
+                    TimeSpan.FromMilliseconds(web?.FetchDelayMs ?? WebConfiguration.DefaultFetchDelayMs),
+                    web?.RespectRobotsTxt ?? WebConfiguration.DefaultRespectRobotsTxt,
+                    web?.UserAgent ?? WebConfiguration.DefaultUserAgent,
+                    web?.CacheEnabled ?? WebConfiguration.DefaultCacheEnabled,
+                    TimeSpan.FromMinutes(web?.CacheTtlMinutes ?? WebConfiguration.DefaultCacheTtlMinutes));
+            }
         }
 
-        var tools = toolFactory.Create(active, connections, rag, lookup, webSearch);
+        var tools = toolFactory.Create(active, connections, rag, lookup, webSearch, webFetch);
         if (tools.Count == 0)
         {
             return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded, connections);
@@ -198,7 +226,7 @@ internal sealed class AssistantChat(
             configuration,
             configuration.SystemPrompt + ToolDataNotice
                 + (tools.Any(tool => tool is AskUserQuorumTool) ? AskUserNotice : string.Empty)
-                + (tools.Any(tool => tool is RagQuorumTool or WebSearchQuorumTool) ? SearchCitationNotice : string.Empty),
+                + (tools.Any(tool => tool is RagQuorumTool or WebSearchQuorumTool or WebFetchQuorumTool) ? SearchCitationNotice : string.Empty),
             caller,
             tools,
             ToolDefinitionRenderer.Length(tools.Select(ToolDefinition.From).ToList()),
