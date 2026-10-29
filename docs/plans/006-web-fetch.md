@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/006-web-fetch.md` (Draft 2026-10-29)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Draft
+**Status:** Implemented (PR #132)
 **Branch:** `feat/006-web-fetch`
 **Affected:** Agents (Domain, Persistence, Tools, Features/Tools, Chat), Shared (Networking), `Quorum.Web.Client` (Pages, Api, Components), `tests/Quorum.Integration.Tests`.
 
@@ -237,6 +237,15 @@
 ### Verification
 
 39. `dotnet build -c Release` e `dotnet format --verify-no-changes`. Suite completa dei test.
+
+## Implementation notes (what differs from the steps above)
+
+- **Nullable overrides, resolved at call time** (steps 3, 16, 22). A web fetch tool stores `null` where the administrator left a field empty, and `ActiveTools` resolves `tool ?? platform row ?? platform default` for every answer, so the Settings → Web Fetch tab reaches the tools that never overrode a number (AC-1, AC-13). Migration `MakeWebFetchToolOverridesOptional` makes the four columns nullable and turns the numbers the first validator baked in back into inheritance.
+- **The tool's own numbers win** (steps 16, 17). `WebFetchQuorumTool` takes the budgets, the limit and the timeout from its binding; `WebFetchRuntime` keeps only what is platform-wide (delay, User-Agent, robots, cache, the tenant's result cap, and the timeout ceiling).
+- **Robots.Net was not added** (steps 1, 19): `RobotsCache` holds the custom parser the Decisions table chose — matching by line length, `*` and `$`, fail-open on any error. `Directory.Packages.props` gained `SmartReader` only.
+- **The renderer also clamps to the tenant's result cap** (step 18): past `ToolLimits.MaxResultCharacters` the invoker discards the whole result and blames arguments the model never chose, so `WebFetchResultFormat` stops at the cap itself.
+- **The plain-text fallback strips the page's noise** (step 14): Readability calls a short page unreadable, so the fallback picks the content container (`article`, `main`, `.post`) and removes nav, header, footer, aside and ads before reading it (AC-3).
+- **Not done on purpose**: `WebFetchCache.ClearAsync` has no caller. AC-14 asks for the toggle, not for evicting what was remembered — and with the toggle off the tool never reads the memory. Wiring the eviction into `PUT /api/settings/web` is a product decision, not a gap in this plan.
 
 ## Risks
 - **SmartReader qualità estrazione**: alcuni siti con layout complessi potrebbero non essere estratti bene. Mitigazione: fallback su AngleSharp puro per text content se SmartReader restituisce vuoto.
