@@ -38,12 +38,18 @@ internal static class HtmlContentExtractor
 
     private static readonly Error Empty = Error.Unprocessable("web_fetch.no_content", "The page has no readable text.");
 
-    /// <param name="html">The whole HTML of the page.</param>
+    /// <param name="html">The whole HTML of the page; nothing at all is an answer, not an argument error.</param>
     /// <param name="url">The page's own address: SmartReader uses it to resolve relative links.</param>
-    public static Result<ExtractedContent> Extract(string html, string url)
+    public static Result<ExtractedContent> Extract(string? html, string url)
     {
-        ArgumentException.ThrowIfNullOrEmpty(html);
         ArgumentException.ThrowIfNullOrEmpty(url);
+
+        // A site that answers with nothing is a page with nothing on it, not a caller's mistake: the model is told so, and the
+        // call is not written to the audit log as a tool that crashed.
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return Empty;
+        }
 
         try
         {
@@ -57,7 +63,7 @@ internal static class HtmlContentExtractor
                 }
             }
         }
-        catch
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // A malformed page is not a reason to fail: the fallback below still reads what AngleSharp understood.
         }

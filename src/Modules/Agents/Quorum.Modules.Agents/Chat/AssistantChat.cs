@@ -200,12 +200,14 @@ internal sealed class AssistantChat(
                 var fetchSeconds = web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
                 var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : fetchSeconds;
 
-                // The platform's wait is only a ceiling: what each page is worth is on the tool itself (spec 006, AC-1).
+                // The platform's wait is only a ceiling: what each page is worth is on the tool itself (spec 006, AC-1). A tenant
+                // whose call timeout is under a second truncates to no seconds at all, which would call every page timed out
+                // before the request leaves the process.
                 webFetch = new WebFetchRuntime(
                     webFetchProvider,
                     webFetchCache,
                     numbering,
-                    Math.Min(fetchSeconds, callSeconds),
+                    Math.Max(1, Math.Min(fetchSeconds, callSeconds)),
                     limits.MaxResultCharacters,
                     TimeSpan.FromMilliseconds(web?.FetchDelayMs ?? WebConfiguration.DefaultFetchDelayMs),
                     web?.RespectRobotsTxt ?? WebConfiguration.DefaultRespectRobotsTxt,

@@ -166,6 +166,66 @@ public sealed class WebFetchToolCallTests(PostgresFixture postgres)
         Assert.Contains(Sentence, ResultOf(events), StringComparison.Ordinal);
     }
 
+    [Fact] // AC-9: the file speaks to the identity the platform announces, not to the site's own name
+    public async Task ARobotsFileThatForbidsThisPlatformKeepsTheSiteFromBeingAskedForIt()
+    {
+        var paid = "https://site.test/paid/report";
+        var (app, admin, chat) = await StartAsync(script: s =>
+        {
+            s.Robots("User-agent: Googlebot\nDisallow: /private\n\nUser-agent: Quorum\nDisallow: /paid\n");
+            s.ServeHtml(paid, Page("Locked", Article));
+        });
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("read", paid)), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Read the paid page");
+
+        Assert.Equal("failed", StatusOf(events));
+        Assert.Contains("robots.txt forbids this page", ResultOf(events), StringComparison.Ordinal);
+        Assert.DoesNotContain(app.WebFetch.Urls, url => url.EndsWith("/paid/report", StringComparison.Ordinal));
+    }
+
+    [Fact] // AC-9: what a file forbids to another reader is not forbidden to this one
+    public async Task ARobotsFileWrittenForAnotherReaderLeavesThePageOpen()
+    {
+        var forbiddenToGooglebot = "https://site.test/private/report";
+        var (app, admin, chat) = await StartAsync(script: s =>
+        {
+            s.Robots("User-agent: Googlebot\nDisallow: /private\n");
+            s.ServeHtml(forbiddenToGooglebot, Page("Open", Article));
+        });
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("read", forbiddenToGooglebot)), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Read it");
+
+        Assert.Equal("succeeded", StatusOf(events));
+        Assert.Contains(Sentence, ResultOf(events), StringComparison.Ordinal);
+    }
+
+    [Fact] // spec 006: a page that answers with nothing is an answer, not a tool that crashed
+    public async Task APageWithNothingOnItSaysSoInsteadOfFailingTheCall()
+    {
+        var (app, admin, chat) = await StartAsync(script: s => s.ServeHtml(ArticleUrl, string.Empty));
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("read", ArticleUrl)), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Read the empty page");
+
+        Assert.Equal("failed", StatusOf(events));
+        Assert.Contains("The page has no readable text", ResultOf(events), StringComparison.Ordinal);
+    }
+
+    [Fact] // spec 006: what the platform reads is bounded by bytes, not only by the token budget
+    public async Task APageBiggerThanThePlatformReadsIsRefused()
+    {
+        var (app, admin, chat) = await StartAsync(script: s =>
+            s.Serve(ArticleUrl, HttpStatusCode.OK, new byte[HttpWebFetchProvider.MaxResponseBytes + 1], "text/html; charset=utf-8"));
+        app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("read", ArticleUrl)), ChatScript.Reply("Done."));
+
+        var events = await ChatApi.SendAsync(admin, chat, "Read the huge page");
+
+        Assert.Equal("failed", StatusOf(events));
+        Assert.Contains("bigger than the 5 MB the platform reads", ResultOf(events), StringComparison.Ordinal);
+    }
+
     [Fact] // AC-10
     public async Task ThePlatformWaitsBetweenTwoPagesOfTheSameCall()
     {

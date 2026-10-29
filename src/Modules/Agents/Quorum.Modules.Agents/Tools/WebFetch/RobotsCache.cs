@@ -6,7 +6,8 @@ namespace Quorum.Modules.Agents.Tools.WebFetch;
 
 /// <summary>
 /// What the platform is allowed to read on each site it visits (spec 006, AC-9). A site says it in a <c>robots.txt</c> at its root;
-/// reading that file for every URL would slow every answer, so the platform remembers it per origin for one hour.
+/// reading that file for every URL would slow every answer, so the platform remembers it per origin and per the identity it
+/// announces, for one hour.
 /// </summary>
 /// <remarks>
 /// The parser follows Google's robots.txt specification with the 2025 changes: rules are matched by the length of the line that
@@ -38,18 +39,20 @@ internal sealed class RobotsCache(IMemoryCache cache, IHttpClientFactory clients
 
     private async Task<RobotsRules> RulesForAsync(Uri url, string userAgent, CancellationToken cancellationToken)
     {
+        // A site answers differently to different readers, so what is remembered is the file as it speaks to this identity.
         var origin = $"{url.Scheme}://{url.Authority}";
-        if (cache.TryGetValue(origin, out RobotsRules? cached) && cached is not null)
+        var key = $"{origin}|{userAgent}";
+        if (cache.TryGetValue(key, out RobotsRules? cached) && cached is not null)
         {
             return cached;
         }
 
-        var rules = await LoadFromSiteAsync(origin, url.Host, cancellationToken);
-        cache.Set(origin, rules, EntryTtl);
+        var rules = await LoadFromSiteAsync(origin, userAgent, cancellationToken);
+        cache.Set(key, rules, EntryTtl);
         return rules;
     }
 
-    private async Task<RobotsRules> LoadFromSiteAsync(string origin, string host, CancellationToken cancellationToken)
+    private async Task<RobotsRules> LoadFromSiteAsync(string origin, string userAgent, CancellationToken cancellationToken)
     {
         var client = clients.CreateClient(HttpWebFetchProvider.HttpClientName);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -65,7 +68,7 @@ internal sealed class RobotsCache(IMemoryCache cache, IHttpClientFactory clients
             }
 
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
-            return RobotsRules.Parse(body, host);
+            return RobotsRules.Parse(body, userAgent);
         }
         catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException)
         {
@@ -114,7 +117,9 @@ internal sealed class RobotsRules
         return match?.Allowed ?? true;
     }
 
-    public static RobotsRules Parse(string content, string host)
+    /// <param name="content">The file as the site wrote it.</param>
+    /// <param name="userAgent">The identity the platform announced: the file's groups are read against this.</param>
+    public static RobotsRules Parse(string content, string userAgent)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -175,14 +180,17 @@ internal sealed class RobotsRules
         }
 
         var wildcard = groups.FirstOrDefault(g => g.UserAgents.Contains("*"));
-        var named = groups.FirstOrDefault(g => g.UserAgents.Any(agent => Matches(agent, host)));
+        var named = groups.FirstOrDefault(g => g.UserAgents.Any(agent => Matches(agent, userAgent)));
         var chosen = named ?? wildcard;
         return chosen is null || chosen.Rules.Count == 0 ? AllowAll : new RobotsRules(chosen.Rules);
     }
 
-    /// <summary>A file's group names the platform with, in the plain sense: the same host, or a wildcard inside the agent name.</summary>
-    private static bool Matches(string agent, string host) =>
-        agent.Length > 0 && (agent.Contains('*') ? WildcardMatch(agent, host) : host.Contains(agent, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// A file's group names the platform with: the agent label is a case-insensitive piece of the identity we announce, or a
+    /// wildcard pattern over it. A group that names nobody is not a group for anyone, so an empty label never matches.
+    /// </summary>
+    private static bool Matches(string agent, string userAgent) =>
+        agent.Length > 0 && (agent.Contains('*') ? WildcardMatch(agent, userAgent) : userAgent.Contains(agent, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Whether <paramref name="pattern"/> covers <paramref name="value"/>. <c>*</c> means anything in between.</summary>
     private static bool WildcardMatch(string pattern, string value)

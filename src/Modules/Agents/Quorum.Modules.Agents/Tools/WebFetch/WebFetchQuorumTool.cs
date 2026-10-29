@@ -276,6 +276,12 @@ internal static class WebFetchResultFormat
 
         var (start, end) = Markers(delimiter);
         var characters = Math.Min(response.Content.Length, Math.Max(0, room - line.Length - start.Length - end.Length));
+        if (characters > 0 && char.IsHighSurrogate(response.Content[characters - 1]))
+        {
+            // Cutting in the middle of an emoji would hand the model a replacement character; the page loses one letter instead.
+            characters--;
+        }
+
         var body = response.Content[..characters];
         truncated = characters < response.Content.Length;
         if (truncated)
