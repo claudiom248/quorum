@@ -19,11 +19,11 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 - Supporto PDF (riuso di PdfPig, già presente nel modulo Conversations)
 - Gestione errori: timeout (30s per URL), retry con backoff, messaggi di errore al modello
 - Politeness: delay configurabile tra fetch (default 1s), User-Agent configurabile (default "Quorum/1.0"), rispetto robots.txt
-- Cache in-memory dei risultati (IMemoryCache, pattern esistente), TTL configurabile (default 10 minuti), toggle globale
+- Cache dei risultati (HybridCache, pattern di `LookupCache`: protezione stampede inclusa), TTL configurabile (default 10 minuti), toggle globale
 - Token budget per pagina (default 4000 token) e totale per invocazione (default 20000 token), con truncation e messaggio onesto se il contenuto è troppo grande
 - Citazione delle fonti nelle risposte (pattern esistente del RAG, riutilizzando MessageSource)
-- UI per la configurazione del tool web fetch (tab "Web Fetch" in Settings > Web Tools)
-- UI per le web properties globali (tab "Settings" in Settings > Web Tools): User-Agent, delay, cache, robots.txt
+- UI per la configurazione del tool web fetch (tab "Web Fetch" in Settings > Web Tools — dal Emendamento 1: sezione "Default di lettura" della tab unica "Web")
+- UI per le web properties globali (tab "Settings" in Settings > Web Tools — dal Emendamento 1: sezione "Cortesia e memoria" della tab unica "Web"): User-Agent, delay, cache, robots.txt
 
 ### Out
 
@@ -46,9 +46,9 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
   - `UserAgent` (default "Quorum/1.0", max 128 chars): User-Agent usato per tutte le richieste web (web search e web fetch)
   - `FetchDelayMs` (default 1000, min 0, max 10000): delay in millisecondi tra fetch consecutivi
   - `RespectRobotsTxt` (default true): se true, rispetta le regole robots.txt dei siti
-  - `CacheEnabled` (default true): se true, abilita la cache in-memory per web search e web fetch
+  - `CacheEnabled` (default true): se true, le pagine lette dal web fetch sono ricordate per un po' (la ricerca web non ha cache); il salvataggio della riga svuota la memoria
   - `CacheTtlMinutes` (default 10, min 1, max 60): TTL della cache in minuti
-  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default. Un solo endpoint `/api/settings/web` (GET/PUT) espone tutti i campi; la UI presenta tre tabs (Web Search, Web Fetch, Web Properties) che condividono lo stesso stato.
+  - **Nota**: entità globale senza TenantId, configurata dall'admin del tenant default. Un solo endpoint `/api/settings/web` (GET/PUT) espone tutti i campi; la UI li presenta in un'unica tab "Web" con tre sezioni e un solo salvataggio (Emendamento 1).
 
 - **WebFetchTool** (per tenant): configurazione del tool web fetch, simile a WebSearchTool
   - `ToolId`: riferimento al Tool (chiave primaria, relazione 1:1)
