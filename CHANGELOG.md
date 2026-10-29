@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/claudiom248/quorum/compare/v0.13.0...v0.14.0) (2026-10-29)
+
+
+### Features
+
+* web search tool on the platform's SearXNG instance (spec 005) ([#129](https://github.com/claudiom248/quorum/issues/129)) ([2d9a51f](https://github.com/claudiom248/quorum/commit/2d9a51f3f900a82184b9be36bdaabf1fb603d1c4))
+
 ## [0.13.0](https://github.com/claudiom248/quorum/compare/v0.12.0...v0.13.0) (2026-10-28)
 
 
