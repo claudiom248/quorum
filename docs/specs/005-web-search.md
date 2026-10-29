@@ -5,6 +5,8 @@
 
 > **Amendment 1 (2026-10-29, folded into spec 006)** — The platform's global web configuration (SearXNG instance URL and search timeout) is no longer stored in its own `web_search_configuration` table nor exposed as `/api/settings/web-search`. It lives in the single `web_configuration` row that spec 006 introduces, and is read/written through `/api/settings/web` as one of its fields (`searchUrl`, `searchTimeoutSeconds`). Every other aspect of this spec — the `WebSearchTool` binding, endpoints, invocation flow, sources, UI — is unchanged.
 
+> **Amendment 2 (2026-10-29, folded into spec 006)** — The screens of AC-9 and AC-10 moved, the behaviour did not. The web search fields are one section of the single **Web** tab of Settings (spec 006, Emendamento 1), and the tool list lives on `/tools/web/search`, the search tab of the one **Web tools** page; `/tools/web-search` and `/tools/web-search/{id}` still arrive there. Nothing else in this spec changes.
+
 ## Problem
 
 Gli agenti di Quorum non hanno accesso a informazioni aggiornate in tempo reale. Quando un utente pone domande su eventi recenti, fatti di attualità, o documentazione non presente nella knowledge base, l'agente può rispondere solo con la conoscenza del modello (che ha un cut-off temporale) o con i documenti indicizzati nel RAG.

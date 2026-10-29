@@ -85,7 +85,7 @@ Gli utenti finali ricevono risposte incomplete o superficiali quando la web sear
 
 ### Configurazione globale del web (admin del tenant default)
 
-Un solo endpoint `/api/settings/web` espone tutta la configurazione globale della piattaforma per il web: istanza SearXNG (spec 005, vedi Emendamento 1), default web fetch, web properties condivise (User-Agent, delay, cache, robots.txt). La UI presenta tre tabs (Web Search, Web Fetch, Web Properties) che leggono e scrivono la stessa riga.
+Un solo endpoint `/api/settings/web` espone tutta la configurazione globale della piattaforma per il web: istanza SearXNG (spec 005, vedi Emendamento 1), default web fetch, web properties condivise (User-Agent, delay, cache, robots.txt). La UI la espone in un'unica tab "Web" con tre sezioni e un solo salvataggio (Emendamento 1 della spec 006): la riga è una, e tre tab che riscrivevano ognuna per conto proprio perdevano le modifiche non salvate delle altre.
 
 | Verbo | Route | Request | Response | Errori |
 |-------|-------|---------|----------|--------|
@@ -333,3 +333,16 @@ Il tool di web fetch è invocato dal modello tramite function calling. Il contra
 ## Open Questions
 
 (nessuna)
+
+## Emendamento 1 — la configurazione del web in un solo posto (2026-10-29)
+
+Deciso rivedendo la PR #132: le impostazioni del web erano sparse su tre tab della pagina Settings e gli elenchi dei tool su due pagine distinte della NavMenu. La riga da scrivere è una sola, e lo schermo non conteneva più tutti i campi.
+
+- **Settings → una tab "Web"** (sostituisce AC-13 e AC-14): tre sezioni — Ricerca, Default di lettura, Cortesia e memoria — in una griglia a due colonne che a schermo stretto diventa una, con un solo pulsante "Save web settings" che scrive la riga intera. Le tab erano tre forme sullo stesso record: ognuna rimandava i campi letti all'apertura della pagina, quindi un valore non salvato in un'altra tab veniva sovrascritto in silenzio mentre a video restava il valore vecchio. Le tab della pagina passano da sette a cinque (Model, Behaviour, Tools, Integrations, Web).
+- **NavMenu → una voce "Web tools"** (sostituisce AC-15): la pagina `/tools/web` con due tab interne, `search` e `fetch`, che ospitano i due elenchi esistenti (`Components/WebSearchToolsPanel.razor`, `Components/WebFetchToolsPanel.razor`). L'indirizzo tiene il drawer: `/tools/web/fetch/{id}` apre lo stesso tool di prima, e i vecchi `/tools/web-search*` e `/tools/web-fetch*` sono inoltrati dalla pagina dei redirect di sezione.
+
+**AC-13 (emendata)**: Given l'admin accede a Settings, When apre la tab "Web", Then vede in una sola schermata l'istanza SearXNG, i default del web fetch e le web properties, e un solo salvataggio scrive la riga intera.
+
+**AC-14 (emendata)**: Given la stessa tab, When l'admin cambia User-Agent, delay, cache o robots.txt e salva, Then la riga è scritta per intero e la cache delle pagine lette è svuotata, così la nuova policy risponde subito.
+
+**AC-15 (emendata)**: Given l'admin accede a "/tools/web", Then vede i tool web search e i tool web fetch nella stessa schermata, su due tab, e può crearne, modificarne ed eliminarne in ciascuna.
