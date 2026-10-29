@@ -98,11 +98,6 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
         List<LookupFilter> filters,
         CancellationToken cancellationToken)
     {
-        if (filters.Count > 0)
-        {
-            return Error.Validation("lookup.invalid_filter", "The filters on attributes are not served from the store yet: read the lookup in Snapshot storage.").ToProblem();
-        }
-
         var knowledgeBase = await db.KnowledgeBases.AsNoTracking().SingleOrDefaultAsync(k => k.Id == knowledgeBaseId, cancellationToken);
         if (knowledgeBase is null)
         {
@@ -120,7 +115,7 @@ internal sealed class LookupValuesEndpoint : IEndpointGroup
             lookup,
             knowledgeBase,
             lookup.Name,
-            new LiveValuesRequest(scope, lookup.Id, search, sort, limit ?? LookupReader.DefaultLimit, attribute is null ? null : new LookupAttributeOrder(attribute.Name, attribute.Descending)),
+            new LiveValuesRequest(scope, lookup.Id, search, sort, limit ?? LookupReader.DefaultLimit, attribute is null ? null : new LookupAttributeOrder(attribute.Name, attribute.Descending), LookupFilters.ToRows(filters)),
             cancellationToken);
 
         if (values.Outcome != LiveOutcome.Ok)

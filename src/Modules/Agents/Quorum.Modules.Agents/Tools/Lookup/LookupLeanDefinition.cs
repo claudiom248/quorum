@@ -20,8 +20,11 @@ internal static class LookupLeanDefinition
 
     public const string FiltersParameter = "filters";
 
-    /// <summary>The operations <c>query</c> takes on a list. A count of a list's matching rows is not served yet, so only values is offered.</summary>
-    public static readonly string[] LookupOperations = [LookupToolDefinition.ValuesOperation];
+    /// <summary>The operations <c>query</c> takes on a list: its values, and the count of the values that match the search.</summary>
+    public static readonly string[] LookupOperations = [LookupToolDefinition.ValuesOperation, LookupToolDefinition.CountOperation];
+
+    /// <summary>The count of the values of a list that match the search: what <c>count</c> on a list runs inside the tool.</summary>
+    public const string ListCountOperation = "listCount";
 
     public static readonly string[] KnowledgeBaseOperations = [LookupToolDefinition.DocumentsOperation, LookupToolDefinition.CountOperation];
 

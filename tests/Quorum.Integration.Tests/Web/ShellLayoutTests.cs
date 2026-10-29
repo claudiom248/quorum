@@ -71,7 +71,7 @@ public sealed class ShellLayoutTests : BunitContext
         var shell = RenderShell();
 
         var links = Links(shell);
-        foreach (var expected in new[] { "Chat", "MCP servers", "RAG tools", "Lookup tools", "Built-in", "Knowledge bases", "Lookups", "Dictionary", "Settings", "Editor lab" })
+        foreach (var expected in new[] { "Chat", "MCP servers", "Search tools", "Built-in", "Knowledge bases", "Lookups", "Dictionary", "Settings", "Editor lab" })
         {
             Assert.Contains(links, l => l.StartsWith(expected, StringComparison.Ordinal));
         }

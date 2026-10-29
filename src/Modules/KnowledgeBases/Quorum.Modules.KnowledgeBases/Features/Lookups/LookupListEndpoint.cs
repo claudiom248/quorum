@@ -86,11 +86,11 @@ internal sealed class LookupListEndpoint : IEndpointGroup
         var wholeKnowledgeBase = LookupSliceKey.WholeKnowledgeBase.Hash;
         var counts = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
             .Where(s => ids.Contains(s.LookupId) && s.FilterHash == wholeKnowledgeBase)
-            .ToDictionaryAsync(s => s.LookupId, s => s.ValueCount, cancellationToken);
+            .ToDictionaryAsync(s => s.LookupId, s => s, cancellationToken);
         var tenantId = db.CurrentTenantId;
 
         return TypedResults.Ok(new Page<LookupListItem>(
-            [.. page.Value.Items.Select(r => LookupListItem.From(r, counts.GetValueOrDefault(r.Id), tenantId))],
+            [.. page.Value.Items.Select(r => LookupListItem.From(r, counts.GetValueOrDefault(r.Id) is { } slice ? slice.ValueCount : 0, tenantId, LookupListItem.FreshnessOf(counts.GetValueOrDefault(r.Id))))],
             page.Value.Cursor));
     }
 
@@ -171,9 +171,21 @@ internal sealed record LookupListItem(
     ScopeResponse Scope,
     int ValueCount,
     bool Shared,
-    string Storage)
+    string Storage,
+    string Freshness)
 {
-    public static LookupListItem From(LookupRow row, int valueCount, Guid? currentTenantId)
+    /// <summary>What the administrator reads of a list: <c>Ready</c>, <c>Stale</c> (the last computation failed), <c>Preparing</c> or <c>Failed</c> (spec 012 D-12).</summary>
+    public static string FreshnessOf(LookupSlice? slice) => slice switch
+    {
+        null => "Preparing",
+        { ComputingSince: not null } => "Preparing",
+        { Status: LookupStatus.Failed } => "Failed",
+        { Stale: true } => "Stale",
+        { Status: LookupStatus.Pending } => "Preparing",
+        _ => "Ready",
+    };
+
+    public static LookupListItem From(LookupRow row, int valueCount, Guid? currentTenantId, string freshness)
     {
         var shared = row.TenantId != currentTenantId;
         return new LookupListItem(
@@ -186,6 +198,7 @@ internal sealed record LookupListItem(
             new ScopeResponse(row.Scope.ToString(), shared ? [] : row.ScopeTenantIds, shared ? [] : row.ScopeAssistantIds ?? []),
             valueCount,
             shared,
-            row.Storage.ToString());
+            row.Storage.ToString(),
+            freshness);
     }
 }

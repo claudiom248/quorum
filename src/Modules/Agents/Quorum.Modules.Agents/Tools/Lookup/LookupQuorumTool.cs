@@ -45,6 +45,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             LookupToolDefinition.DocumentsOperation when live => await DocumentsAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.CountOperation when live => await CountAsync(binding, asked, cancellationToken),
             LookupLeanDefinition.DescribeOperation => Describe(binding, arguments),
+            LookupLeanDefinition.ListCountOperation => await ListCountAsync(binding, asked, cancellationToken),
             LookupLeanDefinition.QueryOperation => await QueryAsync(binding, arguments, cancellationToken),
             _ => throw new ToolFailedException("This function is not available in this tool."),
         };
@@ -149,7 +150,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 throw new ToolFailedException($"The list '{LookupResultFormat.Clean(target)}' takes the operation values only.");
             }
 
-            mapped = LookupToolDefinition.ValuesOperation;
+            mapped = operation == LookupToolDefinition.CountOperation ? LookupLeanDefinition.ListCountOperation : LookupToolDefinition.ValuesOperation;
             inner[LookupToolDefinition.LookupParameter] = target;
         }
         else if (binding.KnowledgeBases.ContainsKey(target))
@@ -194,6 +195,19 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             : null;
 
     private static string TargetNames(LookupBinding binding) => string.Join(", ", binding.Targets.Keys.Concat(binding.KnowledgeBases.Keys).Order(StringComparer.Ordinal));
+
+    /// <summary>How many values of a list match its search: the count the lean manifest offers for a list (spec 012 D-5, D-8).</summary>
+    private async Task<ToolOutput> ListCountAsync(LookupBinding binding, Arguments asked, CancellationToken cancellationToken)
+    {
+        if (asked.Filters.Count > 0)
+        {
+            throw new ToolFailedException("A count of a list takes the search only. Read the values with the filters to count them.");
+        }
+
+        var (name, lookupId) = Target(binding, asked.Lookup);
+        var read = await ReadAsync(lookupId, binding.SliceFilters(), asked.Search, LookupSortOrder.Count, null, 1, null, name, binding, cancellationToken, countMatching: true);
+        return new ToolOutput($"{LookupResultFormat.Clean(name)}: {read.Matching ?? 0} values match.", SourceCount: 0);
+    }
 
     private async Task<ToolOutput> ValuesAsync(LookupBinding binding, Arguments asked, int limit, CancellationToken cancellationToken)
     {
@@ -430,10 +444,11 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         string? cursor,
         string name,
         LookupBinding binding,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool countMatching = false)
     {
         var read = await runtime.Lookups.ReadAsync(
-            new LookupReadRequest(runtime.TenantId, runtime.AssistantId, lookupId, filters, search, sort, limit, cursor, attribute, binding.RowFiltersOf(lookupId)),
+            new LookupReadRequest(runtime.TenantId, runtime.AssistantId, lookupId, filters, search, sort, limit, cursor, attribute, binding.RowFiltersOf(lookupId), countMatching),
             cancellationToken);
 
         // The messages are written for the model and carry no address, key, id or internal detail.

@@ -13,7 +13,7 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
 {
     [DbContext(typeof(KnowledgeBasesDbContext))]
-    [Migration("20261029162338_ConsolidateLookups")]
+    [Migration("20261029191446_ConsolidateLookups")]
     partial class ConsolidateLookups
     {
         /// <inheritdoc />
@@ -446,7 +446,8 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
 
                             b1.Property<string>("Label");
 
-                            b1.Property<int>("Type");
+                            b1.Property<string>("Type")
+                                .IsRequired();
 
                             b1.HasKey("LookupId", "__synthesizedOrdinal");
 

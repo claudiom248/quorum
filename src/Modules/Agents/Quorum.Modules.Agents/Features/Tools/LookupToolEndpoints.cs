@@ -479,11 +479,13 @@ internal sealed record LookupToolDetail(
     LookupToolDefinitionPreview? Definition,
     IReadOnlyList<LookupToolDefinitionPreview> Definitions,
     IReadOnlyList<ToolWarning> Warnings,
-    IReadOnlyList<LookupManifestPreview> Manifests)
+    IReadOnlyList<LookupManifestPreview> Manifests,
+    JsonElement LookupFilters)
 {
     public static LookupToolDetail From(Tool tool, LookupTool binding, IReadOnlyList<LookupToolDefinitionPreview> definitions, IReadOnlyList<ToolWarning> warnings, BindingDescription seen, IReadOnlyList<LookupManifestPreview> manifests)
     {
         using var filters = JsonDocument.Parse(binding.FixedFilters);
+        using var lookupFilters = JsonDocument.Parse(binding.LookupFilters);
         var current = LookupBinding.From(binding);
         return new LookupToolDetail(
             tool.Id,
@@ -503,6 +505,7 @@ internal sealed record LookupToolDetail(
             definitions.Count > 0 ? definitions[0] : null,
             definitions,
             warnings,
-            manifests);
+            manifests,
+            lookupFilters.RootElement.Clone());
     }
 }

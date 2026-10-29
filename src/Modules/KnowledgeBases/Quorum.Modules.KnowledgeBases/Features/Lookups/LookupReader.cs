@@ -30,7 +30,7 @@ internal sealed record LookupAttributeSort(string Name, bool Descending)
 /// <param name="Cursor">What the previous page returned.</param>
 /// <param name="Attribute">With <see cref="LookupSort.Attribute"/>: the attribute to order by.</param>
 /// <param name="Filters">On the attributes of the rows (spec 012 D-5); none when left out.</param>
-internal sealed record LookupPageRequest(string? Search, LookupSort Sort, int Limit, string? Cursor, LookupAttributeSort? Attribute = null, IReadOnlyList<LookupFilter>? Filters = null);
+internal sealed record LookupPageRequest(string? Search, LookupSort Sort, int Limit, string? Cursor, LookupAttributeSort? Attribute = null, IReadOnlyList<LookupFilter>? Filters = null, bool CountMatching = false);
 
 internal sealed record LookupPageValue(string Value, string? Label, IReadOnlyList<string> Synonyms, int? Count, string? Attributes);
 
@@ -73,13 +73,15 @@ internal static class LookupReader
         }
 
         var generation = slice.CurrentGeneration;
-        if (request.Sort == LookupSort.Attribute || request.Filters is { Count: > 0 })
+        if (request.Sort == LookupSort.Attribute)
         {
             // The order and the filters read a value inside the JSON of each row, so the generation (at most the ceiling of values) is worked on in memory, as the cache does.
             return LookupPager.Page(await LookupCache.LoadAsync(db, slice.Id, generation, cancellationToken), slice, request);
         }
 
-        var values = db.LookupValues.IgnoreQueryFilters().AsNoTracking().Where(v => v.SliceId == slice.Id && v.Generation == generation);
+        // The filters on attributes are part of the statement, so the rows that pass them are the only ones the database returns.
+        var source = request.Filters is { Count: > 0 } filters ? db.LookupValues.FromSql(LookupFilterSql.Where(slice.Id, generation, filters)) : db.LookupValues;
+        var values = source.IgnoreQueryFilters().AsNoTracking().Where(v => v.SliceId == slice.Id && v.Generation == generation);
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var pattern = $"%{Escape(request.Search.Trim())}%";
@@ -90,6 +92,7 @@ internal static class LookupReader
         }
 
         // One more than the page tells whether there is a next one without counting.
+        int? matching = request.CountMatching ? await values.CountAsync(cancellationToken) : null;
         var rows = await Order(values, request.Sort, cursor).Take(limit + 1).ToListAsync(cancellationToken);
         var page = rows.Take(limit).ToList();
         var next = rows.Count > limit ? LookupCursor.Encode(generation, request.Sort, page[^1].Position, page[^1].Value) : null;
@@ -97,7 +100,8 @@ internal static class LookupReader
         return new LookupPage(
             [.. page.Select(v => new LookupPageValue(v.Value, v.Label, v.Synonyms, v.DocumentCount, v.Attributes))],
             next,
-            restarted);
+            restarted,
+            matching);
     }
 
     [SuppressMessage("Globalization", "CA1309:Use ordinal string comparison", Justification = "Translated to SQL: the comparison uses the collation of the column, as the ORDER BY next to it does.")]

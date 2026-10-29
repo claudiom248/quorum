@@ -145,7 +145,8 @@ public sealed record LookupReadRequest(
     int Limit,
     string? Cursor,
     LookupAttributeOrder? Attribute = null,
-    IReadOnlyList<LookupRowFilter>? RowFilters = null);
+    IReadOnlyList<LookupRowFilter>? RowFilters = null,
+    bool CountMatching = false);
 
 /// <summary>A condition on an attribute of the rows of an entity or manual lookup (spec 012 D-5): <paramref name="Operator"/> is eq, in, min or max.</summary>
 public sealed record LookupRowFilter(string Key, string Operator, JsonElement Value);
@@ -200,7 +201,8 @@ public sealed record LookupRead(
     IReadOnlyList<LookupReadValue>? Values = null,
     string? Cursor = null,
     bool CursorRestarted = false,
-    bool Live = false)
+    bool Live = false,
+    int? Matching = null)
 {
     public static LookupRead Of(LookupReadOutcome outcome, string? name = null, string? knowledgeBase = null) => new(outcome, name, knowledgeBase);
 }
@@ -291,7 +293,7 @@ public sealed record LiveCount(
 /// <param name="Search">A case-insensitive substring of a value.</param>
 /// <param name="Limit">Values in the answer; 1 to 200.</param>
 /// <param name="Attribute">With <see cref="LookupSortOrder.Attribute"/>: the attribute of an entity list to order by.</param>
-public sealed record LiveValuesRequest(LiveScope Scope, Guid LookupId, string? Search, LookupSortOrder Sort, int Limit, LookupAttributeOrder? Attribute = null);
+public sealed record LiveValuesRequest(LiveScope Scope, Guid LookupId, string? Search, LookupSortOrder Sort, int Limit, LookupAttributeOrder? Attribute = null, IReadOnlyList<LookupRowFilter>? RowFilters = null);
 
 /// <param name="Truncated">There are more values than the answer holds, or the scan stopped at its cap.</param>
 /// <param name="ValueCount">Values among the matching documents, before the limit.</param>

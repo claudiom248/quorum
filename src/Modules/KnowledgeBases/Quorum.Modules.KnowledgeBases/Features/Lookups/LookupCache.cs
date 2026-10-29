@@ -48,7 +48,9 @@ internal sealed partial class LookupCache(HybridCache cache, IServiceScopeFactor
         ArgumentNullException.ThrowIfNull(slice);
         ArgumentNullException.ThrowIfNull(request);
 
-        if (slice.CurrentGeneration > 0)
+        // Filters on attributes are answered from the tables, as a statement: the cache holds the whole list, not the rows that pass them.
+        var fromTables = request.Filters is { Count: > 0 } && request.Sort != LookupSort.Attribute;
+        if (slice.CurrentGeneration > 0 && !fromTables)
         {
             try
             {
@@ -202,7 +204,7 @@ internal static class LookupPager
         var shown = page.Take(limit).ToList();
         var remembered = request.Sort == LookupSort.Attribute ? request.Attribute!.Key : shown.Count > 0 ? shown[^1].Value.Value : string.Empty;
         var next = page.Count > limit ? LookupCursor.Encode(entry.Generation, request.Sort, shown[^1].Position, remembered) : null;
-        var matching = matches is null && filters.Count == 0 ? (int?)null : entry.ByPosition.Count(Admits);
+        int? matching = request.CountMatching ? entry.ByPosition.Count(Admits) : null;
         return new LookupPage([.. shown.Select(r => r.Value)], next, restarted, matching);
     }
 

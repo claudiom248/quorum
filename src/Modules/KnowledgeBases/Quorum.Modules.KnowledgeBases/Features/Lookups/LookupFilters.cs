@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Modules.KnowledgeBases.Domain;
 using Quorum.Shared.Results;
 
@@ -16,7 +17,7 @@ internal enum LookupFilterOperator
 }
 
 /// <param name="Value">A scalar for <c>eq</c>, <c>min</c> and <c>max</c>; an array for <c>in</c>.</param>
-internal sealed record LookupFilter(string Key, LookupFilterOperator Operator, JsonNode? Value);
+internal sealed record LookupFilter(string Key, LookupFilterOperator Operator, JsonNode? Value, LookupAttributeType Type);
 
 /// <summary>
 /// The filters on the attributes of a lookup (spec 012 D-5): parsed and checked against the attribute definitions when they arrive,
@@ -24,6 +25,33 @@ internal sealed record LookupFilter(string Key, LookupFilterOperator Operator, J
 /// </summary>
 internal static class LookupFilters
 {
+    /// <summary>The row filters of a read, as the contract carries them, checked against the attributes of the lookup.</summary>
+    public static Result<List<LookupFilter>> ParseRows(IReadOnlyList<LookupRowFilter>? rows, IReadOnlyList<LookupAttribute> attributes)
+    {
+        if (rows is null || rows.Count == 0)
+        {
+            return new List<LookupFilter>();
+        }
+
+        var conditions = new JsonObject();
+        foreach (var row in rows)
+        {
+            if (conditions[row.Key] is not JsonObject operators)
+            {
+                operators = new JsonObject();
+                conditions[row.Key] = operators;
+            }
+
+            operators[row.Operator] = JsonNode.Parse(row.Value.GetRawText());
+        }
+
+        return Parse(conditions.ToJsonString(), attributes);
+    }
+
+    /// <summary>The filters of a parsed read, in the shape the contract carries them.</summary>
+    public static IReadOnlyList<LookupRowFilter> ToRows(IReadOnlyList<LookupFilter> filters) =>
+        [.. filters.Select(f => new LookupRowFilter(f.Key, f.Operator.ToString().ToLowerInvariant(), JsonSerializer.SerializeToElement(f.Value)))];
+
     /// <summary>Parses <c>{ "&lt;key&gt;": { "eq": v } | { "in": [v] } | { "min": v, "max": v } }</c>.</summary>
     public static Result<List<LookupFilter>> Parse(string? json, IReadOnlyList<LookupAttribute> attributes)
     {
@@ -74,7 +102,7 @@ internal static class LookupFilters
                     return Invalid(problem);
                 }
 
-                filters.Add(new LookupFilter(key, op, value?.DeepClone()));
+                filters.Add(new LookupFilter(key, op, value?.DeepClone(), attribute.Type));
             }
         }
 

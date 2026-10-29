@@ -188,7 +188,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             return LookupRead.Of(LookupReadOutcome.KnowledgeBaseSkipped, info.Name, info.KnowledgeBaseName);
         }
 
-        var rowFilters = LookupFilters.Parse(RowFiltersJson(request.RowFilters), lookup.Attributes);
+        var rowFilters = LookupFilters.ParseRows(request.RowFilters, lookup.Attributes);
         if (!rowFilters.IsSuccess)
         {
             return LookupRead.Of(LookupReadOutcome.InvalidFilters, info.Name, info.KnowledgeBaseName);
@@ -196,10 +196,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
 
         if (lookup.Storage == LookupStorage.Live)
         {
-            // The store filters what it can scan, not the attributes of a snapshot: a row filter on a live list is not served yet.
-            return rowFilters.Value.Count > 0
-                ? LookupRead.Of(LookupReadOutcome.InvalidFilters, info.Name, info.KnowledgeBaseName)
-                : await LiveReadAsync(request, lookup, info, found.KnowledgeBase!, cancellationToken);
+            return await LiveReadAsync(request, lookup, info, found.KnowledgeBase!, cancellationToken);
         }
 
         var hash = key.Value!.Hash;
@@ -232,7 +229,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             attribute = new LookupAttributeSort(asked.Name, asked.Descending);
         }
 
-        var page = await cache.ReadAsync(db, lookup, slice, new LookupPageRequest(request.Search, sort, request.Limit, request.Cursor, attribute, rowFilters.Value), cancellationToken);
+        var page = await cache.ReadAsync(db, lookup, slice, new LookupPageRequest(request.Search, sort, request.Limit, request.Cursor, attribute, rowFilters.Value, request.CountMatching), cancellationToken);
         if (!page.IsSuccess)
         {
             return LookupRead.Of(LookupReadOutcome.InvalidCursor, info.Name, info.KnowledgeBaseName);
@@ -249,7 +246,8 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             slice.ValueCount,
             [.. page.Value.Values.Select(v => new LookupReadValue(v.Value, v.Label, v.Synonyms, v.Count, v.Attributes))],
             page.Value.Cursor,
-            page.Value.CursorRestarted);
+            page.Value.CursorRestarted,
+            Matching: page.Value.Matching);
     }
 
     public async Task<LiveDocuments> DocumentsAsync(LiveDocumentsRequest request, CancellationToken cancellationToken)
@@ -373,29 +371,6 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
         return visible;
     }
 
-    /// <summary>The row filters of a read in the shape the admin reads take: <c>{ "&lt;key&gt;": { "&lt;operator&gt;": value } }</c>.</summary>
-    private static string? RowFiltersJson(IReadOnlyList<LookupRowFilter>? filters)
-    {
-        if (filters is null || filters.Count == 0)
-        {
-            return null;
-        }
-
-        var conditions = new JsonObject();
-        foreach (var filter in filters)
-        {
-            if (conditions[filter.Key] is not JsonObject operators)
-            {
-                operators = new JsonObject();
-                conditions[filter.Key] = operators;
-            }
-
-            operators[filter.Operator] = JsonNode.Parse(filter.Value.GetRawText());
-        }
-
-        return conditions.ToJsonString();
-    }
-
     /// <summary>An entity lookup in live storage is read from its store, with the scan of the lookups capability (spec 012 D-4, D-5).</summary>
     private async Task<LookupRead> LiveReadAsync(LookupReadRequest request, Lookup lookup, LookupInfo info, KnowledgeBase knowledgeBase, CancellationToken cancellationToken)
     {
@@ -410,7 +385,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             lookup,
             knowledgeBase,
             info.Name,
-            new LiveValuesRequest(scope, lookup.Id, request.Search, request.Sort, request.Limit, request.Attribute),
+            new LiveValuesRequest(scope, lookup.Id, request.Search, request.Sort, request.Limit, request.Attribute, request.RowFilters),
             cancellationToken);
 
         return values.Outcome switch

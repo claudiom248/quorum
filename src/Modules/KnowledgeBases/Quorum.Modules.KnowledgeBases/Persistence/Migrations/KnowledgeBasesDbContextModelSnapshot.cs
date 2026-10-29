@@ -319,6 +319,11 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
 
                     b.HasKey("SliceId", "Generation", "Position");
 
+                    b.HasIndex("Attributes")
+                        .HasDatabaseName("ix_lookup_values_attributes");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Attributes"), "gin");
+
                     b.HasIndex("SliceId", "Generation", "DocumentCount")
                         .IsDescending(false, false, true);
 
@@ -443,7 +448,8 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
 
                             b1.Property<string>("Label");
 
-                            b1.Property<int>("Type");
+                            b1.Property<string>("Type")
+                                .IsRequired();
 
                             b1.HasKey("LookupId", "__synthesizedOrdinal");
 

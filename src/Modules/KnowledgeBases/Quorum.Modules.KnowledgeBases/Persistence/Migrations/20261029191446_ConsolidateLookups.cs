@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -10,24 +10,10 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Existing rows get their names and descriptions before the columns become required (spec 012 D-2, D-10).
-            migrationBuilder.Sql("""
-                UPDATE knowledge_base.lookups AS l
-                SET "Name" = kb."Name" || '.' || f."Name",
-                    "Description" = 'Distinct values of ' || f."Name" || ' in ' || kb."Name"
-                FROM knowledge_base.knowledge_bases AS kb, knowledge_base.dictionary_fields AS f
-                WHERE l."KnowledgeBaseId" = kb."Id" AND l."DictionaryFieldId" = f."Id" AND l."Kind" = 'Computed';
-                """);
-            migrationBuilder.Sql("""
-                UPDATE knowledge_base.lookups AS l
-                SET "Name" = kb."Name",
-                    "Description" = 'Entities of ' || kb."Name"
-                FROM knowledge_base.knowledge_bases AS kb
-                WHERE l."KnowledgeBaseId" = kb."Id" AND l."Kind" = 'Entity';
-                """);
-            migrationBuilder.Sql("""
-                UPDATE knowledge_base.lookups SET "Description" = 'A list of values.' WHERE "Description" IS NULL;
-                """);
+            // Existing rows get their names, descriptions and attributes before the columns become required (spec 012 D-2, D-3, D-10).
+            migrationBuilder.Sql(ConsolidateLookupsBackfill.ComputedNames);
+            migrationBuilder.Sql(ConsolidateLookupsBackfill.EntityNames);
+            migrationBuilder.Sql(ConsolidateLookupsBackfill.Descriptions);
 
             migrationBuilder.AlterColumn<string>(
                 name: "Name",
@@ -71,9 +57,9 @@ namespace Quorum.Modules.KnowledgeBases.Persistence.Migrations
                 nullable: false,
                 defaultValue: "");
 
-            // Every existing lookup is a snapshot, and an owned collection reads a null column as a mistake: it starts empty.
-            migrationBuilder.Sql("""UPDATE knowledge_base.lookups SET "Storage" = 'Snapshot' WHERE "Storage" = '';""");
-            migrationBuilder.Sql("""UPDATE knowledge_base.lookups SET "Attributes" = '[]'::jsonb WHERE "Attributes" IS NULL;""");
+            migrationBuilder.Sql(ConsolidateLookupsBackfill.Storage);
+            migrationBuilder.Sql(ConsolidateLookupsBackfill.EntityAttributes);
+            migrationBuilder.Sql(ConsolidateLookupsBackfill.EmptyAttributes);
         }
 
         /// <inheritdoc />
