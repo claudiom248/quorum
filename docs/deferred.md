@@ -48,6 +48,7 @@ Items that hurt what users see today and should be picked up before new features
 | Renaming a lookup or moving it between knowledge bases | Spec 007 | A lookup follows its field and its knowledge base | A concrete need |
 | `PUT /api/settings/web` writes the platform's one web row and is guarded by `tools.manage`, which every tenant's `Admin` holds: an administrator of any tenant sets the SearXNG instance, the User-Agent and the robots/cache policy for everybody. The docs say the default tenant's administrator edits it, but nothing in the code knows which tenant that is | Specs 005 and 006 (found reviewing 006, 2026-10-29) | There is no default-tenant concept to check against: `CompleteSetup` creates one and nothing records its id. Needs the tenancy decision, not a one-line policy change | The users and roles spec, or any spec that gives the platform a "default tenant" identity |
 | License key verification | Spec 001 | Runs as implicit Community without a key | Dedicated Licensing spec |
+| An entity list and its own knowledge base in the same lookup tool | Spec 012 (Amendment 1) | An entity list keeps its knowledge base as the only source: the two views would show one set of rows twice, and the model could not tell which one answers | The roles of a knowledge base become awkward for the administrator even with the rules of Amendment 1 |
 
 ## Planned specs
 
