@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/010-admin-ui-redesign.md` (Approved 2026-10-24)
 **Architecture:** Modular Monolith; Vertical Slice inside each module. The web client (`Quorum.Web.Client`, Blazor WebAssembly, MudBlazor 9.11) stays a client of the public API.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first (integration tests with Testcontainers for the API, bUnit for components and pages, as the repository already does).
-**Status:** In progress: PR 1–15 merged, PR 16 pending (approved 2026-10-24)
+**Status:** In progress: PR 1–15 merged, cleanup done, browser check done; guide update (PR 16) pending (approved 2026-10-24)
 **Affected:** Tenancy, KnowledgeBases and Agents (endpoints), `Quorum.Shared` (list query plumbing only), `Quorum.Web.Client` (everything visible), `tests/Quorum.Integration.Tests`, `docs/`.
 
 ## Decisions
