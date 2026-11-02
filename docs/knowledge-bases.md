@@ -1,8 +1,8 @@
 # Knowledge bases: a guide for data owners
 
-Quorum answers from your documents through **knowledge bases**: Qdrant collections that already hold them. Quorum **only reads**. It does not extract, chunk, embed or write anything; whoever owns the data runs that pipeline and keeps the collection up to date. This page says what that collection has to look like so that an administrator can register it in a few minutes, filters work and answers can cite where they come from.
+Quorum answers from your documents through **knowledge bases**: Qdrant collections, or relations of a PostgreSQL database with pgvector, that already hold them. Quorum **only reads**. It does not extract, chunk, embed or write anything; whoever owns the data runs that pipeline and keeps the collection up to date. This page says what that collection has to look like so that an administrator can register it in a few minutes, filters work and answers can cite where they come from.
 
-Design decisions are in [spec 003](specs/003-knowledge-bases.md); this is the practical summary.
+Design decisions are in [spec 003](specs/003-knowledge-bases.md) and, for PostgreSQL, [spec 008](specs/008-pgvector-knowledge-bases.md); this is the practical summary. The text is written for Qdrant; where your documents are in PostgreSQL, [the pgvector section](#pgvector-a-postgresql-relation) says what changes.
 
 ## Checklist
 
@@ -233,6 +233,145 @@ A registration that cannot be verified is still saved, marked **Unavailable**, w
 
 A search that fails marks the knowledge base unavailable; the next successful search or verification marks it available again.
 
+## pgvector: a PostgreSQL relation
+
+A knowledge base can also be **one relation** (a table, a view, a materialized view or a partitioned table) of a PostgreSQL database that has the [pgvector](https://github.com/pgvector/pgvector) extension ([spec 008](specs/008-pgvector-knowledge-bases.md)). The mapping, the dictionary, citations, filters, [embeddings](#same-embedding-model-and-prefix-as-the-ingestion), [lookups](#lists-and-counts-lookups) and [who can read what](#who-can-read-what) work as for Qdrant, with columns where this page says payload fields. This section is what differs. Every call Quorum makes is a `SELECT`, a catalog read or a `SET LOCAL`, inside a `READ ONLY` transaction with a statement timeout; there is no free SQL.
+
+### Checklist
+
+- The `vector` extension is installed **in the database you fill** (`CREATE EXTENSION IF NOT EXISTS vector;`) and the server is reachable from the Quorum server. pgvector **0.8 or later** is advised: older versions work, but a filtered search may return fewer rows than asked.
+- The relation has one dense **`vector(n)` or `halfvec(n)`** column. Sparse vectors are not used. With several vector columns the administrator picks one.
+- One knowledge base is one relation. For several tables, register several knowledge bases; to adapt a schema (rename columns, join a documents table, hide rows) create a **view**.
+- The chunk text is in a text column and the fields people filter on are plain columns, or keys of a `json` / `jsonb` column ([shape of the relation](#shape-of-the-relation)).
+- The filter columns, the document id and the vector have indexes ([indexes](#recommended-indexes)).
+- The server user Quorum connects with is **read-only** ([a read-only role](#a-read-only-role)).
+- You can tell the administrator the **embedding model**, its query prefix and the **distance** it was trained for ([choosing the distance](#choosing-the-distance)).
+
+### Shape of the relation
+
+The roles are recognised by the same names as for a payload (`text`, `content`, `document_id`, `title`, `page`, `source_url`, ...), found as column names or as keys inside a `json` / `jsonb` column, which are written in dot notation (`metadata.year`; the dictionary name is the last segment). A column or key **whose own name contains a dot** cannot be mapped and is reported. The mapping is drafted from a sample of **100 rows** (a relation has many columns, and a `jsonb` column may carry keys that appear in few rows), read without the vector column and with long values cut.
+
+| Column type | Becomes |
+|---|---|
+| `text`, `varchar`, `char`, `uuid`, enumerations | Text |
+| `smallint`, `integer`, `bigint`, `numeric`, `real`, `double precision` | Number |
+| `boolean` | Boolean |
+| `date`, `timestamp`, `timestamptz` (`timestamp` without time zone is read as UTC) | Date |
+| `text[]`, `varchar[]` | List of texts |
+| `json`, `jsonb` | Its keys, typed from the values sampled, as a payload is |
+
+- The `text` role needs a text column. `documentId`, `title`, `position` and `sourceUrl` accept any scalar type and are read as text.
+- Other types (`bytea`, geometric types, ranges, `interval`, arrays of other types, nested arrays, arrays of objects) are **not mapped** and are reported with a warning, never dropped silently.
+- A `jsonb` key that has another JSON type in some rows is not an error: those rows do not match a filter on it.
+- A column declared `vector` **without dimensions** is measured on the first row that has a vector; with no such row the verification says it cannot compare the dimensions.
+- Rows with a null vector never match a search; a row whose text is null or blank is unusable and the answer says so.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE policy_chunks (
+    id           bigserial PRIMARY KEY,
+    text         text NOT NULL,
+    document_id  text NOT NULL,
+    title        text,
+    page         integer,
+    source_url   text,
+    department   text,
+    year         integer,
+    published_on date,
+    confidential boolean,
+    embedding    vector(768) NOT NULL
+);
+```
+
+### Recommended indexes
+
+Quorum creates nothing, so the indexes are yours to create. A missing one never fails a registration or a search; it makes them slow and the verification says so as a warning.
+
+| Index on | Why |
+|---|---|
+| The **vector column**, with the operator class of your [distance](#choosing-the-distance) | Without it the search is exact and slow on a large table. `CREATE INDEX ON policy_chunks USING hnsw (embedding vector_cosine_ops);` (or `ivfflat`) |
+| Every column people **filter on** | B-tree for text, numbers, dates and booleans; GIN for `text[]` lists. Keys inside a `jsonb` column are not checked, so index them yourself (an expression index) when they matter |
+| The column mapped to the **document id** | A search with `document_ids` is a condition on it. It is not cast, so its index is used |
+| The columns that **lookups** read: listable fields, the counted point, the entity name | A lookup reads the whole relation to compute a list; see [lookups](#lookups-on-a-relation) |
+
+An approximate index (HNSW, IVFFlat) applies the filter after reading the index, so a selective filter can return fewer rows than asked. With **pgvector 0.8 or later** Quorum turns on the iterative scan for every search (`hnsw.iterative_scan` and `ivfflat.iterative_scan`, `relaxed_order`), which keeps scanning until enough rows pass the filter. The rows are still returned best first.
+
+### A read-only role
+
+Quorum never writes, but give it a role that cannot, so that it stays true whatever the connection is used for. The verification warns when the user holds `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` on the relation.
+
+```sql
+CREATE ROLE quorum_reader LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE knowledge TO quorum_reader;
+GRANT USAGE ON SCHEMA public TO quorum_reader;
+GRANT SELECT ON policy_chunks TO quorum_reader;
+```
+
+The administrator is offered only the relations that have a `vector` or `halfvec` column and that this user can `SELECT` from (at most 200, with a text filter); a relation without the privilege is simply not listed.
+
+### Choosing the distance
+
+pgvector does not keep a metric in the column: it is the operator of the query and the operator class of the index. So the **distance is stored with the knowledge base** and the administrator confirms it. The draft is read from the operator class of an index on the vector column; with no index, or indexes that disagree, it proposes `Cosine` and warns.
+
+| Distance | Operator | Operator class (`halfvec_` forms for `halfvec`) | The score is |
+|---|---|---|---|
+| `Cosine` | `<=>` | `vector_cosine_ops` | The similarity, 1 minus the distance: higher is better |
+| `InnerProduct` | `<#>` | `vector_ip_ops` | The inner product: higher is better |
+| `L2` | `<->` | `vector_l2_ops` | The distance: **lower** is better |
+
+Use the distance the embedding model was trained for, the one your index was built with. The minimum score of a rag tool is applied in SQL on the same value (a **maximum** for `L2`). As ever, scores of different knowledge bases are never compared.
+
+### Connecting
+
+The administrator registers the relation in two ways, not both:
+
+- **Separate fields**: host, port (5432 by default), database, user, password and SSL mode. Only the password is secret.
+- **A connection string** in the Npgsql format. The **whole string** is secret: it is stored encrypted and never shown again, and editing it means entering it again.
+
+Either way the knowledge base also holds the relation (`schema`, default `public`, and the table), the vector column and the distance. On an update an omitted password is kept only while host, port, database and user stay the same; otherwise Quorum asks for it again. As with Qdrant, Quorum does not filter addresses or connection parameters: you are responsible for what you enter.
+
+| Where PostgreSQL runs | Address to register |
+|---|---|
+| The `pgvector` profile of Quorum's compose file | host `pgvector`, port `5432`, database `knowledge`, user `knowledge`, the password set as `PGVECTOR_PASSWORD` in `.env` |
+| On the host that runs Quorum's containers | `host.docker.internal` and the port it publishes |
+| Another server | `<host>`, with its own port, database and user |
+
+The compose profile starts a PostgreSQL with pgvector that is **separate from the platform's database**, which is never used for knowledge bases:
+
+```bash
+docker compose --profile bundled-db --profile pgvector up --build -d
+```
+
+Set `PGVECTOR_PASSWORD` in `.env` first (the container refuses to start without it), then enable the extension once in the database you fill. Its port is published on loopback only (5433 by default, `PGVECTOR_PORT`), which is where ingestion from the host connects.
+
+### What the verification checks
+
+In order: the server answers; the `vector` extension is installed (and its version); the relation exists and can be read; the vector column exists and is a `vector` or `halfvec`; its dimensions equal those of an embedding of the configured model; the mapped columns and keys still exist with a compatible type. A failed check saves the knowledge base **Unavailable** with the cause and its consequence; it never blocks the registration.
+
+These are **warnings that never change the status**:
+
+- no index on the vector column (the search is exact and slow on a large table);
+- a mapped metadata column with no index;
+- the column mapped to the document id has no index, so a search with `document_ids` can be slow;
+- a column that lookups read has no index ([lookups](#lookups-on-a-relation));
+- pgvector older than 0.8 (filtered searches may return fewer rows);
+- the user can write to the relation.
+
+A failure is shown as one of a few outcomes: unreachable or timed out, unauthorized (credentials or privilege), relation or column not found, a vector of a different size than the model produces, or an unexpected error. The message never carries the connection string, the host, the SQL or the text PostgreSQL returned, because those can name tables and values. As with Qdrant, a search that fails marks the knowledge base unavailable and the next successful search or verification marks it available again.
+
+### Lookups on a relation
+
+The three kinds of [lookups](#lists-and-counts-lookups) work on a relation, with the same lookup tool and the same pages. What differs is the cost, because PostgreSQL has no facet API:
+
+- **No index is required and no minimum pgvector version.** A `GROUP BY` or a count answers without an index, only slower, so a missing index is **never a failure** here; it is the advice `'x' (role) has no index: lookups read the whole relation to compute it`. Index the columns that lookups read if the relation is large.
+- **Listable fields** are text, `varchar`, `uuid` or enumerated columns, `text[]` columns (each element counts as a value) and `jsonb` keys that hold a string or an array of strings. A `jsonb` key of another JSON type contributes nothing. Values are kept as they are, as in [values are stored as they are](#values-are-stored-as-they-are).
+- **What a count counts.** With a **document id** mapped, a value counts the **distinct documents** that carry it, computed exactly by the database and not capped: the list is truncated only when there are more values than the ceiling. Without one, it counts rows. A **counted point** is a condition on a column or key (`is_first_chunk = true`, `chunk_index = 0`), and you still guarantee "exactly one per document".
+- **An entity relation** (one row per supplier, team, person) names the **entity name** column and up to 10 attribute columns, as for a collection of entities. It is read in a stable order (the primary key, otherwise the first unique index without nulls, otherwise the physical address), so a cursor can resume; rows changed while a scan is in progress may be missed or seen twice.
+- **Time.** A background computation may run for up to 10 minutes; a live operation is cancelled on the server after 15 seconds.
+
+The listed values are stored in the platform database as described in [what Quorum stores about your data](#what-quorum-stores-about-your-data).
+
 ## Trying it with the sample project
 
 `tools/Quorum.SampleKnowledgeBase` plays the data owner: it writes ten policy chunks into seven collections that cover the cases above (flat and nested payload, a list of tags, no payload indexes, two named vectors, a different vector size, an empty collection) and prints the matching JSON Schema. Nothing in the product references it. Details of each collection are in its [README](../tools/Quorum.SampleKnowledgeBase/README.md).
@@ -264,3 +403,11 @@ dotnet run --project tools/Quorum.SampleKnowledgeBase -- --schema flat   # print
 ```
 
 Seeding again recreates the collections.
+
+**For PostgreSQL**, the same tool writes sample **relations** (flat columns, a LangChain-style `jsonb` table, `text[]` tags, `halfvec`, two vector columns, a view, HNSW and IVFFlat with each distance, names that need quoting, and the handbook and employees used by the lookup scenarios) into a pgvector database of your own, never the platform's:
+
+```bash
+dotnet run --project tools/Quorum.SampleKnowledgeBase -- --pgvector "Host=localhost;Port=5433;Database=knowledge;Username=knowledge;Password=<PGVECTOR_PASSWORD>"
+```
+
+Add the same `--embedding-*` options to embed with a real model. The list of relations and the lookup walk-through are in the [README](../tools/Quorum.SampleKnowledgeBase/README.md).
