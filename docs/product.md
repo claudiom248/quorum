@@ -94,6 +94,6 @@ Names that reach the public API are hard to change later, so these terms are fix
 - MVP success metric and indicative per-user price.
 - Tenant isolation in the vector store (collection per tenant or filter on `tenant_id`).
 - Document chunking strategy.
-- Declarative format for assistants and agents (separate spec after 013; there is no Topology entity, see spec 013).
+- Declarative format for assistants, agents and topologies.
 
 Decided: tenant isolation in the platform database uses a `TenantId` column with an EF Core global filter (plan 001).
