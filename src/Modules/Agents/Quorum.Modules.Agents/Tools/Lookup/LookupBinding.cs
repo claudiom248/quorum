@@ -36,6 +36,9 @@ internal sealed record LookupBinding(
     /// <summary>The fields each list can be filtered by, by the name the model was offered the list under; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ListFilters { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
 
+    /// <summary>The filter parameters each live knowledge base can take (spec 012 A1-5), by the name the model was offered it; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> KnowledgeBaseFilters { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
     /// <summary>The list that holds the exact values of a filter parameter, by parameter name: the list of the field it filters; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
 

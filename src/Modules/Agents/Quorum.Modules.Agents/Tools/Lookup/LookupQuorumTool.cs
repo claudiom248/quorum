@@ -121,7 +121,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
 
         if (binding.KnowledgeBases.ContainsKey(name))
         {
-            var kbFilters = new JsonArray(binding.FilterFields.Keys.Order(StringComparer.Ordinal).Select(field => (JsonNode)FilterOf(binding)(field)).ToArray());
+            var kbFilters = new JsonArray((binding.KnowledgeBaseFilters.GetValueOrDefault(name) ?? []).Select(field => (JsonNode)FilterOf(binding)(field)).ToArray());
             return new JsonObject
             {
                 ["name"] = name,
@@ -188,6 +188,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 throw new ToolFailedException($"The knowledge base '{LookupResultFormat.Clean(target)}' takes the operations documents and count.");
             }
 
+            CheckKnowledgeBaseFilters(binding, arguments, target);
             mapped = operation;
             inner[LookupToolDefinition.KnowledgeBaseParameter] = target;
         }
@@ -315,6 +316,28 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
 
         var what = applicable.Count > 0 ? $"It can be filtered by {string.Join(", ", applicable)}." : "It cannot be filtered: read it without filters.";
         throw new ToolFailedException($"The list '{LookupResultFormat.Clean(list)}' cannot be filtered by {string.Join(", ", unfit.Select(LookupResultFormat.Clean))}. {what}");
+    }
+
+    /// <summary>
+    /// A filter of a knowledge base must be a field its own mapping maps (spec 012 A1-5, A1-6): the others are named, with what it takes,
+    /// so that <c>query</c> refuses what <c>describe</c> does not list.
+    /// </summary>
+    private static void CheckKnowledgeBaseFilters(LookupBinding binding, JsonElement arguments, string knowledgeBase)
+    {
+        if (!arguments.TryGetProperty(LookupLeanDefinition.FiltersParameter, out var filters) || filters.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var applicable = binding.KnowledgeBaseFilters.GetValueOrDefault(knowledgeBase) ?? [];
+        var unfit = filters.EnumerateObject().Select(p => p.Name).Where(p => !applicable.Contains(FieldOf(binding, p), StringComparer.Ordinal)).Order(StringComparer.Ordinal).ToList();
+        if (unfit.Count == 0)
+        {
+            return;
+        }
+
+        var what = applicable.Count > 0 ? $"It can be filtered by {string.Join(", ", applicable)}." : "It cannot be filtered: read it without filters.";
+        throw new ToolFailedException($"The knowledge base '{LookupResultFormat.Clean(knowledgeBase)}' cannot be filtered by {string.Join(", ", unfit.Select(LookupResultFormat.Clean))}. {what}");
     }
 
     // The filter of a number or a date has two parameters (year_min, year_max): the field is what they share.
