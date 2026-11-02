@@ -32,6 +32,9 @@ internal sealed record ResolvedLookupTool(
 
     /// <summary>The filter parameters each live knowledge base can take: those of the exposed fields its mapping maps (spec 012 A1-5), by name.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> KnowledgeBaseFilters { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <summary>The type of each filter field, by the name the model sees it: what <c>describe</c> states and the operators follow (spec 012 D-8).</summary>
+    public IReadOnlyDictionary<string, FilterFieldType> FilterTypes { get; init; } = new Dictionary<string, FilterFieldType>();
 }
 
 /// <summary>
@@ -140,6 +143,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                     .Where(l => l.Info.SortableAttributes is { Count: > 0 })
                     .ToDictionary(l => l.Name, l => l.Info.SortableAttributes!, StringComparer.Ordinal),
                 FilterLists = LookupToolDefinition.ListsOfFilters(offered, exposed),
+                FilterTypes = exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Type, StringComparer.Ordinal),
                 ListFilters = offered.ToDictionary(l => l.Name, l => l.Filters ?? [], StringComparer.Ordinal),
                 KnowledgeBaseFilters = queried.ToDictionary(k => k.Name, k => (IReadOnlyList<string>)[.. exposed.Where(f => k.FieldIds.Contains(f.Id)).Select(f => f.Name)], StringComparer.Ordinal),
                 Targets = offered.ToDictionary(l => l.Name, l => l.Info, StringComparer.Ordinal),
@@ -247,6 +251,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                             FilterFields = definition.FilterFields,
                             SortableAttributes = definition.SortableAttributes,
                             FilterLists = definition.FilterLists,
+                            FilterTypes = definition.FilterTypes,
                             ListFilters = definition.ListFilters,
                             KnowledgeBaseFilters = definition.KnowledgeBaseFilters,
                             Targets = definition.Targets,
