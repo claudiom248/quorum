@@ -80,6 +80,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         if (binding.Targets.TryGetValue(name, out var list))
         {
             var fields = binding.ListFilters.TryGetValue(name, out var listed) ? listed : new List<string>();
+            // The values sort takes, written out: an attribute ascending as itself, descending with '-' in front.
             var sortable = new JsonArray();
             sortable.Add("name");
             sortable.Add("count");
@@ -88,6 +89,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 foreach (var attribute in attributes)
                 {
                     sortable.Add(attribute);
+                    sortable.Add($"-{attribute}");
                 }
             }
 
@@ -146,10 +148,17 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         throw new ToolFailedException($"'{LookupResultFormat.Clean(name)}' is not a list or a knowledge base of this tool. The targets are: {TargetNames(binding)}.");
     }
 
-    /// <summary>A filter as <c>describe</c> states it: its operators, and the list that holds its allowed values when it has one.</summary>
+    /// <summary>
+    /// A filter as <c>describe</c> states it (spec 012 D-5, D-8): its type and its operators, <c>min</c> and <c>max</c> too for a number or a date;
+    /// and the list that holds its allowed values when it has one.
+    /// </summary>
     private static Func<string, JsonObject> FilterOf(LookupBinding binding) => field =>
     {
-        var filter = new JsonObject { ["name"] = field, ["operators"] = new JsonArray("eq", "in") };
+        var type = binding.FilterTypes.TryGetValue(field, out var fieldType) ? fieldType : FilterFieldType.Text;
+        var ranged = type is FilterFieldType.Number or FilterFieldType.Date;
+        var operators = ranged ? new JsonArray("eq", "in", "min", "max") : new JsonArray("eq", "in");
+        var filter = new JsonObject { ["name"] = field, ["type"] = type.ToString(), ["operators"] = operators };
+
         if (binding.FilterLists.TryGetValue(field, out var holder))
         {
             filter["valuesIn"] = holder;
@@ -195,6 +204,12 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             }
 
             CheckKnowledgeBaseFilters(binding, arguments, target);
+            // documents and count read the documents that match the filters: they take no search or sort, which only lists have.
+            if (StringOf(arguments, LookupToolDefinition.SearchParameter) is not null || StringOf(arguments, LookupToolDefinition.SortParameter) is not null)
+            {
+                throw new ToolFailedException($"The knowledge base '{LookupResultFormat.Clean(target)}' takes no search or sort: {operation} takes the filters, limit and cursor.");
+            }
+
             mapped = operation;
             inner[LookupToolDefinition.KnowledgeBaseParameter] = target;
         }
@@ -215,7 +230,22 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         {
             foreach (var filter in filters.EnumerateObject())
             {
-                inner[filter.Name] = JsonNode.Parse(filter.Value.GetRawText());
+                // A range is written as {"min": v} or {"max": v} under the field; the read takes it as the parameter "<field>_min" or "<field>_max".
+                if (filter.Value.ValueKind != JsonValueKind.Object)
+                {
+                    inner[filter.Name] = JsonNode.Parse(filter.Value.GetRawText());
+                    continue;
+                }
+
+                foreach (var bound in filter.Value.EnumerateObject())
+                {
+                    if (bound.Name is not ("min" or "max"))
+                    {
+                        throw new ToolFailedException($"The filter '{LookupResultFormat.Clean(filter.Name)}' takes eq and in as values, and min or max for a range: '{LookupResultFormat.Clean(bound.Name)}' is not one of them.");
+                    }
+
+                    inner[$"{filter.Name}_{bound.Name}"] = JsonNode.Parse(bound.Value.GetRawText());
+                }
             }
         }
 
@@ -281,21 +311,23 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
     }
 
     /// <summary>
-    /// <c>count</c> and <c>name</c>, or an attribute of an entity list (a leading '-' asks for the largest first). The attributes a list
-    /// offers are the ones it was described with, so a sort the definition did not offer is refused with what is available.
+    /// <c>count</c> and <c>name</c>, or an attribute of an entity list (a leading '-' asks for the largest first). The
+    /// attributes a list offers are the ones it was described with, so a sort the definition did not offer is refused with what is available.
     /// </summary>
     private static (LookupSortOrder Sort, LookupAttributeOrder? Attribute) ParseSort(LookupBinding binding, string list, string? sort)
     {
-        switch (sort)
+        var (key, direction) = SplitDirection(sort);
+        switch (key)
         {
-            case null or LookupToolDefinition.SortByCount:
+            // count is ranked largest first and name smallest first: a direction that asks for the other way is not offered.
+            case null or LookupToolDefinition.SortByCount when direction is null or true:
                 return (LookupSortOrder.Count, null);
-            case LookupToolDefinition.SortByName:
+            case LookupToolDefinition.SortByName when direction is null or false:
                 return (LookupSortOrder.Name, null);
         }
 
-        var descending = sort.StartsWith('-');
-        var attribute = descending ? sort[1..] : sort;
+        var descending = direction ?? false;
+        var attribute = key!;
         if (binding.SortableAttributes.TryGetValue(list, out var attributes) && attributes.Contains(attribute, StringComparer.Ordinal))
         {
             return (LookupSortOrder.Attribute, new LookupAttributeOrder(attribute, descending));
@@ -305,6 +337,23 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             ? $"'{LookupToolDefinition.SortByName}' or one of its attributes: {string.Join(", ", offered)} (with '-' in front for the largest first)"
             : $"'{LookupToolDefinition.SortByCount}' or '{LookupToolDefinition.SortByName}'";
         throw new ToolFailedException($"The list '{LookupResultFormat.Clean(list)}' cannot be ordered by '{Shorten(sort)}'. Use {available}.");
+    }
+
+    // The form describe declares: "-headcount" is the largest first, "headcount" the smallest; any other spelling is refused by name.
+    private static (string? Key, bool? Descending) SplitDirection(string? sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort))
+        {
+            return (null, null);
+        }
+
+        var text = sort.Trim();
+        if (text.StartsWith('-'))
+        {
+            return (text[1..].Trim(), true);
+        }
+
+        return (text, null);
     }
 
     /// <summary>

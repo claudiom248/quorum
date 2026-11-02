@@ -42,6 +42,9 @@ internal sealed record LookupBinding(
     /// <summary>The list that holds the exact values of a filter parameter, by parameter name: the list of the field it filters; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>The type of each filter field, by the name the model sees it; filled by <see cref="LookupToolResolver"/>.</summary>
+    public IReadOnlyDictionary<string, FilterFieldType> FilterTypes { get; init; } = new Dictionary<string, FilterFieldType>();
+
     /// <summary>The fixed conditions on the attributes of the lookups, as stored (spec 012 D-7): <c>{ "&lt;lookupId&gt;": { "&lt;attribute&gt;": { "eq": v } } }</c>.</summary>
     public string LookupFilters { get; init; } = "{}";
 

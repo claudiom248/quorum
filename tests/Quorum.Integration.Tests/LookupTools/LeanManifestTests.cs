@@ -85,6 +85,16 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
         var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", "{\"targets\":[\"department\",\"policies\"]}", "call_1")));
         var targets = JsonDocument.Parse(describe).RootElement.GetProperty("targets").EnumerateArray().ToList();
 
+        // A number states its type and its operators, min and max among them (spec 012 D-5, D-8).
+        var years = targets.SelectMany(t => t.GetProperty("operations").EnumerateObject()).SelectMany(o => o.Value.GetProperty("filters").EnumerateArray())
+            .Where(f => f.GetProperty("name").GetString() == "year").ToList();
+        Assert.NotEmpty(years);
+        Assert.All(years, year =>
+        {
+            Assert.Equal("Number", year.GetProperty("type").GetString());
+            Assert.Equal(["eq", "in", "min", "max"], year.GetProperty("operators").EnumerateArray().Select(e => e.GetString()));
+        });
+
         // Each filter describe lists for an operation is accepted by query for that operation: the answer is never "cannot be filtered".
         var call = 1;
         var listed = 0;
@@ -107,6 +117,16 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
         Assert.Equal(12, listed);
         var refused = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"values\",\"filters\":{\"nothing\":[\"x\"]}}", $"call_{++call}")));
         Assert.Contains("cannot be filtered by nothing", refused, StringComparison.Ordinal);
+
+        // A range takes min or max; any other bound under a field is refused by name.
+        var bound = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"policies\",\"operation\":\"documents\",\"filters\":{\"year\":{\"between\":[1,2]}}}", $"call_{++call}")));
+        Assert.Contains("'between' is not one of them", bound, StringComparison.Ordinal);
+
+        // The sort values are written out in describe; a knowledge base takes no search or sort.
+        var departmentSort = targets.Single(t => t.GetProperty("name").GetString() == "department").GetProperty("operations").GetProperty("values").GetProperty("sort").EnumerateArray().Select(e => e.GetString());
+        Assert.Equal(["name", "count"], departmentSort);
+        var withSearch = await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"policies\",\"operation\":\"documents\",\"search\":\"x\"}", $"call_{++call}"));
+        Assert.Contains("takes no search or sort", ResultOf(withSearch), StringComparison.Ordinal);
     }
 
     [Fact] // AC-19

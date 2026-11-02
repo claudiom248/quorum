@@ -286,10 +286,16 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         Assert.Contains("Ordered by contract_count, the largest first.", american, StringComparison.Ordinal);
         Assert.Equal(["Hooli", "Globex"], Rows(american).Select(r => r.Split(' ')[0]));
 
+
         // A filter written beside the filters object is refused, not dropped: the answer would otherwise be the unfiltered list.
         var stray = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","country":["US"]}""", "call_lean_2"));
         Assert.Equal("failed", StatusOf(stray));
         Assert.Contains("Put the filters in the filters object", ResultOf(stray), StringComparison.Ordinal);
+
+        // Only the form describe declares is accepted: "attribute desc" is refused, and the error names the forms that are.
+        var spaced = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","sort":"contract_count desc"}""", "call_lean_desc"));
+        Assert.Equal("failed", StatusOf(spaced));
+        Assert.Contains("cannot be ordered by 'contract_count desc'", ResultOf(spaced), StringComparison.Ordinal);
 
         // A filter inside the filters object on a manual list it does not apply to is refused, not answered unfiltered.
         var notApplied = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"language","operation":"values","filters":{"country":["US"]}}""", "call_lean_3"));

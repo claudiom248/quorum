@@ -83,7 +83,7 @@ internal static class LookupLeanDefinition
             },
             [FiltersParameter] = new JsonObject { ["type"] = "object", ["description"] = "Filters by field or attribute, as describe lists them." },
             ["search"] = new JsonObject { ["type"] = "string" },
-            ["sort"] = new JsonObject { ["type"] = "string" },
+            ["sort"] = new JsonObject { ["type"] = "string", ["description"] = "An order that describe lists for the target. Put '-' in front for the largest first, as in -headcount." },
             ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = LookupToolDefinition.MaxLimit },
             ["cursor"] = new JsonObject { ["type"] = "string" },
         },
