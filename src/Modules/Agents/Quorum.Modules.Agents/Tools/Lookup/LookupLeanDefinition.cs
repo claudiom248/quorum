@@ -42,7 +42,7 @@ internal static class LookupLeanDefinition
             .Concat(bases.Select(name => $"{name} (knowledge base)")));
 
         var describe = $"Describe the lists and knowledge bases of the lookup tool \"{toolName}\" before reading one: the operations each takes, the fields it can be filtered by, the order it can be sorted in and its limits. {toolDescription} Targets: {listed}.";
-        var query = $"Read one list or knowledge base of \"{toolName}\": operation values or count for a list, documents or count for a knowledge base. Call {DescribeOperation} first for the filters it takes. Targets: {listed}.";
+        var query = $"Read one list or knowledge base of \"{toolName}\". A list takes the operations values and count only; documents is for a knowledge base only, and count is for both. Call {DescribeOperation} first: it names, for each target, the operations and the filters it takes. Targets: {listed}.";
 
         return new GeneratedLookupDefinition(
         [
