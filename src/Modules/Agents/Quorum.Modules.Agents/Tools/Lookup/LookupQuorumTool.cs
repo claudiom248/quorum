@@ -91,27 +91,55 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 }
             }
 
+            // Each operation states the filters it takes: values and count take the same ones, since both are worked out among the documents that
+            // match them (spec 012 AC-22). Only values is ordered and paged; count is one number.
+            var filters = new JsonArray(fields.Select(FilterOf(binding)).ToArray());
             return new JsonObject
             {
                 ["name"] = name,
                 ["kind"] = list.Kind.ToString().ToLowerInvariant(),
                 ["description"] = list.Description,
-                ["operations"] = new JsonArray(LookupLeanDefinition.LookupOperations.Select(o => (JsonNode)o).ToArray()),
-                ["filters"] = new JsonArray(fields.Select(FilterOf(binding)).ToArray()),
-                ["sort"] = sortable,
-                ["limit"] = LimitsOf(),
+                ["operations"] = new JsonObject
+                {
+                    [LookupToolDefinition.ValuesOperation] = new JsonObject
+                    {
+                        ["description"] = "The values that exist, with the number of documents of each, most common first or by name. With filters, the values that occur among the documents that match them.",
+                        ["search"] = true,
+                        ["filters"] = filters.DeepClone(),
+                        ["sort"] = sortable,
+                        ["limit"] = LimitsOf(),
+                    },
+                    [LookupToolDefinition.CountOperation] = new JsonObject
+                    {
+                        ["description"] = "How many distinct values exist that match search and the filters. Not a count of documents.",
+                        ["search"] = true,
+                        ["filters"] = filters.DeepClone(),
+                    },
+                },
             };
         }
 
         if (binding.KnowledgeBases.ContainsKey(name))
         {
+            var kbFilters = new JsonArray(binding.FilterFields.Keys.Order(StringComparer.Ordinal).Select(field => (JsonNode)FilterOf(binding)(field)).ToArray());
             return new JsonObject
             {
                 ["name"] = name,
                 ["kind"] = "knowledgeBase",
-                ["operations"] = new JsonArray(LookupLeanDefinition.KnowledgeBaseOperations.Select(o => (JsonNode)o).ToArray()),
-                ["filters"] = new JsonArray(binding.FilterFields.Keys.Order(StringComparer.Ordinal).Select(field => (JsonNode)FilterOf(binding)(field)).ToArray()),
-                ["limit"] = LimitsOf(),
+                ["operations"] = new JsonObject
+                {
+                    [LookupToolDefinition.DocumentsOperation] = new JsonObject
+                    {
+                        ["description"] = "The documents that match the filters, a page at a time.",
+                        ["filters"] = kbFilters.DeepClone(),
+                        ["limit"] = LimitsOf(),
+                    },
+                    [LookupToolDefinition.CountOperation] = new JsonObject
+                    {
+                        ["description"] = "How many documents match the filters.",
+                        ["filters"] = kbFilters.DeepClone(),
+                    },
+                },
             };
         }
 
@@ -199,14 +227,23 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
     /// <summary>How many values of a list match its search: the count the lean manifest offers for a list (spec 012 D-5, D-8).</summary>
     private async Task<ToolOutput> ListCountAsync(LookupBinding binding, Arguments asked, CancellationToken cancellationToken)
     {
-        if (asked.Filters.Count > 0)
+        var (name, lookupId) = Target(binding, asked.Lookup);
+        if (asked.Filters.Count == 0)
         {
-            throw new ToolFailedException("A count of a list takes the search only. Read the values with the filters to count them.");
+            var read = await ReadAsync(lookupId, binding.SliceFilters(), asked.Search, LookupSortOrder.Count, null, 1, null, name, binding, cancellationToken, countMatching: true);
+            return new ToolOutput($"{LookupResultFormat.Clean(name)}: {read.Matching ?? 0} values match.", SourceCount: 0);
         }
 
-        var (name, lookupId) = Target(binding, asked.Lookup);
-        var read = await ReadAsync(lookupId, binding.SliceFilters(), asked.Search, LookupSortOrder.Count, null, 1, null, name, binding, cancellationToken, countMatching: true);
-        return new ToolOutput($"{LookupResultFormat.Clean(name)}: {read.Matching ?? 0} values match.", SourceCount: 0);
+        // With filters the values are worked out now among the documents that match, as values does, and counted (spec 012 AC-22).
+        CheckFilters(binding, asked, name);
+        var result = await runtime.Lookups.LiveValuesAsync(new LiveValuesRequest(Scope(binding, asked.Filters), lookupId, asked.Search, LookupSortOrder.Count, 1), cancellationToken);
+        if (result.Outcome != LiveOutcome.Ok)
+        {
+            throw new ToolFailedException(LiveFailure(result.Outcome, result.Message));
+        }
+
+        var cut = result.Truncated ? " The count is a minimum: the documents read were cut at the ceiling of values." : string.Empty;
+        return new ToolOutput($"{LookupResultFormat.Clean(name)}: {result.ValueCount} values match.{cut}", SourceCount: 0);
     }
 
     private async Task<ToolOutput> ValuesAsync(LookupBinding binding, Arguments asked, int limit, CancellationToken cancellationToken)
