@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/008-pgvector-knowledge-bases.md` (Approved 2026-10-22, Amendment 1 approved 2026-10-22, Amendment 2 approved 2026-10-27)
 **Architecture:** Modular Monolith; Vertical Slice inside the KnowledgeBases module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** In progress: PR 1–6, 8 and 9 merged, PR 7 (closing docs) pending (approved 2026-10-22)
+**Status:** Implemented (approved 2026-10-22)
 
 ## Decisions
 | Topic | Choice |
