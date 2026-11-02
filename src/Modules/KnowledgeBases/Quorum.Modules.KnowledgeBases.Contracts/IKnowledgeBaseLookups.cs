@@ -252,13 +252,13 @@ public enum LiveOutcome
     NotComputed,
 }
 
-/// <param name="KnowledgeBaseIds">Only these are queried, among the ones the assistant can see.</param>
+/// <param name="KnowledgeBaseId">The one knowledge base read, among the ones the assistant can see: a call never reads two (spec 012 A1-2).</param>
 /// <param name="ReturnFieldIds">The exposed fields whose values come back with each document.</param>
 /// <param name="Limit">Documents in the page; 1 to 200.</param>
 /// <param name="Cursor">The opaque cursor the previous page returned.</param>
 public sealed record LiveDocumentsRequest(
     LiveScope Scope,
-    IReadOnlyList<Guid> KnowledgeBaseIds,
+    Guid KnowledgeBaseId,
     IReadOnlyList<Guid> ReturnFieldIds,
     int Limit,
     string? Cursor);
@@ -278,7 +278,8 @@ public sealed record LiveDocuments(
     IReadOnlyList<string>? Skipped = null,
     IReadOnlyList<FailedKnowledgeBase>? Failed = null);
 
-public sealed record LiveCountRequest(LiveScope Scope, IReadOnlyList<Guid> KnowledgeBaseIds);
+/// <param name="KnowledgeBaseId">The one knowledge base counted (spec 012 A1-2).</param>
+public sealed record LiveCountRequest(LiveScope Scope, Guid KnowledgeBaseId);
 
 /// <param name="Unit"><c>documents</c> or <c>chunks</c>; counts of different units are never added.</param>
 public sealed record LiveKnowledgeBaseCount(string KnowledgeBase, long Count, string Unit);

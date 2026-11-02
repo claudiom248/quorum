@@ -126,8 +126,11 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 })
                 .ToList();
 
+            // The full manifest offers the filters of the computed lists only: an entity list's filters on its attributes are in the lean manifest alone (spec 012 A1-8).
+            var computedFilters = offered.Where(l => l.Info.Kind == LookupKindInfo.Computed).SelectMany(l => l.Filters ?? []).ToHashSet(StringComparer.Ordinal);
+            var fullLists = offered.Select(l => l.Info.Kind == LookupKindInfo.Entity ? l with { Filters = [] } : l).ToList();
             resolved[tool.ToolId] = new ResolvedLookupTool(
-                LookupToolDefinition.Build(tool.Name, tool.Description, offered, queried, exposed.Where(f => listFields.Contains(f.Id)).ToList(), exposed.Where(f => queriedFields.Contains(f.Id)).ToList()),
+                LookupToolDefinition.Build(tool.Name, tool.Description, fullLists, queried, exposed.Where(f => listFields.Contains(f.Id) && computedFilters.Contains(f.Name)).ToList(), exposed.Where(f => queriedFields.Contains(f.Id)).ToList()),
                 offered.ToDictionary(l => l.Name, l => l.Info.Id, StringComparer.Ordinal),
                 [.. offered.Select(l => l.Info)],
                 queried.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),

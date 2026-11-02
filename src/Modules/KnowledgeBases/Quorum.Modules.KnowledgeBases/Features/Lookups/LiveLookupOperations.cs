@@ -46,21 +46,18 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
 
     public async Task<LiveDocuments> DocumentsAsync(LiveDocumentsRequest request, CancellationToken cancellationToken)
     {
-        var prepared = await PrepareAsync(request.Scope, request.KnowledgeBaseIds, cancellationToken);
+        var prepared = await PrepareAsync(request.Scope, [request.KnowledgeBaseId], cancellationToken);
         if (prepared.Failure is { } failure)
         {
             return new LiveDocuments(failure.Outcome, failure.Message);
         }
 
         var limit = Math.Clamp(request.Limit, 1, MaxLimit);
-        var order = prepared.Bases;
-        var from = 0;
         DocumentsCursor? resume = null;
         if (request.Cursor is not null)
         {
-            resume = DocumentsCursor.Read(request.Cursor);
-            from = resume is null ? -1 : order.FindIndex(k => k.Id == resume.KnowledgeBaseId);
-            if (from < 0)
+            resume = DocumentsCursor.Read(request.Cursor, request.KnowledgeBaseId);
+            if (resume is null)
             {
                 return new LiveDocuments(LiveOutcome.InvalidCursor, "The cursor does not belong to this search. Ask for the first page again, without a cursor.");
             }
@@ -77,9 +74,8 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
 
         try
         {
-            for (var i = from; i < order.Count && documents.Count == 0; i++)
+            foreach (var knowledgeBase in prepared.Bases)
             {
-                var knowledgeBase = order[i];
                 var target = TargetOf(knowledgeBase, prepared.Filters);
                 if (target.Skipped)
                 {
@@ -97,18 +93,9 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
                 attempted++;
                 try
                 {
-                    var page = await ReadDocumentsAsync(target, request.ReturnFieldIds, limit, i == from ? resume : null, linked.Token);
+                    var page = await ReadDocumentsAsync(target, request.ReturnFieldIds, limit, resume, linked.Token);
                     documents.AddRange(page.Documents);
-
-                    // A page stays within one knowledge base; where it ended is where the next one starts.
-                    if (page.Next is not null)
-                    {
-                        next = page.Next.Write(knowledgeBase.Id);
-                    }
-                    else if (documents.Count > 0 && i + 1 < order.Count)
-                    {
-                        next = new DocumentsCursor(order[i + 1].Id, null, 0).Write();
-                    }
+                    next = page.Next?.Write(knowledgeBase.Id);
                 }
                 catch (StoreException exception)
                 {
@@ -136,7 +123,7 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
 
     public async Task<LiveCount> CountAsync(LiveCountRequest request, CancellationToken cancellationToken)
     {
-        var prepared = await PrepareAsync(request.Scope, request.KnowledgeBaseIds, cancellationToken);
+        var prepared = await PrepareAsync(request.Scope, [request.KnowledgeBaseId], cancellationToken);
         if (prepared.Failure is { } failure)
         {
             return new LiveCount(failure.Outcome, failure.Message);
@@ -559,8 +546,8 @@ internal sealed class LiveLookupOperations(KnowledgeBasesDbContext db, StoreAdap
         }
 
         var next = position < page.Rows.Count
-            ? new DocumentsCursor(Guid.Empty, resume?.Inner, position)
-            : page.Cursor is { } following ? new DocumentsCursor(Guid.Empty, following, 0) : null;
+            ? new DocumentsCursor(resume?.Inner, position)
+            : page.Cursor is { } following ? new DocumentsCursor(following, 0) : null;
         return new DocumentsPage(documents, next);
     }
 
@@ -637,18 +624,21 @@ internal sealed record Target(
     }
 }
 
-/// <summary>Where the next page of documents starts: the knowledge base, the store's cursor for the page of records, and how many records of it were already taken.</summary>
-internal sealed record DocumentsCursor(Guid KnowledgeBaseId, string? Inner, int Skip)
+/// <summary>
+/// Where the next page of documents starts: the store's cursor for the page of records, and how many records of it were already taken. The
+/// cursor carries a tag of the knowledge base it was made for, not its name, so a cursor of one knowledge base is refused by another.
+/// </summary>
+internal sealed record DocumentsCursor(string? Inner, int Skip)
 {
-    public static DocumentsCursor? Read(string cursor)
+    public static DocumentsCursor? Read(string cursor, Guid knowledgeBase)
     {
         try
         {
             var parts = Encoding.UTF8.GetString(Convert.FromBase64String(cursor.Replace('-', '+').Replace('_', '/').PadRight(cursor.Length + ((4 - (cursor.Length % 4)) % 4), '='))).Split('|');
             return parts.Length == 3
-                && Guid.TryParse(parts[0], out var id)
+                && parts[0] == Tag(knowledgeBase)
                 && int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var skip)
-                ? new DocumentsCursor(id, parts[1].Length == 0 ? null : parts[1], skip)
+                ? new DocumentsCursor(parts[1].Length == 0 ? null : parts[1], skip)
                 : null;
         }
         catch (FormatException)
@@ -657,9 +647,11 @@ internal sealed record DocumentsCursor(Guid KnowledgeBaseId, string? Inner, int 
         }
     }
 
-    public string Write(Guid? knowledgeBaseId = null)
+    public string Write(Guid knowledgeBase)
     {
-        var text = $"{knowledgeBaseId ?? KnowledgeBaseId}|{Inner}|{Skip.ToString(CultureInfo.InvariantCulture)}";
+        var text = $"{Tag(knowledgeBase)}|{Inner}|{Skip.ToString(CultureInfo.InvariantCulture)}";
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(text)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
+
+    private static string Tag(Guid knowledgeBase) => Convert.ToHexString(global::System.Security.Cryptography.SHA256.HashData(knowledgeBase.ToByteArray()))[..16];
 }

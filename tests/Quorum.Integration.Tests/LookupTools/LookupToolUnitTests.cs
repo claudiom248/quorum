@@ -341,7 +341,7 @@ public sealed class LookupToolUnitTests
         var properties = schema.RootElement.GetProperty("properties");
         Assert.Equal(["knowledge_base", "audience", "year_min", "year_max", "limit", "cursor"], properties.EnumerateObject().Select(p => p.Name));
         Assert.Equal(["contracts", "policies"], properties.GetProperty("knowledge_base").GetProperty("enum").EnumerateArray().Select(e => e.GetString()));
-        Assert.False(schema.RootElement.TryGetProperty("required", out _));
+        Assert.Equal(["knowledge_base"], schema.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
         Assert.EndsWith("Knowledge bases:\n- contracts: Company contracts.\n- policies: HR policies.", documents.Description, StringComparison.Ordinal);
     }
 

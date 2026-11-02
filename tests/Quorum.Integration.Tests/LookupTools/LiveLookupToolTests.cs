@@ -265,6 +265,41 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         }
     }
 
+    [Fact] // AC-A1-2
+    public async Task WithTwoKnowledgeBasesACallReadsOnlyTheOneItNames()
+    {
+        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var contracts = await setup.RegisterAsync("contracts", SampleCollections.CreateLookups, Mapping(false), ContractFields);
+        var policies = await setup.RegisterAsync("policies", SampleCollections.CreateLookups, Mapping(false), ContractFields);
+        var fields = await setup.FieldsAsync();
+        var manual = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "countries"));
+        await LookupToolApi.CreateOkAsync(
+            setup.Admin,
+            LookupToolApi.Body(
+                lookups: [LookupToolApi.Bind(manual)],
+                knowledgeBaseIds: [contracts, policies],
+                exposedFields: [new { fieldId = fields["audience"] }]));
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
+
+        var unnamed = await AskAsync(setup, Call(new { operation = "documents", audience = Managers }));
+
+        // The schema of the full manifest requires the name once the tool has several knowledge bases, so the call is refused before it runs.
+        Assert.Equal("failed", StatusOf(unnamed));
+        Assert.Contains("knowledge_base", ResultOf(unnamed), StringComparison.Ordinal);
+
+        var named = await AskAsync(setup, Call(new { operation = "documents", knowledge_base = "policies", audience = Managers }));
+
+        Assert.Equal("succeeded", StatusOf(named));
+        Assert.Equal(3, Documents(ResultOf(named)).Count);
+        Assert.DoesNotContain("cursor", ResultOf(named), StringComparison.Ordinal);
+
+        // A cursor made for one knowledge base is refused by another: the store would read the other one from a position of its own.
+        var firstPage = ResultOf(await AskAsync(setup, Call(new { operation = "documents", knowledge_base = "contracts", audience = Managers, limit = 2 })));
+        var replayed = await AskAsync(setup, Call(new { operation = "documents", knowledge_base = "policies", audience = Managers, cursor = CursorOf(firstPage) }));
+        Assert.Equal("failed", StatusOf(replayed));
+        Assert.Contains("does not belong to this search", ResultOf(replayed), StringComparison.Ordinal);
+    }
+
     [Fact] // AC-29
     public async Task ACursorThatIsNotOneOfTheSearchIsAnErrorResult()
     {
