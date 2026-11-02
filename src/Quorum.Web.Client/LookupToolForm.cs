@@ -17,6 +17,11 @@ public sealed record LookupChoice(Guid Id, string Name, string Kind, Guid? Knowl
     };
 }
 
+/// <summary>One row of the single selector of a lookup tool: a lookup it binds, or a document knowledge base it asks live (spec 012 A1-10).</summary>
+/// <param name="Lookup">The lookup, when the row is one; <see langword="null"/> for a knowledge base.</param>
+/// <param name="KnowledgeBase">The knowledge base, when the row is one; <see langword="null"/> for a lookup.</param>
+public sealed record ToolTarget(Guid Id, string Label, string Group, LookupChoice? Lookup = null, KnowledgeBaseListItem? KnowledgeBase = null);
+
 /// <summary>What the lookup tool editor of the Tools page shows and reads, kept apart from the markup so it can be tested alone.</summary>
 public static class LookupToolView
 {
@@ -85,6 +90,41 @@ public static class LookupToolView
     /// <summary>The operations the model is offered, as the server generates them: <c>values</c> always, the others only when the tool queries knowledge bases.</summary>
     public static IReadOnlyList<string> Operations(bool queriesKnowledgeBases) =>
         queriesKnowledgeBases ? ["values", "documents", "count"] : ["values"];
+
+    /// <summary>A knowledge base can be asked live when its mapping has the text or the document id role (spec 012 A1-2).</summary>
+    public static bool IsDocumentKnowledgeBase(KnowledgeBaseDetail? detail) =>
+        detail?.Mapping?.Roles is { } roles && (!string.IsNullOrWhiteSpace(roles.Text) || !string.IsNullOrWhiteSpace(roles.DocumentId));
+
+    /// <summary>
+    /// The one selector of the tool: its lookups, and the document knowledge bases of the tenant it can ask live. A knowledge base is
+    /// offered only once its mapping is read, so a knowledge base that is not a document one never appears (spec 012 A1-10).
+    /// </summary>
+    public static IReadOnlyList<ToolTarget> Targets(
+        IEnumerable<LookupChoice> choices,
+        IEnumerable<KnowledgeBaseListItem> knowledgeBases,
+        IReadOnlyDictionary<Guid, KnowledgeBaseDetail> details)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        ArgumentNullException.ThrowIfNull(knowledgeBases);
+        ArgumentNullException.ThrowIfNull(details);
+
+        return
+        [
+            .. choices.Select(c => new ToolTarget(c.Id, c.Label, c.KnowledgeBaseName ?? "Typed by hand", Lookup: c)),
+            .. knowledgeBases
+                .Where(k => !k.Shared && IsDocumentKnowledgeBase(details.GetValueOrDefault(k.Id)))
+                .OrderBy(k => k.Name, StringComparer.Ordinal)
+                .Select(k => new ToolTarget(k.Id, $"{k.Name} (asked live)", "Knowledge bases asked live", KnowledgeBase: k)),
+        ];
+    }
+
+    /// <summary>An entity list and the knowledge base it comes from cannot both be in the tool (spec 012 A1-3): this tells whether the choice is blocked by a live one.</summary>
+    public static bool BlockedByLiveKnowledgeBase(LookupToolForm form, LookupChoice choice) =>
+        choice.Kind == LookupKinds.Entity && choice.KnowledgeBaseId is { } knowledgeBaseId && form.KnowledgeBaseIds.Contains(knowledgeBaseId);
+
+    /// <summary>The other way round: a knowledge base is blocked when an entity list of the tool comes from it.</summary>
+    public static bool BlockedByEntityList(LookupToolForm form, IReadOnlyList<LookupChoice> choices, Guid knowledgeBaseId) =>
+        form.Lookups.Any(l => choices.FirstOrDefault(c => c.Id == l.LookupId) is { } choice && choice.Kind == LookupKinds.Entity && choice.KnowledgeBaseId == knowledgeBaseId);
 }
 
 /// <summary>One lookup bound to the tool and the name the model sees for it.</summary>

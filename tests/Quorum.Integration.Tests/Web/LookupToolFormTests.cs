@@ -245,4 +245,39 @@ public sealed class LookupToolFormTests
         Assert.Null(RagToolView.SupportsDocumentIds([BaseId, shared], details));
         Assert.True(RagToolView.SupportsDocumentIds([shared, OtherBaseId], details));
     }
+
+    [Fact]
+    public void TheSelectorOffersOnlyTheDocumentKnowledgeBasesAsLive()
+    {
+        KnowledgeBaseDetail Detail(Guid id, MappingRoles roles, string? entityName) => new(
+            id, "kb", "d", "Available", false, "Qdrant", null, null, null,
+            new MappingInfo(roles, [], EntityName: entityName), null, null, null);
+        var contracts = new KnowledgeBaseListItem(BaseId, "contracts", "d", "Available", false, "Qdrant", null, null, null);
+        var vendors = new KnowledgeBaseListItem(OtherBaseId, "vendors", "d", "Available", false, "Qdrant", null, null, null);
+        var handbook = new KnowledgeBaseListItem(Guid.NewGuid(), "handbook", "d", "Available", true, null, null, null, null);
+        var details = new Dictionary<Guid, KnowledgeBaseDetail>
+        {
+            [BaseId] = Detail(BaseId, new MappingRoles("text", null, null, null, null), null),
+            [OtherBaseId] = Detail(OtherBaseId, new MappingRoles(null, null, null, null, null), "title"),
+        };
+
+        var targets = LookupToolView.Targets([], [contracts, vendors, handbook], details);
+
+        Assert.Equal(["contracts (asked live)"], targets.Select(t => t.Label));
+        Assert.Equal(BaseId, Assert.Single(targets).KnowledgeBase!.Id);
+    }
+
+    [Fact]
+    public void AnEntityListAndItsKnowledgeBaseBlockEachOther()
+    {
+        var entities = new LookupChoice(Guid.NewGuid(), "vendors", LookupKinds.Entity, OtherBaseId, "vendors");
+        var form = Valid(entities);
+
+        Assert.True(LookupToolView.BlockedByEntityList(form, [entities], OtherBaseId));
+        Assert.False(LookupToolView.BlockedByLiveKnowledgeBase(form, entities));
+
+        form.KnowledgeBaseIds.Add(OtherBaseId);
+        Assert.True(LookupToolView.BlockedByLiveKnowledgeBase(form, entities));
+        Assert.False(LookupToolView.BlockedByEntityList(new LookupToolForm(), [entities], OtherBaseId));
+    }
 }

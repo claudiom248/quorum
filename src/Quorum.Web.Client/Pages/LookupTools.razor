@@ -85,44 +85,47 @@
                 <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="@LookupToolLimits.MaxDescriptionLength"
                               HelperText="For the model: when to read these lists. Each list's own description is added to it." />
 
-                <MudText Typo="Typo.subtitle2">Lookups (@form.Lookups.Count of @LookupToolLimits.MaxLookups)</MudText>
+                <MudText Typo="Typo.subtitle2">Lookups and knowledge bases (@form.Lookups.Count of @LookupToolLimits.MaxLookups lookups, @form.KnowledgeBaseIds.Count of @LookupToolLimits.MaxKnowledgeBases knowledge bases)</MudText>
                 @if (_choices.Count == 0)
                 {
                     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
                         No lookup exists yet. <MudLink Href="knowledge/lookups">Create one</MudLink> first.
                     </MudAlert>
                 }
+                <div class="tool-hint">
+                    The lists the model reads, and the document knowledge bases it can also ask live: which documents match some filters, and how
+                    many, straight from the store. A list of entities and the knowledge base it comes from cannot both be chosen.
+                </div>
 
-                <ChoicePicker Name="lookups" TItem="LookupChoice" Items="_choices" IsSelected="c => form.Lookups.Any(l => l.LookupId == c.Id)" Label="c => c.Label"
-                              Group='c => c.KnowledgeBaseName ?? "Typed by hand"' GroupLabel="Source" SearchLabel="Search the lookups"
-                              IsDisabled="c => form.Lookups.Count >= LookupToolLimits.MaxLookups"
-                              OnToggle="t => ToggleLookupAsync(t.Item, t.On)">
-                    <SelectedTemplate Context="choice">
-                        @{
+                <ChoicePicker Name="targets" TItem="ToolTarget" Items="Targets" IsSelected="t => t.Lookup is not null ? form.Lookups.Any(l => l.LookupId == t.Id) : form.KnowledgeBaseIds.Contains(t.Id)"
+                              Label="t => t.Label" Group="t => t.Group" GroupLabel="Source" SearchLabel="Search the lookups and knowledge bases"
+                              IsDisabled="t => t.Lookup is not null
+                                  ? form.Lookups.Count >= LookupToolLimits.MaxLookups || LookupToolView.BlockedByLiveKnowledgeBase(form, t.Lookup)
+                                  : form.KnowledgeBaseIds.Count >= LookupToolLimits.MaxKnowledgeBases || LookupToolView.BlockedByEntityList(form, _choices, t.Id)"
+                              OnToggle="t => ToggleTargetAsync(t.Item, t.On)">
+                    <SelectedTemplate Context="target">
+                        @if (target.Lookup is { } choice)
+                        {
                             var binding = form.Lookups.First(l => l.LookupId == choice.Id);
+                            <div class="exposed-field" data-lookup-choice="@choice.Label">
+                                <MudCheckBox T="bool" Value="true" ValueChanged="on => ToggleLookupAsync(choice, on)" Dense="true" Label="@choice.Label" />
+                                <MudTextField T="string" @bind-Value="binding.Alias" Label="@($"Alias of {choice.Label}")" Placeholder="@choice.Name"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Class="alias-input"
+                                              HelperText="The name the model sees. Leave empty to use the list's own name; needed when two lists have the same name." />
+                            </div>
                         }
-                        <div class="exposed-field" data-lookup-choice="@choice.Label">
-                            <MudCheckBox T="bool" Value="true" ValueChanged="on => ToggleLookupAsync(choice, on)" Dense="true" Label="@choice.Label" />
-                            <MudTextField T="string" @bind-Value="binding.Alias" Label="@($"Alias of {choice.Label}")" Placeholder="@choice.Name"
-                                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Class="alias-input"
-                                          HelperText="The name the model sees. Leave empty to use the list's own name; needed when two lists have the same name." />
-                        </div>
+                        else
+                        {
+                            <div class="exposed-field" data-knowledge-base="@target.Label">
+                                <MudCheckBox T="bool" Value="true" ValueChanged="on => ToggleTargetAsync(target, on)" Dense="true" Label="@target.Label" />
+                            </div>
+                        }
                     </SelectedTemplate>
                 </ChoicePicker>
 
                 <div class="tool-hint">
                     Lists of a knowledge base shared with you are not shown here: bind the manual lookups instead, or ask its owner to share the tool.
                 </div>
-
-                <MudText Typo="Typo.subtitle2">Knowledge bases to ask live (@form.KnowledgeBaseIds.Count of @LookupToolLimits.MaxKnowledgeBases)</MudText>
-                <div class="tool-hint">
-                    Optional. With one, the model can also ask which documents match some filters, and how many, straight from the store. Without
-                    any, it only reads the saved lists.
-                </div>
-                <ChoicePicker Name="knowledge-bases" TItem="KnowledgeBaseListItem" Items="_bases" IsSelected="k => form.KnowledgeBaseIds.Contains(k.Id)"
-                              Label='k => k.Shared ? $"{k.Name} (shared with you)" : k.Name' SearchLabel="Search the knowledge bases"
-                              IsDisabled="k => form.KnowledgeBaseIds.Count >= LookupToolLimits.MaxKnowledgeBases"
-                              OnToggle="t => ToggleKnowledgeBaseAsync(t.Item, t.On)" />
 
                 @if (inUse.Count > 0)
                 {
@@ -435,6 +438,8 @@
         _bases = basesTask.Result.Value;
         _dictionary = dictionaryTask.Result.Value;
         _choices = LookupToolView.Choices(lookupsTask.Result.Value);
+        // The selector offers a knowledge base as live only once its mapping says it is a document one.
+        await Task.WhenAll(_bases.Where(b => !b.Shared).Select(b => LoadDetailAsync(b.Id)));
         _lookupsLoaded = true;
         return true;
     }
@@ -541,6 +546,20 @@
         }
 
         FollowCandidates(form);
+    }
+
+    private IReadOnlyList<ToolTarget> Targets => LookupToolView.Targets(_choices, _bases, _details);
+
+    private async Task ToggleTargetAsync(ToolTarget target, bool on)
+    {
+        if (target.Lookup is { } choice)
+        {
+            await ToggleLookupAsync(choice, on);
+        }
+        else if (target.KnowledgeBase is { } knowledgeBase)
+        {
+            await ToggleKnowledgeBaseAsync(knowledgeBase, on);
+        }
     }
 
     private async Task ToggleKnowledgeBaseAsync(KnowledgeBaseListItem knowledgeBase, bool on)
