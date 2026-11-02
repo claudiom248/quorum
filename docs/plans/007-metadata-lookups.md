@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/007-metadata-lookups.md` (Approved 2026-10-22)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Approved (2026-10-22)
+**Status:** Implemented (approved 2026-10-22)
 **Depends on:** the first PR of spec 008 (Qdrant moved behind the per-kind contract of 008 D-1, no change of behaviour; 008 A1-5). PRs that need it are marked **[waits 008]**; the others do not touch the Qdrant connector and can start now. The plan of spec 008 numbers that PR; this plan only calls it "008 PR 1".
 
 ## Decisions

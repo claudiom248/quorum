@@ -1,6 +1,6 @@
 # Spec 007: Metadata Lookups
 
-**Status:** Approved (2026-10-22)
+**Status:** Implemented (approved 2026-10-22)
 **Date:** 2026-10-22
 
 ## Problem

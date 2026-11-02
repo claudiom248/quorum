@@ -1,6 +1,6 @@
 # Spec 003: Knowledge Bases
 
-**Status:** In Review (2026-10-22), because of Amendment 2. Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval. Amendment 3 (entity-only knowledge bases, spec 012) approved 2026-11-02.
+**Status:** Implemented (approved 2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval. Amendment 3 (entity-only knowledge bases, spec 012) approved 2026-11-02.
 **Date:** 2026-10-17
 
 ## Problem

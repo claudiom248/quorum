@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/012-lookup-consolidation-and-lean-manifest.md` (Approved 2026-10-29)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** one implementation PR (`feat/012-lookup-consolidation`) built in the phases below, in order. Tests are kept to the minimum that covers each acceptance criterion once and are run only at the end, when the implementation is complete (see Verification). Development starts only after this plan is approved.
-**Status:** Draft
+**Status:** In progress: implemented in #135, lean describe (D-5, D-8) still on feat/012-lean-describe-operators
 **Affected:** KnowledgeBases (Domain, Persistence, Features/Lookups, Storage adapters, Contracts), Agents (Domain, Features/Tools, Tools/Lookup, Chat, Contracts), `Quorum.Web.Client` (lookups, search tools, assistant tools), `tools/Quorum.SampleKnowledgeBase`, `tests/Quorum.Integration.Tests`, docs.
 
 ## Decisions
@@ -137,7 +137,7 @@ None.
 
 **Spec:** `docs/specs/012-lookup-consolidation-and-lean-manifest.md`, Amendment 1 (Approved 2026-10-29).
 **Mode:** three implementation PRs, each from `main` on its own branch, merged in order: `feat/012-a1-tool-rules`, `feat/012-a1-describe`, `feat/012-a1-editor`. As for the rest of this plan, tests are kept to one per acceptance criterion plus unit tests of pure logic, and the full suite runs only at the end of the last PR.
-**Status:** Draft
+**Status:** Implemented (PRs #139, #141, #142 merged)
 **Affected:** KnowledgeBases (Contracts, Features/Registry, Features/Lookups), Agents (Contracts, Features/Tools, Tools/Lookup), `Quorum.Web.Client` (lookup tool editor), `tests/Quorum.Integration.Tests`, docs.
 
 ## What the code does today (checked before planning)

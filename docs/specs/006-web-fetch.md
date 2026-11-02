@@ -1,6 +1,6 @@
 # Spec 006: Web Fetch Tool
 
-**Status:** Draft (2026-10-29)
+**Status:** Implemented (PR #132)
 **Date:** 2026-10-29
 
 ## Problem

@@ -1,6 +1,6 @@
 # Spec 010: Admin UI Redesign
 
-**Status:** Approved (2026-10-24). Amendment 1 (bUnit is already in use, so component tests are not deferred) approved with plan 010.
+**Status:** In progress: PR 1–15 merged, cleanup done, browser check done; guide update (PR 16) pending (approved 2026-10-24). Amendment 1 (bUnit is already in use, so component tests are not deferred) approved with plan 010.
 **Date:** 2026-10-23
 
 ## Problem
