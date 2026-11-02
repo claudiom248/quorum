@@ -13,7 +13,7 @@ Quorum is a self-hosted platform for AI assistants and, later, multi-agent orche
 - **Streaming chat** with stop and regenerate, the model's reasoning shown live (never stored), and conversations you can rename, continue and delete.
 - **Attachments** in a conversation: TXT, Markdown, CSV, PDF (with a text layer) and DOCX, up to 5 MB each. Their text goes into the model's context, and the composer shows how much of the context budget is used.
 - **Tools**: built-in tools and MCP servers over HTTP, with per-assistant activation, human confirmation and an audit log ([guide](docs/mcp-tools.md)).
-- **Knowledge bases**: assistants answer from Qdrant collections that already hold your documents, with metadata filters and numbered sources under the answer. Quorum only reads them ([guide for data owners](docs/knowledge-bases.md)).
+- **Knowledge bases**: assistants answer from Qdrant collections or PostgreSQL (pgvector) relations that already hold your documents, with metadata filters and numbered sources under the answer. Quorum only reads them ([guide for data owners](docs/knowledge-bases.md)).
 - **No outbound telemetry.** The only traffic leaving the server is the traffic to the model endpoint you configure.
 
 ## Quick start
@@ -55,6 +55,14 @@ docker compose --profile bundled-db --profile qdrant up --build -d
 
 Register it in the admin pages as `http://qdrant:6334` (gRPC, from inside the compose network). Its dashboard is at <http://localhost:6333/dashboard>, and the REST port 6333 on loopback is where ingestion from the host writes. Qdrant has no API key in this setup, so both ports are published on loopback only.
 
+If your documents are in PostgreSQL with pgvector, a knowledge base is one table or view with a vector column, and the guide has a [section for it](docs/knowledge-bases.md#pgvector-a-postgresql-relation). The `pgvector` profile runs a PostgreSQL with the extension, separate from the platform's database. Set `PGVECTOR_PASSWORD` in `.env` first (the container refuses to start without it):
+
+```bash
+docker compose --profile bundled-db --profile pgvector up --build -d
+```
+
+Register it in the admin pages as host `pgvector`, port `5432`, database `knowledge`, user `knowledge`. Its port is published on loopback only, as `PGVECTOR_PORT` (5433 by default), where ingestion from the host connects.
+
 ### A search instance for web search tools
 
 A web search tool asks one SearXNG instance, shared by the whole installation (spec 005). If you have none, the compose file can run one with the `searxng` profile:
@@ -77,6 +85,8 @@ Set these in `.env`:
 | `QUORUM_DATABASE` | bundled database | Connection string of your own PostgreSQL, version 15 or later (the dictionary index uses NULLS NOT DISTINCT). Start without the `bundled-db` profile when you set it. |
 | `SEARXNG_SECRET` | (required with the `searxng` profile) | Signing key of the bundled SearXNG instance. Any long random string, e.g. `openssl rand -base64 24`. |
 | `SEARXNG_PORT` | `8888` | Loopback port the SearXNG instance is published on, to check it in a browser. |
+| `PGVECTOR_PASSWORD` | (required with the `pgvector` profile) | Password of the bundled pgvector PostgreSQL, user `knowledge`. |
+| `PGVECTOR_PORT` | `5433` | Loopback port the pgvector PostgreSQL is published on, where ingestion from the host connects. |
 
 ## Development
 
@@ -104,7 +114,7 @@ src/
     Licensing/            # Ed25519-signed license keys, verified offline (planned)
     Agents/               # Assistants, model endpoints, chat with the model, tools
     Conversations/        # Conversations, messages, attachments, sources
-    KnowledgeBases/       # Metadata dictionary, registered Qdrant collections, search
+    KnowledgeBases/       # Metadata dictionary, registered Qdrant and pgvector knowledge bases, search
 tools/
   Quorum.SampleKnowledgeBase/  # Sample collections for trying knowledge bases (not part of the product)
 tests/
@@ -130,7 +140,7 @@ See [docs/release-process.md](docs/release-process.md) for the full flow.
 ## Roadmap
 
 - Multi-agent topologies defined in declarative config, then a visual graph editor on the same schema.
-- More knowledge base kinds beyond Qdrant (pgvector, raw documents), and ingestion for customers without their own pipeline.
+- More knowledge base kinds beyond Qdrant and pgvector (Pinecone, raw documents), and ingestion for customers without their own pipeline.
 - An OpenAI-compatible API and per-application keys, so other tools can talk to Quorum's assistants.
 
 ## License
