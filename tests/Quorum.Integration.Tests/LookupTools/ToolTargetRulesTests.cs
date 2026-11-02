@@ -28,6 +28,19 @@ public sealed class ToolTargetRulesTests(PostgresFixture postgres, QdrantFixture
         entityName = "title",
     };
 
+    [Fact] // AC-A1-1
+    public async Task ALiveKnowledgeBaseIsADocumentKnowledgeBaseAndNotOneOfEntitiesOnly()
+    {
+        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var entitiesOnly = await setup.RegisterAsync("vendors", mapping: EntityOnlyKnowledgeBaseTests.Mapping);
+        var manual = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "lists"));
+
+        using var live = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(manual)], knowledgeBaseIds: [entitiesOnly]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, live.StatusCode);
+        Assert.Equal("lookup_tool.knowledge_base_not_documentary", await LookupToolApi.ProblemCodeAsync(live));
+    }
+
     [Fact] // AC-A1-3
     public async Task AKnowledgeBaseIsNotBothAnEntityLookupAndALiveKnowledgeBaseOfOneTool()
     {

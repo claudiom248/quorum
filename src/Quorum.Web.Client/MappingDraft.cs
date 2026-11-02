@@ -259,9 +259,9 @@ public sealed partial class MappingDraft
     public IReadOnlyList<string> Problems(IReadOnlyList<DictionaryField> dictionary)
     {
         var problems = new List<string>();
-        if (Text.Trim().Length == 0)
+        if (Text.Trim().Length == 0 && EntityName.Trim().Length == 0)
         {
-            problems.Add("The text role is required: the payload field that holds the text of the chunk.");
+            problems.Add("The text role is required: the payload field that holds the text of the chunk, or an entity name for a collection of entities.");
         }
 
         var rolePaths = RolePaths().ToList();

@@ -35,6 +35,10 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
         "rag.too_many_knowledge_bases",
         $"A rag tool can search up to {RagTool.MaxKnowledgeBases} knowledge bases.");
 
+    private static readonly Error NotSearchable = Error.Validation(
+        "rag.knowledge_base_not_searchable",
+        "A knowledge base that holds entities only has no text to search. Bind a knowledge base with a text role, or use it as a lookup.");
+
     private static readonly Error NotVisible = Error.Validation(
         "rag.knowledge_base_not_visible",
         "Every knowledge base and field of a rag tool must be visible to everyone the tool is for. Check the scope of the knowledge bases and of the fields, or narrow the scope of the tool.");
@@ -116,6 +120,12 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
         if (seen.KnowledgeBases.Count != knowledgeBaseIds.Count)
         {
             return NotVisible;
+        }
+
+        // A knowledge base without a text role holds entities only: it has no chunks to search (spec 003 Amendment 3, A3-2).
+        if (seen.KnowledgeBases.Any(k => !k.MapsText))
+        {
+            return NotSearchable;
         }
 
         var fixedFilters = await filters.ValidateAsync(

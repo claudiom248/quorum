@@ -286,16 +286,16 @@ internal sealed partial class KnowledgeBaseRegistrar(
             return scope.Error;
         }
 
-        var roles = MappingValidation.Roles(request.Mapping?.Roles);
-        if (!roles.IsSuccess)
-        {
-            return roles.Error;
-        }
-
         var entityName = MappingValidation.EntityName(request.Mapping?.EntityName);
         if (!entityName.IsSuccess)
         {
             return entityName.Error;
+        }
+
+        var roles = MappingValidation.Roles(request.Mapping?.Roles, entity: entityName.Value is not null);
+        if (!roles.IsSuccess)
+        {
+            return roles.Error;
         }
 
         var countedPoint = MappingValidation.ReadCountedPoint(request.Mapping?.CountedPoint);

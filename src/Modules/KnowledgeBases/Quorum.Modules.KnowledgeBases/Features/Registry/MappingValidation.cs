@@ -15,16 +15,19 @@ internal static class MappingValidation
 
     public static Error InvalidMapping(string message) => Error.Validation("knowledge_base.invalid_mapping", message);
 
-    /// <summary>The roles as the administrator confirmed them, trimmed: <see langword="null"/> in the result's value is never returned, the text role is required.</summary>
-    public static Result<MappingRoles> Roles(RolesDto? roles)
+    /// <summary>
+    /// The roles as the administrator confirmed them, trimmed. The text role is required unless the mapping names an entity: an entity knowledge
+    /// base holds entities and no chunks, so it has no text to read (spec 003 Amendment 3, A3-1).
+    /// </summary>
+    public static Result<MappingRoles> Roles(RolesDto? roles, bool entity)
     {
         var text = Clean(roles?.Text);
-        if (text is null)
+        if (text is null && !entity)
         {
-            return InvalidMapping("The mapping needs the text role: the payload field that holds the text of the chunk.");
+            return InvalidMapping("The mapping needs the text role: the payload field that holds the text of the chunk, or an entity name for a collection of entities.");
         }
 
-        var result = new MappingRoles(text, Clean(roles!.DocumentId), Clean(roles.Title), Clean(roles.Position), Clean(roles.SourceUrl));
+        var result = new MappingRoles(text, Clean(roles?.DocumentId), Clean(roles?.Title), Clean(roles?.Position), Clean(roles?.SourceUrl));
         var paths = new[] { result.Text, result.DocumentId, result.Title, result.Position, result.SourceUrl }.OfType<string>().ToList();
         return paths.Any(p => p.Length > MaxPathLength)
             ? InvalidMapping($"A payload path can have up to {MaxPathLength} characters.")
