@@ -168,16 +168,16 @@ public sealed class ToolChatPageTests : BunitContext
         await PushToolCallAsync("""{"expression":"2+2"}""", requiresConfirmation: false);
         page.WaitForAssertion(() =>
         {
-            Assert.Contains("Running", page.Find(".tool-card").TextContent, StringComparison.Ordinal);
+            Assert.Contains("Running", page.Find(".tool-ledger-row").TextContent, StringComparison.Ordinal);
             Assert.Empty(page.FindAll("[role=dialog]"));
         });
 
         await PushAsync("tool_result", new { callId = Call, status = "succeeded", content = "4", sizeCharacters = 1 });
         page.WaitForAssertion(() =>
         {
-            var card = page.Find(".tool-card");
-            Assert.Contains("Done", card.TextContent, StringComparison.Ordinal);
-            Assert.Contains("Result (1 characters)", card.TextContent, StringComparison.Ordinal);
+            var row = page.Find(".tool-ledger-row");
+            Assert.Contains("Done", row.TextContent, StringComparison.Ordinal);
+            Assert.Contains(row.QuerySelectorAll("pre"), pre => pre.TextContent == "4");
         });
 
         await FinishAnswerAsync();
@@ -186,7 +186,7 @@ public sealed class ToolChatPageTests : BunitContext
         page.WaitForAssertion(() =>
         {
             Assert.Contains("Stored: It is 4.", page.Markup, StringComparison.Ordinal);
-            Assert.Contains("Done", page.Find(".tool-card").TextContent, StringComparison.Ordinal);
+            Assert.Contains("Done", page.Find(".tool-ledger-row").TextContent, StringComparison.Ordinal);
         });
     }
 
@@ -205,7 +205,7 @@ public sealed class ToolChatPageTests : BunitContext
 
         page.WaitForAssertion(() =>
         {
-            Assert.Contains(label, page.Find(".tool-card").TextContent, StringComparison.Ordinal);
+            Assert.Contains(label, page.Find(".tool-ledger-row").TextContent, StringComparison.Ordinal);
             Assert.Empty(page.FindAll("[role=dialog]"));
         });
 
@@ -228,7 +228,7 @@ public sealed class ToolChatPageTests : BunitContext
         page.WaitForAssertion(() =>
         {
             Assert.Empty(page.FindAll("[role=dialog]"));
-            Assert.Contains("Stopped", page.Find(".tool-card").TextContent, StringComparison.Ordinal);
+            Assert.Contains("Stopped", page.Find(".tool-ledger-row").TextContent, StringComparison.Ordinal);
         });
     }
 
@@ -260,8 +260,8 @@ public sealed class ToolChatPageTests : BunitContext
         {
             Assert.Contains("Stored: It is 4.", page.Markup, StringComparison.Ordinal);
             Assert.True(
-                page.Markup.IndexOf("tool-card", StringComparison.Ordinal) < page.Markup.IndexOf("Stored: It is 4.", StringComparison.Ordinal),
-                "The tool card must come before the answer, as it does while streaming.");
+                page.Markup.IndexOf("tool-group", StringComparison.Ordinal) < page.Markup.IndexOf("Stored: It is 4.", StringComparison.Ordinal),
+                "The tool calls must come before the answer, as they do while streaming.");
         });
     }
 
@@ -336,7 +336,7 @@ public sealed class ToolChatPageTests : BunitContext
         await PushAsync("ping", new { });
         await PushToolCallAsync("""{"expression":"2+2"}""", requiresConfirmation: false);
 
-        page.WaitForAssertion(() => Assert.Single(page.FindAll(".tool-card")));
+        page.WaitForAssertion(() => Assert.Single(page.FindAll(".tool-ledger-row")));
         await FinishAnswerAsync();
         _stream.Writer.Complete();
         await sending;
