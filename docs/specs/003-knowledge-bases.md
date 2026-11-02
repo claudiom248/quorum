@@ -1,6 +1,6 @@
 # Spec 003: Knowledge Bases
 
-**Status:** In Review (2026-10-22), because of Amendment 2. Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval.
+**Status:** In Review (2026-10-22), because of Amendment 2. Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval. Amendment 3 (entity-only knowledge bases, spec 012) approved 2026-11-02.
 **Date:** 2026-10-17
 
 ## Problem
@@ -288,3 +288,23 @@ See also `docs/deferred.md`, to be updated when this spec is approved.
 
 ## Open Questions
 _None._ The eight points raised while drafting (rag tool in Agents, default policy `Auto`, exposed fields chosen by the admin, skipping KBs that lack a filtered field, admin test search, status recovery after a failed search, partial results, storing all sources) were confirmed in review on 2026-10-17.
+
+## Amendment 3: entity-only knowledge bases (spec 012)
+**Status:** Approved (2026-11-02). Spec 012 Amendment 1 (A1-1) separates the knowledge bases that hold chunks, which a tool can search and count, from those that hold only entities, which give a lookup. Today every knowledge base must map `text` (D-9, AC-12), so an entity collection has to carry a text path it does not have. The product owner decided that `text` becomes optional when the mapping sets `entityName`. D-9 and AC-12 are changed as below; everything else stands.
+
+| # | Decision |
+|---|---|
+| A3-1 | **Text is optional for an entity knowledge base.** D-9 is amended: `text` is required **unless** the mapping sets `entityName`. A mapping with `entityName` and no `text` is an **entity knowledge base**: it has no chunks, its lookups (spec 007, spec 012) work as before, and its `documentId`, `title`, `position` and `sourceUrl` roles keep their meaning. |
+| A3-2 | **No text, no search.** A knowledge base without `text` cannot be searched, so a rag tool refuses it among its knowledge bases (400 `rag_tool.knowledge_base_not_searchable`). It is never a document knowledge base of a lookup tool (spec 012 A1-1). |
+| A3-3 | **Mappings with `text` are unchanged.** A mapping with `text` and no `entityName` is saved as before. A mapping with neither is refused (AC-12). |
+| A3-4 | **Verification follows the mapping.** The probe of the store (spec 003 D-8) checks the paths the mapping sets: `entityName`, the attributes of the entity lookups and the metadata fields. It does not check `text` for an entity knowledge base. The embedding model stays required: the collection still holds vectors, and the probe checks their dimensions as before. |
+| A3-5 | **Naming conventions are unchanged.** The draft mapping of D-9 and the conventions of the Domain Model fill `text` as before; a collection without a `text` payload field gets a draft with no `text`, and the admin chooses `entityName` for it. |
+
+### Acceptance Criteria
+- **AC-A3-1** Given a mapping with `entityName` and no `text`, When saving, Then it is accepted, and the lookups of the knowledge base are created as for any entity knowledge base (spec 012 D-2).
+- **AC-A3-2** Given a mapping with neither `text` nor `entityName`, When saving, Then it returns 400 `knowledge_base.invalid_mapping`, as AC-12.
+- **AC-A3-3** Given a rag tool that binds an entity knowledge base, When saving, Then it returns 400 `rag_tool.knowledge_base_not_searchable`, and the knowledge base is not listed among the knowledge bases the tool can search.
+- **AC-A3-4** Given an entity knowledge base, When it is verified, Then the probe checks its entity and attribute paths and reports no problem for the missing `text`.
+
+### Open Questions
+_None._ The decisions A3-1 to A3-5 are the ones the product owner took on 2026-11-02; approval of this amendment confirms them.
