@@ -1,6 +1,6 @@
 # Spec 003: Knowledge Bases
 
-**Status:** In Review (2026-10-22), because of Amendment 2. Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval. Amendment 3 (entity-only knowledge bases, spec 012) proposed 2026-11-02, pending approval.
+**Status:** In Review (2026-10-22), because of Amendment 2. Approved (2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval. Amendment 3 (entity-only knowledge bases, spec 012) approved 2026-11-02.
 **Date:** 2026-10-17
 
 ## Problem
@@ -290,7 +290,7 @@ See also `docs/deferred.md`, to be updated when this spec is approved.
 _None._ The eight points raised while drafting (rag tool in Agents, default policy `Auto`, exposed fields chosen by the admin, skipping KBs that lack a filtered field, admin test search, status recovery after a failed search, partial results, storing all sources) were confirmed in review on 2026-10-17.
 
 ## Amendment 3: entity-only knowledge bases (spec 012)
-**Status:** Proposed (2026-11-02), pending approval. Spec 012 Amendment 1 (A1-1) separates the knowledge bases that hold chunks, which a tool can search and count, from those that hold only entities, which give a lookup. Today every knowledge base must map `text` (D-9, AC-12), so an entity collection has to carry a text path it does not have. The product owner decided that `text` becomes optional when the mapping sets `entityName`. D-9 and AC-12 are changed as below; everything else stands.
+**Status:** Approved (2026-11-02). Spec 012 Amendment 1 (A1-1) separates the knowledge bases that hold chunks, which a tool can search and count, from those that hold only entities, which give a lookup. Today every knowledge base must map `text` (D-9, AC-12), so an entity collection has to carry a text path it does not have. The product owner decided that `text` becomes optional when the mapping sets `entityName`. D-9 and AC-12 are changed as below; everything else stands.
 
 | # | Decision |
 |---|---|
