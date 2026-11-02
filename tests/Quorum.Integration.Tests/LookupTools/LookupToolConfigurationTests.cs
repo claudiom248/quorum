@@ -33,6 +33,39 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
         Assert.True(definition.EstimatedTokens > 0);
     }
 
+    [Fact] // AC-A1-10
+    public async Task EveryFilterOfTheFullManifestSaysWhichTargetsItAppliesTo()
+    {
+        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var (knowledgeBase, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
+        await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9)]);
+        var fields = await setup.FieldsAsync();
+
+        var created = await LookupToolApi.CreateOkAsync(
+            setup.Admin,
+            LookupToolApi.Body(
+                lookups: [LookupToolApi.Bind(lookup, "department")],
+                knowledgeBaseIds: [knowledgeBase],
+                exposedFields: [new { fieldId = fields["department"] }, new { fieldId = fields["year"] }]));
+
+        // A filter parameter is offered to the functions it applies to, and each of them says which targets those are.
+        var checkedFilters = 0;
+        foreach (var definition in created.Definitions)
+        {
+            var properties = definition.InputSchema.GetProperty("properties");
+            foreach (var filter in new[] { "department", "year" })
+            {
+                if (properties.TryGetProperty(filter, out var parameter))
+                {
+                    Assert.Contains("Applies to: ", parameter.GetProperty("description").GetString(), StringComparison.Ordinal);
+                    checkedFilters++;
+                }
+            }
+        }
+
+        Assert.True(checkedFilters >= 2);
+    }
+
     [Fact] // AC-27
     public async Task ALookupTakesTheNameOfItsAliasInTheDefinition()
     {

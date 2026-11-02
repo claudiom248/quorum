@@ -29,6 +29,9 @@ internal sealed record ResolvedLookupTool(
 
     /// <summary>The list that holds the exact values of a filter parameter, by parameter name.</summary>
     public IReadOnlyDictionary<string, string> FilterLists { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The filter parameters each live knowledge base can take: those of the exposed fields its mapping maps (spec 012 A1-5), by name.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> KnowledgeBaseFilters { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
 }
 
 /// <summary>
@@ -135,6 +138,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                     .ToDictionary(l => l.Name, l => l.Info.SortableAttributes!, StringComparer.Ordinal),
                 FilterLists = LookupToolDefinition.ListsOfFilters(offered, exposed),
                 ListFilters = offered.ToDictionary(l => l.Name, l => l.Filters ?? [], StringComparer.Ordinal),
+                KnowledgeBaseFilters = queried.ToDictionary(k => k.Name, k => (IReadOnlyList<string>)[.. exposed.Where(f => k.FieldIds.Contains(f.Id)).Select(f => f.Name)], StringComparer.Ordinal),
                 Targets = offered.ToDictionary(l => l.Name, l => l.Info, StringComparer.Ordinal),
             };
         }
@@ -241,6 +245,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                             SortableAttributes = definition.SortableAttributes,
                             FilterLists = definition.FilterLists,
                             ListFilters = definition.ListFilters,
+                            KnowledgeBaseFilters = definition.KnowledgeBaseFilters,
                             Targets = definition.Targets,
                         },
                     })

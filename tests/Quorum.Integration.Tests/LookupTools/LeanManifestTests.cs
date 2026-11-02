@@ -33,10 +33,80 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
         Assert.Equal(HttpStatusCode.NoContent, activate.StatusCode);
 
         var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", "{\"targets\":[\"department\"]}", "call_1")));
-        Assert.Contains("\"operations\":[\"values\",\"count\"]", describe, StringComparison.Ordinal);
+        Assert.Contains("\"operations\":{\"values\":{", describe, StringComparison.Ordinal);
+        Assert.Contains("\"count\":{", describe, StringComparison.Ordinal);
 
         var count = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"count\"}", "call_2")));
         Assert.Contains("department: 3 values match.", count, StringComparison.Ordinal);
+    }
+
+    [Fact] // AC-22
+    public async Task ACountOfAListWithFiltersCountsTheValuesThatMatchThem()
+    {
+        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var _ = setup;
+        var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
+        await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9), ("finance", 4)]);
+        var fields = await setup.FieldsAsync();
+        await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup, "department")], exposedFields: [new { fieldId = fields["department"] }]));
+        var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
+        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
+        using var activate = await setup.Admin.PutAsJsonAsync(
+            ToolsApi.AssistantTools(assistant),
+            new { toolIds = new[] { toolId }, manifests = new Dictionary<string, string> { [toolId.ToString()] = "lean" } },
+            Ct);
+        Assert.Equal(HttpStatusCode.NoContent, activate.StatusCode);
+
+        var count = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"count\",\"filters\":{\"department\":[\"hr\"]}}", "call_1")));
+
+        Assert.Contains("department: 1 values match.", count, StringComparison.Ordinal);
+    }
+
+    [Fact] // AC-A1-8
+    public async Task EveryFilterThatDescribeListsIsAcceptedByQueryAndAnotherIsRefused()
+    {
+        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var _ = setup;
+        var (knowledgeBase, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
+        await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9)]);
+        var fields = await setup.FieldsAsync();
+        await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(
+            lookups: [LookupToolApi.Bind(lookup, "department")],
+            knowledgeBaseIds: [knowledgeBase],
+            exposedFields: [new { fieldId = fields["department"] }, new { fieldId = fields["year"] }, new { fieldId = fields["confidential"] }]));
+        var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
+        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
+        using var activate = await setup.Admin.PutAsJsonAsync(
+            ToolsApi.AssistantTools(assistant),
+            new { toolIds = new[] { toolId }, manifests = new Dictionary<string, string> { [toolId.ToString()] = "lean" } },
+            Ct);
+        Assert.Equal(HttpStatusCode.NoContent, activate.StatusCode);
+
+        var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", "{\"targets\":[\"department\",\"policies\"]}", "call_1")));
+        var targets = JsonDocument.Parse(describe).RootElement.GetProperty("targets").EnumerateArray().ToList();
+
+        // Each filter describe lists for an operation is accepted by query for that operation: the answer is never "cannot be filtered".
+        var call = 1;
+        var listed = 0;
+        foreach (var target in targets)
+        {
+            var name = target.GetProperty("name").GetString()!;
+            foreach (var operation in target.GetProperty("operations").EnumerateObject())
+            {
+                foreach (var filter in operation.Value.GetProperty("filters").EnumerateArray())
+                {
+                    var parameter = filter.GetProperty("name").GetString()!;
+                    var arguments = JsonSerializer.Serialize(new { target = name, operation = operation.Name, filters = new Dictionary<string, string[]> { [parameter] = ["x"] } });
+                    var answer = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", arguments, $"call_{++call}")));
+                    Assert.DoesNotContain("cannot be filtered", answer, StringComparison.Ordinal);
+                    listed++;
+                }
+            }
+        }
+
+        Assert.Equal(12, listed);
+        var refused = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"values\",\"filters\":{\"nothing\":[\"x\"]}}", $"call_{++call}")));
+        Assert.Contains("cannot be filtered by nothing", refused, StringComparison.Ordinal);
     }
 
     [Fact] // AC-19

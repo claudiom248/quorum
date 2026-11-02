@@ -75,17 +75,19 @@ internal static class LookupToolDefinition
 
         var live = knowledgeBases.Count > 0;
         var filters = ListsOfFilters(lookups, [.. valuesFields.Concat(documentFields).DistinctBy(f => f.Id)]);
+        var valuesAppliesTo = AppliesTo(lookups.Where(l => l.Info.Kind != LookupKindInfo.Manual).SelectMany(l => (l.Filters ?? Array.Empty<string>()).Select(f => (Field: f, Target: l.Name))));
+        var documentsAppliesTo = AppliesTo(documentFields.SelectMany(f => knowledgeBases.Where(k => k.FieldIds.Contains(f.Id)).Select(k => (Field: f.Name, Target: k.Name))));
         var introduction = description.Trim();
 
         List<GeneratedLookupFunction> functions =
         [
-            new(ValuesOperation, DescribeValues(introduction, lookups, valuesFields.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFields, filters)),
+            new(ValuesOperation, DescribeValues(introduction, lookups, valuesFields.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFields, filters, valuesAppliesTo)),
         ];
 
         if (live)
         {
-            functions.Add(new(DocumentsOperation, DescribeDocuments(introduction, knowledgeBases, filters, toolName), DocumentsSchema(knowledgeBases, documentFields, filters)));
-            functions.Add(new(CountOperation, DescribeCount(introduction, knowledgeBases, filters, toolName), CountSchema(knowledgeBases, documentFields, filters)));
+            functions.Add(new(DocumentsOperation, DescribeDocuments(introduction, knowledgeBases, filters, toolName), DocumentsSchema(knowledgeBases, documentFields, filters, documentsAppliesTo)));
+            functions.Add(new(CountOperation, DescribeCount(introduction, knowledgeBases, filters, toolName), CountSchema(knowledgeBases, documentFields, filters, documentsAppliesTo)));
         }
 
         return new GeneratedLookupDefinition(functions);
@@ -205,7 +207,8 @@ internal static class LookupToolDefinition
         IReadOnlyList<OfferedLookup> lookups,
         IReadOnlyList<KnowledgeBaseInfo> knowledgeBases,
         IReadOnlyList<FilterFieldInfo> fields,
-        IReadOnlyDictionary<string, string> filterLists)
+        IReadOnlyDictionary<string, string> filterLists,
+        IReadOnlyDictionary<string, string> appliesTo)
     {
         var attributes = lookups.Where(l => l.Info.SortableAttributes is { Count: > 0 }).ToList();
         return Object(
@@ -223,7 +226,7 @@ internal static class LookupToolDefinition
                 writer.WriteString("description", "The list to read.");
                 writer.WriteEndObject();
 
-                WriteFilters(writer, fields, filterLists);
+                WriteFilters(writer, fields, filterLists, appliesTo);
 
                 writer.WriteStartObject(SearchParameter);
                 writer.WriteString("type", "string");
@@ -251,23 +254,23 @@ internal static class LookupToolDefinition
             required: lookups.Count > 1 ? [LookupParameter] : []);
     }
 
-    private static string DocumentsSchema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists) =>
+    private static string DocumentsSchema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists, IReadOnlyDictionary<string, string> appliesTo) =>
         Object(
             writer =>
             {
                 WriteKnowledgeBase(writer, knowledgeBases);
-                WriteFilters(writer, fields, filterLists);
+                WriteFilters(writer, fields, filterLists, appliesTo);
                 WriteLimit(writer, "How many documents to return, up to " + MaxLimit + ".");
                 WriteCursor(writer);
             },
             required: []);
 
-    private static string CountSchema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists) =>
+    private static string CountSchema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists, IReadOnlyDictionary<string, string> appliesTo) =>
         Object(
             writer =>
             {
                 WriteKnowledgeBase(writer, knowledgeBases);
-                WriteFilters(writer, fields, filterLists);
+                WriteFilters(writer, fields, filterLists, appliesTo);
             },
             required: []);
 
@@ -320,17 +323,27 @@ internal static class LookupToolDefinition
     }
 
     // A filter on a field that one of the lists holds says so: the exact values are there.
-    private static void WriteFilters(Utf8JsonWriter writer, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists)
+    // Each filter says which targets of its function it applies to (spec 012 A1-8): a field is offered for every list or knowledge base that maps it.
+    private static void WriteFilters(Utf8JsonWriter writer, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists, IReadOnlyDictionary<string, string> appliesTo)
     {
         foreach (var field in fields)
         {
-            FilterParameters.WriteFilter(
-                writer,
-                filterLists.TryGetValue(field.Name, out var list)
-                    ? field with { Description = $"{(string.IsNullOrWhiteSpace(field.Description) ? field.Name : field.Description.Trim())} (the exact values are in the list '{list}')" }
-                    : field);
+            var described = filterLists.TryGetValue(field.Name, out var list)
+                ? field with { Description = $"{(string.IsNullOrWhiteSpace(field.Description) ? field.Name : field.Description.Trim())} (the exact values are in the list '{list}')" }
+                : field;
+            if (appliesTo.TryGetValue(field.Name, out var targets))
+            {
+                described = described with { Description = $"{(string.IsNullOrWhiteSpace(described.Description) ? described.Name : described.Description.Trim())} Applies to: {targets}." };
+            }
+
+            FilterParameters.WriteFilter(writer, described);
         }
     }
+
+    /// <summary>The targets each field applies to, by field name: the lists that filter on it, or the knowledge bases that map it.</summary>
+    private static Dictionary<string, string> AppliesTo(IEnumerable<(string Field, string Target)> pairs) =>
+        pairs.GroupBy(p => p.Field, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(p => p.Target).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)), StringComparer.Ordinal);
 
     private static void WriteLimit(Utf8JsonWriter writer, string description)
     {
