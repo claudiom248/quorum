@@ -93,6 +93,9 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
         {
             Assert.Equal("Number", year.GetProperty("type").GetString());
             Assert.Equal(["eq", "in", "min", "max"], year.GetProperty("operators").EnumerateArray().Select(e => e.GetString()));
+            // AC-A1-9: no list of the tool holds the values of year, so there is no pointer and the filter says so in words.
+            Assert.False(year.TryGetProperty("valuesIn", out var pointer), pointer.ToString());
+            Assert.Contains("Not listed by this tool", year.GetProperty("values").GetString(), StringComparison.Ordinal);
         });
 
         // Each filter describe lists for an operation is accepted by query for that operation: the answer is never "cannot be filtered".

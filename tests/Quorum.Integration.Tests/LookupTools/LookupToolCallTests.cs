@@ -273,7 +273,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         var refused = await AskAsync(setup, Call(new { lookup = "suppliers", country = American }));
         Assert.Equal("failed", StatusOf(refused));
 
-        // The lean manifest offers them, and they are read now from the collection that holds the entities.
+        // The lean manifest filters a list of entities by its own attributes (spec 012 A1-5).
         var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
         var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
         using var lean = await setup.Admin.PutAsJsonAsync(
@@ -281,11 +281,31 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
             new { toolIds = new[] { toolId }, manifests = new Dictionary<string, string> { [toolId.ToString()] = "lean" } },
             TestContext.Current.CancellationToken);
         Assert.Equal(global::System.Net.HttpStatusCode.NoContent, lean.StatusCode);
+
+        // AC-A1-7: describe lists the attributes of a list of entities with their type and operators, and no field of its knowledge base.
+        var described = JsonDocument.Parse(ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", """{"targets":["suppliers"]}""", "call_lean_d"))));
+        var supplierFilters = described.RootElement.GetProperty("targets")[0].GetProperty("operations").GetProperty("values").GetProperty("filters").EnumerateArray().ToList();
+        Assert.Equal(["contract_count", "country", "supplier_since"], supplierFilters.Select(f => f.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
+        var contractCount = supplierFilters.Single(f => f.GetProperty("name").GetString() == "contract_count");
+        Assert.Equal("Number", contractCount.GetProperty("type").GetString());
+        Assert.Equal(["eq", "in", "min", "max"], contractCount.GetProperty("operators").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["eq", "in"], supplierFilters.Single(f => f.GetProperty("name").GetString() == "country").GetProperty("operators").EnumerateArray().Select(e => e.GetString()));
+
+        // An attribute filter narrows the entries of the list, read from its rows.
         var american = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"country":["US"]},"sort":"-contract_count"}""", "call_lean_1")));
-        Assert.Contains("Worked out now among the documents that match the filters", american, StringComparison.Ordinal);
         Assert.Contains("Ordered by contract_count, the largest first.", american, StringComparison.Ordinal);
         Assert.Equal(["Hooli", "Globex"], Rows(american).Select(r => r.Split(' ')[0]));
 
+        // A name that is not an attribute is refused, with the attributes that are.
+        var unknown = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"nothing":["x"]}}""", "call_lean_u"));
+        Assert.Equal("failed", StatusOf(unknown));
+        Assert.Contains("cannot be filtered by nothing. It can be filtered by", ResultOf(unknown), StringComparison.Ordinal);
+        Assert.Contains("contract_count", ResultOf(unknown), StringComparison.Ordinal);
+
+        // An operation the list does not take is refused with the ones it does.
+        var wrongOperation = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"documents"}""", "call_lean_o"));
+        Assert.Equal("failed", StatusOf(wrongOperation));
+        Assert.Contains("takes the operations values and count", ResultOf(wrongOperation), StringComparison.Ordinal);
 
         // A filter written beside the filters object is refused, not dropped: the answer would otherwise be the unfiltered list.
         var stray = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","country":["US"]}""", "call_lean_2"));

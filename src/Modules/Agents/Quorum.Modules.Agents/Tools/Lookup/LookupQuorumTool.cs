@@ -93,9 +93,13 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 }
             }
 
-            // Each operation states the filters it takes: values and count take the same ones, since both are worked out among the documents that
-            // match them (spec 012 AC-22). Only values is ordered and paged; count is one number.
-            var filters = new JsonArray(fields.Select(FilterOf(binding)).ToArray());
+            // Each operation states the filters it takes: values and count take the same ones. A computed list is filtered by the fields of its
+            // knowledge base, worked out among the documents that match them (spec 012 AC-22); a list of entities or typed by hand, by its own
+            // attributes, with their type and operators (spec 012 A1-5, AC-A1-7). Only values is ordered and paged; count is one number.
+            var computed = list.Kind == LookupKindInfo.Computed;
+            var filters = new JsonArray(computed
+                ? fields.Select(FilterOf(binding)).ToArray()
+                : (list.Attributes ?? []).Select(AttributeFilterOf).ToArray());
             return new JsonObject
             {
                 ["name"] = name,
@@ -105,7 +109,9 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 {
                     [LookupToolDefinition.ValuesOperation] = new JsonObject
                     {
-                        ["description"] = "The values that exist, with the number of documents of each, most common first or by name. With filters, the values that occur among the documents that match them.",
+                        ["description"] = computed
+                            ? "The values that exist, with the number of documents of each, most common first or by name. With filters, the values that occur among the documents that match them."
+                            : "The entries of the list, with their attributes. With filters, the entries whose attributes match them.",
                         ["search"] = true,
                         ["filters"] = filters.DeepClone(),
                         ["sort"] = sortable,
@@ -113,7 +119,9 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                     },
                     [LookupToolDefinition.CountOperation] = new JsonObject
                     {
-                        ["description"] = "How many distinct values exist that match search and the filters. Not a count of documents.",
+                        ["description"] = computed
+                            ? "How many distinct values exist that match search and the filters. Not a count of documents."
+                            : "How many entries match search and the filters.",
                         ["search"] = true,
                         ["filters"] = filters.DeepClone(),
                     },
@@ -163,9 +171,56 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         {
             filter["valuesIn"] = holder;
         }
+        else
+        {
+            // A pointer only to a list the tool can read (spec 012 A1-7); without one, the field says so in words.
+            filter["values"] = "Not listed by this tool: write a value as the documents hold it.";
+        }
 
         return filter;
     };
+
+    /// <summary>An attribute of a list of entities or typed by hand as <c>describe</c> states it (spec 012 A1-5): its type and its operators, <c>min</c> and <c>max</c> too for a number or a date.</summary>
+    private static JsonObject AttributeFilterOf(LookupAttributeInfo attribute)
+    {
+        var filter = new JsonObject
+        {
+            ["name"] = attribute.Key,
+            ["type"] = attribute.Type,
+            ["operators"] = IsRanged(attribute) ? new JsonArray("eq", "in", "min", "max") : new JsonArray("eq", "in"),
+        };
+        if (!string.IsNullOrWhiteSpace(attribute.Label))
+        {
+            filter["description"] = attribute.Label;
+        }
+
+        return filter;
+    }
+
+    private static bool IsRanged(LookupAttributeInfo attribute) => attribute.Type is "Number" or "Date";
+
+    /// <summary>The conditions on attributes the model wrote for one list: a value is <c>eq</c>, a list of values <c>in</c>, and <c>{"min": v}</c> or <c>{"max": v}</c> a range.</summary>
+    private static List<LookupRowFilter> RowFiltersOf(string list, LookupAttributeInfo attribute, JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            return [new LookupRowFilter(attribute.Key, value.ValueKind == JsonValueKind.Array ? "in" : "eq", value.Clone())];
+        }
+
+        var filters = new List<LookupRowFilter>();
+        foreach (var bound in value.EnumerateObject())
+        {
+            if (!IsRanged(attribute) || bound.Name is not ("min" or "max"))
+            {
+                var takes = IsRanged(attribute) ? "eq and in as values, and min or max for a range" : "eq and in as values";
+                throw new ToolFailedException($"The attribute '{LookupResultFormat.Clean(attribute.Key)}' of '{LookupResultFormat.Clean(list)}' takes {takes}: '{LookupResultFormat.Clean(bound.Name)}' is not one of them.");
+            }
+
+            filters.Add(new LookupRowFilter(attribute.Key, bound.Name, bound.Value.Clone()));
+        }
+
+        return filters;
+    }
 
     private static JsonObject LimitsOf() => new() { ["default"] = LookupToolDefinition.DefaultLimit, ["max"] = LookupToolDefinition.MaxLimit };
 
@@ -190,7 +245,10 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         {
             if (!LookupLeanDefinition.LookupOperations.Contains(operation, StringComparer.Ordinal))
             {
-                throw new ToolFailedException($"The list '{LookupResultFormat.Clean(target)}' takes the operation values only.");
+                var bases = binding.KnowledgeBases.Keys.Order(StringComparer.Ordinal).Select(LookupResultFormat.Clean).ToList();
+                throw new ToolFailedException(
+                    $"The list '{LookupResultFormat.Clean(target)}' takes the operations {string.Join(" and ", LookupLeanDefinition.LookupOperations)}."
+                    + (bases.Count > 0 ? $" The operations documents and count are for the knowledge bases: {string.Join(", ", bases)}." : string.Empty));
             }
 
             mapped = operation == LookupToolDefinition.CountOperation ? LookupLeanDefinition.ListCountOperation : LookupToolDefinition.ValuesOperation;
@@ -226,10 +284,21 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             }
         }
 
+        // The attributes of a list of entities or typed by hand: what the model filters it by, besides the tool's fixed conditions (spec 012 A1-5).
+        var attributes = binding.Targets.TryGetValue(target, out var targetInfo) && targetInfo.Kind != LookupKindInfo.Computed
+            ? (targetInfo.Attributes ?? []).ToDictionary(a => a.Key, StringComparer.Ordinal)
+            : [];
+        var rowFilters = new List<LookupRowFilter>();
         if (arguments.TryGetProperty(LookupLeanDefinition.FiltersParameter, out var filters) && filters.ValueKind == JsonValueKind.Object)
         {
             foreach (var filter in filters.EnumerateObject())
             {
+                if (attributes.TryGetValue(filter.Name, out var attribute))
+                {
+                    rowFilters.AddRange(RowFiltersOf(target, attribute, filter.Value));
+                    continue;
+                }
+
                 // A range is written as {"min": v} or {"max": v} under the field; the read takes it as the parameter "<field>_min" or "<field>_max".
                 if (filter.Value.ValueKind != JsonValueKind.Object)
                 {
@@ -249,7 +318,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             }
         }
 
-        var function = Descriptor with { Lookup = binding with { Operation = mapped } };
+        var function = Descriptor with { Lookup = binding with { Operation = mapped, ExtraRowFilters = rowFilters } };
         var read = new LookupQuorumTool(function, runtime);
         return await read.RunWithSourcesAsync(JsonSerializer.SerializeToElement(inner), cancellationToken);
     }
@@ -367,6 +436,12 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         if (unfit.Count == 0)
         {
             return;
+        }
+
+        // A list of entities or typed by hand says its attributes: the model filters it by those, not by the fields of a knowledge base.
+        if (binding.Targets.TryGetValue(list, out var info) && info.Kind != LookupKindInfo.Computed)
+        {
+            applicable = [.. (info.Attributes ?? []).Select(a => a.Key)];
         }
 
         var what = applicable.Count > 0 ? $"It can be filtered by {string.Join(", ", applicable)}." : "It cannot be filtered: read it without filters.";
