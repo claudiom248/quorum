@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/004-mcp-tools.md` (Approved 2026-10-17)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Approved (2026-10-17)
+**Status:** Implemented (approved 2026-10-17)
 **Amended (2026-10-22), pending approval:** the URL guard and its blocked addresses were removed.
 **Amended by spec 003 (2026-10-17):** the tool origin `Native` is renamed `Builtin` and the exposed prefix `native__` becomes `builtin__`; "native tools" in this document are the built-in tools. Rows, API values and names in the code follow the new vocabulary.
 

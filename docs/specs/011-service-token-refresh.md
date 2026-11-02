@@ -1,6 +1,6 @@
 ﻿# Spec 011: Service Token for Knowledge Base Refresh
 
-**Status:** Approved (2026-10-28)
+**Status:** Implemented (approved 2026-10-28)
 **Date:** 2026-10-28
 
 ## Problem

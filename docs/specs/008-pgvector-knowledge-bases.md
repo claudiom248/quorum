@@ -1,6 +1,6 @@
 # Spec 008: pgvector Knowledge Bases
 
-**Status:** Approved (2026-10-22). Amendment 1 (ready for lookups, spec 007) approved 2026-10-22. Amendment 2 (lookups for PgVector) approved 2026-10-27.
+**Status:** In progress: code merged, closing docs pending (approved 2026-10-22). Amendment 1 (ready for lookups, spec 007) approved 2026-10-22. Amendment 2 (lookups for PgVector) approved 2026-10-27.
 **Date:** 2026-10-22
 
 ## Problem

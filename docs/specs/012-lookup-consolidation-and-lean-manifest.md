@@ -1,6 +1,6 @@
 # Spec 012: Lookup Consolidation and Lean Manifest
 
-**Status:** Approved (2026-10-29); Amendment 1 Approved (2026-10-29)
+**Status:** In progress (approved 2026-10-29); Amendment 1 Approved (2026-10-29)
 **Date:** 2026-10-29
 
 ## Problem

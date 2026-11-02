@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/011-service-token-refresh.md` (Approved 2026-10-28)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Draft
+**Status:** Implemented (PR 1–5 merged, #116–#127)
 **Affected:** Tenancy (Contracts, Domain, Persistence, Features), Host (Infrastructure, Program.cs), KnowledgeBases (Features/Lookups), `Quorum.Web.Client` (Settings page), `tests/Quorum.Integration.Tests`.
 
 ## Decisions

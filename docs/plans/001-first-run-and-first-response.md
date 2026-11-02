@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/001-first-run-and-first-response.md` (Approved 2026-10-15)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Approved (2026-10-15)
+**Status:** Implemented (approved 2026-10-15)
 
 ## Decisions
 | Topic | Choice |

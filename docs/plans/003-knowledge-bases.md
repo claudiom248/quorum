@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/003-knowledge-bases.md` (Approved 2026-10-17)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Approved (2026-10-17)
+**Status:** Implemented (approved 2026-10-17)
 **Amended by spec 003 A2 (2026-10-22), pending approval:** the URL guard (`OutboundUrlGuard`, `IHostResolver`) and every use of it were removed; the rows below describe what was built first.
 
 ## Decisions

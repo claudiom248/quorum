@@ -1,6 +1,6 @@
 # Spec 001: First Run and First Response
 
-**Status:** Approved (2026-10-15)
+**Status:** Implemented (approved 2026-10-15)
 **Date:** 2026-10-15
 
 ## Problem

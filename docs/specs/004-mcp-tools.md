@@ -1,6 +1,6 @@
 # Spec 004: MCP Tools
 
-**Status:** In Review (2026-10-22), because of the amendment below. Approved (2026-10-17).
+**Status:** Implemented (approved 2026-10-17).
 **Amended (2026-10-22), pending approval:** D-18 no longer blocks addresses (cloud metadata, link-local): whoever registers a server is responsible for what they enter. The `tool.url_blocked` error and AC-3 are removed or rewritten accordingly.
 **Amended by spec 003 (2026-10-17):** the tool origin `Native` is renamed `Builtin` and the exposed prefix `native__` becomes `builtin__`; "native tools" in this document are the built-in tools. Rows, API values and names in the code follow the new vocabulary.
 
