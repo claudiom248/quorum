@@ -209,13 +209,7 @@
 
     // The tool calls of the answer being watched, or of the last one: the server does not store them, so they stay until the next answer.
     private RenderFragment Calls => @<div class="tool-calls">
-        @foreach (var call in CurrentCalls)
-        {
-            var current = call;
-            <ToolCallCard @key="current.CallId" Call="current"
-                          OnDecide="approved => DecideAsync(current, approved)"
-                          OnAnswer="answer => AnswerAsync(current, answer)" />
-        }
+        <ToolCallGroup Calls="CurrentCalls" OnDecide="DecideAsync" OnAnswer="AnswerAsync" />
     </div>;
 
     protected override async Task OnParametersSetAsync()

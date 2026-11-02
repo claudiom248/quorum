@@ -1,0 +1,97 @@
+<div class="tool-group">
+    <div class="tool-group-bar" aria-hidden="true">
+        @foreach (var call in Calls)
+        {
+            <span class="tool-group-segment @Tone(call)"></span>
+        }
+    </div>
+
+    <div class="tool-group-head">
+        <span class="tool-group-title">@Calls.Count @(Calls.Count == 1 ? "operation" : "operations")</span>
+        <span class="tool-group-summary">@Summary</span>
+    </div>
+
+    <ol class="tool-ledger">
+        @for (var i = 0; i < Calls.Count; i++)
+        {
+            var call = Calls[i];
+            <li class="tool-ledger-row @Tone(call)">
+                <details>
+                    <summary>
+                        <span class="tool-ledger-index">@((i + 1).ToString("00"))</span>
+                        <span class="tool-ledger-name">@call.DisplayName</span>
+                        <span class="tool-ledger-args">@Preview(call)</span>
+                        <span class="tool-ledger-state">@call.StatusLabel</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.ExpandMore" Size="Size.Small" Class="tool-ledger-chevron" />
+                    </summary>
+                    @if (call.HasArguments)
+                    {
+                        <pre class="tool-pre">@call.ArgumentsText</pre>
+                    }
+                    @if (call.Result is not null)
+                    {
+                        <pre class="tool-pre">@call.Result</pre>
+                    }
+                </details>
+            </li>
+        }
+    </ol>
+
+    @foreach (var call in Calls.Where(waiting => waiting.IsWaiting))
+    {
+        var current = call;
+        <ToolCallCard @key="current.CallId" Call="current"
+                      OnDecide="approved => OnDecide(current, approved)"
+                      OnAnswer="answer => OnAnswer(current, answer)" />
+    }
+</div>
+
+@code {
+    private const int PreviewLength = 64;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ToolCallView> Calls { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public Func<ToolCallView, bool, Task> OnDecide { get; set; } = (_, _) => Task.CompletedTask;
+
+    [Parameter, EditorRequired]
+    public Func<ToolCallView, string, Task> OnAnswer { get; set; } = (_, _) => Task.CompletedTask;
+
+    private string Summary
+    {
+        get
+        {
+            if (Calls.Any(call => call.IsWaiting))
+            {
+                return "Waiting for you";
+            }
+
+            if (Calls.Any(call => call.State is ToolCallState.Running or ToolCallState.Replied))
+            {
+                return "Running…";
+            }
+
+            return Calls.Any(call => call.State is ToolCallState.Failed or ToolCallState.TimedOut or ToolCallState.Denied)
+                ? "Some failed"
+                : "Done";
+        }
+    }
+
+    // One word per state keeps the ledger readable at a glance: colour carries the outcome, the text carries the detail.
+    private static string Tone(ToolCallView call) => call.State switch
+    {
+        ToolCallState.Succeeded => "tone-ok",
+        ToolCallState.WaitingForConfirmation or ToolCallState.WaitingForAnswer => "tone-waiting",
+        ToolCallState.Failed or ToolCallState.Denied or ToolCallState.TimedOut => "tone-error",
+        ToolCallState.Cancelled => "tone-muted",
+        _ => "tone-running",
+    };
+
+    // Arguments are shown as one line: the full JSON sits one click away in the row.
+    private static string Preview(ToolCallView call)
+    {
+        var flat = string.Join(' ', call.ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim()));
+        return flat.Length <= PreviewLength ? flat : string.Concat(flat.AsSpan(0, PreviewLength), "…");
+    }
+}
