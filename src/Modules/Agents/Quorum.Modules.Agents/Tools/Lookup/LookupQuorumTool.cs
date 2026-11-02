@@ -445,7 +445,21 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         }
 
         var what = applicable.Count > 0 ? $"It can be filtered by {string.Join(", ", applicable)}." : "It cannot be filtered: read it without filters.";
-        throw new ToolFailedException($"The list '{LookupResultFormat.Clean(list)}' cannot be filtered by {string.Join(", ", unfit.Select(LookupResultFormat.Clean))}. {what}");
+        // A range is written under its attribute, not as a parameter of its own: "rating_min" is "rating" with {"min": v} (spec 012 A1-5).
+        var ranges = new List<string>();
+        foreach (var parameter in unfit)
+        {
+            foreach (var suffix in new[] { "_min", "_max" })
+            {
+                if (parameter.EndsWith(suffix, StringComparison.Ordinal) && applicable.Contains(parameter[..^suffix.Length], StringComparer.Ordinal))
+                {
+                    ranges.Add($"write {parameter[..^suffix.Length]} as {{\"{suffix[1..]}\": value}} inside filters, not {parameter}");
+                }
+            }
+        }
+
+        var hint = ranges.Count > 0 ? $" For a range, {string.Join("; ", ranges)}." : string.Empty;
+        throw new ToolFailedException($"The list '{LookupResultFormat.Clean(list)}' cannot be filtered by {string.Join(", ", unfit.Select(LookupResultFormat.Clean))}. {what}{hint}");
     }
 
     /// <summary>

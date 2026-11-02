@@ -302,6 +302,11 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         Assert.Contains("cannot be filtered by nothing. It can be filtered by", ResultOf(unknown), StringComparison.Ordinal);
         Assert.Contains("contract_count", ResultOf(unknown), StringComparison.Ordinal);
 
+        // A range written as a parameter of its own is refused with the form it takes (spec 012 A1-5).
+        var suffixed = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"contract_count_min":3}}""", "call_lean_s"));
+        Assert.Equal("failed", StatusOf(suffixed));
+        Assert.Contains("write contract_count as {\"min\": value} inside filters", ResultOf(suffixed), StringComparison.Ordinal);
+
         // An operation the list does not take is refused with the ones it does.
         var wrongOperation = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"documents"}""", "call_lean_o"));
         Assert.Equal("failed", StatusOf(wrongOperation));
