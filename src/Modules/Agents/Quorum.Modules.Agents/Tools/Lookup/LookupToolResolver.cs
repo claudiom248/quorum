@@ -86,8 +86,14 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 continue;
             }
 
-            // The live operations query only the knowledge bases the tool names that the tenant sees; a tool with none keeps its lists.
-            var queried = tool.Binding.KnowledgeBaseIds.Distinct().Where(basesById.ContainsKey).Select(id => basesById[id]).OrderBy(k => k.Name, StringComparer.Ordinal).ToList();
+            // The live operations query only the document knowledge bases the tool names that the tenant sees, and not one whose entity lookup
+            // the tool already binds: that view is read through the lookup (spec 012 A1-1, A1-3). A tool with none keeps its lists.
+            var entitySources = offeredByName.Where(l => l.Info.Kind == LookupKindInfo.Entity).Select(l => l.Info.KnowledgeBaseId).OfType<Guid>().ToHashSet();
+            var queried = tool.Binding.KnowledgeBaseIds.Distinct()
+                .Where(id => basesById.TryGetValue(id, out var k) && LookupToolRoles.IsDocument(k) && !entitySources.Contains(id))
+                .Select(id => basesById[id])
+                .OrderBy(k => k.Name, StringComparer.Ordinal)
+                .ToList();
 
             // A filter is offered where something can apply it. The documents and the count look at the knowledge bases the tool asks; a
             // list computed from a field, and a list of entities, look at the knowledge base they come from. A list typed by hand has none.

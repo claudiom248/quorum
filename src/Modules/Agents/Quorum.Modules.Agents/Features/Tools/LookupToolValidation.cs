@@ -38,6 +38,14 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
         "lookup_tool.too_many_knowledge_bases",
         $"A lookup tool can query up to {LookupTool.MaxKnowledgeBases} knowledge bases.");
 
+    private static readonly Error NotDocumentary = Error.Validation(
+        "lookup_tool.knowledge_base_not_documentary",
+        "A live knowledge base must be a document knowledge base. One that only names its entities gives lookups, not documents.");
+
+    private static readonly Error BothViews = Error.Validation(
+        "lookup_tool.knowledge_base_both_views",
+        "A knowledge base is an entity lookup or a live knowledge base in one tool, not both: remove one of the two, or make a second tool for the other view.");
+
     private static readonly Error NotVisible = Error.Validation(
         "lookup_tool.lookup_not_visible",
         "Every lookup, knowledge base and field of a lookup tool must be visible to everyone the tool is for. Check the scope of the lookups, the knowledge bases and the fields, or narrow the scope of the tool.");
@@ -105,13 +113,6 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
             return NotVisible;
         }
 
-        // The model tells the lists apart by name: the alias, or the lookup's own. Two lists of one name need an alias on one of them.
-        var names = seenLookups.GroupBy(l => bound.Value.Aliases.GetValueOrDefault(l.Id) ?? l.Name, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
-        if (names is not null)
-        {
-            return Error.Validation("lookup_tool.alias_conflict", $"Two lookups would be called '{names.Key}'. Give one of them an alias.");
-        }
-
         // The filters name fields of the knowledge bases the tool queries and of those its lookups come from.
         var lookupBases = seenLookups.Select(l => l.KnowledgeBaseId).OfType<Guid>();
         var seen = await catalog.DescribeAsync(
@@ -120,6 +121,25 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
         if (knowledgeBaseIds.Any(id => seen.KnowledgeBases.All(k => k.Id != id)))
         {
             return NotVisible;
+        }
+
+        // The model tells the targets apart by name: a lookup's alias or its own name, and a live knowledge base's name. Two targets of one name are refused (spec 012 A1-4).
+        var targetNames = seenLookups.Select(l => bound.Value.Aliases.GetValueOrDefault(l.Id) ?? l.Name)
+            .Concat(seen.KnowledgeBases.Where(k => knowledgeBaseIds.Contains(k.Id)).Select(k => k.Name));
+        if (targetNames.GroupBy(n => n, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1) is { } taken)
+        {
+            return Error.Validation("lookup_tool.target_name_taken", $"Two targets of the tool would be called '{taken.Key}'. Give one of the lookups an alias.");
+        }
+
+        // A live knowledge base is a document knowledge base, and an entity lookup of a knowledge base is read through that lookup alone (spec 012 A1-1, A1-3).
+        if (seen.KnowledgeBases.Where(k => knowledgeBaseIds.Contains(k.Id)).Any(k => !LookupToolRoles.IsDocument(k)))
+        {
+            return NotDocumentary;
+        }
+
+        if (seenLookups.Any(l => l.Kind == LookupKindInfo.Entity && l.KnowledgeBaseId is { } source && knowledgeBaseIds.Contains(source)))
+        {
+            return BothViews;
         }
 
         // A field that a single value fixes is not offered to the model at all: exposing it would only invite a value it cannot change (spec 012 D-7).

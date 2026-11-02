@@ -88,6 +88,11 @@ internal sealed class LookupEditEndpoints : IEndpointGroup
             return NameTaken.ToProblem();
         }
 
+        if (name is not null && await LookupToolGuards.LookupRenameAsync(db, lookupTools, lookup, name, cancellationToken) is { } clash)
+        {
+            return clash.ToProblem();
+        }
+
         List<LookupAttribute>? attributes = null;
         if (request.Attributes is not null)
         {
