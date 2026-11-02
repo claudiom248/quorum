@@ -26,7 +26,7 @@ internal static class LookupToolGuards
         CancellationToken cancellationToken)
     {
         var before = registration.Mapping;
-        var losesDocuments = IsDocument(before) && !IsDocument(newMapping);
+        var losesDocuments = before.IsDocument() && !newMapping.IsDocument();
         var losesEntities = before.EntityName is not null && newMapping.EntityName is null;
 
         if (losesDocuments || losesEntities)
@@ -58,8 +58,6 @@ internal static class LookupToolGuards
 
         return await TargetNameAsync(db, lookupTools, t => t.LookupIds.Contains(lookup.Id), lookup.Id, null, newName, cancellationToken);
     }
-
-    private static bool IsDocument(KnowledgeBaseMapping mapping) => mapping.Roles.Text is not null || mapping.Roles.DocumentId is not null;
 
     private static async Task<Error?> TargetNameAsync(
         KnowledgeBasesDbContext db,

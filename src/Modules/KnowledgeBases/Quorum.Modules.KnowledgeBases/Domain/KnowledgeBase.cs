@@ -49,6 +49,9 @@ internal sealed class KnowledgeBaseMapping
 
     /// <summary>The payload path of the name of an entity, when the points of the knowledge base are entities and not chunks (spec 007 D-4).</summary>
     public string? EntityName { get; private set; }
+
+    /// <summary>A document knowledge base can be asked live (spec 012 A1-2): its mapping has the text or the document id role. A method, so EF does not map it.</summary>
+    public bool IsDocument() => Roles.Text is not null || Roles.DocumentId is not null;
 }
 
 /// <summary>

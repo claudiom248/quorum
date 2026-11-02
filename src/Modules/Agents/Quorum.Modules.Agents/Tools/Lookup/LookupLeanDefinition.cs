@@ -20,6 +20,9 @@ internal static class LookupLeanDefinition
 
     public const string FiltersParameter = "filters";
 
+    /// <summary>The parameters <c>query</c> takes: anything else beside them is refused, so a filter written outside <c>filters</c> is never dropped silently.</summary>
+    public static readonly string[] QueryParameters = [TargetParameter, OperationParameter, FiltersParameter, "search", "sort", "limit", "cursor"];
+
     /// <summary>The operations <c>query</c> takes on a list: its values, and the count of the values that match the search.</summary>
     public static readonly string[] LookupOperations = [LookupToolDefinition.ValuesOperation, LookupToolDefinition.CountOperation];
 

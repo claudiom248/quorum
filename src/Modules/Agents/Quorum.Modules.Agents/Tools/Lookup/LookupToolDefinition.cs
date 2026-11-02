@@ -56,7 +56,7 @@ internal static class LookupToolDefinition
     /// <param name="description">The administrator's text for the model.</param>
     /// <param name="lookups">The lookups the tenant can see, by the name the model sees.</param>
     /// <param name="knowledgeBases">The knowledge bases the live operations query that the tenant can see; with none, only <c>values</c> is offered.</param>
-    /// <param name="valuesFields">The fields the model may filter the lists by: those the knowledge base of a computed list or of a list of entities maps.</param>
+    /// <param name="valuesFields">The fields the model may filter the computed lists by: those their knowledge bases map. Entity lists are filtered in the lean manifest only (spec 012 A1-8).</param>
     /// <param name="documentFields">The fields the model may filter the documents and the count by: those a knowledge base the tool queries maps.</param>
     public static GeneratedLookupDefinition Build(
         string toolName,
@@ -263,7 +263,7 @@ internal static class LookupToolDefinition
                 WriteLimit(writer, "How many documents to return, up to " + MaxLimit + ".");
                 WriteCursor(writer);
             },
-            required: []);
+            required: RequiredKnowledgeBase(knowledgeBases));
 
     private static string CountSchema(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields, IReadOnlyDictionary<string, string> filterLists, IReadOnlyDictionary<string, string> appliesTo) =>
         Object(
@@ -272,7 +272,11 @@ internal static class LookupToolDefinition
                 WriteKnowledgeBase(writer, knowledgeBases);
                 WriteFilters(writer, fields, filterLists, appliesTo);
             },
-            required: []);
+            required: RequiredKnowledgeBase(knowledgeBases));
+
+    // Each call reads one knowledge base (spec 012 A1-2): with several, the call must name it.
+    private static string[] RequiredKnowledgeBase(IReadOnlyList<KnowledgeBaseInfo> knowledgeBases) =>
+        knowledgeBases.Count > 1 ? [KnowledgeBaseParameter] : [];
 
     private static string Object(Action<Utf8JsonWriter> properties, string[] required)
     {
@@ -318,7 +322,7 @@ internal static class LookupToolDefinition
         }
 
         writer.WriteEndArray();
-        writer.WriteString("description", "Query only this knowledge base. Leave it out to query all of them.");
+        writer.WriteString("description", "The knowledge base to read: each call reads one.");
         writer.WriteEndObject();
     }
 

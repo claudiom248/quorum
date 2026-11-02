@@ -169,6 +169,12 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         var target = StringOf(arguments, LookupLeanDefinition.TargetParameter) ?? throw new ToolFailedException($"Name the target to read. The targets are: {TargetNames(binding)}.");
         var operation = StringOf(arguments, LookupLeanDefinition.OperationParameter) ?? throw new ToolFailedException("Name the operation, as describe lists it for the target.");
 
+        var stray = arguments.EnumerateObject().Select(p => p.Name).Where(name => !LookupLeanDefinition.QueryParameters.Contains(name, StringComparer.Ordinal)).Order(StringComparer.Ordinal).ToList();
+        if (stray.Count > 0)
+        {
+            throw new ToolFailedException($"Put the filters in the filters object: {string.Join(", ", stray.Select(LookupResultFormat.Clean))} is not a parameter of query.");
+        }
+
         var inner = new JsonObject();
         string mapped;
         if (binding.Targets.ContainsKey(target))
@@ -413,14 +419,14 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
 
     private async Task<ToolOutput> DocumentsAsync(LookupBinding binding, Arguments asked, int limit, CancellationToken cancellationToken)
     {
-        var ids = Targets(binding, asked.KnowledgeBase);
+        var knowledgeBase = Targets(binding, asked.KnowledgeBase);
         var returnFields = binding.FilterFields.Values.Distinct().ToList();
         var names = binding.FilterFields.GroupBy(pair => pair.Value).ToDictionary(g => g.Key, g => g.First().Key);
         var scope = Scope(binding, asked.Filters);
 
         async Task<LiveDocuments> ReadPageAsync(int count)
         {
-            var read = await runtime.Lookups.DocumentsAsync(new LiveDocumentsRequest(scope, ids, returnFields, count, asked.Cursor), cancellationToken);
+            var read = await runtime.Lookups.DocumentsAsync(new LiveDocumentsRequest(scope, knowledgeBase, returnFields, count, asked.Cursor), cancellationToken);
             return read.Outcome == LiveOutcome.Ok ? read : throw new ToolFailedException(LiveFailure(read.Outcome, read.Message));
         }
 
@@ -541,15 +547,18 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             : throw new ToolFailedException($"There is no list '{Shorten(lookup)}' in this tool. Use one of: {Names(binding)}.");
     }
 
-    private static List<Guid> Targets(LookupBinding binding, string? knowledgeBase)
+    // A call reads one knowledge base (spec 012 A1-2): the one it names, or the only one the tool has.
+    private static Guid Targets(LookupBinding binding, string? knowledgeBase)
     {
         if (string.IsNullOrEmpty(knowledgeBase))
         {
-            return [.. binding.KnowledgeBases.Values];
+            return binding.KnowledgeBases.Count == 1
+                ? binding.KnowledgeBases.Values.Single()
+                : throw new ToolFailedException($"Name the knowledge base to read, one of: {string.Join(", ", binding.KnowledgeBases.Keys.Order(StringComparer.Ordinal))}.");
         }
 
         return binding.KnowledgeBases.TryGetValue(knowledgeBase, out var id)
-            ? [id]
+            ? id
             : throw new ToolFailedException($"There is no knowledge base '{Shorten(knowledgeBase)}' in this tool. Use one of: {string.Join(", ", binding.KnowledgeBases.Keys.Order(StringComparer.Ordinal))}.");
     }
 

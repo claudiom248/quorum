@@ -266,19 +266,30 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         // A text attribute is not in the enum, so the schema refuses it before the tool runs.
         Assert.Contains("not valid", ResultOf(events), StringComparison.Ordinal);
 
-        // A list of entities is filtered by the fields its knowledge base maps, read now from the collection that holds the entities.
-        Assert.Contains("country", definition.Parameters);
+        // The full manifest offers no filter on the attributes of a list of entities (spec 012 A1-8, AC-A1-10): the schema refuses one.
+        Assert.DoesNotContain("country", definition.Parameters);
         Assert.Contains("suppliers (the entities of suppliers", definition.Description, StringComparison.Ordinal);
-        Assert.Contains("can be filtered by country", definition.Description, StringComparison.Ordinal);
-        var american = ResultOf(await AskAsync(setup, Call(new { lookup = "suppliers", country = American, sort = "-contract_count" })));
+        Assert.DoesNotContain("can be filtered by country", definition.Description, StringComparison.Ordinal);
+        var refused = await AskAsync(setup, Call(new { lookup = "suppliers", country = American }));
+        Assert.Equal("failed", StatusOf(refused));
+
+        // The lean manifest offers them, and they are read now from the collection that holds the entities.
+        var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
+        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
+        using var lean = await setup.Admin.PutAsJsonAsync(
+            ToolsApi.AssistantTools(assistant),
+            new { toolIds = new[] { toolId }, manifests = new Dictionary<string, string> { [toolId.ToString()] = "lean" } },
+            TestContext.Current.CancellationToken);
+        Assert.Equal(global::System.Net.HttpStatusCode.NoContent, lean.StatusCode);
+        var american = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"country":["US"]},"sort":"-contract_count"}""", "call_lean_1")));
         Assert.Contains("Worked out now among the documents that match the filters", american, StringComparison.Ordinal);
         Assert.Contains("Ordered by contract_count, the largest first.", american, StringComparison.Ordinal);
         Assert.Equal(["Hooli", "Globex"], Rows(american).Select(r => r.Split(' ')[0]));
 
-        // The same filter on a list it does not apply to says what the list can be filtered by.
-        var wrong = await AskAsync(setup, Call(new { lookup = "language", country = American }));
-        Assert.Equal("failed", StatusOf(wrong));
-        Assert.Contains("The list 'language' cannot be filtered by country", ResultOf(wrong), StringComparison.Ordinal);
+        // A filter written beside the filters object is refused, not dropped: the answer would otherwise be the unfiltered list.
+        var stray = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","country":["US"]}""", "call_lean_2"));
+        Assert.Equal("failed", StatusOf(stray));
+        Assert.Contains("Put the filters in the filters object", ResultOf(stray), StringComparison.Ordinal);
     }
 
     private static List<string> Rows(string result)

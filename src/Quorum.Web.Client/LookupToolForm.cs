@@ -93,7 +93,7 @@ public static class LookupToolView
 
     /// <summary>A knowledge base can be asked live when its mapping has the text or the document id role (spec 012 A1-2).</summary>
     public static bool IsDocumentKnowledgeBase(KnowledgeBaseDetail? detail) =>
-        detail?.Mapping?.Roles is { } roles && (!string.IsNullOrWhiteSpace(roles.Text) || !string.IsNullOrWhiteSpace(roles.DocumentId));
+        detail?.Mapping?.Roles is { } roles && (roles.Text is not null || roles.DocumentId is not null);
 
     /// <summary>
     /// The one selector of the tool: its lookups, and the document knowledge bases of the tenant it can ask live. A knowledge base is
