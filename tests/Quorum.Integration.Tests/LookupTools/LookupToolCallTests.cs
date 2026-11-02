@@ -290,6 +290,11 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         var stray = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","country":["US"]}""", "call_lean_2"));
         Assert.Equal("failed", StatusOf(stray));
         Assert.Contains("Put the filters in the filters object", ResultOf(stray), StringComparison.Ordinal);
+
+        // A filter inside the filters object on a manual list it does not apply to is refused, not answered unfiltered.
+        var notApplied = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"language","operation":"values","filters":{"country":["US"]}}""", "call_lean_3"));
+        Assert.Equal("failed", StatusOf(notApplied));
+        Assert.Contains("The list 'language' cannot be filtered by country", ResultOf(notApplied), StringComparison.Ordinal);
     }
 
     private static List<string> Rows(string result)
