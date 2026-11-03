@@ -13,6 +13,8 @@ public sealed class LogCapture : ILogEventSink
     public IReadOnlyCollection<string> ErrorsAndAbove =>
         _events.Where(e => e.Level >= LogEventLevel.Error).Select(e => e.Message).ToList();
 
+    public void Clear() => _events.Clear();
+
     public void Emit(LogEvent logEvent)
     {
         ArgumentNullException.ThrowIfNull(logEvent);

@@ -11,8 +11,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>Running the tools of an MCP server in an answer, through the same pipeline as built-in tools (spec 004, AC-19, AC-20, AC-23 to AC-26, AC-47).</summary>
-public sealed class McpToolExecutionTests(PostgresFixture postgres)
+public sealed class McpToolExecutionTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static FakeToolCall Search(string text, string name = "files__search", string id = "call_1") =>
@@ -46,8 +50,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // AC-19, AC-20
     public async Task AnMcpToolIsOfferedWithItsPrefixedNameRunOnTheServerAndItsResultGoesBackToTheModel()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search", "Searches files."));
         await RegisterAndActivateAsync(client, mcp);
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("quarterly")), ChatScript.Reply("Found it."));
@@ -79,8 +83,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // D-16
     public async Task AToolNameTheModelApisWouldRefuseIsSanitizedAndTheServerStillReceivesTheRealName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search.files"), McpTestServer.NewTool("search_files"));
         await RegisterAndActivateAsync(client, mcp);
         var offered = (await ToolsApi.GetAssistantToolsAsync(client, await ToolsApi.DefaultAssistantIdAsync(client))).Pool
@@ -101,8 +105,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact]
     public async Task TheServerHeadersAreSentWithTheCall()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp, headers: new Dictionary<string, string> { ["X-Api-Key"] = "k-123" });
         mcp.ReceivedHeaders.Clear();
@@ -118,8 +122,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // D-9, D-14: a new MCP tool asks for confirmation
     public async Task AConfirmToolWaitsForTheUserAndRunsOnServerOnlyAfterApproval()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp, policy: "Confirm");
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("danger")), ChatScript.Reply("Finished."));
@@ -143,8 +147,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact]
     public async Task ADeniedMcpCallNeverReachesTheServer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp, policy: "Confirm");
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("danger")), ChatScript.Reply("Understood."));
@@ -169,8 +173,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [InlineData("DELETE FROM agents.agent_tools WHERE \"ToolId\" IN (SELECT \"Id\" FROM agents.tools WHERE \"ServerId\" IS NOT NULL)")]
     public async Task AnMcpToolThatStopsBeingAvailableWhileWaitingIsNotRunEvenWhenApproved(string change)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp, policy: "Confirm");
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("x")), ChatScript.Reply("Understood."));
@@ -192,8 +196,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // D-9, D-18: an approval is for the address it was given for
     public async Task AServerWhoseUrlChangedWhileWaitingForConfirmationIsNotCalledEvenWhenApproved()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp, policy: "Confirm");
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("x")), ChatScript.Reply("Understood."));
@@ -213,8 +217,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact]
     public async Task OnlyTextIsPassedOnNonTextContentIsNamedAndStructuredContentIsUsedWhenThereIsNoText()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp);
         mcp.CallHandler = (request, _) => ValueTask.FromResult(
@@ -236,8 +240,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // AC-26
     public async Task AResultLargerThanTheLimitIsNotTruncatedTheModelGetsATooLargeError()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.SetLimitsAsync(client, maxResult: 1000);
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         mcp.CallHandler = (_, _) => ValueTask.FromResult(new CallToolResult { Content = [new TextContentBlock { Text = new string('x', 1001) }] });
@@ -258,8 +262,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact]
     public async Task AnErrorTheServerReportsInItsResultGoesToTheModelAsAFailedCall()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         mcp.CallHandler = (_, _) => ValueTask.FromResult(new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "Quota exceeded." }] });
         await RegisterAndActivateAsync(client, mcp);
@@ -278,8 +282,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact]
     public async Task AProtocolErrorFromTheServerGoesToTheModelAsAFailedCallAndTheAnswerContinues()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         mcp.CallHandler = (_, _) => throw new McpProtocolException("The index is offline.", McpErrorCode.InternalError);
         await RegisterAndActivateAsync(client, mcp);
@@ -296,8 +300,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // D-18, AC-4
     public async Task ARedirectIsNotFollowedAndTheCallFailsWithoutLeakingTheHeaders()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp, headers: new Dictionary<string, string> { ["Authorization"] = "Bearer s3cret" });
         await ToolFixtures.ExecuteAsync(app, $"UPDATE agents.mcp_servers SET \"Url\" = '{mcp.RedirectUrl}'");
@@ -318,8 +322,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact]
     public async Task AServerThatAnswersWithAnErrorStatusFailsTheCall()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp);
         await ToolFixtures.ExecuteAsync(app, $"UPDATE agents.mcp_servers SET \"Url\" = '{mcp.ErrorUrl}'");
@@ -368,8 +372,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // D-22: the connection is opened for the answer and reused by its calls
     public async Task TwoCallsOfOneAnswerRunInOrderOnTheSameServer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp);
         app.ModelServer.EnqueueRounds(
@@ -386,8 +390,8 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [Fact] // AC-47
     public async Task AuditEntriesKeepTheOriginalNamesWhenTheServerIsRenamedOrDeleted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await RegisterAndActivateAsync(client, mcp);
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Search("x")), ChatScript.Reply("Done."));

@@ -12,8 +12,12 @@ namespace Quorum.Integration.Tests.WebSearch;
 /// What a search of the web leaves behind in the answer: the sources the user can open, and the two search tools side by side so the
 /// prompt can say which one to try first (spec 005, AC-6, AC-8).
 /// </summary>
-public sealed class WebSearchCitationTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class WebSearchCitationTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static FakeToolCall Call(string query, string id = "call_1") =>
@@ -68,7 +72,7 @@ public sealed class WebSearchCitationTests(PostgresFixture postgres, QdrantFixtu
     [Fact] // AC-8
     public async Task AKnowledgeBaseToolAndAWebSearchToolAreOfferedTogetherSoThePromptCanChoose()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var knowledgeBase = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [knowledgeBase]));
         await WebSearchApi.ConfigureAsync(setup.Admin);

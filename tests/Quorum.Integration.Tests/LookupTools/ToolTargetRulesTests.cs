@@ -16,8 +16,12 @@ namespace Quorum.Integration.Tests.LookupTools;
 /// The roles of a knowledge base in a lookup tool, one namespace for its targets, and the guards that keep a mapping or a name from breaking
 /// a saved tool (spec 012 Amendment 1, AC-A1-3, AC-A1-4, AC-A1-5, AC-A1-11).
 /// </summary>
-public sealed class ToolTargetRulesTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class ToolTargetRulesTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>A knowledge base whose entities are named by <c>title</c>: its entity lookup is created with it, and is named as the knowledge base.</summary>
@@ -31,7 +35,7 @@ public sealed class ToolTargetRulesTests(PostgresFixture postgres, QdrantFixture
     [Fact] // AC-A1-1
     public async Task ALiveKnowledgeBaseIsADocumentKnowledgeBaseAndNotOneOfEntitiesOnly()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var entitiesOnly = await setup.RegisterAsync("vendors", mapping: EntityOnlyKnowledgeBaseTests.Mapping);
         var manual = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "lists"));
 
@@ -44,7 +48,7 @@ public sealed class ToolTargetRulesTests(PostgresFixture postgres, QdrantFixture
     [Fact] // AC-A1-3
     public async Task AKnowledgeBaseIsNotBothAnEntityLookupAndALiveKnowledgeBaseOfOneTool()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var knowledgeBase = await RegisterEntityKnowledgeBaseAsync(setup, "vendors");
         var entity = await EntityLookupOfAsync(setup, knowledgeBase);
 
@@ -60,7 +64,7 @@ public sealed class ToolTargetRulesTests(PostgresFixture postgres, QdrantFixture
     [Fact] // AC-A1-4
     public async Task ALookupAndALiveKnowledgeBaseOfOneToolCannotShareAName()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (knowledgeBase, _) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         var manual = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "policies"));
 
@@ -88,7 +92,7 @@ public sealed class ToolTargetRulesTests(PostgresFixture postgres, QdrantFixture
     [Fact] // AC-A1-11
     public async Task RemovingTheEntityNameOfAKnowledgeBaseTheToolReadsIsRefused()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var knowledgeBase = await RegisterEntityKnowledgeBaseAsync(setup, "vendors");
         var entity = await EntityLookupOfAsync(setup, knowledgeBase);
         await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(entity, "vendor_list")]));

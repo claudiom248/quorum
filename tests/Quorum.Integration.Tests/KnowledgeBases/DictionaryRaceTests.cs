@@ -13,8 +13,12 @@ namespace Quorum.Integration.Tests.KnowledgeBases;
 /// Saving a knowledge base and deleting a dictionary field both take the dictionary lock. The tests hold the lock themselves to
 /// put the request in the queue, change the world as the request that "came first" would have, and release it.
 /// </summary>
-public sealed class DictionaryRaceTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class DictionaryRaceTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>Waits until a request is queued behind an advisory lock of this database.</summary>
@@ -37,8 +41,8 @@ public sealed class DictionaryRaceTests(PostgresFixture postgres, QdrantFixture 
     [Fact]
     public async Task AFieldDeletedWhileTheKnowledgeBaseWaitsForTheLockIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
@@ -69,8 +73,8 @@ public sealed class DictionaryRaceTests(PostgresFixture postgres, QdrantFixture 
     [Fact]
     public async Task AKnowledgeBaseSavedWhileTheDeletionWaitsForTheLockKeepsTheField()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var yearId = await DictionaryApi.CreateOkAsync(admin, "year", "Number");
         var tenantId = await TenantScope.TenantIdAsync(app);
 

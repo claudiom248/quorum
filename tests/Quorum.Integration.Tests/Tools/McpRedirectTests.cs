@@ -2,13 +2,16 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class McpRedirectTests(PostgresFixture postgres)
+public sealed class McpRedirectTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     [Fact] // AC-4
     public async Task ARedirectIsNotFollowed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "redirecting", mcp.RedirectUrl);

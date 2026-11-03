@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Quorum.Modules.Agents.Chat;
@@ -85,6 +87,26 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
 
     public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres, FakeTimeProvider? clock = null) =>
         Start(await postgres.CreateDatabaseAsync(), clock: clock);
+
+    /// <summary>
+    /// Brings the fakes and the in-memory caches back to how they were right after the setup; the database is restored apart (<see cref="DatabaseSnapshot"/>).
+    /// </summary>
+    internal async Task ResetRuntimeAsync()
+    {
+        ModelServer.Reset();
+        ModelServer.Serve(ModelBaseUrl, "llama3.2");
+        Probe.Reset();
+        LookupComputer.Reset();
+        Searxng.Reset();
+        WebFetch.Reset();
+        Qdrant.Reset();
+        if (Services.GetService<IMemoryCache>() is MemoryCache memory)
+        {
+            memory.Clear();
+        }
+
+        await Services.GetRequiredService<HybridCache>().RemoveByTagAsync("*");
+    }
 
     /// <summary>A new app instance on the same database and key ring, as after a container restart.</summary>
     public QuorumApp Restart() => Start(_connectionString, _dataProtectionKeysPath);

@@ -8,8 +8,12 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases.Search;
 
 /// <summary>The administrator's test search of a knowledge base (D-22), which is also the plainest way to watch the search work against a real Qdrant.</summary>
-public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class SearchEndpointTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Secret = "s3cret-qdrant-key-5b1d";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -165,8 +169,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-25
     public async Task FiltersWorkOnACollectionWithoutPayloadIndexes()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateUnindexed);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection);
@@ -185,8 +189,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-25
     public async Task AListFieldMatchesChunksThatContainAnyOfTheValues()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateTags);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(
@@ -205,8 +209,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-25, AC-7
     public async Task FiltersAndSourcesFollowTheMappedPathsOfANestedPayload()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateNested);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, mapping: SearchApi.NestedMapping);
@@ -222,8 +226,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // D-18: a chosen named vector is the one searched
     public async Task ANamedVectorIsSearchedWhenTheKnowledgeBaseChoseIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateNamedVectors);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, vectorName: SampleCollections.DenseVectorName);
@@ -236,8 +240,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-30
     public async Task AnEmptyCollectionAnswersWithoutResults()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateEmpty);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
@@ -266,8 +270,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-28
     public async Task AFilterOnAFieldTheKnowledgeBaseDidNotMapIsAnErrorWhenItIsTheOnlyKnowledgeBase()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
         var url = (await qdrant.GetUrlAsync()).ToString();
@@ -308,8 +312,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-33
     public async Task AnUnreachableStoreFailsTheSearchWithoutRevealingItsAddress()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, "http://[::1]:1", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
         Assert.Equal("Unavailable", registered.Status);
@@ -326,8 +330,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-33, AC-35
     public async Task AKnowledgeBaseRegisteredBeforeItsCollectionExistedBecomesAvailableOnceASearchWorks()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         var url = (await qdrant.GetUrlAsync()).ToString();
@@ -347,8 +351,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-33
     public async Task VectorsOfAnotherSizeThanTheModelsFailTheSearchWithoutInternalDetail()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateOtherVectorSize);
         var registered = await KnowledgeBaseApi.RegisterOkAsync(admin, (await qdrant.GetUrlAsync()).ToString(), collection, mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
@@ -364,8 +368,8 @@ public sealed class SearchEndpointTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-46
     public async Task NeitherTheQueryNorTheChunksNorTheDocumentNamesNorTheKeyReachTheLogs()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat, Secret);
         var url = (await qdrant.GetUrlAsync(Secret)).ToString();

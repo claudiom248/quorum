@@ -5,12 +5,16 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
 /// <summary>Spec 008 D-9, D-10: looking at a relation before registering it.</summary>
-public sealed class PgVectorInspectTests(PostgresFixture postgres, PgVectorFixture pgvector)
+public sealed class PgVectorInspectTests(PostgresFixture postgres, SharedQuorumApp host, PgVectorFixture pgvector) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private async Task<InspectApi.Report> InspectAsync(string relation, string? schema = null, string? vectorColumn = null, object? pastedSchema = null, int dimensions = DeterministicEmbedding.DefaultDimensions, Dictionary<string, object?>? connection = null)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app, dimensions: dimensions);
         schema ??= await pgvector.GetSharedSchemaAsync();
         return await PgVectorApi.InspectOkAsync(
@@ -22,8 +26,8 @@ public sealed class PgVectorInspectTests(PostgresFixture postgres, PgVectorFixtu
     [Fact] // AC-2
     public async Task APgVectorKnowledgeBaseIsAcceptedAndAnUnknownKindIsNot()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         using var unknown = await PgVectorApi.PostInspectAsync(admin, new { }, kind: "Pinecone");
@@ -105,7 +109,11 @@ public sealed class PgVectorInspectTests(PostgresFixture postgres, PgVectorFixtu
             VALUES (1, 'a', '2024-01-15', 'calm', 3, 0.5, 12.50, '2024-01-15 10:00:00', '2024-01-15 10:00:00+02', gen_random_uuid());
             """);
 
-        var report = await InspectAsync("typed", schema);
+        // The types above are created after the shared app's connections loaded the catalog, and Npgsql would not know them: this test keeps an app of its own.
+        await using var own = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var ownAdmin = await own.SetUpAsync();
+        InspectApi.ServeEmbeddings(own);
+        var report = await PgVectorApi.InspectOkAsync(ownAdmin, PgVectorApi.Fields(await pgvector.GetEndpointAsync(), schema, "typed", null), null);
 
         var fields = report.DraftMapping.Fields.ToDictionary(f => f.Path, f => f.Type);
         Assert.Equal("Text", fields["code"]);

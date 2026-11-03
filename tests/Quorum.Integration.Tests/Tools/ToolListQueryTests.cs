@@ -10,8 +10,12 @@ using Quorum.Modules.Agents.Persistence;
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>The list query on servers and tools (spec 010 AC-5, AC-7, AC-8, AC-9, server side).</summary>
-public sealed class ToolListQueryTests(PostgresFixture postgres)
+public sealed class ToolListQueryTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Servers = "/api/tools/servers";
     private const string Rag = "/api/tools/rag";
     private const string Lookup = "/api/tools/lookup";
@@ -24,8 +28,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ServersFilterByScopeTenantAgentStatusAndSearch()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var friend = Guid.NewGuid();
         await AddServerAsync(app, mine, "files", ToolScopeKind.Global);
@@ -48,8 +52,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ServersArePagedInNameOrderWithTheirToolCounts()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddServerAsync(app, mine, "charlie", ToolScopeKind.Tenant, tools: [("a", ToolState.Enabled), ("b", ToolState.PendingReview), ("c", ToolState.PendingReview)]);
         await AddServerAsync(app, mine, "alpha", ToolScopeKind.Tenant);
@@ -70,8 +74,7 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [InlineData(Lookup)]
     public async Task TheTypeFilterMeansNothingHereAndIsRefused(string route)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.GetAsync(new Uri($"{route}?type=Qdrant", UriKind.Relative), Ct);
 
@@ -87,8 +90,7 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [InlineData(Lookup + "?cursor=junk")]
     public async Task AnInvalidFilterLimitOrCursorIsRefused(string uri)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.GetAsync(new Uri(uri, UriKind.Relative), Ct);
 
@@ -98,8 +100,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task RagToolsFilterByScopeStateTenantAndAgentAndPage()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var friend = Guid.NewGuid();
         await AddRagToolAsync(app, mine, "global_docs", ToolScopeKind.Global);
@@ -128,8 +130,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task LookupToolsFilterByScopeStateAndSearchAndShowOnlyWhatTheTenantCanSee()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddLookupToolAsync(app, mine, "countries", ToolScopeKind.Global);
         await AddLookupToolAsync(app, mine, "regions", ToolScopeKind.Tenant, state: ToolState.Disabled);
@@ -145,8 +147,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-8, AC-9
     public async Task TheToolsOfAServerArePagedAndFilteredByStateAndSearch()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var server = await AddServerAsync(app, mine, "files", ToolScopeKind.Tenant, tools: [("read", ToolState.Enabled), ("write", ToolState.PendingReview), ("search", ToolState.Enabled), ("delete", ToolState.PendingReview)]);
 
@@ -169,8 +171,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-8, AC-9
     public async Task ASharedServersToolsAreReadOnlyAndTheOwnersTenantsAreHidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var server = await AddServerAsync(app, Guid.NewGuid(), "theirs", ToolScopeKind.Global, tools: [("read", ToolState.Enabled), ("hidden", ToolState.PendingReview)]);
 
         var page = await GetPageAsync<ToolBody>(admin, $"{Servers}/{server}/tools");
@@ -185,8 +187,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-8
     public async Task TheToolsOfAServerTheTenantCannotSeeAreNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var hidden = await AddServerAsync(app, Guid.NewGuid(), "private", ToolScopeKind.Tenant);
 
         using var missing = await admin.GetAsync(new Uri($"{Servers}/{hidden}/tools", UriKind.Relative), Ct);
@@ -201,8 +203,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task TheBuiltInListTakesAStateAndASearchAndRefusesAScope()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddServerAsync(app, mine, "files", ToolScopeKind.Tenant, tools: [("read", ToolState.Enabled), ("write", ToolState.PendingReview)]);
 
@@ -221,8 +223,7 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task AnonymousAndNonAdminCannotList()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 
@@ -326,8 +327,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     [Fact] // AC-3
     public async Task TheLiveWarningsOfAToolAreReadApartFromItsDetail()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddRagToolAsync(app, mine, "docs", ToolScopeKind.Tenant);
         await AddLookupToolAsync(app, mine, "lists", ToolScopeKind.Tenant);

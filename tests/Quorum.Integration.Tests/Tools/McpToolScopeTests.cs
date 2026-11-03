@@ -7,15 +7,19 @@ using Quorum.Modules.Agents.Persistence;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class McpToolScopeTests(PostgresFixture postgres)
+public sealed class McpToolScopeTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-11
     public async Task AnAgentScopeOnlyReachesTheAgentsItLists()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var defaultAssistant = await ToolsApi.DefaultAssistantIdAsync(client);
         var (otherAssistant, otherAgent) = await AssistantFixtures.AddWithAgentAsync(app);
@@ -39,8 +43,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [InlineData("Tenant")]
     public async Task AGlobalOrTenantScopePutsTheEnabledToolsInThePoolButNotActive(string kind)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"), McpTestServer.NewTool("pending"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url, scope: new { kind });
         using var enable = await client.PutAsJsonAsync(ToolsApi.Tool(created.Tools.Single(t => t.Name == "search").Id), new { state = "Enabled", policy = "Auto" }, Ct);
@@ -56,8 +59,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task TheAgentScopeIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
 
         using var response = await ToolsApi.RegisterServerAsync(client, "files", mcp.Url, scope: new { kind = "Agent" });
@@ -76,8 +78,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [InlineData("Agent", true, false)]
     public async Task AnIncoherentScopeIsRejected(string kind, bool withTenants, bool withAgents)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
 
@@ -94,8 +95,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [Fact]
     public async Task AnAgentThatDoesNotExistCannotBeInTheScope()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
 
         using var response = await ToolsApi.RegisterServerAsync(client, "files", mcp.Url, scope: new { kind = "Agent", agentIds = new[] { Guid.NewGuid() } });
@@ -107,8 +107,8 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [Fact]
     public async Task TheScopeOfAServerCanBeChanged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var defaultAssistant = await ToolsApi.DefaultAssistantIdAsync(client);
         var (otherAssistant, otherAgent) = await AssistantFixtures.AddWithAgentAsync(app);
@@ -132,8 +132,8 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [Fact] // AC-18
     public async Task AnotherTenantsServerIsVisibleOnlyThroughItsScopeAndNeverWritable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var tenantId = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
         var stranger = Guid.CreateVersion7();

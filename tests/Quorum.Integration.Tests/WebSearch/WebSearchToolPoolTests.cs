@@ -10,15 +10,19 @@ using Quorum.Modules.Agents.Persistence;
 namespace Quorum.Integration.Tests.WebSearch;
 
 /// <summary>Who can use a web search tool: the scope rules of the pool, activation, and what another tenant's tool can do (spec 005, AC-1, AC-2, AC-10).</summary>
-public sealed class WebSearchToolPoolTests(PostgresFixture postgres)
+public sealed class WebSearchToolPoolTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1
     public async Task AnAgentScopeOnlyPutsTheToolInThePoolOfTheAssistantsWhoseRootItLists()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var assistant = await ToolsApi.DefaultAssistantIdAsync(admin);
         var (other, otherAgent) = await AssistantFixtures.AddWithAgentAsync(app);
@@ -37,8 +41,8 @@ public sealed class WebSearchToolPoolTests(PostgresFixture postgres)
     [Fact] // AC-2
     public async Task AWebSearchToolReachesTheModelOnlyWhenItIsActivated()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
         var assistant = await ToolsApi.DefaultAssistantIdAsync(admin);
@@ -65,8 +69,7 @@ public sealed class WebSearchToolPoolTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task ADisabledWebSearchToolIsInNoPool()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
         var assistant = await ToolsApi.DefaultAssistantIdAsync(admin);
@@ -80,8 +83,8 @@ public sealed class WebSearchToolPoolTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task AnotherTenantsWebSearchToolIsVisibleThroughItsScopeAndNeverWritable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var stranger = Guid.CreateVersion7();
         var assistant = await ToolsApi.DefaultAssistantIdAsync(admin);

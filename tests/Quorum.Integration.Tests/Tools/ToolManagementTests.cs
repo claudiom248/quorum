@@ -4,15 +4,18 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class ToolManagementTests(PostgresFixture postgres)
+public sealed class ToolManagementTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-8 (built-in tools start enabled; pending review arrives with MCP servers)
     public async Task TheAdminCanDisableAToolAndChangeItsPolicy()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var calculator = (await ToolsApi.ListToolsAsync(client)).Single(t => t.Name == "calculator");
 
         using var update = await client.PutAsJsonAsync(ToolsApi.Tool(calculator.Id), new { state = "Disabled", policy = "Confirm" }, Ct);
@@ -32,8 +35,7 @@ public sealed class ToolManagementTests(PostgresFixture postgres)
     [InlineData("", "Auto")]
     public async Task InvalidStatesAndPoliciesAreRejected(string state, string policy)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var tool = (await ToolsApi.ListToolsAsync(client))[0];
 
         using var response = await client.PutAsJsonAsync(ToolsApi.Tool(tool.Id), new { state, policy }, Ct);
@@ -44,8 +46,7 @@ public sealed class ToolManagementTests(PostgresFixture postgres)
     [Fact]
     public async Task ChangingAnUnknownToolReturns404()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PutAsJsonAsync(ToolsApi.Tool(Guid.NewGuid()), new { state = "Enabled", policy = "Auto" }, Ct);
 
@@ -55,8 +56,7 @@ public sealed class ToolManagementTests(PostgresFixture postgres)
     [Fact]
     public async Task ToolSettingsHaveTheSpecDefaultsAndCanBeChanged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         var defaults = await client.GetFromJsonAsync<ToolsApi.ToolSettingsBody>(ToolsApi.ToolSettings, Ct);
         using var update = await client.PutAsJsonAsync(
@@ -79,8 +79,7 @@ public sealed class ToolManagementTests(PostgresFixture postgres)
     [InlineData(8, 300, 30, 300, 20_000, 0)]
     public async Task OutOfRangeToolSettingsAreRejected(int rounds, int total, int call, int confirmation, int result, int retention)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PutAsJsonAsync(
             ToolsApi.ToolSettings,

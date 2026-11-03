@@ -9,8 +9,12 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
 /// <summary>The list query (spec 010 AC-5, AC-7, AC-17) on the three knowledge lists: shape, filters, cursor and isolation.</summary>
-public sealed class ListQueryTests(PostgresFixture postgres)
+public sealed class ListQueryTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Guid AssistantA = Guid.NewGuid();
     private static readonly Guid AssistantB = Guid.NewGuid();
 
@@ -19,8 +23,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-17
     public async Task KnowledgeBaseItemsCarryTheScopeObjectAndAnotherTenantsItemsHideTheOwnersTenants()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var friend = Guid.NewGuid();
         await AddAsync(app, mine, "assistants", KnowledgeBaseScope.Assistant, assistants: [AssistantA]);
@@ -43,8 +47,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-17
     public async Task DictionaryFieldsAndManualLookupsCarryTheScopeObject()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var friend = Guid.NewGuid();
         await DictionaryApi.CreateOkAsync(admin, "year", scope: "Tenant");
         await DictionaryFixtures.AddFieldOfAnotherTenantAsync(app, "global_field", DictionaryFieldScope.Global);
@@ -67,8 +71,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task EachKnowledgeBaseFilterWorksAloneAndTogether()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var friend = Guid.NewGuid();
         await AddAsync(app, mine, "global-handbook", KnowledgeBaseScope.Global);
@@ -90,8 +94,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-7
     public async Task TheAssistantFilterKeepsItsOwnScopedItemsAndEverythingNotScopedToAssistants()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddAsync(app, mine, "global-handbook", KnowledgeBaseScope.Global);
         await AddAsync(app, mine, "for-a", KnowledgeBaseScope.Assistant, assistants: [AssistantA]);
@@ -104,8 +108,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task AnotherTenantsPrivateKnowledgeBaseIsNeverListedWhateverTheFilter()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var elsewhere = Guid.NewGuid();
         await AddAsync(app, elsewhere, "private-one", KnowledgeBaseScope.Tenant);
         await AddAsync(app, elsewhere, "private-assistant", KnowledgeBaseScope.Assistant, assistants: [AssistantA]);
@@ -118,8 +122,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ThePageIsInNameOrderAndTheCursorWalksEveryItemOnceWhateverTheLimit()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         foreach (var name in new[] { "echo", "alpha", "delta", "bravo", "charlie" })
         {
@@ -139,8 +143,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ACursorKeepsWorkingWhenTheFilterChanges()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddAsync(app, mine, "alpha", KnowledgeBaseScope.Global);
         await AddAsync(app, mine, "bravo", KnowledgeBaseScope.Tenant);
@@ -158,8 +162,7 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [InlineData("limit=many")]
     public async Task ALimitOutOfRangeIsRejected(string query)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.GetAsync(new Uri("/api/knowledge-bases?" + query, UriKind.Relative), Ct);
 
@@ -170,8 +173,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task AMalformedCursorOrOneFromAnotherListIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await AddAsync(app, mine, "alpha", KnowledgeBaseScope.Global);
         await AddAsync(app, mine, "bravo", KnowledgeBaseScope.Global);
@@ -200,8 +203,7 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [InlineData("/api/knowledge-bases/manual-lookups?type=Text")]
     public async Task AnUnknownFilterValueIsRejected(string uri)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.GetAsync(new Uri(uri, UriKind.Relative), Ct);
 
@@ -211,8 +213,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task DictionaryFieldsFilterByScopeTypeTenantAndSearchAndPage()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await DictionaryApi.CreateOkAsync(admin, "year", "Number", "The year.", "Tenant");
         await DictionaryApi.CreateOkAsync(admin, "country", "Text", "Where.", "Global");
@@ -235,8 +237,7 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task SearchTextIsNotAPattern()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await DictionaryApi.CreateOkAsync(admin, "plain");
         await DictionaryApi.CreateOkAsync(admin, "with_underscore");
 
@@ -247,8 +248,8 @@ public sealed class ListQueryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ManualLookupsFilterByScopeAndTenantAndPage()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var friend = Guid.NewGuid();
         foreach (var name in new[] { "alpha_list", "bravo_list" })

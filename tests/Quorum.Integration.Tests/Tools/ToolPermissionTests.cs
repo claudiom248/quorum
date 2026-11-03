@@ -4,15 +4,19 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class ToolPermissionTests(PostgresFixture postgres)
+public sealed class ToolPermissionTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-10
     public async Task ManagingToolsNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(admin);
@@ -46,8 +50,7 @@ public sealed class ToolPermissionTests(PostgresFixture postgres)
     [Fact]
     public async Task AnySignedInUserCanListTheAssistants()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 

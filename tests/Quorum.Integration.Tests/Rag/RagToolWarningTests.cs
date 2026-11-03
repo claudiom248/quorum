@@ -5,13 +5,17 @@ using Quorum.Integration.Tests.Tools;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>What the administrator is told about a rag tool whose knowledge bases or fields changed since it was saved.</summary>
-public sealed class RagToolWarningTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolWarningTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static async Task<(RagApi.Setup Setup, Guid Kb, Guid Tool)> StartAsync(PostgresFixture postgres, QdrantFixture qdrant)
+    private static async Task<(RagApi.Setup Setup, Guid Kb, Guid Tool)> StartAsync(SharedQuorumApp host, QdrantFixture qdrant)
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         var tool = await RagApi.CreateOkAsync(
@@ -31,7 +35,7 @@ public sealed class RagToolWarningTests(PostgresFixture postgres, QdrantFixture 
     [Fact]
     public async Task AToolWhoseKnowledgeBasesAndFieldsAreAllThereHasNoWarning()
     {
-        var (setup, _, tool) = await StartAsync(postgres, qdrant);
+        var (setup, _, tool) = await StartAsync(host, qdrant);
         await using var owner = setup;
 
         Assert.Empty(await CodesAsync(setup, tool));
@@ -40,7 +44,7 @@ public sealed class RagToolWarningTests(PostgresFixture postgres, QdrantFixture 
     [Fact]
     public async Task AFieldExposedToTheModelThatIsGoneIsReported()
     {
-        var (setup, _, tool) = await StartAsync(postgres, qdrant);
+        var (setup, _, tool) = await StartAsync(host, qdrant);
         await using var owner = setup;
         await ToolFixtures.ExecuteAsync(setup.App, "DELETE FROM knowledge_base.dictionary_fields WHERE \"Name\" = 'year'");
 
@@ -50,7 +54,7 @@ public sealed class RagToolWarningTests(PostgresFixture postgres, QdrantFixture 
     [Fact]
     public async Task AFieldOfAFixedFilterThatIsGoneIsReportedAsBreakingEverySearch()
     {
-        var (setup, _, tool) = await StartAsync(postgres, qdrant);
+        var (setup, _, tool) = await StartAsync(host, qdrant);
         await using var owner = setup;
         await ToolFixtures.ExecuteAsync(setup.App, "DELETE FROM knowledge_base.dictionary_fields WHERE \"Name\" = 'confidential'");
 
@@ -63,7 +67,7 @@ public sealed class RagToolWarningTests(PostgresFixture postgres, QdrantFixture 
     [Fact]
     public async Task ADeletedKnowledgeBaseIsReported()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kept = await setup.RegisterAsync("kept");
         var gone = await setup.RegisterAsync("gone");
         var both = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kept, gone]));

@@ -5,8 +5,12 @@ using Quorum.SampleKnowledgeBase;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Secret = "s3cret-qdrant-key-1c9d";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -28,8 +32,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // AC-17
     public async Task AnUnavailableKnowledgeBaseThatBecameReadyIsAvailableAfterVerifying()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         var url = (await qdrant.GetUrlAsync()).ToString();
@@ -50,8 +54,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // D-8
     public async Task VerifyingAgainMarksAKnowledgeBaseUnavailableWhenTheCollectionIsGone()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
@@ -72,8 +76,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // D-8
     public async Task VerifyingWarnsWhenAMappedPathIsNoLongerInThePayload()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
@@ -96,8 +100,7 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact]
     public async Task VerifyingAnUnknownKnowledgeBaseIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.PostAsync(KnowledgeBaseApi.Verify(Guid.NewGuid()), content: null, Ct);
 
@@ -132,8 +135,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // AC-16
     public async Task AnUpdateWithoutAnApiKeyKeepsTheStoredOneAndANewKeyReplacesIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)], Secret);
@@ -153,8 +156,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // AC-16
     public async Task TheStoredKeyIsNotReusedForAnotherServer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)], Secret);
@@ -173,8 +176,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // AC-18
     public async Task AnUpdateCannotTakeAnotherKnowledgeBasesName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
@@ -193,8 +196,7 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact]
     public async Task AnUpdateOfAnUnknownKnowledgeBaseIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.PutAsJsonAsync(KnowledgeBaseApi.One(Guid.NewGuid()), UpdateBody("http://localhost:6334", "docs"), Ct);
 
@@ -204,8 +206,8 @@ public sealed class KnowledgeBaseLifecycleTests(PostgresFixture postgres, Qdrant
     [Fact] // D-17
     public async Task DeletingRemovesTheRegistrationAndLeavesTheDictionaryAndTheStoreAlone()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);

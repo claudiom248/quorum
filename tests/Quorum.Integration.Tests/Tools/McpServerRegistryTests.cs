@@ -5,15 +5,18 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class McpServerRegistryTests(PostgresFixture postgres)
+public sealed class McpServerRegistryTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1
     public async Task ARegisteredReachableServerIsAvailableAndItsToolsArePendingReview()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"), McpTestServer.NewTool("read"));
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
@@ -35,8 +38,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact] // AC-2
     public async Task AnUnreachableServerIsSavedAsUnavailableWithAWarning()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "gone", $"http://[::1]:{UnusedPort()}/mcp");
         var server = await ToolsApi.GetServerAsync(client, created.Id);
@@ -54,8 +56,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [InlineData("not-mcp", null)]
     public async Task AServerThatAnswersBadlySavesAsUnavailable(string endpoint, string? expectedInError)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
         var url = endpoint == "error" ? mcp.ErrorUrl : mcp.NotMcpUrl;
 
@@ -73,8 +74,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task ATestReturnsTheToolsWithoutSavingAnything()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search", readOnly: true));
 
         using var response = await client.PostAsJsonAsync(ToolsApi.ServerTest, new { url = mcp.Url }, Ct);
@@ -89,8 +89,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task ATestOfAnUnreachableServerReturns422()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PostAsJsonAsync(ToolsApi.ServerTest, new { url = $"http://[::1]:{UnusedPort()}/mcp" }, Ct);
 
@@ -101,8 +100,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task AServerThatNeverAnswersIsUnreachableAfterTheConnectionTimeout()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
 
         var started = DateTimeOffset.UtcNow;
@@ -124,8 +122,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [InlineData("this-name-is-longer-than-thirty-two-characters")]
     public async Task AnInvalidServerNameIsRejected(string name)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
 
         using var response = await ToolsApi.RegisterServerAsync(client, name, mcp.Url);
@@ -138,8 +135,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ADuplicateServerNameIsRejectedWith409()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
         await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
 
@@ -157,8 +153,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [InlineData("")]
     public async Task AnUnusableUrlIsRejected(string url)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await ToolsApi.RegisterServerAsync(client, "files", url);
 
@@ -169,8 +164,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task HeadersThatTheConnectionOwnsAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
 
         using var response = await ToolsApi.RegisterServerAsync(client, "files", mcp.Url, new Dictionary<string, string> { ["Host"] = "evil.example" });
@@ -183,8 +177,8 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     public async Task HeadersAreSentToTheServerStoredEncryptedAndNeverReturnedOrLogged()
     {
         const string secret = "Bearer s3cret-token-value";
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url, new Dictionary<string, string> { ["Authorization"] = secret });
@@ -206,8 +200,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     public async Task AnUpdateWithoutHeadersKeepsTheStoredOnesAndAnEmptyObjectRemovesThem()
     {
         const string secret = "Bearer keep-me";
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url, new Dictionary<string, string> { ["Authorization"] = secret });
 
@@ -228,8 +221,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task AnnotationsAreShownAsInformationAndDoNotChangeThePolicy()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(
             McpTestServer.NewTool("read", readOnly: true, destructive: false),
             McpTestServer.NewTool("wipe", destructive: true),
@@ -250,8 +242,8 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task DeletingAServerRemovesItsToolsAndTheirActivations()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
         var tool = created.Tools.Single();
@@ -274,8 +266,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task TwoServersMayOfferAToolWithTheSameName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var first = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await using var second = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
 
@@ -289,8 +280,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task EveryServerRouteNeedsTheManagePermission()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
         var id = Guid.NewGuid();
@@ -320,8 +310,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownServerReturns404()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var id = Guid.NewGuid();
 
         using var get = await client.GetAsync(ToolsApi.Server(id), Ct);
@@ -335,8 +324,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact] // AC-5 on update
     public async Task RenamingAServerToAnExistingNameIsRejectedWith409()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
         await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
         var other = await ToolsApi.RegisterServerOkAsync(client, "docs", mcp.Url);
@@ -351,8 +339,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task UpdatingAServerWithInvalidHeadersIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync();
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
 
@@ -369,8 +356,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact] // D-14: approvals were given for the old address
     public async Task ChangingTheUrlTakesTheServerOutOfThePoolUntilItIsRefreshed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var first = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         await using var second = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", first.Url);
@@ -393,8 +379,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task ASameUrlUpdateKeepsTheServerAvailable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
 
@@ -407,8 +392,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task AServerListingMoreThanTheToolCapIsUnavailable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync([.. Enumerable.Range(0, 501).Select(i => McpTestServer.NewTool($"tool{i}"))]);
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "huge", mcp.Url);
@@ -422,8 +406,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task AToolDefinitionAboveTheSizeCapMakesTheServerUnavailable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("bloated", new string('x', 60_000)));
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "bloated", mcp.Url);
@@ -437,8 +420,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task TheTotalSizeOfTheDefinitionsIsCappedToo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         // Each tool is within its own cap; together they pass one million characters.
         await using var mcp = await McpTestServer.StartAsync([.. Enumerable.Range(0, 25).Select(i => McpTestServer.NewTool($"tool{i}", new string('x', 45_000)))]);
 
@@ -451,8 +433,8 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
     [Fact]
     public async Task DiscoveryIsLoggedWithoutTheServersAddressOrHeaders()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
 
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url, new Dictionary<string, string> { ["Authorization"] = "Bearer log-me-not" });

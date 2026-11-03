@@ -11,8 +11,12 @@ namespace Quorum.Integration.Tests.Web;
 /// The draft and the typed client of the admin pages for a PostgreSQL knowledge base, against the real server and a real database
 /// (spec 008 AC-34, AC-35): everything the guided registration does, with no mock of the API.
 /// </summary>
-public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorFixture pgvector)
+public sealed class PgVectorAdminClientTests(SharedQuorumApp host, PgVectorFixture pgvector) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
 
@@ -34,8 +38,8 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
     [Fact] // AC-34
     public async Task AnAdminListsTheRelationsChoosesOneInspectsRegistersAndSearchesWithoutTouchingFiles()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var api = new QuorumApi(admin);
         var schema = await pgvector.GetSharedSchemaAsync();
@@ -91,8 +95,8 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
     [Fact] // AC-50
     public async Task TheLookupsStepMarksTheListableColumnsAndTheCountedPointAndTheServerComputesThem()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         app.LookupComputer.Handler = new Quorum.Modules.KnowledgeBases.Features.Lookups.LookupComputer(app.Services.GetRequiredService<Quorum.Modules.KnowledgeBases.Storage.StoreAdapters>()).ComputeAsync;
         var api = new QuorumApi(admin);
@@ -136,8 +140,8 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
     [Fact] // AC-34
     public async Task AConnectionStringRegistersTheSameAndASecondEditNeedsTheSecretOnlyWhenTheModeChanges()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var api = new QuorumApi(admin);
         var endpoint = await pgvector.GetEndpointAsync();
@@ -168,8 +172,8 @@ public sealed class PgVectorAdminClientTests(PostgresFixture postgres, PgVectorF
     [Fact] // AC-8
     public async Task SeveralVectorColumnsAskForAChoiceAndOfferTheDistanceOfTheIndex()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var api = new QuorumApi(admin);
         var schema = await pgvector.GetSharedSchemaAsync();

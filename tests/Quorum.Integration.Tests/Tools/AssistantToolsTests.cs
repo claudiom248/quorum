@@ -4,15 +4,18 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class AssistantToolsTests(PostgresFixture postgres)
+public sealed class AssistantToolsTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task ListsTheDefaultAssistant()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         var assistants = await client.GetFromJsonAsync<List<ToolsApi.AssistantBody>>(ToolsApi.Assistants, Ct);
 
@@ -24,8 +27,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
     [Fact]
     public async Task TheActiveSetIsReplacedByWhatTheAdminSends()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
         var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
 
@@ -43,8 +45,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
     [Fact]
     public async Task SendingTheSameToolTwiceActivatesItOnce()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
         var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
 
@@ -57,8 +58,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task ActivatingAToolOutsideThePoolIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
 
         using var unknown = await client.PutAsJsonAsync(ToolsApi.AssistantTools(assistantId), new { toolIds = new[] { Guid.NewGuid() } }, Ct);
@@ -70,8 +70,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task ADisabledToolLeavesThePoolAndCannotBeActivated()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
         var calculator = (await ToolsApi.ListToolsAsync(client)).Single(t => t.Name == "calculator");
         using var disable = await client.PutAsJsonAsync(ToolsApi.Tool(calculator.Id), new { state = "Disabled", policy = "Auto" }, Ct);
@@ -87,8 +86,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownAssistantReturns404()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var unknown = Guid.NewGuid();
 
         using var read = await client.GetAsync(ToolsApi.AssistantTools(unknown), Ct);

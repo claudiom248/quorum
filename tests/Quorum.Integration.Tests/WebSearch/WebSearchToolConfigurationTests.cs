@@ -6,15 +6,18 @@ using Quorum.Integration.Tests.Tools;
 namespace Quorum.Integration.Tests.WebSearch;
 
 /// <summary>What an administrator can save as a web search tool, and the definition it gives the model (spec 005, AC-1, AC-7, AC-10).</summary>
-public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
+public sealed class WebSearchToolConfigurationTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1
     public async Task AdminCanCreateAWebSearchToolWithItsParameters()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
 
         var created = await WebSearchApi.CreateOkAsync(
@@ -50,8 +53,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AWebSearchToolWithoutParametersKeepsTheDefaults()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
 
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "web"));
@@ -68,8 +70,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-7
     public async Task CreatingAWebSearchToolNeedsThePlatformConfiguration()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await WebSearchApi.CreateAsync(admin, WebSearchApi.Body());
 
@@ -81,8 +82,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task TheModelIsOfferedOneFunctionThatTakesAQuery()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
 
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
@@ -100,8 +100,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task TwoWebSearchToolsCannotShareAName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var first = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
 
@@ -123,8 +122,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [InlineData("searchEngines", "Google Search", "web_search.invalid_search_engine")]
     public async Task AParameterTheInstanceCannotAnswerWithIsRefused(string field, string value, string code)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
 
         var body = field switch
@@ -146,8 +144,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task MoreEnginesThanTheInstanceCanBeAskedForAreRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
 
         using var response = await WebSearchApi.CreateAsync(
@@ -161,8 +158,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task AdminCanUpdateTheParametersOfAWebSearchTool()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", topN: 5));
 
@@ -178,8 +174,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task AdminCanDeleteAWebSearchToolAndItLeavesTheLists()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
 
@@ -195,8 +190,7 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task AWebSearchToolIsListedWithTheToolsAnAdministratorManages()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
 
@@ -210,8 +204,8 @@ public sealed class WebSearchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task OnlyAnAdministratorCanManageWebSearchTools()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
         using var member = await app.CreateMemberClientAsync();

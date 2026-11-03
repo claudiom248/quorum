@@ -4,14 +4,18 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Rag;
 
-public sealed class RagToolPermissionTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolPermissionTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-42 (the /tools/rag half)
     public async Task ManagingRagToolsNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var existing = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "existing", knowledgeBaseIds: [kb]));
         using var member = await setup.App.CreateMemberClientAsync();

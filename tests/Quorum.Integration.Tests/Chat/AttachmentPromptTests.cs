@@ -13,8 +13,12 @@ namespace Quorum.Integration.Tests.Chat;
 /// What the model receives when attachments are part of the conversation, through the public <see cref="IAssistantChat"/>
 /// contract (the upload API arrives in a later PR of plan 002).
 /// </summary>
-public sealed class AttachmentPromptTests(PostgresFixture postgres)
+public sealed class AttachmentPromptTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-20
@@ -97,8 +101,7 @@ public sealed class AttachmentPromptTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownAssistantCannotBeMeasured()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
         await using var scope = TenantScope(app, await TenantIdAsync(app));
         var chat = scope.ServiceProvider.GetRequiredService<IAssistantChat>();
 

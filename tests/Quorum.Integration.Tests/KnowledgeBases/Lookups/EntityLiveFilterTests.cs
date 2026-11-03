@@ -10,8 +10,12 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>A live entity list: switched to the store, its rows leave the platform database and a filter on an attribute is read from the store (spec 012 D-4, D-5).</summary>
-public sealed class EntityLiveFilterTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class EntityLiveFilterTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly object[] SupplierFields =
@@ -26,8 +30,8 @@ public sealed class EntityLiveFilterTests(PostgresFixture postgres, QdrantFixtur
     [Fact] // AC-4
     public async Task AFilterOnAnAttributeOfALiveEntityListIsEvaluatedAgainstTheStore()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         app.LookupComputer.Handler = new LookupComputer(app.Services.GetRequiredService<StoreAdapters>()).ComputeAsync;
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateSuppliers);

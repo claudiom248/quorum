@@ -7,8 +7,12 @@ using Quorum.Integration.Tests.Fixtures;
 namespace Quorum.Integration.Tests.Agents;
 
 /// <summary>Create, update and delete of assistants (spec 013, PR 4).</summary>
-public sealed class AssistantApiTests(PostgresFixture postgres)
+public sealed class AssistantApiTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Assistants = new("/api/assistants", UriKind.Relative);
     private static readonly Uri Agents = new("/api/agents", UriKind.Relative);
     private static readonly Uri Endpoints = new("/api/model-endpoints", UriKind.Relative);
@@ -44,8 +48,7 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact]
     public async Task CreatesUpdatesAndListsAnAssistant()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await CreateAgentAsync(client, "legal", withEndpoint: true);
         await CreateAgentAsync(client, "finance", withEndpoint: true);
 
@@ -63,8 +66,7 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact]
     public async Task TheLastAssistantCannotBeDeletedAndALimitLeftOutIsKept()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var only = (await ListAsync(client)).Single();
 
         using var refused = await client.DeleteAsync(Assistant(only.Id), Ct);
@@ -82,8 +84,7 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact] // AC-23
     public async Task ARootAgentWithoutAnEndpointIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await CreateAgentAsync(client, "inherits", withEndpoint: false);
         var existing = await CreateAsync(client, Body("Fine", "assistant"));
 
@@ -99,8 +100,7 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownRootTheNameAndTheLimitAreChecked()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PostAsJsonAsync(Assistants, Body(" ", "nobody", maxParallelSubAgents: 0), Ct);
 
@@ -113,8 +113,7 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact]
     public async Task ChangingOrDeletingAnUnknownAssistantIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var unknown = Assistant(Guid.NewGuid());
 
         using var put = await client.PutAsJsonAsync(unknown, Body("Ghost", "assistant"), Ct);
@@ -127,8 +126,7 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact] // AC-27
     public async Task ADeletedAssistantKeepsReadableConversationsButRefusesNewMessages()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         await ChatApi.SendAsync(client, conversation, "Before the assistant goes away");
         await CreateAsync(client, Body("Replacement", "assistant"));
@@ -148,8 +146,8 @@ public sealed class AssistantApiTests(PostgresFixture postgres)
     [Fact] // AC-24
     public async Task WithoutAgentsManageTheWritesAreForbidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         var assistant = (await ListAsync(admin)).Single();
 

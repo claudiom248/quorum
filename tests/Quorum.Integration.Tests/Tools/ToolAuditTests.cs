@@ -7,15 +7,19 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>The audit log of tool calls (spec 004, AC-41 to AC-44).</summary>
-public sealed class ToolAuditTests(PostgresFixture postgres)
+public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static FakeToolCall Probe(string arguments, string id = "call_1") => new("builtin__probe", arguments, id);
 
     [Fact] // AC-41, AC-42
     public async Task EveryCallLeavesAnEntryWithWhoWhenWhatAndTheOutcomeButNotTheResult()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"2+2*3"}""")),
             ChatScript.Reply("Eight."));
@@ -44,8 +48,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-42
     public async Task TheContentOfTheResultIsNeverStored()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = (_, _) => Task.FromResult("the-secret-contents-of-the-result");
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Probe("""{"text":"x"}""")), ChatScript.Reply("Done."));
@@ -62,8 +66,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-41
     public async Task TheEntryExistsAsStartedWhileTheCallIsStillRunning()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddProbeAsync(app);
         string? outcomeDuringTheCall = null;
         app.Probe.Handler = async (_, _) =>
@@ -83,8 +87,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-41
     public async Task ARefusedCallIsAuditedToo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"where":"home"}""")),
             ChatScript.Reply("No."));
@@ -102,8 +106,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-41: a tool that was never offered cannot be called, so the call is only logged
     public async Task ACallToAToolThatWasNotOfferedLeavesNoAuditEntryButIsLogged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__teleport", """{"where":"home"}""")),
             ChatScript.Reply("No."));
@@ -118,8 +122,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-41
     public async Task AFailedToolIsAuditedWithItsErrorCode()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"1/0"}""")),
             ChatScript.Reply("No."));
@@ -135,8 +139,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-43
     public async Task ValuesOfSensitiveKeysAreRedactedInTheStoredArguments()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddProbeAsync(app);
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(Probe("""{"text":"hello","password":"hunter2","nested":{"apiKey":"k-123","fine":1},"list":[{"Authorization":"Bearer abc"}]}""")),
@@ -162,6 +166,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact] // AC-44
     public async Task WhenTheEntryCannotBeWrittenTheCallDoesNotRunAndTheModelGetsAnError()
     {
+        // It drops a table, which no reset can bring back: this test keeps an app of its own.
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         await ToolFixtures.AddProbeAsync(app);
@@ -244,8 +249,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres)
     [Fact]
     public async Task CallsAreAuditedInTheOrderTheyRan()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(
                 new FakeToolCall("builtin__calculator", """{"expression":"1+1"}""", "call_1"),

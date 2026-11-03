@@ -4,8 +4,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Setup;
 
-public sealed class OnboardingChecklistTests(PostgresFixture postgres)
+public sealed class OnboardingChecklistTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Checklist = new("/api/onboarding/checklist", UriKind.Relative);
 
     private static readonly Uri Dismissed = new("/api/onboarding/checklist/dismissed", UriKind.Relative);
@@ -15,8 +19,7 @@ public sealed class OnboardingChecklistTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AfterSetupOnlyTheModelStepIsDone()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var checklist = await GetAsync(admin);
 
@@ -31,8 +34,7 @@ public sealed class OnboardingChecklistTests(PostgresFixture postgres)
     [InlineData("knowledge")]
     public async Task MarkingAStepDoneIsIdempotent(string key)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var first = await admin.PutAsync(new Uri($"/api/onboarding/checklist/{key}", UriKind.Relative), content: null, Ct);
         using var second = await admin.PutAsync(new Uri($"/api/onboarding/checklist/{key}", UriKind.Relative), content: null, Ct);
@@ -46,8 +48,7 @@ public sealed class OnboardingChecklistTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AnUnknownStepIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.PutAsync(new Uri("/api/onboarding/checklist/nope", UriKind.Relative), content: null, Ct);
 
@@ -57,8 +58,7 @@ public sealed class OnboardingChecklistTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task DismissingHidesTheChecklistAndKeepsTheSteps()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.PutAsync(Dismissed, content: null, Ct);
 
@@ -71,8 +71,7 @@ public sealed class OnboardingChecklistTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task NonAdminAndAnonymousCannotUseTheChecklist()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 

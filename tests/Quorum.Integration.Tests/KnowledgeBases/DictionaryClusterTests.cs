@@ -4,13 +4,16 @@ using Quorum.Integration.Tests.Fixtures;
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
 /// <summary>A dictionary field is identified by cluster and name (spec 003, Amendment 1, AC-52).</summary>
-public sealed class DictionaryClusterTests(PostgresFixture postgres)
+public sealed class DictionaryClusterTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     [Fact] // AC-52
     public async Task TheSameNameLivesInDifferentClustersWithDifferentTypes()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var hr = await DictionaryApi.CreateOkAsync(admin, "year", "Text", cluster: "hr");
         var finance = await DictionaryApi.CreateOkAsync(admin, "year", "Number", cluster: "finance");
@@ -26,8 +29,7 @@ public sealed class DictionaryClusterTests(PostgresFixture postgres)
     [Fact] // AC-52
     public async Task TheSameClusterAndNameTwiceIsRefusedAndNoClusterCountsAsOneValue()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await DictionaryApi.CreateOkAsync(admin, "year", cluster: "hr");
         await DictionaryApi.CreateOkAsync(admin, "region");
 
@@ -48,8 +50,7 @@ public sealed class DictionaryClusterTests(PostgresFixture postgres)
     [InlineData("a_cluster_name_that_is_longer_than_forty_chars")]
     public async Task AClusterThatIsNotAValidNameIsRefused(string cluster)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await DictionaryApi.CreateAsync(admin, "year", cluster: cluster);
 
