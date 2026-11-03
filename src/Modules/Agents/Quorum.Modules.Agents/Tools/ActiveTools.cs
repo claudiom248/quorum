@@ -63,9 +63,11 @@ internal static class ActiveToolsQuery
     /// <summary>The tools of the agent that are in its pool and activated, in a stable order.</summary>
     public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken)
     {
+        // The activations of an agent another tenant shares are the owner's: outside the current tenant's filter.
+        var owner = await ToolPool.OwnerOfAsync(db, agentId, cancellationToken);
         var tools = await (
-            from pooled in ToolPool.For(db, agentId)
-            join activation in db.AgentTools on pooled.Tool.Id equals activation.ToolId
+            from pooled in ToolPool.For(db, agentId, owner)
+            join activation in db.AgentTools.IgnoreQueryFilters() on pooled.Tool.Id equals activation.ToolId
             where activation.AgentId == agentId
             select pooled)
             .AsNoTracking()

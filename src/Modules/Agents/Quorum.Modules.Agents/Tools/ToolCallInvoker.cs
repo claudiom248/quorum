@@ -20,7 +20,13 @@ internal sealed record ToolCallResult(ToolResultStatus Status, string Content, I
 /// Whatever goes wrong becomes an error result for the model; nothing here throws for a bad call, because the function-invoking
 /// client would turn an exception into a vague error.
 /// </summary>
-internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInteractions interactions, TimeProvider clock, ILogger<ToolCallInvoker> logger)
+internal sealed partial class ToolCallInvoker(
+    AgentsDbContext db,
+    AgentsDatabaseGate dbGate,
+    SubAgentRunner subAgents,
+    PendingInteractions interactions,
+    TimeProvider clock,
+    ILogger<ToolCallInvoker> logger)
 {
     internal const int MaxQuestionCharacters = 2000;
 
@@ -46,7 +52,32 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         }
     }
 
+    /// <summary>
+    /// Ordinary tool calls take the answer's tool gate, so they run one at a time even when the function-invoking client starts the
+    /// calls of a round together; delegations do not (spec 013 D-38), they wait for their own gate when they run.
+    /// </summary>
     private async ValueTask<object?> InvokeCoreAsync(AnswerRun run, FunctionInvocationContext invocation, CancellationToken cancellationToken)
+    {
+        var ordinary = invocation.Function is not AgentQuorumTool;
+        if (ordinary)
+        {
+            await run.OrdinaryToolGate.WaitAsync(cancellationToken);
+        }
+
+        try
+        {
+            return await InvokeGatedAsync(run, invocation, cancellationToken);
+        }
+        finally
+        {
+            if (ordinary)
+            {
+                run.OrdinaryToolGate.Release();
+            }
+        }
+    }
+
+    private async ValueTask<object?> InvokeGatedAsync(AnswerRun run, FunctionInvocationContext invocation, CancellationToken cancellationToken)
     {
         var call = invocation.CallContent;
         run.MarkHandled(call.CallId);
@@ -76,13 +107,22 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         PendingInteraction? pending = null;
         UserWait? wait = null;
         DateTimeOffset? expiresAt = null;
+        var holdsDialog = false;
         if (asksUser || needsConfirmation)
         {
+            // One dialog at a time (spec 013 D-37); the time waiting for another person's answer is not the model's or the tools'.
+            using (run.Deadline.Pause())
+            {
+                await run.ConfirmationGate.WaitAsync(cancellationToken);
+            }
+
+            holdsDialog = true;
             pending = interactions.Register(callId, run.Context.TenantId, run.Context.UserId, run.Context.ConversationId, asksUser ? InteractionKind.Question : InteractionKind.Confirmation);
             wait = new UserWait(new CancellationTokenSource(run.Context.Limits.ConfirmationTimeout, clock), run.Deadline.Pause());
             expiresAt = clock.GetUtcNow() + run.Context.Limits.ConfirmationTimeout;
         }
 
+        using var dialog = holdsDialog ? new GateRelease(run.ConfirmationGate) : null;
         using var _ = wait;
 
         try
@@ -91,7 +131,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
                 new AnswerChunk(
                     AnswerChunkKind.ToolCall,
                     string.Empty,
-                    new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null)),
+                    new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null, run.ParentCallId, run.AgentSlug)),
                 cancellationToken);
 
             if (asksUser)
@@ -142,13 +182,19 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         }
 
         await run.PublishAsync(
-            new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, result.Status, result.Content, result.Content.Length)),
+            new AnswerChunk(AnswerChunkKind.ToolResult, string.Empty, new ToolResultEvent(callId, result.Status, result.Content, result.Content.Length, run.ParentCallId, run.AgentSlug)),
             cancellationToken);
 
         if (run.Deadline.IsExpired)
         {
             // The loop must not ask the model again, and a thrown exception would only reach the model as an error.
             run.StopFor(AnswerStop.TotalTime);
+            invocation.Terminate = true;
+        }
+
+        if (run.Failure is not null)
+        {
+            // A sub-agent whose edge says its failure ends the turn: the loop must not ask the model again.
             invocation.Terminate = true;
         }
 
@@ -186,7 +232,10 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
     /// <summary>The checks at call time that decide whether the call may run. Nothing is written yet.</summary>
     private async Task<Prepared> PrepareAsync(ToolRunContext context, QuorumTool? tool, FunctionCallContent call, string rawArguments, CancellationToken cancellationToken)
     {
-        var policy = tool is null ? null : await CurrentPolicyAsync(context, tool.Descriptor, cancellationToken);
+        // A delegation is not a stored tool: the edge was read when the turn started, and a turn keeps the definitions it began with (spec 013 AC-25).
+        var policy = tool is AgentQuorumTool
+            ? ToolPolicy.Auto
+            : tool is null ? null : await CurrentPolicyAsync(context, tool.Descriptor, cancellationToken);
         if (tool is null || policy is null)
         {
             return new Prepared(null, Failed("tool.unavailable", $"The tool '{call.Name}' is no longer available."));
@@ -279,7 +328,9 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
             return new ToolCallResult(ToolResultStatus.Failed, "The tool was not run because the call could not be recorded in the audit log.");
         }
 
-        using var callTimeout = new CancellationTokenSource(context.Limits.CallTimeout, clock);
+        // A delegation runs under the total time of the answer, not the call timeout, which would cut almost every one on a local model (spec 013 D-39).
+        var delegation = tool as AgentQuorumTool;
+        using var callTimeout = new CancellationTokenSource(delegation is null ? context.Limits.CallTimeout : Timeout.InfiniteTimeSpan, clock);
         using var totalTime = run.Deadline.CreateWatch(cancellationToken);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(totalTime.Token, callTimeout.Token);
         using var arguments = JsonDocument.Parse(string.IsNullOrWhiteSpace(rawArguments) ? "{}" : rawArguments);
@@ -295,7 +346,9 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         try
         {
             // WaitAsync makes the timeout hold even for a tool that never looks at its token.
-            var produced = await tool.RunWithSourcesAsync(arguments.RootElement, linked.Token).WaitAsync(linked.Token);
+            var produced = delegation is null
+                ? await tool.RunWithSourcesAsync(arguments.RootElement, linked.Token).WaitAsync(linked.Token)
+                : new ToolOutput(await DelegateAsync(run, delegation, info.CallId, rawArguments, linked.Token).WaitAsync(linked.Token));
             var output = produced.Text;
             if (output.Length > context.Limits.MaxResultCharacters)
             {
@@ -305,7 +358,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
                 produced.Discard?.Invoke();
                 resultCharacters = output.Length;
                 content = $"The result is too large ({output.Length} characters; the limit is {context.Limits.MaxResultCharacters}) so it was not returned. " +
-                          "Call the tool again with narrower arguments.";
+                          (delegation is null ? "Call the tool again with narrower arguments." : "Call the agent again and ask for a shorter answer.");
             }
             else
             {
@@ -331,6 +384,15 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
             content = run.Deadline.IsExpired
                 ? "The answer reached its total time limit and the tool was cancelled."
                 : $"The tool did not finish in time and was cancelled after {context.Limits.CallTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} seconds.";
+        }
+        catch (SubAgentAbortException exception)
+        {
+            // The edge says this failure ends the turn: the result still goes to the ledger, the answer ends with the message.
+            outcome = ToolOutcome.Failed;
+            status = ToolResultStatus.Failed;
+            errorCode = "tool.failed";
+            content = exception.Message;
+            run.Fail(new ModelStreamException(exception.Message));
         }
         catch (ToolFailedException exception)
         {
@@ -360,20 +422,22 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
     /// </summary>
     private async Task<ToolPolicy?> CurrentPolicyAsync(ToolRunContext context, ActiveTool tool, CancellationToken cancellationToken)
     {
-        var current = await (
-            from candidate in ToolPool.For(db, context.AgentId)
-            join server in db.McpServers.IgnoreQueryFilters() on candidate.Tool.ServerId equals server.Id into servers
-            from server in servers.DefaultIfEmpty()
-            where candidate.Tool.Id == tool.ToolId
-                  && db.AgentTools.Any(a => a.ToolId == candidate.Tool.Id && a.AgentId == context.AgentId)
-            select new
-            {
-                candidate.Tool.Policy,
-                candidate.Tool.DefinitionHash,
-                ServerUrl = server == null ? null : server.Url,
-                ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
-            })
-            .SingleOrDefaultAsync(cancellationToken);
+        var current = await dbGate.RunAsync(
+            async () => await (
+                from candidate in ToolPool.For(db, context.AgentId, await ToolPool.OwnerOfAsync(db, context.AgentId, cancellationToken))
+                join server in db.McpServers.IgnoreQueryFilters() on candidate.Tool.ServerId equals server.Id into servers
+                from server in servers.DefaultIfEmpty()
+                where candidate.Tool.Id == tool.ToolId
+                      && db.AgentTools.IgnoreQueryFilters().Any(a => a.ToolId == candidate.Tool.Id && a.AgentId == context.AgentId)
+                select new
+                {
+                    candidate.Tool.Policy,
+                    candidate.Tool.DefinitionHash,
+                    ServerUrl = server == null ? null : server.Url,
+                    ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
+                })
+                .SingleOrDefaultAsync(cancellationToken),
+            cancellationToken);
 
         if (current is null || current.DefinitionHash != tool.DefinitionHash)
         {
@@ -385,23 +449,60 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
             : current.Policy;
     }
 
+    /// <summary>Runs the sub-agent once the assistant lets another delegation start (spec 013 D-14).</summary>
+    private async Task<string> DelegateAsync(AnswerRun run, AgentQuorumTool delegation, Guid callId, string rawArguments, CancellationToken cancellationToken)
+    {
+        await run.DelegationGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (run.Failure is not null)
+            {
+                // An earlier delegation of the round failed and its edge ends the turn: the others do not start.
+                throw new ToolFailedException("The turn was ended by another sub-agent, so this one was not run.");
+            }
+
+            var task = AgentQuorumTool.TaskOf(rawArguments) ?? throw new ToolFailedException("The task is missing.");
+            return await subAgents.RunAsync(this, run, delegation.Agent, callId, task, cancellationToken);
+        }
+        finally
+        {
+            run.DelegationGate.Release();
+        }
+    }
+
     private async Task<bool> TryRecordAsync(ToolAuditEntry entry)
     {
         try
         {
-            db.ToolAuditEntries.Add(entry);
             // Not cancellable: either the entry exists and the call may run, or neither happens.
-            await db.SaveChangesAsync(CancellationToken.None);
+            await dbGate.RunAsync(
+                async () =>
+                {
+                    db.ToolAuditEntries.Add(entry);
+                    await db.SaveChangesAsync(CancellationToken.None);
+                    return true;
+                },
+                CancellationToken.None);
             return true;
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // Fail closed: any problem recording the call means it does not run (D-28).
-            db.Entry(entry).State = EntityState.Detached;
+            await DetachAsync(entry);
             LogAuditWriteFailed(logger, exception);
             return false;
         }
     }
+
+    /// <summary>Forgets an entry that could not be written, under the gate like every other use of the context.</summary>
+    private Task<bool> DetachAsync(ToolAuditEntry entry) =>
+        dbGate.RunAsync(
+            () =>
+            {
+                db.Entry(entry).State = EntityState.Detached;
+                return Task.FromResult(true);
+            },
+            CancellationToken.None);
 
     private async Task CompleteAsync(ToolAuditEntry entry, ToolOutcome outcome, int? resultCharacters, string? errorCode, CallInfo info, int? sourceCount = null)
     {
@@ -411,7 +512,7 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         try
         {
             // The user may have stopped the answer already; the record must still be completed.
-            await db.SaveChangesAsync(CancellationToken.None);
+            await dbGate.RunAsync(async () => await db.SaveChangesAsync(CancellationToken.None), CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -441,13 +542,19 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
 
         try
         {
-            db.ToolAuditEntries.Add(entry);
-            await db.SaveChangesAsync(CancellationToken.None);
+            await dbGate.RunAsync(
+                async () =>
+                {
+                    db.ToolAuditEntries.Add(entry);
+                    await db.SaveChangesAsync(CancellationToken.None);
+                    return true;
+                },
+                CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // Nothing ran, so there is nothing to fail closed on: the model still gets its answer.
-            db.Entry(entry).State = EntityState.Detached;
+            await DetachAsync(entry);
             LogAuditWriteFailed(logger, exception);
         }
 
@@ -517,6 +624,12 @@ internal sealed partial class ToolCallInvoker(AgentsDbContext db, PendingInterac
         ToolDecision.TimedOut,
         "tool.question_timed_out",
         "The user did not answer the question in time.");
+
+    /// <summary>Gives the dialog gate back when the call that held it is over, however it ended.</summary>
+    private sealed class GateRelease(SemaphoreSlim gate) : IDisposable
+    {
+        public void Dispose() => gate.Release();
+    }
 
     /// <summary>What a wait for the user holds: the time after which it counts as unanswered, and the stopped clock of the answer.</summary>
     private sealed class UserWait(CancellationTokenSource expiry, IDisposable pause) : IDisposable

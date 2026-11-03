@@ -5,6 +5,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Contracts;
+using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 
@@ -25,7 +26,8 @@ internal sealed record AnswerRequest(
     IReadOnlyList<QuorumTool> Tools,
     int UsableCharacters,
     ToolRunContext Context,
-    McpAnswerConnections? Connections = null);
+    McpAnswerConnections? Connections = null,
+    int MaxParallelSubAgents = 1);
 
 /// <summary>
 /// The answer of an assistant: a <see cref="ChatClientAgent"/> over our model adapter and a function-invoking client whose
@@ -35,6 +37,7 @@ internal sealed record AnswerRequest(
 /// </summary>
 internal sealed partial class AnswerPipeline(
     IHttpClientFactory httpClientFactory,
+    AgentsDatabaseGate databaseGate,
     ToolCallInvoker invoker,
     PendingInteractions interactions,
     TimeProvider clock,
@@ -45,7 +48,7 @@ internal sealed partial class AnswerPipeline(
         ArgumentNullException.ThrowIfNull(request);
 
         var channel = Channel.CreateBounded<AnswerChunk>(new BoundedChannelOptions(256) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
-        var run = new AnswerRun(request.Context, new AnswerDeadline(request.Context.Limits.TotalTimeout, clock), channel.Writer, request.UsableCharacters);
+        var run = new AnswerRun(request.Context, new AnswerDeadline(request.Context.Limits.TotalTimeout, clock), channel.Writer, request.UsableCharacters, request.MaxParallelSubAgents, databaseGate.Semaphore);
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var producer = Task.Run(() => ProduceAsync(request, run, channel.Writer, cancellationToken, stop.Token), CancellationToken.None);
@@ -81,7 +84,8 @@ internal sealed partial class AnswerPipeline(
             using var model = new OpenAiChatClient(httpClientFactory, request.BaseUrl, request.ModelName, request.ApiKey, offersTools: request.Tools.Count > 0);
             using var tools = new FunctionInvokingChatClient(new ContextGuardChatClient(model, run))
             {
-                AllowConcurrentInvocation = false,
+                // The calls of a round start together so that delegations can run in parallel; the invoker runs ordinary tools one at a time.
+                AllowConcurrentInvocation = true,
 
                 // The client makes one more request, without tools, after the last iteration it allows; the limit counts that request.
                 MaximumIterationsPerRequest = Math.Max(1, limits.MaxRounds - 1),

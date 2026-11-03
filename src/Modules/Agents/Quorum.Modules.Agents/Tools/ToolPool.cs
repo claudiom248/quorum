@@ -36,12 +36,20 @@ internal sealed class PoolTool
 /// </summary>
 internal static class ToolPool
 {
-    public static IQueryable<PoolTool> For(AgentsDbContext db, Guid agentId)
+    /// <summary>The tenant that owns the agent, whoever is running it.</summary>
+    public static Task<Guid> OwnerOfAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken) =>
+        db.Agents.IgnoreQueryFilters().Where(agent => agent.Id == agentId).Select(agent => agent.TenantId).SingleOrDefaultAsync(cancellationToken);
+
+    /// <param name="ownerTenantId">
+    /// The tenant the pool is worked out for: the one that owns the agent. An agent another tenant shares (spec 013 D-21) runs with the
+    /// tools its owner gave it, so the runtime passes <see cref="OwnerOfAsync"/>; the admin listings leave it out for the current tenant.
+    /// </param>
+    public static IQueryable<PoolTool> For(AgentsDbContext db, Guid agentId, Guid? ownerTenantId = null)
     {
         ArgumentNullException.ThrowIfNull(db);
 
         // Tools of a server or a binding another tenant owns are outside the tenant filter: the scope rule below is what lets them in.
-        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+        var tenantId = ownerTenantId ?? db.CurrentTenantId ?? Guid.Empty;
 
         return
             from tool in db.Tools.IgnoreQueryFilters()
