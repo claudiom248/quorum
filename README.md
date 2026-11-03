@@ -117,6 +117,7 @@ src/
     KnowledgeBases/       # Metadata dictionary, registered Qdrant and pgvector knowledge bases, search
 tools/
   Quorum.SampleKnowledgeBase/  # Sample collections for trying knowledge bases (not part of the product)
+  Quorum.SampleContractReferenceData/  # Read-only sample MCP server: rates, price indices, calendars (not part of the product)
 tests/
   Quorum.Integration.Tests/
 ```

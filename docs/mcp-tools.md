@@ -99,3 +99,8 @@ network it needs, read-only where possible.
 
 [`tests/McpDemoServer`](../tests/McpDemoServer/README.md) is a small server with a harmless tool, a tool that needs
 confirmation, a huge result and a failing tool, to see each path in the chat.
+
+[`tools/Quorum.SampleContractReferenceData`](../tools/Quorum.SampleContractReferenceData/README.md) is a read-only server
+with the reference data no corpus can hold — currency rates, price indices, working-day calendars of the sample company —
+for content-shaped tests, where the answer needs a contract's dates from a KB or a lookup combined with data that lives
+only in the server.
