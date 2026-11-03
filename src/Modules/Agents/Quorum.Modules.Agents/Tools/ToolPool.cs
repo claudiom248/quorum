@@ -17,7 +17,7 @@ internal sealed class PoolTool
 
     public string ExposedName => Tool.Origin switch
     {
-        ToolOrigin.Builtin => ToolNaming.Builtin(Tool.Name),
+        ToolOrigin.Builtin => ToolNaming.Builtin(Tool.ExposedName),
         ToolOrigin.Rag => ToolNaming.Rag(Tool.Name),
         ToolOrigin.Lookup => ToolNaming.Lookup(Tool.Name),
         ToolOrigin.WebSearch => ToolNaming.WebSearch(Tool.Name),

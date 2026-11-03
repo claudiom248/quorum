@@ -23,6 +23,38 @@ public sealed class Session(QuorumApi api)
 
     public ApiProblem? Problem { get; private set; }
 
+    private LedgerStyle? _ledger;
+
+    /// <summary>How this person wants the tool calls of an answer drawn: read once from their account, and the classic ledger when it cannot be read.</summary>
+    public async Task<LedgerStyle> GetLedgerStyleAsync(CancellationToken cancellationToken = default)
+    {
+        if (_ledger is { } known)
+        {
+            return known;
+        }
+
+        var preferences = await api.GetPreferencesAsync(cancellationToken);
+        if (!preferences.IsSuccess)
+        {
+            return LedgerStyle.Classic;
+        }
+
+        _ledger = LedgerStyles.Parse(preferences.Value.LedgerStyle);
+        return _ledger.Value;
+    }
+
+    /// <summary>Saves the style in the account; it applies from the next render of the chat.</summary>
+    public async Task<ApiResult> SetLedgerStyleAsync(LedgerStyle style, CancellationToken cancellationToken = default)
+    {
+        var result = await api.SetLedgerStyleAsync(LedgerStyles.Key(style), cancellationToken);
+        if (result.IsSuccess)
+        {
+            _ledger = style;
+        }
+
+        return result;
+    }
+
     /// <summary>Loads the state once; later calls reuse it until <see cref="Reset"/>.</summary>
     public async Task<SessionState> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -42,6 +74,7 @@ public sealed class Session(QuorumApi api)
         SetupStatus = null;
         User = null;
         Problem = null;
+        _ledger = null;
     }
 
     private async Task<SessionState> FetchAsync(CancellationToken cancellationToken)

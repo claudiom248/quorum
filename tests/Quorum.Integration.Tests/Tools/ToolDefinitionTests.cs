@@ -40,7 +40,7 @@ public sealed class ToolDefinitionTests
     }
 
     [Fact]
-    public void BuiltinToolsAreExposedWithTheirPrefix() =>
+    public void BuiltinToolsAreExposedByTheirOwnName() =>
         Assert.Equal("calculator", ToolNaming.Builtin("calculator"));
 
     [Theory]

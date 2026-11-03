@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
+using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Tenancy;
@@ -100,10 +101,12 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             tool.ToTable("tools");
             tool.Property(t => t.Origin).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.Name).HasMaxLength(128);
+            tool.Property(t => t.CustomName).HasMaxLength(ToolNameRules.MaxLength);
+            tool.Ignore(t => t.ExposedName);
             tool.Property(t => t.State).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.Policy).HasConversion<string>().HasMaxLength(20);
             tool.Property(t => t.DefinitionHash).HasMaxLength(64);
-            // A built-in or rag tool is unique in its tenant and origin (their exposed names have different prefixes); an MCP tool in its server (two servers may both offer "search").
+            // A built-in or rag tool is unique in its tenant and origin; the names the model reads are kept apart across origins when a tool is saved (spec 015 D-5). An MCP tool is unique in its server (two servers may both offer "search").
             tool.HasIndex(t => new { t.TenantId, t.Origin, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NULL");
             tool.HasIndex(t => new { t.ServerId, t.Name }).IsUnique().HasFilter("\"ServerId\" IS NOT NULL");
             tool.HasOne<McpServer>().WithMany().HasForeignKey(t => t.ServerId).OnDelete(DeleteBehavior.Cascade);

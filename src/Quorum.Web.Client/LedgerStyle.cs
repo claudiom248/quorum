@@ -1,6 +1,6 @@
 namespace Quorum.Web.Client;
 
-/// <summary>How the tool calls of an answer are drawn. The person picks it in the settings; the browser remembers it in a cookie.</summary>
+/// <summary>How the tool calls of an answer are drawn. The person picks it in the settings; it is kept with their account.</summary>
 public enum LedgerStyle
 {
     Classic,
@@ -11,8 +11,6 @@ public enum LedgerStyle
 
 public static class LedgerStyles
 {
-    public const string CookieName = "quorum.ledger";
-
     public static readonly IReadOnlyList<LedgerStyle> All = [LedgerStyle.Classic, LedgerStyle.Cards, LedgerStyle.Timeline, LedgerStyle.Bars];
 
     public static string Label(LedgerStyle style) => style switch
@@ -31,7 +29,7 @@ public static class LedgerStyles
         _ => "A numbered list; the calls of a sub-agent are indented under it.",
     };
 
-    /// <summary>The style a cookie value names: <c>a</c>, <c>b</c> or <c>c</c>; anything else is the classic ledger.</summary>
+    /// <summary>The style a stored value names: <c>cards</c>, <c>timeline</c> or <c>bars</c> (or <c>a</c>, <c>b</c>, <c>c</c>); anything else is the classic ledger.</summary>
     public static LedgerStyle Parse(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "a" or "cards" => LedgerStyle.Cards,
@@ -42,9 +40,9 @@ public static class LedgerStyles
 
     public static string Key(LedgerStyle style) => style switch
     {
-        LedgerStyle.Cards => "a",
-        LedgerStyle.Timeline => "b",
-        LedgerStyle.Bars => "c",
+        LedgerStyle.Cards => "cards",
+        LedgerStyle.Timeline => "timeline",
+        LedgerStyle.Bars => "bars",
         _ => "classic",
     };
 

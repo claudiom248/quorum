@@ -416,6 +416,10 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<string>("Annotations")
                         .HasColumnType("text");
 
+                    b.Property<string>("CustomName")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("DefinitionHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

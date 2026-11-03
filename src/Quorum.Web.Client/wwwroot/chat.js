@@ -76,15 +76,3 @@ window.quorumChat = {
 
     confirm: (message) => window.confirm(message)
 };
-
-// The ledger style is a plain cookie, so a style can be tried on any page and kept for a year.
-window.quorumLedger = {
-    read: (name) => {
-        const found = document.cookie.split("; ").find((part) => part.startsWith(name + "="));
-        return found ? decodeURIComponent(found.slice(name.length + 1)) : null;
-    },
-
-    write: (name, value) => {
-        document.cookie = name + "=" + encodeURIComponent(value) + "; path=/; max-age=31536000; samesite=lax";
-    }
-};

@@ -182,7 +182,7 @@
     [Parameter]
     public Guid? Id { get; set; }
 
-    // How tool calls are drawn: the person's choice in the settings, kept in a cookie.
+    // How tool calls are drawn: the person's choice in the settings, kept in their account.
     private LedgerStyle _ledger;
 
     private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(60);
@@ -248,7 +248,7 @@
 
     private async Task ReadLedgerStyleAsync()
     {
-        _ledger = LedgerStyles.Parse(await JS.InvokeAsync<string?>("quorumLedger.read", LedgerStyles.CookieName));
+        _ledger = await Session.GetLedgerStyleAsync();
         StateHasChanged();
     }
 

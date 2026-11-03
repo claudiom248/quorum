@@ -1,6 +1,6 @@
 @page "/settings"
 @inject QuorumApi Api
-@inject IJSRuntime JS
+@inject Session Session
 
 <PageTitle>Settings · Quorum</PageTitle>
 
@@ -18,7 +18,8 @@
             <MudTabPanel Text="Display" data-tab="display">
                 <MudStack Spacing="2" Class="settings-display">
                     <MudText Typo="Typo.subtitle1">Tool calls in a chat</MudText>
-                    <MudText Typo="Typo.body2" Class="tool-hint">How the calls an assistant makes, and the sub-agents it delegates to, are drawn while it answers. Saved in this browser only.</MudText>
+                    <MudText Typo="Typo.body2" Class="tool-hint">How the calls an assistant makes, and the sub-agents it delegates to, are drawn while it answers. Saved with your account, so it follows you to any browser.</MudText>
+                    <ProblemMessage Problem="_ledgerProblem" />
                     <MudRadioGroup T="LedgerStyle" Value="_ledger" ValueChanged="ChooseLedgerAsync" Class="ledger-choices" data-ledger-style>
                         @foreach (var style in LedgerStyles.All)
                         {
@@ -196,6 +197,7 @@
 
 @code {
     private LedgerStyle _ledger;
+    private ApiProblem? _ledgerProblem;
     private bool _loading = true;
     private bool _busy;
     private List<ServiceTokenInfo> _tokens = [];
@@ -220,7 +222,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _ledger = LedgerStyles.Parse(await JS.InvokeAsync<string?>("quorumLedger.read", LedgerStyles.CookieName));
+        _ledger = await Session.GetLedgerStyleAsync();
 
         // Only an administrator reads the tokens and the web row: for anyone else a refusal simply leaves the tab out.
         await LoadTokensAsync();
@@ -230,8 +232,9 @@
 
     private async Task ChooseLedgerAsync(LedgerStyle style)
     {
-        _ledger = style;
-        await JS.InvokeVoidAsync("quorumLedger.write", LedgerStyles.CookieName, LedgerStyles.Key(style));
+        var saved = await Session.SetLedgerStyleAsync(style);
+        _ledgerProblem = saved.Problem;
+        _ledger = saved.IsSuccess ? style : _ledger;
     }
 
     private async Task LoadWebSearchAsync()

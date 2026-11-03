@@ -61,6 +61,7 @@ internal sealed class TenancyDbContext(DbContextOptions<TenancyDbContext> option
             user.ToTable("users");
             user.Property(u => u.DisplayName).HasMaxLength(100);
             user.Property(u => u.Role).HasMaxLength(50);
+            user.Property(u => u.LedgerStyle).HasMaxLength(20);
             user.HasIndex(u => u.TenantId);
             user.HasOne<Tenant>().WithMany().HasForeignKey(u => u.TenantId);
 

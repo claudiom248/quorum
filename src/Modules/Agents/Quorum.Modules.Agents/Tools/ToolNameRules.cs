@@ -33,7 +33,7 @@ internal static partial class ToolNameRules
         var except = exceptToolId ?? Guid.Empty;
         var tools = await db.Tools.AsNoTracking()
             .Where(t => t.Origin != ToolOrigin.Mcp && t.Id != except)
-            .Select(t => new { t.Origin, t.Name })
+            .Select(t => new { t.Origin, Name = t.CustomName ?? t.Name })
             .ToListAsync(cancellationToken);
         foreach (var tool in tools)
         {
@@ -58,7 +58,7 @@ internal static partial class ToolNameRules
 
         var tools = await db.Tools.AsNoTracking()
             .Where(t => t.Origin != ToolOrigin.Mcp)
-            .Select(t => new { t.Origin, t.Name })
+            .Select(t => new { t.Origin, Name = t.CustomName ?? t.Name })
             .ToListAsync(cancellationToken);
         foreach (var tool in tools)
         {

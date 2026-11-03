@@ -1,32 +1,28 @@
 using System.Net;
+using System.Text.Json;
 using Bunit;
 using Quorum.Web.Client;
 
 namespace Quorum.Integration.Tests.Web;
 
-/// <summary>The Display tab of the settings: how the tool calls of a chat are drawn.</summary>
+/// <summary>The Display tab of the settings: how the tool calls of a chat are drawn, kept with the account of the person.</summary>
 public sealed class SettingsDisplayTests : ListPageTestContext
 {
+    private string _stored = "classic";
+    private HttpStatusCode _write = HttpStatusCode.NoContent;
+
     public SettingsDisplayTests()
     {
         Api.Respond = (method, path) =>
         {
-            if (method == HttpMethod.Get && path == "/api/settings/assistant")
+            if (path == "/api/me/preferences")
             {
-                return FakeApiHandler.Json(new
-                {
-                    baseUrl = "http://ollama:11434/v1",
-                    modelName = "llama3.2",
-                    hasApiKey = false,
-                    contextTokenBudget = 4096,
-                    systemPrompt = "Be brief.",
-                    supportsTools = true,
-                });
+                return method == HttpMethod.Get
+                    ? FakeApiHandler.Json(new { ledgerStyle = _stored })
+                    : new HttpResponseMessage(_write);
             }
 
-            return method == HttpMethod.Get && path == "/api/assistants"
-                ? FakeApiHandler.Json(Array.Empty<object>())
-                : new HttpResponseMessage(HttpStatusCode.NotFound);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         };
     }
 
@@ -53,27 +49,49 @@ public sealed class SettingsDisplayTests : ListPageTestContext
     }
 
     [Fact]
-    public void ChoosingAStyleKeepsItInTheCookieTheChatReads()
+    public void ChoosingAStyleSavesItInTheAccountNotInTheBrowser()
     {
         var page = OpenDisplay();
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("input[type=radio]")));
 
         page.FindAll("input[type=radio]")[(int)LedgerStyle.Timeline].Click();
 
-        page.WaitForAssertion(() =>
-        {
-            var write = Assert.Single(JSInterop.Invocations, call => call.Identifier == "quorumLedger.write");
-            Assert.Equal([LedgerStyles.CookieName, "b"], write.Arguments.Select(argument => argument?.ToString()));
-        });
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, "/api/me/preferences")));
+        Assert.Equal("timeline", Body(Api, HttpMethod.Put, "/api/me/preferences").GetProperty("ledgerStyle").GetString());
+        Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier.Contains("quorumLedger", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void TheStyleSavedInTheCookieIsTheOneSelected()
+    public void TheStyleOfTheAccountIsTheOneSelected()
     {
-        JSInterop.Setup<string?>("quorumLedger.read", LedgerStyles.CookieName).SetResult("c");
+        _stored = "bars";
 
         var page = OpenDisplay();
 
         page.WaitForAssertion(() => Assert.NotNull(page.FindAll("input[type=radio]")[(int)LedgerStyle.Bars].GetAttribute("checked")));
+    }
+
+    [Fact]
+    public void AStyleThatCannotBeSavedSaysSoAndTheSelectionStaysWhereItWas()
+    {
+        _stored = "cards";
+        _write = HttpStatusCode.BadRequest;
+        var page = OpenDisplay();
+        page.WaitForAssertion(() => Assert.NotNull(page.FindAll("input[type=radio]")[(int)LedgerStyle.Cards].GetAttribute("checked")));
+
+        page.FindAll("input[type=radio]")[(int)LedgerStyle.Bars].Click();
+
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, "/api/me/preferences")));
+        page.WaitForAssertion(() => Assert.Null(page.FindAll("input[type=radio]")[(int)LedgerStyle.Bars].GetAttribute("checked")));
+    }
+
+    [Fact]
+    public void WithoutPreferencesTheLedgerIsTheClassicOne()
+    {
+        Api.Respond = (_, _) => new HttpResponseMessage(HttpStatusCode.InternalServerError);
+
+        var page = OpenDisplay();
+
+        page.WaitForAssertion(() => Assert.NotNull(page.FindAll("input[type=radio]")[(int)LedgerStyle.Classic].GetAttribute("checked")));
     }
 }

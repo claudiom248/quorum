@@ -20,6 +20,8 @@ The model and the person read different names for one tool. The admin lists show
 - **D-7**: The name no longer says what a tool is, so the API says it: the tool listing of an agent (`GET /api/agents/{id}/tools`) carries `origin` (`builtin`, `rag`, `lookup`, `web_search`, `web_fetch` or `mcp`) and `server` (MCP tools), and the `tool_call` event carries `isDelegation`, because a sub-agent is called by its slug, as a tool is by its name. The admin groups the tools of an agent as the menu does: built-in, search tools (rag and lookup), web tools (fetch and search), then one group per MCP server.
 - **D-8**: The **audit log** is technical and unchanged: each entry records the kind of tool as its server (`rag`, `lookup`, `web_search`, `web_fetch`, `agent`; none for a built-in tool) and the tool name. Its page shows the technical label (`rag__<name>`).
 - **D-9**: The help text of the forms says what the model reads: the same name, and for a lookup tool the name followed by the operation.
+- **D-10**: A **built-in tool can be renamed** by the administrator like any other tool, on the Built-in tools page. Its default is the name it comes with (`calculator`, `current_datetime`, `ask_user`). The new name follows D-3 and D-5 (one name space), and the old one is free for another tool once the tool is renamed. The row keeps the catalog name as its identity (it ties the row to the code that runs the tool, to the provisioning and to the audit log), so the new name is stored apart (`tools.CustomName`) and an empty name, or the default one, gives the default back. `PUT /api/tools/{id}` takes an optional `name` (omitted keeps it); the tool listing returns the name in use as `name` and the default one as `defaultName`. The audit log keeps recording the default name (D-8). The notice that tells the model to use `ask_user` names the tool as the model is offered it. There is no alias: the name in use is the name everywhere.
+- **D-11**: The Built-in tools page has no search and no filter of the tools to review: the built-in tools are few and are never pending review.
 
 ## Acceptance Criteria
 
@@ -32,7 +34,11 @@ The model and the person read different names for one tool. The admin lists show
 - **AC-7** Given a tool and an agent whose slug equals the name of the tool, whatever the case, When the second is saved, Then it is refused with `409` (or a validation error on the slug of an agent).
 - **AC-8** Given two stored tools that the model would take for one, When the tools of an agent are loaded, Then only the oldest is offered.
 - **AC-9** Given the tool listing of an agent, Then every tool carries its `origin`, and an MCP tool its `server`; the `tool_call` event of a delegation carries `isDelegation`.
-- **AC-10** Given an agent's tool list in the admin, Then the tools are grouped as in D-7 and each is shown by the name the model reads.
+- **AC-10** Given an agent's tool list in the admin, Then the tools are grouped as in D-7 and each is shown by the name the model reads; inside the group of an MCP server a tool is shown by its own name, since the group already names the server.
+- **AC-11** Given a built-in tool renamed `Calc`, Then every list (tools, agent tool picker, ledger, confirmation) shows `Calc`, the listing keeps `defaultName`, and an empty name or the default one gives the default back.
+- **AC-12** Given a rename, Then the state and the policy of the tool are untouched, a name that breaks D-3 or D-5 is refused with `400`, and a tool that is not a built-in one is refused when sent a `name`.
+- **AC-13** Given an active built-in tool renamed `Calc`, When the model is offered the tools, Then it sees `Calc`, a call to `Calc` runs the tool, and the `ask_user` notice names `ask_user` as it is offered.
+- **AC-14** Given the Built-in tools page, Then it shows no search and no filter of the tools to review.
 
 ## Deferred Decisions
 

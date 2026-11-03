@@ -13,7 +13,7 @@
                 @foreach (var tool in group.Tools)
                 {
                     var id = tool.ToolId;
-                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@ToolCallView.DisplayNameOf(tool.Name)" Color="Color.Primary" Dense="true" />
+                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@LabelOf(tool)" Color="Color.Primary" Dense="true" />
                     @if (tool.Manifest is not null)
                     {
                         // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
@@ -44,6 +44,13 @@
 
     [Parameter]
     public EventCallback Changed { get; set; }
+
+    // A group is named by its server, so inside it an MCP tool is shown by its own name: the server is not said twice.
+    private static string LabelOf(PoolTool tool)
+    {
+        var split = tool.Name.IndexOf("__", StringComparison.Ordinal);
+        return tool.Origin == "mcp" && split >= 0 ? tool.Name[(split + 2)..] : tool.Name;
+    }
 
     private bool IsLean(Guid id) => Manifests.TryGetValue(id, out var manifest) && manifest == "Lean";
 
@@ -87,7 +94,7 @@
 
     private IEnumerable<(string Source, List<PoolTool> Tools)> Groups() =>
         Pool
-            .Where(t => string.IsNullOrWhiteSpace(_search) || ToolCallView.DisplayNameOf(t.Name).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(t => string.IsNullOrWhiteSpace(_search) || LabelOf(t).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase) || t.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
             .GroupBy(SourceOf)
             .OrderBy(g => GroupRank(g.Key))
             .ThenBy(g => g.Key, StringComparer.Ordinal)

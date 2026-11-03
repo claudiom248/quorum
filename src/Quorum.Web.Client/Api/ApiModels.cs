@@ -8,6 +8,9 @@ public sealed record SetupStatus(bool IsSetupMode, string? DefaultSystemPrompt, 
 
 public sealed record CurrentUser(string Email, string DisplayName, string Role);
 
+/// <param name="LedgerStyle"><c>classic</c>, <c>cards</c>, <c>timeline</c> or <c>bars</c>: how the tool calls of an answer are drawn.</param>
+public sealed record UserPreferences(string LedgerStyle);
+
 /// <param name="SupportsTools">Whether the model accepts tools, when the server reports it; <see langword="null"/> when it does not say.</param>
 public sealed record ModelConnection(bool Reachable, IReadOnlyList<string> Models, bool? SupportsTools = null);
 
@@ -149,6 +152,8 @@ public static class ScopeKinds
 }
 
 /// <param name="Annotations">What the server claims about the tool (<c>readOnlyHint</c>...): information only, it never changes the policy.</param>
+/// <param name="Name">What the model and people read: for a built-in tool, the name the administrator gave it or else its default.</param>
+/// <param name="DefaultName">The name a built-in tool comes with, which it can be given back; <see langword="null"/> for the other tools.</param>
 public sealed record ToolInfo(
     Guid Id,
     string Origin,
@@ -160,7 +165,8 @@ public sealed record ToolInfo(
     JsonElement? Annotations,
     Guid? ServerId = null,
     ToolScope? ServerScope = null,
-    bool Shared = false);
+    bool Shared = false,
+    string? DefaultName = null);
 
 /// <param name="TenantIds">Tenants besides the owner that see the server (scope <c>Tenant</c>).</param>
 /// <param name="AssistantIds">Assistants that may use a knowledge base or lookup (scope <c>Assistant</c>); empty for tools and servers.</param>

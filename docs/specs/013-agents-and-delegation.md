@@ -3,6 +3,7 @@
 **Status:** Approved (2026-11-03), amended 2026-11-03 while planning (D-11, D-15, D-31, D-39 to D-42, AgentTool, AC-20)
 **Date:** 2026-11-02
 **Amended by spec 015 (2026-11-03):** the slug of an agent is also a name the model reads, so it may not equal the name of a tool, whatever the case (spec 015 D-5); a delegation is told apart from a tool by `isDelegation` on the `tool_call` event (spec 015 D-7).
+**Amended (2026-11-04):** D-43, the ledger style of the chat as a preference of the person.
 
 Replaces the "005 - Declarative config and topology" entry of `docs/deferred.md`. The declarative file format for assistants and agents is a separate, later spec; this one covers the entities, the API, the admin UI and the multi-agent execution.
 
@@ -53,6 +54,7 @@ Today an assistant is a single implicit agent: its system prompt and model endpo
 - **D-40**: The built-in `ask_user` tool is not offered to an agent running as a sub-agent. If the sub-agent lacks something, it says so in its result and the root agent decides whether to ask the user. Confirmation of tools (D-37) is unaffected.
 - **D-41**: The scopes of knowledge bases and lookups (specs 003, 007) stay on assistants. The tools of a sub-agent are resolved against the assistant of the turn.
 - **D-42**: The per-activation lookup manifest (spec 012 D-8) moves with the activation to `agent_tools`.
+- **D-43**: How the tool calls and sub-agents of an answer are drawn in the chat (D-11, D-32) is a **preference of the person**, kept with their account: `GET /api/me/preferences` returns `{ "ledgerStyle": "classic" }` and `PUT /api/me/preferences` takes `ledgerStyle` (`classic`, `cards`, `timeline` or `bars`; omitted keeps it, `classic` is the default). It is chosen in Settings, Display, and follows the person from one browser to another; it is not a cookie. The four styles show the same calls (a sub-agent is one entry with its state and, nested, its calls; its text stays hidden, D-32). The classic ledger numbers its top level only.
 - **D-38**: Spec 004 D-22 (tool calls of a round run one at a time) stays for ordinary tools. Delegation calls of the same round run in parallel up to the per-assistant limit (D-14); confirmations stay one at a time.
 - **D-36**: Deleting an assistant is allowed even when it has conversations. The conversations keep their soft `AssistantId` reference, stay readable, and new messages are refused with a clear error.
 

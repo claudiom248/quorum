@@ -53,11 +53,16 @@ public sealed class AgentToolPickerTests : BunitContext
     }
 
     [Fact]
-    public void AnMcpToolIsShownWithItsServerAndTheOthersByTheirOwnName()
+    public void AnMcpToolIsShownByItsOwnNameInTheGroupOfItsServer()
     {
         var page = Draw(Tool("mcp", "files__read"), Tool("builtin", "calculator", Calculator));
 
-        Assert.Equal(["calculator", "files · read"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
+        Assert.Equal(["calculator", "read"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
+        Assert.Equal(["files"], page.FindAll("[data-source]").Select(s => s.GetAttribute("data-source")).Where(s => s != "builtin").ToArray());
+
+        page.Find("input[type=text]").Input("files__re");
+
+        page.WaitForAssertion(() => Assert.Equal(["read"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).ToArray()));
     }
 
     [Fact]

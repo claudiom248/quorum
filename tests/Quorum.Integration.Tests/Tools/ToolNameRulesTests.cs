@@ -1,3 +1,4 @@
+using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Tools;
 
@@ -46,5 +47,12 @@ public sealed class ToolNameRulesTests
             ToolNaming.FunctionsOf(ToolOrigin.Lookup, "contracts"));
         Assert.Equal(["contracts_count"], [ToolNaming.LookupFunction("contracts", "count")]);
         Assert.Equal(["contracts"], ToolNaming.FunctionsOf(ToolOrigin.Rag, "contracts"));
+    }
+
+    [Fact] // spec 015 AC-13
+    public void TheNoticeAboutAskingTheUserNamesTheToolAsItIsOffered()
+    {
+        Assert.Contains("call the ask_user tool", AssistantChat.AskUserNotice("ask_user"), StringComparison.Ordinal);
+        Assert.Contains("call the Ask tool", AssistantChat.AskUserNotice("Ask"), StringComparison.Ordinal);
     }
 }
