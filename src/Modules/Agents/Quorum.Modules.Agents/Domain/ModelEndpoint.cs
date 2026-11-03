@@ -10,6 +10,9 @@ internal sealed class ModelEndpoint
 
     public Guid TenantId { get; private set; }
 
+    /// <summary>What agents and the admin UI call this endpoint; unique per tenant.</summary>
+    public string Name { get; private set; } = null!;
+
     public string BaseUrl { get; private set; } = null!;
 
     public string ModelName { get; private set; } = null!;
@@ -29,6 +32,7 @@ internal sealed class ModelEndpoint
 
     public static ModelEndpoint Create(
         Guid tenantId,
+        string name,
         Uri baseUrl,
         string modelName,
         string? protectedApiKey,
@@ -38,6 +42,7 @@ internal sealed class ModelEndpoint
         {
             Id = Guid.CreateVersion7(now),
             TenantId = tenantId,
+            Name = name,
             BaseUrl = baseUrl.ToString(),
             ModelName = modelName,
             ProtectedApiKey = protectedApiKey,
@@ -53,6 +58,12 @@ internal sealed class ModelEndpoint
         ModelName = modelName;
         ContextTokenBudget = contextTokenBudget;
         SupportsTools = supportsTools ?? SupportsTools;
+        UpdatedAt = now;
+    }
+
+    public void Rename(string name, DateTimeOffset now)
+    {
+        Name = name;
         UpdatedAt = now;
     }
 

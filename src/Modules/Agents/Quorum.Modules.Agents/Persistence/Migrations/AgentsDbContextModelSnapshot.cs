@@ -233,6 +233,11 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("ProtectedApiKey")
                         .HasColumnType("text");
 
@@ -247,7 +252,8 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
 
                     b.ToTable("model_endpoints", "agents");
                 });
