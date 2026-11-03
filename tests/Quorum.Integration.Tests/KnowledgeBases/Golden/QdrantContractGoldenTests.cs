@@ -22,7 +22,14 @@ public sealed class QdrantContractGoldenTests(SharedQuorumApp host, QdrantFixtur
 
     private const string Secret = "s3cret-qdrant-key-golden";
 
+    private const string RunVariable = "QUORUM_TEST_GOLDEN";
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    // Each of these takes 10-20 s and the contract they pin changes rarely: they run on CI (which sets CI), and here when asked to.
+    private static void SkipUnlessRequested() => Assert.SkipUnless(
+        Environment.GetEnvironmentVariable("CI") == "true" || Environment.GetEnvironmentVariable(RunVariable) == "1",
+        $"Slow contract test, run on CI. Set {RunVariable}=1 to run it here.");
 
     private static string Text(ulong chunk) => SampleCollections.CreateFlat().Points.Single(p => p.Id == chunk).EmbeddingText;
 
@@ -51,6 +58,7 @@ public sealed class QdrantContractGoldenTests(SharedQuorumApp host, QdrantFixtur
     [Fact]
     public async Task InspectingACollectionAnswersAsItAlwaysDid()
     {
+        SkipUnlessRequested();
         var app = host.App;
         var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
@@ -132,6 +140,7 @@ public sealed class QdrantContractGoldenTests(SharedQuorumApp host, QdrantFixtur
     [Fact]
     public async Task RegisteringAndReadingAKnowledgeBaseAnswersAsItAlwaysDid()
     {
+        SkipUnlessRequested();
         var app = host.App;
         var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
@@ -235,6 +244,7 @@ public sealed class QdrantContractGoldenTests(SharedQuorumApp host, QdrantFixtur
     [Fact]
     public async Task VerifyingAKnowledgeBaseAnswersAsItAlwaysDid()
     {
+        SkipUnlessRequested();
         var app = host.App;
         var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
@@ -320,6 +330,7 @@ public sealed class QdrantContractGoldenTests(SharedQuorumApp host, QdrantFixtur
     [Fact]
     public async Task SearchingAKnowledgeBaseAnswersAsItAlwaysDid()
     {
+        SkipUnlessRequested();
         var app = host.App;
         var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
