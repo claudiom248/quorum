@@ -1,6 +1,6 @@
 # Spec 013: Agents and Delegation
 
-**Status:** Approved (2026-11-03)
+**Status:** Approved (2026-11-03), amended 2026-11-03 while planning (D-11, D-15, D-31, D-39 to D-42, AgentTool, AC-20)
 **Date:** 2026-11-02
 
 Replaces the "005 - Declarative config and topology" entry of `docs/deferred.md`. The declarative file format for assistants and agents is a separate, later spec; this one covers the entities, the API, the admin UI and the multi-agent execution.
@@ -21,11 +21,11 @@ Today an assistant is a single implicit agent: its system prompt and model endpo
 - **D-8**: Design constraint: the data model must be serialisable to the future declarative format without restructuring (stable names for cross-references, no runtime state mixed into definitions).
 - **D-9**: The "when to call this agent" description lives on the agent (one description, reused everywhere) and becomes the tool description seen by the caller.
 - **D-10**: An agent can be the root of an assistant and also a sub-agent of another. When it acts as a sub-agent it does not delegate (D-5).
-- **D-11**: Sub-agent runs appear in the tool-call ledger (#146) nested under the delegation call.
+- **D-11**: Sub-agent runs appear in the live tool-call ledger (#146) nested under the delegation call. As for ordinary tools today, a reloaded conversation does not show the ledger: `Message` stores only text, status and sources.
 - **D-12**: The model endpoint of a sub-agent is optional and, when omitted, inherited from the assistant's model, that is the root agent's endpoint once D-6 has moved it there. The root agent's endpoint is therefore mandatory.
 - **D-13**: When a sub-agent fails (endpoint unreachable, tool error, timeout), the failure policy is configured **per edge**. When omitted, the default is to return a readable error as the result of the delegation tool, so the caller can retry, use something else or answer with what it has. The alternative policy makes the failure abort the turn.
 - **D-14**: The limit of sub-agents running in parallel is configured **per assistant**.
-- **D-15**: There is no dedicated timeout for a delegation; only the timeouts of the model calls and of the tools apply.
+- **D-15**: There is no dedicated timeout for a delegation; only the timeouts of the model calls and of the tools apply. See D-39 for how this meets the per-call timeout of spec 004.
 - **D-16**: Deleting an agent that is the root of an assistant or a sub-agent of another is refused with `409 Conflict`, listing the assistants and agents that reference it.
 - **D-17**: Tools attach to agents (`agent_tools` replaces `assistant_tools`). The tool visibility scope `Assistant` is replaced by `Agent` (`ScopeAgentIds` replaces `ScopeAssistantIds`); the migration maps each assistant id to the id of its new root agent.
 - **D-18**: An agent is identified by a **slug unique per tenant** (like `mcp_servers.Name`), which is also the name of the delegation tool seen by the calling model, plus a free `DisplayName` for the UI. The slug is the stable cross-reference of the future declarative format (D-8).
@@ -41,13 +41,17 @@ Today an assistant is a single implicit agent: its system prompt and model endpo
 - **D-28**: Tool audit entries record the invoking `AgentId` in addition to `AssistantId`, also for tool calls made by sub-agents.
 - **D-29**: The result of a delegation obeys the same size rule as any tool result (spec 004 D-10, consistent with spec 002): the limit (`ToolSettings.MaxResultCharacters`, enforced by `ToolCallInvoker` for every tool call) therefore also covers delegations; a final message larger than it is **not truncated**; the caller receives a "result too large" error and may retry asking for a shorter answer.
 - **D-30**: There is no cap on the number of sub-agents of an agent; the admin UI warns when sub-agents plus tools exceed **10**. The warning is informational, not a limit.
-- **D-31**: A delegation persists the task, the tool calls of the sub-agent and its final result; the intermediate model text of the sub-agent is not stored.
+- **D-31**: The durable trace of a delegation is the tool audit log (spec 004 D-12): the delegation call with its task as arguments and its outcome, and the tool calls of the sub-agent with their `AgentId` (D-28). Neither the result content nor the intermediate model text of the sub-agent is stored. Storing the ledger per message is a separate spec.
 - **D-32**: During a delegation the user sees only the ledger entry of the sub-agent with its state (in progress, done, failed) and, nested, its tool calls as they arrive; the sub-agent text is not streamed to the user. Streaming it can be added later without breaking anything.
 - **D-33**: Model endpoints become their own resource (`/api/model-endpoints`); agents reference them by id and a key is stored once.
 - **D-34**: The 013 adds create, read, update and delete of assistants (name, root agent, parallelism limit). Choosing the assistant in the chat UI stays out.
 - **D-35**: `/api/settings/assistant` and the first-run wizard of spec 001 stay as a facade over the root agent (and its endpoint) of the default assistant, so existing installations and the approved wizard keep working.
 
 - **D-37**: Tools under the `confirm` policy (spec 004 D-6, D-9) are allowed inside sub-agents. The confirmation dialog appears in the nested ledger entry with the full arguments and the sub-agent slug, and the sub-agent waits; denial or the 5-minute timeout returns "denied by the user" to the sub-agent. With several pending confirmations, one dialog at a time.
+- **D-39**: A delegation call is exempt from `ToolSettings.CallTimeout` (30 s by default), which would cut almost every delegation on a local model. It runs under the total-time limit of the answer; the tool calls inside the sub-agent each keep their `CallTimeout`, and the sub-agent has its own `MaxRounds`.
+- **D-40**: The built-in `ask_user` tool is not offered to an agent running as a sub-agent. If the sub-agent lacks something, it says so in its result and the root agent decides whether to ask the user. Confirmation of tools (D-37) is unaffected.
+- **D-41**: The scopes of knowledge bases and lookups (specs 003, 007) stay on assistants. The tools of a sub-agent are resolved against the assistant of the turn.
+- **D-42**: The per-activation lookup manifest (spec 012 D-8) moves with the activation to `agent_tools`.
 - **D-38**: Spec 004 D-22 (tool calls of a round run one at a time) stays for ordinary tools. Delegation calls of the same round run in parallel up to the per-assistant limit (D-14); confirmations stay one at a time.
 - **D-36**: Deleting an assistant is allowed even when it has conversations. The conversations keep their soft `AssistantId` reference, stay readable, and new messages are refused with a clear error.
 
@@ -80,7 +84,7 @@ Module Agents (schema `agents`). Every entity carries `TenantId` with the global
 | **ModelEndpoint** (existing, extended) | Id, TenantId, Name (new, unique per tenant), BaseUrl, ModelName, ProtectedApiKey?, ContextTokenBudget, SupportsTools, UpdatedAt | Created by the facade/wizard with a generated name; managed through `/api/model-endpoints` |
 | **Agent** (new) | Id, TenantId, Slug (unique per tenant), DisplayName, Description, SystemPrompt, ModelEndpointId?, Scope (`Global`, `Tenant`), ScopeTenantIds, UpdatedAt | `ModelEndpointId` is null only for agents that always run as sub-agents and inherit the caller's endpoint (D-12) |
 | **AgentSubAgent** (new) | ParentAgentId, ChildAgentId, FailurePolicy (`ReturnError` default, `AbortTurn`), TenantId | Edge of D-24; unique per pair; no self-edge |
-| **AgentTool** (replaces `assistant_tools`) | AgentId, ToolId, TenantId | D-17 |
+| **AgentTool** (replaces `assistant_tools`) | AgentId, ToolId, TenantId, Manifest | D-17, D-42 |
 | **Assistant** (changed) | Id, TenantId, Name, RootAgentId, MaxParallelSubAgents (default 1) | `SystemPrompt` and `ModelEndpointId` removed (D-6) |
 
 - **Slug**: same format as `mcp_servers.Name` (short, lowercase letters, digits and hyphens), because it is the tool name seen by the model.
@@ -186,7 +190,9 @@ Agent document:
 - **AC-17** Given a final message of the sub-agent larger than the tool result limit, When returned, Then the caller receives the "result too large" error and nothing is truncated (D-29).
 - **AC-18** Given a turn with running sub-agents, When the user cancels or the connection closes, Then the sub-agents and their model and tool calls are cancelled (D-22).
 - **AC-19** Given a delegation, When shown in the ledger, Then the sub-agent appears as one entry with its state and, nested, its tool calls; its text is not shown (D-32).
-- **AC-20** Given a reloaded conversation, When shown, Then the task, the sub-agent tool calls and the final result of each delegation are there, without intermediate sub-agent text (D-31).
+- **AC-20** Given a delegation, When audited, Then the audit log holds the delegation call with the task as arguments and its outcome, and the sub-agent tool calls with their `AgentId`; neither result content nor intermediate sub-agent text is stored (D-31).
+- **AC-30** Given a delegation that runs longer than `CallTimeout`, When the answer is within its total time, Then the delegation is not cut (D-39).
+- **AC-31** Given an agent running as a sub-agent, When its tools are offered, Then `ask_user` is not among them (D-40).
 - **AC-21** Given a tool call by a sub-agent, When audited, Then the entry records the sub-agent `AgentId` and the `AssistantId` (D-28).
 - **AC-22** Given the first-run wizard or the Settings page, When saving the assistant model and prompt, Then they are written to the default assistant's root agent and its endpoint (D-35).
 - **AC-23** Given an assistant whose root agent has no model endpoint, When saving it, Then the request is rejected (D-12).
