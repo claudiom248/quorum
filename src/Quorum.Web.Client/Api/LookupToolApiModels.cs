@@ -18,7 +18,7 @@ public sealed record LookupToolListItem(
     bool Shared,
     IReadOnlyList<ToolWarning> Warnings);
 
-/// <param name="Name">What the model sees: <c>lookup_values__name</c>, <c>lookup_documents__name</c> or <c>lookup_count__name</c>. <paramref name="EstimatedTokens"/> is what it takes of the context.</param>
+/// <param name="Name">What the model sees: <c>lookup_entries__name</c>, <c>lookup_documents__name</c> or <c>lookup_count__name</c>. <paramref name="EstimatedTokens"/> is what it takes of the context.</param>
 public sealed record LookupToolDefinitionInfo(string Name, string Description, JsonElement InputSchema, int EstimatedTokens);
 
 /// <param name="Alias">The name the model sees for the lookup, when one was given.</param>

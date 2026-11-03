@@ -28,7 +28,7 @@ internal sealed record LookupBinding(
     public IReadOnlyDictionary<string, Guid> FilterFields { get; init; } = new Dictionary<string, Guid>();
 
     /// <summary>What this function of the tool does: <c>values</c>, <c>documents</c> or <c>count</c>; filled by <see cref="LookupToolResolver"/>, which gives each its own function.</summary>
-    public string Operation { get; init; } = LookupToolDefinition.ValuesOperation;
+    public string Operation { get; init; } = LookupToolDefinition.EntriesOperation;
 
     /// <summary>The attributes each entity list can be ordered by, by the name the model was offered the list under; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> SortableAttributes { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
@@ -54,17 +54,20 @@ internal sealed record LookupBinding(
     /// <summary>The lookups the tool offers, by the name the model knows them under, as the catalog describes them; filled by <see cref="LookupToolResolver"/>.</summary>
     public IReadOnlyDictionary<string, LookupInfo> Targets { get; init; } = new Dictionary<string, LookupInfo>();
 
-    /// <summary>The fixed conditions on one lookup's attributes, in the shape the lookups read them.</summary>
+    /// <summary>The conditions on the attributes of the one list a call reads, written by the model (spec 012 A1-5): they narrow the tool's fixed ones, never widen them.</summary>
+    public IReadOnlyList<LookupRowFilter> ExtraRowFilters { get; init; } = [];
+
+    /// <summary>The conditions on one lookup's attributes, in the shape the lookups read them: the fixed ones, and the model's of this call.</summary>
     public IReadOnlyList<LookupRowFilter> RowFiltersOf(Guid lookupId)
     {
         using var document = JsonDocument.Parse(LookupFilters);
         if (!document.RootElement.TryGetProperty(lookupId.ToString(), out var perLookup) || perLookup.ValueKind != JsonValueKind.Object)
         {
-            return [];
+            return ExtraRowFilters;
         }
 
         return [.. perLookup.EnumerateObject().SelectMany(attribute => attribute.Value.EnumerateObject()
-            .Select(condition => new LookupRowFilter(attribute.Name, condition.Name, condition.Value.Clone())))];
+            .Select(condition => new LookupRowFilter(attribute.Name, condition.Name, condition.Value.Clone()))), .. ExtraRowFilters];
     }
 
     public static LookupBinding From(LookupTool row)

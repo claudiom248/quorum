@@ -40,6 +40,7 @@ internal static class LookupFilterSql
             LookupAttributeType.Number => Ordered(arguments, filter, $"(CASE WHEN jsonb_typeof({raw}) = 'number' THEN {text}::double precision END)", inList, value, numeric: true),
             LookupAttributeType.Date => Ordered(arguments, filter, $"(CASE WHEN jsonb_typeof({raw}) = 'string' THEN {text}::timestamptz END)", inList, value, numeric: false),
             LookupAttributeType.TextList => Texts(arguments, filter, raw, text, inList, containsOne: true),
+            LookupAttributeType.Boolean => Booleans(arguments, filter, raw, inList),
             _ => Texts(arguments, filter, raw, text, inList, containsOne: false),
         };
     }
@@ -78,6 +79,13 @@ internal static class LookupFilterSql
         return containsOne
             ? $"({text} = {one} OR {raw} @> jsonb_build_array({one}::text))"
             : $"({text} = {one})";
+    }
+
+    // A boolean is compared as the JSON it is stored as: true is not the text "true" (spec 012 D-3).
+    private static string Booleans(List<object> arguments, LookupFilter filter, string raw, bool inList)
+    {
+        var items = inList ? filter.Value!.AsArray().Select(item => item!.ToJsonString()).ToArray() : [filter.Value!.ToJsonString()];
+        return "(" + string.Join(" OR ", items.Select(item => $"{raw} = {Add(arguments, item)}::jsonb")) + ")";
     }
 
     private static object Scalar(System.Text.Json.Nodes.JsonNode value, bool numeric) => numeric

@@ -89,7 +89,7 @@ public static class LookupToolView
 
     /// <summary>The operations the model is offered, as the server generates them: <c>values</c> always, the others only when the tool queries knowledge bases.</summary>
     public static IReadOnlyList<string> Operations(bool queriesKnowledgeBases) =>
-        queriesKnowledgeBases ? ["values", "documents", "count"] : ["values"];
+        queriesKnowledgeBases ? ["entries", "documents", "count"] : ["entries"];
 
     /// <summary>A knowledge base can be asked live when its mapping has the text or the document id role (spec 012 A1-2).</summary>
     public static bool IsDocumentKnowledgeBase(KnowledgeBaseDetail? detail) =>

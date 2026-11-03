@@ -122,7 +122,7 @@ internal sealed class LookupEditEndpoints : IEndpointGroup
 
             if (lookup.KnowledgeBaseId is { } knowledgeBaseId && attributes.Any(a => a.DictionaryFieldId is not null))
             {
-                var mapped = await db.KnowledgeBases.Where(k => k.Id == knowledgeBaseId).Select(k => k.Mapping).SingleAsync(cancellationToken);
+                var mapped = await db.KnowledgeBases.AsNoTracking().Where(k => k.Id == knowledgeBaseId).Select(k => k.Mapping).SingleAsync(cancellationToken);
                 if (attributes.Any(a => a.DictionaryFieldId is { } field && mapped.Fields.All(f => f.DictionaryFieldId != field)))
                 {
                     return AttributeNotMapped.ToProblem();

@@ -246,7 +246,7 @@ public sealed class LookupToolFormTests
         Assert.True(RagToolView.SupportsDocumentIds([shared, OtherBaseId], details));
     }
 
-    [Fact]
+    [Fact] // AC-A1-12
     public void TheSelectorOffersOnlyTheDocumentKnowledgeBasesAsLive()
     {
         KnowledgeBaseDetail Detail(Guid id, MappingRoles roles, string? entityName) => new(
@@ -267,7 +267,7 @@ public sealed class LookupToolFormTests
         Assert.Equal(BaseId, Assert.Single(targets).KnowledgeBase!.Id);
     }
 
-    [Fact]
+    [Fact] // AC-A1-12
     public void AnEntityListAndItsKnowledgeBaseBlockEachOther()
     {
         var entities = new LookupChoice(Guid.NewGuid(), "vendors", LookupKinds.Entity, OtherBaseId, "vendors");

@@ -117,6 +117,11 @@ internal sealed class ManualLookupImportEndpoints : IEndpointGroup
             return LookupAttributeType.Number;
         }
 
+        if (cells.All(cell => bool.TryParse(cell, out _)))
+        {
+            return LookupAttributeType.Boolean;
+        }
+
         return cells.All(cell => DateTimeOffset.TryParse(cell, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out _))
             ? LookupAttributeType.Date
             : LookupAttributeType.Text;

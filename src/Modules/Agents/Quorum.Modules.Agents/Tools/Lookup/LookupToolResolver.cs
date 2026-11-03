@@ -119,11 +119,11 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
-            // And each list says which of them it can be filtered by.
+            // And each computed list says which of them it can be filtered by: a list of entities or typed by hand is filtered by its own attributes (spec 012 A1-5).
             var offered = offeredByName
                 .Select(l => l with
                 {
-                    Filters = l.Info.Kind != LookupKindInfo.Manual && l.Info.KnowledgeBaseId is { } baseId && basesById.TryGetValue(baseId, out var source)
+                    Filters = l.Info.Kind == LookupKindInfo.Computed && l.Info.KnowledgeBaseId is { } baseId && basesById.TryGetValue(baseId, out var source)
                         ? [.. exposed.Where(f => source.FieldIds.Contains(f.Id)).Select(f => f.Name)]
                         : [],
                 })

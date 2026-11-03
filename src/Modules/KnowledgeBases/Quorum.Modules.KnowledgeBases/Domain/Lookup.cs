@@ -44,6 +44,7 @@ internal enum LookupAttributeType
     Number,
     Date,
     TextList,
+    Boolean,
 }
 
 /// <summary>

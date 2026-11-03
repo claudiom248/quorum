@@ -32,7 +32,7 @@ internal static class LookupToolDefinition
     public const string CursorParameter = "cursor";
 
     /// <summary>Reads a list of values, or computes one now when the call carries filters (spec 007 D-7, D-12).</summary>
-    public const string ValuesOperation = "values";
+    public const string EntriesOperation = "entries";
 
     /// <summary>Lists the documents that match the filters; offered only when the tool queries knowledge bases.</summary>
     public const string DocumentsOperation = "documents";
@@ -81,7 +81,7 @@ internal static class LookupToolDefinition
 
         List<GeneratedLookupFunction> functions =
         [
-            new(ValuesOperation, DescribeValues(introduction, lookups, valuesFields.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFields, filters, valuesAppliesTo)),
+            new(EntriesOperation, DescribeValues(introduction, lookups, valuesFields.Count > 0), ValuesSchema(lookups, knowledgeBases, valuesFields, filters, valuesAppliesTo)),
         ];
 
         if (live)
@@ -190,7 +190,7 @@ internal static class LookupToolDefinition
         if (filters.Count > 0)
         {
             text.Append(" A filter value must be written exactly as the list of that field holds it: read the list with ")
-                .Append(ToolNaming.LookupValues(toolName)).Append('.');
+                .Append(ToolNaming.LookupEntries(toolName)).Append('.');
         }
     }
 

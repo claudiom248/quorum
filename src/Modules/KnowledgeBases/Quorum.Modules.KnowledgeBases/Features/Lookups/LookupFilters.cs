@@ -151,6 +151,7 @@ internal static class LookupFilters
     private static bool FitsScalar(LookupAttributeType type, JsonNode? value) => type switch
     {
         LookupAttributeType.Number => value?.GetValueKind() == JsonValueKind.Number,
+        LookupAttributeType.Boolean => value?.GetValueKind() is JsonValueKind.True or JsonValueKind.False,
         LookupAttributeType.Date => value is not null && value.GetValueKind() == JsonValueKind.String
             && DateTimeOffset.TryParse(value.GetValue<string>(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out _),
         _ => value?.GetValueKind() == JsonValueKind.String,
@@ -188,6 +189,8 @@ internal static class LookupFilters
             JsonValueKind.String when DateTimeOffset.TryParse(node.GetValue<string>(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var left)
                 && DateTimeOffset.TryParse(value.GetValue<string>(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var right) => left.CompareTo(right),
             JsonValueKind.String => string.CompareOrdinal(node.GetValue<string>(), value.GetValue<string>()),
+            // Both are true or both are false: the kinds were checked to be equal above.
+            JsonValueKind.True or JsonValueKind.False => 0,
             _ => null,
         };
     }

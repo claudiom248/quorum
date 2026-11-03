@@ -14,7 +14,7 @@ public sealed class LookupToolUnitTests
 
     /// <summary>The function that reads the lists, which is where the lists, their filters and their sort are described.</summary>
     private static GeneratedLookupFunction ValuesOf(string description, IReadOnlyList<OfferedLookup> lookups, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields) =>
-        AllOf(description, lookups, knowledgeBases, fields).Functions.Single(f => f.Operation == "values");
+        AllOf(description, lookups, knowledgeBases, fields).Functions.Single(f => f.Operation == "entries");
 
     private static GeneratedLookupDefinition AllOf(string description, IReadOnlyList<OfferedLookup> lookups, IReadOnlyList<KnowledgeBaseInfo> knowledgeBases, IReadOnlyList<FilterFieldInfo> fields) =>
         LookupToolDefinition.Build("lists", description, lookups, knowledgeBases, fields, fields);
@@ -154,19 +154,19 @@ public sealed class LookupToolUnitTests
 
         var all = AllOf("Reads lists.", lookups, knowledgeBases, fields);
 
-        Assert.Equal(["values", "documents", "count"], all.Functions.Select(f => f.Operation));
+        Assert.Equal(["entries", "documents", "count"], all.Functions.Select(f => f.Operation));
         string[] Parameters(string operation)
         {
             using var schema = JsonDocument.Parse(all.Functions.Single(f => f.Operation == operation).InputSchema);
             return [.. schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name)];
         }
 
-        Assert.Equal(["lookup", "audience", "search", "sort", "limit", "cursor"], Parameters("values"));
+        Assert.Equal(["lookup", "audience", "search", "sort", "limit", "cursor"], Parameters("entries"));
         Assert.Equal(["knowledge_base", "audience", "limit", "cursor"], Parameters("documents"));
         Assert.Equal(["knowledge_base", "audience"], Parameters("count"));
         Assert.DoesNotContain("Lists:", all.Functions.Single(f => f.Operation == "documents").Description, StringComparison.Ordinal);
         Assert.Contains("Knowledge bases:", all.Functions.Single(f => f.Operation == "count").Description, StringComparison.Ordinal);
-        Assert.DoesNotContain("Knowledge bases:", all.Functions.Single(f => f.Operation == "values").Description, StringComparison.Ordinal);
+        Assert.DoesNotContain("Knowledge bases:", all.Functions.Single(f => f.Operation == "entries").Description, StringComparison.Ordinal);
     }
 
     [Fact] // AC-31
@@ -191,11 +191,11 @@ public sealed class LookupToolUnitTests
         }
 
         // `country` belongs to the vendors, which the documents do not have; `audience` is on the documents and on the list computed from them.
-        Assert.Equal(["lookup", "audience", "country", "search", "sort", "limit", "cursor"], Parameters("values"));
+        Assert.Equal(["lookup", "audience", "country", "search", "sort", "limit", "cursor"], Parameters("entries"));
         Assert.Equal(["audience", "limit", "cursor"], Parameters("documents"));
         Assert.DoesNotContain("country", Parameters("count"));
 
-        var description = all.Functions.Single(f => f.Operation == "values").Description;
+        var description = all.Functions.Single(f => f.Operation == "entries").Description;
         Assert.Contains("- audience (from contracts; counts documents; only the values that occur in the documents; can be filtered by audience)", description, StringComparison.Ordinal);
         Assert.Contains("with their attributes; can be filtered by country)", description, StringComparison.Ordinal);
         Assert.Contains("- language (typed by hand; it may hold values that occur in no document; cannot be filtered: read it whole)", description, StringComparison.Ordinal);
@@ -216,7 +216,7 @@ public sealed class LookupToolUnitTests
     [Fact]
     public void TheFunctionsAreNamedAfterWhatTheyDo()
     {
-        Assert.Equal("lookup_values__lists", ToolNaming.LookupFunction("lists", "values"));
+        Assert.Equal("lookup_entries__lists", ToolNaming.LookupFunction("lists", "entries"));
         Assert.Equal("lookup_documents__lists", ToolNaming.LookupFunction("lists", "documents"));
         Assert.Equal("lookup_count__lists", ToolNaming.LookupFunction("lists", "count"));
         Assert.True(ToolNaming.LookupDocuments(new string('x', 40)).Length <= ToolNaming.MaxLength);
