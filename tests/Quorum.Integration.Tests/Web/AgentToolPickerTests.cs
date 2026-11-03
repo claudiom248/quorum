@@ -1,4 +1,4 @@
-using Bunit;
+﻿using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
 using Quorum.Web.Client.Api;
@@ -45,7 +45,7 @@ public sealed class AgentToolPickerTests : BunitContext
 
         Assert.Equal(["builtin", "search tools", "web tools", "files"], page.FindAll("[data-source]").Select(s => s.GetAttribute("data-source")).ToArray());
         var search = page.Find("[data-source='search tools']").ParentElement!;
-        Assert.Equal(["lookup · contracts", "rag · search_contracts"], search.QuerySelectorAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
+        Assert.Equal(["contracts", "search_contracts"], search.QuerySelectorAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
     }
 
     [Fact]
@@ -92,5 +92,13 @@ public sealed class AgentToolPickerTests : BunitContext
         page.Find(".mud-switch input").Change(true);
 
         Assert.Equal("Lean", _manifests[Lookup]);
+    }
+
+    [Fact]
+    public void TwoToolsOfOneGroupWithTheSameNameSayWhatEachOneIs()
+    {
+        var page = Draw(Tool("lookup__contracts", Lookup, "Full"), Tool("rag__contracts"), Tool("rag__vendors"));
+
+        Assert.Equal(["lookup · contracts", "rag · contracts", "vendors"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
     }
 }

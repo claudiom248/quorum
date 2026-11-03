@@ -12,6 +12,10 @@ public sealed class ToolCallViewTests
     [Theory]
     [InlineData("builtin__calculator", "calculator")]
     [InlineData("files__read_file", "files · read_file")]
+    [InlineData("rag__search_contracts", "search_contracts")]
+    [InlineData("lookup__contracts", "contracts")]
+    [InlineData("web_fetch__fetch", "fetch")]
+    [InlineData("web_search__web", "web")]
     [InlineData("plain", "plain")]
     public void TheNameIsShownWithoutThePrefixOfBuiltinTools(string exposed, string shown) =>
         Assert.Equal(shown, ToolCallView.DisplayNameOf(exposed));

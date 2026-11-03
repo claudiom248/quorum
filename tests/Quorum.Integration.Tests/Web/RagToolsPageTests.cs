@@ -176,7 +176,7 @@ public sealed class RagToolsPageTests : ListPageTestContext
         var page = Visit<RagTools>("/tools/rag");
 
         var row = page.Find("[data-rag=company]").ParentElement!.ParentElement!;
-        Assert.Contains("rag__company", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("company", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("policies", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Tenant", row.TextContent, StringComparison.Ordinal);
         Assert.NotEmpty(row.QuerySelectorAll("[data-warning=\"tool.too_large\"]"));

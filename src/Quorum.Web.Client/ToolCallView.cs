@@ -75,8 +75,12 @@ public sealed class ToolCallView
 
     public bool IsWaiting => State is ToolCallState.WaitingForConfirmation or ToolCallState.WaitingForAnswer;
 
-    /// <summary><c>calculator</c> for <c>builtin__calculator</c>, <c>files · read</c> for <c>files__read</c>.</summary>
+    /// <summary><c>calculator</c> for <c>builtin__calculator</c>, <c>search_contracts</c> for <c>rag__search_contracts</c>, <c>files · read</c> for <c>files__read</c>.</summary>
     public string DisplayName => DisplayNameOf(ToolName);
+
+    // The tools made in Quorum say what they are by where they are listed and by their own name: the prefix is a technical namespace for
+    // the model. An MCP tool keeps its server, because two servers may offer a tool of the same name.
+    private static readonly HashSet<string> QuorumOrigins = ["builtin", "rag", "lookup", "web_fetch", "web_search"];
 
     /// <summary>The name of a tool as people read it, from the name the model uses.</summary>
     public static string DisplayNameOf(string toolName)
@@ -91,9 +95,17 @@ public sealed class ToolCallView
 
         var origin = toolName[..split];
         var name = toolName[(split + 2)..];
-        return origin == "builtin" ? name : $"{origin} · {name}";
+        return QuorumOrigins.Contains(origin) ? name : $"{origin} · {name}";
     }
 
+    /// <summary>The name with where it comes from (<c>rag · contracts</c>), for the places where two tools would otherwise read alike.</summary>
+    public static string QualifiedNameOf(string toolName)
+    {
+        ArgumentNullException.ThrowIfNull(toolName);
+
+        var split = toolName.IndexOf("__", StringComparison.Ordinal);
+        return split < 0 || toolName[..split] == "builtin" ? DisplayNameOf(toolName) : $"{toolName[..split]} · {toolName[(split + 2)..]}";
+    }
     public string StatusLabel => State switch
     {
         ToolCallState.Running => "Running…",

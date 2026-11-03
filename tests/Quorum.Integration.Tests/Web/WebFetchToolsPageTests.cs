@@ -136,7 +136,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
         var page = Visit<WebTools>("/tools/web/fetch", p => p.Add(c => c.Section, "fetch"));
 
         var row = page.Find("[data-web-fetch-tool=reader]").ParentElement!.ParentElement!;
-        Assert.Contains("web_fetch__reader", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("reader", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Reads the pages the model names.", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Tenant", row.TextContent, StringComparison.Ordinal);
     }

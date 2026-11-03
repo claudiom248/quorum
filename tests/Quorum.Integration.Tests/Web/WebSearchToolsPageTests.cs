@@ -143,7 +143,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
         var page = Visit<WebTools>("/tools/web/search", p => p.Add(c => c.Section, "search"));
 
         var row = page.Find("[data-web-search-tool=research]").ParentElement!.ParentElement!;
-        Assert.Contains("web_search__research", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("research", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Searches the open web for what is newest.", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Tenant", row.TextContent, StringComparison.Ordinal);
     }

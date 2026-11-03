@@ -13,7 +13,7 @@
                 @foreach (var tool in group.Tools)
                 {
                     var id = tool.ToolId;
-                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@ToolCallView.DisplayNameOf(tool.Name)" Color="Color.Primary" Dense="true" />
+                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@LabelOf(tool, group.Tools)" Color="Color.Primary" Dense="true" />
                     @if (tool.Manifest is not null)
                     {
                         // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
@@ -44,6 +44,10 @@
 
     [Parameter]
     public EventCallback Changed { get; set; }
+
+    // A lookup and a rag tool may share a name: then each says what it is.
+    private static string LabelOf(PoolTool tool, List<PoolTool> group) =>
+        group.Count(other => ToolCallView.DisplayNameOf(other.Name) == ToolCallView.DisplayNameOf(tool.Name)) > 1 ? ToolCallView.QualifiedNameOf(tool.Name) : ToolCallView.DisplayNameOf(tool.Name);
 
     private bool IsLean(Guid id) => Manifests.TryGetValue(id, out var manifest) && manifest == "Lean";
 

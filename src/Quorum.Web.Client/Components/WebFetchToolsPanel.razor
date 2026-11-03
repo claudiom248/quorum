@@ -23,7 +23,7 @@
             </HeaderContent>
             <RowTemplate Context="tool">
                 <MudTd DataLabel="Name">
-                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-fetch-tool="@tool.Name">web_fetch__@tool.Name</MudLink>
+                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-fetch-tool="@tool.Name">@tool.Name</MudLink>
                     <div class="tool-row-description">@tool.Description</div>
                 </MudTd>
                 <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Agents="_agents" Shared="tool.Shared" /></MudTd>
@@ -171,7 +171,7 @@
     [Parameter]
     public string? Id { get; set; }
 
-    private string DrawerTitle => _form is null ? "Web fetch tool" : _form.IsNew ? "Add web fetch tool" : $"Edit web_fetch__{_form.OriginalName}";
+    private string DrawerTitle => _form is null ? "Web fetch tool" : _form.IsNew ? "Add web fetch tool" : $"Edit {_form.OriginalName}";
 
     private bool IsDirty => _form is not null && !string.Equals(_initial, Snapshot(), StringComparison.Ordinal);
 
@@ -316,7 +316,7 @@
             if (saved.IsSuccess)
             {
                 Open(saved.Value);
-                _notice = $"web_fetch__{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
+                _notice = $"{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();
@@ -338,7 +338,7 @@
         var form = _form!;
         if (!await Confirmations.ConfirmDeleteAsync(
                 Dialogs,
-                $"Delete web_fetch__{form.OriginalName}?",
+                $"Delete {form.OriginalName}?",
                 "It is removed from every assistant. The audit log keeps its name.",
                 "Delete tool"))
         {
@@ -354,7 +354,7 @@
                 return;
             }
 
-            _notice = $"web_fetch__{form.OriginalName} was deleted.";
+            _notice = $"{form.OriginalName} was deleted.";
             _form = null;
             _definition = null;
             _drawer?.SkipNextGuard();

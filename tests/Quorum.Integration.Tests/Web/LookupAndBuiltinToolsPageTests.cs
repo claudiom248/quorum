@@ -115,7 +115,7 @@ public sealed class LookupAndBuiltinToolsPageTests : ListPageTestContext
         var page = Visit<Quorum.Web.Client.Pages.LookupTools>("/tools/lookup");
 
         var row = page.Find("[data-lookup-tool=countries]").ParentElement!.ParentElement!;
-        Assert.Contains("lookup__countries", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("countries", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("nationality", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("also asks live: policies", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Approve and enable", row.TextContent, StringComparison.Ordinal);
