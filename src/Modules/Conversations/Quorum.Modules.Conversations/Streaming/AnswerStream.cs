@@ -92,10 +92,12 @@ internal static class AnswerStream
                             yield return tool switch
                             {
                                 ToolCallEvent call => new SseItem<object>(
-                                    new ToolCallEventData(call.CallId, call.Tool, ArgumentsOf(call.Arguments), call.RequiresConfirmation, call.ExpiresAt),
+                                    new ToolCallEventData(
+                                        call.CallId, call.Tool, ArgumentsOf(call.Arguments), call.RequiresConfirmation, call.ExpiresAt, call.ParentCallId, call.AgentSlug),
                                     "tool_call"),
                                 ToolResultEvent result => new SseItem<object>(
-                                    new ToolResultEventData(result.CallId, StatusName(result.Status), result.Content, result.SizeCharacters),
+                                    new ToolResultEventData(
+                                        result.CallId, StatusName(result.Status), result.Content, result.SizeCharacters, result.ParentCallId, result.AgentSlug),
                                     "tool_result"),
                                 UserQuestionEvent question => new SseItem<object>(
                                     new AskUserEventData(question.CallId, question.Question, question.ExpiresAt),
@@ -202,9 +204,22 @@ internal sealed record AnswerDelta(string Text);
 
 internal sealed record AnswerReasoning(string Text);
 
-internal sealed record ToolCallEventData(Guid CallId, string Tool, object Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt);
+internal sealed record ToolCallEventData(
+    Guid CallId,
+    string Tool,
+    object Arguments,
+    bool RequiresConfirmation,
+    DateTimeOffset? ExpiresAt,
+    Guid? ParentCallId = null,
+    string? AgentSlug = null);
 
-internal sealed record ToolResultEventData(Guid CallId, string Status, string Content, int SizeCharacters);
+internal sealed record ToolResultEventData(
+    Guid CallId,
+    string Status,
+    string Content,
+    int SizeCharacters,
+    Guid? ParentCallId = null,
+    string? AgentSlug = null);
 
 internal sealed record SourcesEventData(List<SourceData> Sources);
 

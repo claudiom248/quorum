@@ -95,7 +95,8 @@ internal sealed class AssistantChat(
                 prepared.Tools,
                 ContextWindow.CharacterBudget(prepared.ContextTokenBudget),
                 context,
-                prepared.Connections),
+                prepared.Connections,
+                prepared.Configuration.MaxParallelSubAgents),
             cancellationToken);
 
         return Result<IAsyncEnumerable<AnswerChunk>>.Success(answer);
@@ -143,8 +144,8 @@ internal sealed class AssistantChat(
     {
         var configuration = await (
             from assistant in db.Assistants
-            join agent in db.Agents on assistant.RootAgentId equals agent.Id
-            join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
+            join agent in VisibleAgents() on assistant.RootAgentId equals agent.Id
+            join endpoint in db.ModelEndpoints.IgnoreQueryFilters() on agent.ModelEndpointId equals endpoint.Id
             where assistant.Id == assistantId
             select new AssistantConfiguration(
                 agent.Id,
@@ -153,7 +154,8 @@ internal sealed class AssistantChat(
                 endpoint.ModelName,
                 endpoint.ProtectedApiKey,
                 endpoint.ContextTokenBudget,
-                endpoint.SupportsTools))
+                endpoint.SupportsTools,
+                assistant.MaxParallelSubAgents))
             .AsNoTracking()
             .SingleOrDefaultAsync(cancellationToken);
         if (configuration is null)
@@ -163,13 +165,27 @@ internal sealed class AssistantChat(
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
         IReadOnlyList<ActiveTool> active = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, configuration.AgentId, cancellationToken);
+
+        // The sub-agents are read now, with their tools, and the turn keeps them as they are (spec 013 AC-25).
+        var subAgents = caller is null ? [] : await LoadSubAgentsAsync(configuration, cancellationToken);
+
         // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
+        // The knowledge bases and lookups are the assistant's, also for the tools of a sub-agent (spec 013 D-41).
         active = caller is null ? active : await ragResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
         active = caller is null ? active : await lookupResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
-        var settings = active.Count == 0 ? null : await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        var resolvedSubAgents = new List<SubAgentSource>(subAgents.Count);
+        foreach (var subAgent in subAgents)
+        {
+            var subActive = await ragResolver.ResolveActiveAsync(subAgent.Active, caller!.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
+            subActive = await lookupResolver.ResolveActiveAsync(subActive, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
+            resolvedSubAgents.Add(subAgent with { Active = subActive });
+        }
+
+        var allActive = active.Concat(resolvedSubAgents.SelectMany(subAgent => subAgent.Active)).ToList();
+        var settings = allActive.Count == 0 && resolvedSubAgents.Count == 0 ? null : await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         var limits = settings is null ? ToolLimits.Default : ToolLimits.From(settings);
         // Only an assistant with MCP tools has sessions to open and close.
-        var connections = active.Any(tool => tool.Server is not null) ? toolFactory.NewConnections() : null;
+        var connections = allActive.Any(tool => tool.Server is not null) ? toolFactory.NewConnections() : null;
         // One numbering for the answer, so [3] means one source whether a knowledge base or the web gave it (spec 005, AC-6).
         var numbering = caller is null ? null : new SourceNumbering();
         var rag = caller is null ? null : new RagRuntime(knowledgeBaseSearch, numbering!, caller.TenantId, assistantId, limits.MaxResultCharacters);
@@ -178,11 +194,11 @@ internal sealed class AssistantChat(
         // The web configuration is the platform's one row, read once when any web tool is offered.
         WebSearchRuntime? webSearch = null;
         WebFetchRuntime? webFetch = null;
-        if (numbering is not null && active.Any(tool => tool.WebSearch is not null || tool.WebFetch is not null))
+        if (numbering is not null && allActive.Any(tool => tool.WebSearch is not null || tool.WebFetch is not null))
         {
             var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
 
-            if (active.Any(tool => tool.WebSearch is not null))
+            if (allActive.Any(tool => tool.WebSearch is not null))
             {
                 var seconds = web?.SearchTimeoutSeconds ?? WebConfiguration.DefaultSearchTimeoutSeconds;
 
@@ -198,7 +214,7 @@ internal sealed class AssistantChat(
                     invocations);
             }
 
-            if (active.Any(tool => tool.WebFetch is not null))
+            if (allActive.Any(tool => tool.WebFetch is not null))
             {
                 var fetchSeconds = web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
                 var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : fetchSeconds;
@@ -220,7 +236,26 @@ internal sealed class AssistantChat(
             }
         }
 
-        var tools = toolFactory.Create(active, connections, rag, lookup, webSearch, webFetch);
+        var tools = toolFactory.Create(active, connections, rag, lookup, webSearch, webFetch).ToList();
+
+        // One delegation tool per sub-agent of the root agent; a sub-agent never gets delegation tools of its own (D-5).
+        foreach (var subAgent in resolvedSubAgents)
+        {
+            var subTools = toolFactory.Create(subAgent.Active, connections, rag, lookup, webSearch, webFetch);
+            tools.Add(new AgentQuorumTool(new SubAgentDefinition(
+                subAgent.AgentId,
+                subAgent.Slug,
+                subAgent.Description,
+                subAgent.FailurePolicy,
+                new Uri(subAgent.Endpoint.BaseUrl),
+                subAgent.Endpoint.ModelName,
+                apiKeyProtector.Unprotect(subAgent.Endpoint.ProtectedApiKey),
+                subAgent.Endpoint.ContextTokenBudget,
+                WithNotices(subAgent.SystemPrompt, subTools),
+                subTools,
+                subTools.Count == 0 ? 0 : ToolDefinitionRenderer.Length(subTools.Select(ToolDefinition.From).ToList()))));
+        }
+
         if (tools.Count == 0)
         {
             return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded, connections);
@@ -228,15 +263,86 @@ internal sealed class AssistantChat(
 
         return new PreparedAssistant(
             configuration,
-            configuration.SystemPrompt + ToolDataNotice
-                + (tools.Any(tool => tool is AskUserQuorumTool) ? AskUserNotice : string.Empty)
-                + (tools.Any(tool => tool is RagQuorumTool or WebSearchQuorumTool or WebFetchQuorumTool) ? SearchCitationNotice : string.Empty),
+            WithNotices(configuration.SystemPrompt, tools),
             caller,
             tools,
             ToolDefinitionRenderer.Length(tools.Select(ToolDefinition.From).ToList()),
             limits,
             connections);
     }
+
+    /// <summary>
+    /// The agents the current tenant may use: its own, and the ones another tenant shares with it through their scope (spec 013 D-21, D-25).
+    /// The owner's endpoint and edges go with them, so those are read without the tenant filter too.
+    /// </summary>
+    private IQueryable<Agent> VisibleAgents()
+    {
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+        return db.Agents.IgnoreQueryFilters().Where(agent =>
+            agent.TenantId == tenantId
+            || agent.Scope == AgentScope.Global
+            || (agent.Scope == AgentScope.Tenant && agent.ScopeTenantIds.Contains(tenantId)));
+    }
+
+    /// <summary>The system prompt with the notices that go with the tools offered; unchanged when there are none.</summary>
+    private static string WithNotices(string systemPrompt, IReadOnlyList<QuorumTool> tools) =>
+        tools.Count == 0
+            ? systemPrompt
+            : systemPrompt + ToolDataNotice
+                + (tools.Any(tool => tool is AskUserQuorumTool) ? AskUserNotice : string.Empty)
+                + (tools.Any(tool => tool is RagQuorumTool or WebSearchQuorumTool or WebFetchQuorumTool) ? SearchCitationNotice : string.Empty);
+
+    /// <summary>
+    /// The sub-agents of the root agent with what they run on: their own endpoint or the root's (D-12), and their own tools, without
+    /// <c>ask_user</c> (D-40). A sub-agent on an endpoint without tool support gets none, as the root agent would.
+    /// </summary>
+    private async Task<IReadOnlyList<SubAgentSource>> LoadSubAgentsAsync(AssistantConfiguration root, CancellationToken cancellationToken)
+    {
+        var edges = await (
+            from edge in db.AgentSubAgents.IgnoreQueryFilters()
+            join child in VisibleAgents() on edge.ChildAgentId equals child.Id
+            where edge.ParentAgentId == root.AgentId
+            orderby child.Slug
+            select new { child.Id, child.Slug, child.Description, child.SystemPrompt, child.ModelEndpointId, edge.FailurePolicy })
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        if (edges.Count == 0)
+        {
+            return [];
+        }
+
+        var endpointIds = edges.Select(edge => edge.ModelEndpointId).OfType<Guid>().Distinct().ToList();
+        var endpoints = await db.ModelEndpoints.IgnoreQueryFilters().AsNoTracking()
+            .Where(endpoint => endpointIds.Contains(endpoint.Id))
+            .Select(endpoint => new { endpoint.Id, Configuration = new EndpointConfiguration(endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget, endpoint.SupportsTools) })
+            .ToDictionaryAsync(endpoint => endpoint.Id, endpoint => endpoint.Configuration, cancellationToken);
+        var inherited = new EndpointConfiguration(root.BaseUrl, root.ModelName, root.ProtectedApiKey, root.ContextTokenBudget, root.SupportsTools);
+
+        var sources = new List<SubAgentSource>(edges.Count);
+        foreach (var edge in edges)
+        {
+            var endpoint = edge.ModelEndpointId is { } endpointId && endpoints.TryGetValue(endpointId, out var own) ? own : inherited;
+            var active = endpoint.SupportsTools
+                ? (await ActiveToolsQuery.LoadAsync(db, edge.Id, cancellationToken))
+                    .Where(tool => !(tool.Origin == ToolOrigin.Builtin && tool.Name == BuiltinToolCatalog.AskUser))
+                    .ToList()
+                : [];
+            sources.Add(new SubAgentSource(edge.Id, edge.Slug, edge.Description, edge.SystemPrompt, edge.FailurePolicy, endpoint, active));
+        }
+
+        return sources;
+    }
+
+    private sealed record EndpointConfiguration(string BaseUrl, string ModelName, string? ProtectedApiKey, int ContextTokenBudget, bool SupportsTools);
+
+    private sealed record SubAgentSource(
+        Guid AgentId,
+        string Slug,
+        string Description,
+        string SystemPrompt,
+        SubAgentFailurePolicy FailurePolicy,
+        EndpointConfiguration Endpoint,
+        IReadOnlyList<ActiveTool> Active);
 
     private sealed record AssistantConfiguration(
         Guid AgentId,
@@ -245,7 +351,8 @@ internal sealed class AssistantChat(
         string ModelName,
         string? ProtectedApiKey,
         int ContextTokenBudget,
-        bool SupportsTools);
+        bool SupportsTools,
+        int MaxParallelSubAgents);
 
     private sealed record PreparedAssistant(
         AssistantConfiguration Configuration,

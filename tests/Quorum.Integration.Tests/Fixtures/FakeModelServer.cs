@@ -25,7 +25,19 @@ public sealed class FakeModelServer : HttpMessageHandler
 
     public string? LastAuthorization { get; private set; }
 
+    private int _inFlight;
+    private int _maxInFlight;
+
     public ChatScript Chat { get; set; } = ChatScript.Reply("Hello", " from", " the", " model.");
+
+    /// <summary>
+    /// Chooses the script of a chat request from its body, before the queued rounds are looked at; <see langword="null"/> leaves the
+    /// request to them. For answers in which several agents talk to the model at once, whose requests do not arrive in a fixed order.
+    /// </summary>
+    public Func<JsonElement, ChatScript?>? Responder { get; set; }
+
+    /// <summary>The most chat responses that were streaming at the same moment.</summary>
+    public int MaxConcurrentChats => Volatile.Read(ref _maxInFlight);
 
     /// <summary>The JSON bodies of the chat completion requests received, oldest first.</summary>
     public IReadOnlyList<JsonElement> ChatRequests => _chatRequests.ToList();
@@ -106,7 +118,7 @@ public sealed class FakeModelServer : HttpMessageHandler
                 var json = await request.Content!.ReadAsStringAsync(cancellationToken);
                 var chatRequest = JsonDocument.Parse(json).RootElement.Clone();
                 _chatRequests.Enqueue(chatRequest);
-                var script = _rounds.TryDequeue(out var round) ? round : Chat;
+                var script = Responder?.Invoke(chatRequest) ?? (_rounds.TryDequeue(out var round) ? round : Chat);
 
                 if (script.RejectsTools && chatRequest.TryGetProperty("tools", out _))
                 {
@@ -126,13 +138,24 @@ public sealed class FakeModelServer : HttpMessageHandler
 
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StreamContent(new ScriptedSseStream(script)) { Headers = { { "Content-Type", "text/event-stream" } } },
+                    Content = new StreamContent(new ScriptedSseStream(script, OnStreamStarted, OnStreamEnded)) { Headers = { { "Content-Type", "text/event-stream" } } },
                 };
             }
         }
 
         throw new HttpRequestException($"Connection refused ({request.RequestUri!.Authority})");
     }
+
+    private void OnStreamStarted()
+    {
+        var now = Interlocked.Increment(ref _inFlight);
+        int seen;
+        while ((seen = Volatile.Read(ref _maxInFlight)) < now && Interlocked.CompareExchange(ref _maxInFlight, now, seen) != seen)
+        {
+        }
+    }
+
+    private void OnStreamEnded() => Interlocked.Decrement(ref _inFlight);
 
     private async Task<HttpResponseMessage> EmbedAsync(string baseUrl, HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -227,8 +250,11 @@ public sealed class FakeModelServer : HttpMessageHandler
     }
 
     /// <summary>OpenAI chat completion chunks as server-sent events, produced lazily so delays and failures happen mid-stream.</summary>
-    private sealed class ScriptedSseStream(ChatScript script) : Stream
+    private sealed class ScriptedSseStream(ChatScript script, Action onStart, Action onEnd) : Stream
     {
+        private bool _started;
+        private bool _ended;
+
         private readonly Queue<byte[]> _pending = new();
         private int _nextChunk;
         private int _nextReasoning;
@@ -248,10 +274,17 @@ public sealed class FakeModelServer : HttpMessageHandler
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
+            if (!_started)
+            {
+                _started = true;
+                onStart();
+            }
+
             if (_current is null || _offset == _current.Length)
             {
                 if (!await MoveNextAsync(cancellationToken))
                 {
+                    End();
                     return 0;
                 }
             }
@@ -264,6 +297,21 @@ public sealed class FakeModelServer : HttpMessageHandler
 
         public override int Read(byte[] buffer, int offset, int count) =>
             ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        protected override void Dispose(bool disposing)
+        {
+            End();
+            base.Dispose(disposing);
+        }
+
+        private void End()
+        {
+            if (_started && !_ended)
+            {
+                _ended = true;
+                onEnd();
+            }
+        }
 
         public override void Flush()
         {

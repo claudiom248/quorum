@@ -44,6 +44,9 @@ internal static class ToolNaming
     /// <summary>What the audit log records as the server of a web fetch tool, as <see cref="WebSearchAuditServer"/> does for web search tools.</summary>
     public const string WebFetchAuditServer = "web_fetch";
 
+    /// <summary>What the audit log records as the server of a delegation to a sub-agent (spec 013 D-31): the call has the sub-agent slug as its tool name.</summary>
+    public const string AgentAuditServer = "agent";
+
     /// <summary>The longest name the model APIs accept (D-16).</summary>
     public const int MaxLength = 64;
 

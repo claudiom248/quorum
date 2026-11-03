@@ -59,7 +59,9 @@ public static class AgentsModule
         services.AddScoped<IAssistantCatalog>(provider => provider.GetRequiredService<AssistantChat>());
         services.AddSingleton<QuorumToolFactory>();
         services.AddScoped<AnswerPipeline>();
+        services.AddScoped<AgentsDatabaseGate>();
         services.AddScoped<ToolCallInvoker>();
+        services.AddScoped<SubAgentRunner>();
         services.AddScoped<ToolAccess>();
         services.AddSingleton<PendingInteractions>();
         services.AddScoped<AuditRetention>();

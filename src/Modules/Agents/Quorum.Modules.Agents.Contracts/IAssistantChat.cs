@@ -113,16 +113,31 @@ public abstract record ToolEvent(Guid CallId);
 
 /// <param name="Tool">The name the model called the tool by, e.g. <c>builtin__calculator</c>.</param>
 /// <param name="Arguments">The arguments as the model sent them: JSON text when they are valid JSON.</param>
-public sealed record ToolCallEvent(Guid CallId, string Tool, string Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt)
-    : ToolEvent(CallId);
+/// <param name="ParentCallId">The delegation call a sub-agent made this call under (spec 013 D-11); <see langword="null"/> for the root agent's calls.</param>
+/// <param name="AgentSlug">The slug of the sub-agent that made the call; <see langword="null"/> for the root agent's calls.</param>
+public sealed record ToolCallEvent(
+    Guid CallId,
+    string Tool,
+    string Arguments,
+    bool RequiresConfirmation,
+    DateTimeOffset? ExpiresAt,
+    Guid? ParentCallId = null,
+    string? AgentSlug = null) : ToolEvent(CallId);
 
 /// <param name="Question">What the model wants to know, as it wrote it.</param>
 /// <param name="ExpiresAt">When the question counts as unanswered.</param>
 public sealed record UserQuestionEvent(Guid CallId, string Question, DateTimeOffset ExpiresAt) : ToolEvent(CallId);
 
 /// <param name="Content">The result, or the error that the model received in its place.</param>
-public sealed record ToolResultEvent(Guid CallId, ToolResultStatus Status, string Content, int SizeCharacters)
-    : ToolEvent(CallId);
+/// <param name="ParentCallId">As on <see cref="ToolCallEvent"/>.</param>
+/// <param name="AgentSlug">As on <see cref="ToolCallEvent"/>.</param>
+public sealed record ToolResultEvent(
+    Guid CallId,
+    ToolResultStatus Status,
+    string Content,
+    int SizeCharacters,
+    Guid? ParentCallId = null,
+    string? AgentSlug = null) : ToolEvent(CallId);
 
 /// <summary>
 /// A source the model may cite as <c>[n]</c> (spec 003 D-15): where a passage it was given came from. References only, never the
