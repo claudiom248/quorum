@@ -144,7 +144,7 @@ internal static class ComputedLookups
         return [.. attributes.Select(f => new LookupAttribute(keys[f.DictionaryFieldId], fields[f.DictionaryFieldId].Name, TypeOf(fields[f.DictionaryFieldId].Type), f.DictionaryFieldId))];
     }
 
-    /// <summary>The attribute type of a dictionary field. A boolean is kept as text, because the spec's types have no boolean (spec 012 D-3).</summary>
+    /// <summary>The attribute type of a dictionary field (spec 012 D-3).</summary>
     private static LookupAttributeType TypeOf(DictionaryFieldType type) => type switch
     {
         DictionaryFieldType.Number => LookupAttributeType.Number,
@@ -157,6 +157,7 @@ internal static class ComputedLookups
     private static bool EntitiesChange(KnowledgeBaseMapping before, KnowledgeBaseMapping after) =>
         before.EntityName != after.EntityName
         || !AttributesOf(before).SequenceEqual(AttributesOf(after));
+
 
     private static IEnumerable<(Guid Field, string Path)> AttributesOf(KnowledgeBaseMapping mapping) =>
         mapping.Fields.Where(f => f.EntityAttribute).Select(f => (f.DictionaryFieldId, f.Path)).Order();

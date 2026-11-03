@@ -21,7 +21,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
     private static FakeToolCall Call(object arguments, string id = "call_1", string? tool = null)
     {
         var node = JsonSerializer.SerializeToNode(arguments)!.AsObject();
-        var operation = node["operation"]?.GetValue<string>() ?? "values";
+        var operation = node["operation"]?.GetValue<string>() ?? "entries";
         node.Remove("operation");
         return new(tool ?? $"lookup_{operation}__lists", node.ToJsonString(), id);
     }
@@ -154,7 +154,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         await AskAsync(setup, Call(new { }));
 
         var entry = Assert.Single(await ToolFixtures.AuditRowsAsync(setup.App));
-        Assert.Equal("lists.values", entry.ToolName);
+        Assert.Equal("lists.entries", entry.ToolName);
         Assert.Equal("lookup", entry.ServerName);
         Assert.Equal("Succeeded", entry.Outcome);
         Assert.Equal(2, entry.SourceCount);

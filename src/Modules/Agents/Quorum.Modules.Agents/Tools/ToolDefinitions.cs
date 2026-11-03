@@ -26,7 +26,7 @@ internal static class ToolNaming
 
     public const string WebFetchPrefix = "web_fetch__";
 
-    public const string LookupValuesPrefix = "lookup_values__";
+    public const string LookupEntriesPrefix = "lookup_entries__";
 
     public const string LookupDocumentsPrefix = "lookup_documents__";
 
@@ -60,7 +60,7 @@ internal static class ToolNaming
     public static string WebFetch(string toolName) => WebFetchPrefix + toolName;
 
     /// <summary>The function that reads the lists of a lookup tool; its sisters ask the knowledge bases (spec 007 A1).</summary>
-    public static string LookupValues(string toolName) => LookupValuesPrefix + toolName;
+    public static string LookupEntries(string toolName) => LookupEntriesPrefix + toolName;
 
     public static string LookupDocuments(string toolName) => LookupDocumentsPrefix + toolName;
 
@@ -73,7 +73,7 @@ internal static class ToolNaming
         "count" => LookupCount(toolName),
         "describe" => LookupDescribe(toolName),
         "query" => LookupQuery(toolName),
-        _ => LookupValues(toolName),
+        _ => LookupEntries(toolName),
     };
 
     /// <summary>The lean manifest's function that describes the lists and knowledge bases of a lookup tool (spec 012 D-8).</summary>

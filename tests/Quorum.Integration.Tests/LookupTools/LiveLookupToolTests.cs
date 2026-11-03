@@ -106,7 +106,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     private static FakeToolCall Call(object arguments, string id = "call_1")
     {
         var node = JsonSerializer.SerializeToNode(arguments)!.AsObject();
-        var operation = node["operation"]?.GetValue<string>() ?? "values";
+        var operation = node["operation"]?.GetValue<string>() ?? "entries";
         node.Remove("operation");
         return new($"lookup_{operation}__lists", node.ToJsonString(), id);
     }
@@ -152,13 +152,13 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         var detail = await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool);
 
         // One function for each thing the tool does, each with only its own arguments.
-        Assert.Equal(["lookup_values__lists", "lookup_documents__lists", "lookup_count__lists"], detail.Definitions.Select(d => d.Name));
-        Assert.Equal(["audience", "cursor", "department", "limit", "lookup", "search", "sort"], detail.Function("values").Parameters.Order().ToArray());
+        Assert.Equal(["lookup_entries__lists", "lookup_documents__lists", "lookup_count__lists"], detail.Definitions.Select(d => d.Name));
+        Assert.Equal(["audience", "cursor", "department", "limit", "lookup", "search", "sort"], detail.Function("entries").Parameters.Order().ToArray());
         Assert.Equal(["audience", "cursor", "department", "limit"], detail.Function("documents").Parameters.Order().ToArray());
         Assert.Equal(["audience", "department"], detail.Function("count").Parameters.Order().ToArray());
         Assert.Contains("contracts", detail.Function("documents").Description, StringComparison.Ordinal);
         Assert.False(detail.Function("documents").InputSchema.TryGetProperty("required", out var required), required.ToString());
-        Assert.Equal(detail.Definition!.Name, detail.Function("values").Name);
+        Assert.Equal(detail.Definition!.Name, detail.Function("entries").Name);
     }
 
     [Fact] // AC-27
@@ -169,7 +169,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
 
         var detail = await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool);
 
-        Assert.Equal("lookup_values__lists", Assert.Single(detail.Definitions).Name);
+        Assert.Equal("lookup_entries__lists", Assert.Single(detail.Definitions).Name);
         var events = await AskAsync(live.Setup, Call(new { operation = "count" }));
         Assert.Equal("failed", StatusOf(events));
         // A function that was not offered is not found: the model never had it.
@@ -370,7 +370,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
         var live = await StartAsync();
         await using var _ = live.Setup;
 
-        var events = await AskAsync(live.Setup, Call(new { operation = "values", lookup = "supplier", audience = Managers }));
+        var events = await AskAsync(live.Setup, Call(new { operation = "entries", lookup = "supplier", audience = Managers }));
 
         var result = ResultOf(events);
         Assert.Equal("succeeded", StatusOf(events));

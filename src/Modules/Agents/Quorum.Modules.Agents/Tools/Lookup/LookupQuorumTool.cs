@@ -41,7 +41,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
         // Each function of the tool does one thing: the model chose it by name, and the definition it was given has only its arguments.
         return binding.Operation switch
         {
-            LookupToolDefinition.ValuesOperation => await ValuesAsync(binding, asked, limit, cancellationToken),
+            LookupToolDefinition.EntriesOperation => await ValuesAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.DocumentsOperation when live => await DocumentsAsync(binding, asked, limit, cancellationToken),
             LookupToolDefinition.CountOperation when live => await CountAsync(binding, asked, cancellationToken),
             LookupLeanDefinition.DescribeOperation => Describe(binding, arguments),
@@ -107,7 +107,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 ["description"] = list.Description,
                 ["operations"] = new JsonObject
                 {
-                    [LookupLeanDefinition.EntriesOperation] = new JsonObject
+                    [LookupToolDefinition.EntriesOperation] = new JsonObject
                     {
                         ["description"] = computed
                             ? "The values that exist, with the number of documents of each, most common first or by name. With filters, the values that occur among the documents that match them."
@@ -189,6 +189,11 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
             ["type"] = attribute.Type,
             ["operators"] = IsRanged(attribute) ? new JsonArray("eq", "in", "min", "max") : new JsonArray("eq", "in"),
         };
+        if (attribute.Type == "Boolean")
+        {
+            filter["accepts"] = "true or false";
+        }
+
         if (!string.IsNullOrWhiteSpace(attribute.Label))
         {
             filter["description"] = attribute.Label;
@@ -251,7 +256,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                     + (bases.Count > 0 ? $" The operations documents and count are for the knowledge bases: {string.Join(", ", bases)}." : string.Empty));
             }
 
-            mapped = operation == LookupToolDefinition.CountOperation ? LookupLeanDefinition.ListCountOperation : LookupToolDefinition.ValuesOperation;
+            mapped = operation == LookupToolDefinition.CountOperation ? LookupLeanDefinition.ListCountOperation : LookupToolDefinition.EntriesOperation;
             inner[LookupToolDefinition.LookupParameter] = target;
         }
         else if (binding.KnowledgeBases.ContainsKey(target))
