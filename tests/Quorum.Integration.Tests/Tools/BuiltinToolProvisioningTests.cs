@@ -8,15 +8,18 @@ using Quorum.Modules.Agents.Tools;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres)
+public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-16
     public async Task ANewSetupActivatesTheBuiltinToolsOnTheDefaultAssistant()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
 
         var tools = await ToolsApi.ListToolsAsync(client);
@@ -110,8 +113,8 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres)
     [Fact] // AC-18
     public async Task AnotherTenantsToolsAreNotVisible()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await using (var scope = app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();

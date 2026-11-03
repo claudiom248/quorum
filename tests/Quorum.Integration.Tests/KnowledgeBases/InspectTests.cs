@@ -8,8 +8,12 @@ using Quorum.SampleKnowledgeBase;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class InspectTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static SampleDataset Custom(string name, IEnumerable<SamplePoint> points, params SamplePayloadIndex[] indexes) =>
         new(name, "A collection shaped by one test.", [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)], indexes, points.ToList());
 
@@ -19,8 +23,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-6
     public async Task AtMostTwentyPointsAreSampledAndTheDraftComesBack()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + "thirty";
         var early = Enumerable.Range(1, 20).Select(i => Point(i, """{"text":"early","year":2024}"""));
@@ -41,8 +45,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-6
     public async Task FieldsWithoutAPayloadIndexAreListedAndWarnedAbout()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var prefix = QdrantFixture.NewPrefix();
         await qdrant.SeedAsync([SampleCollections.CreateUnindexed(prefix + SampleCollections.Unindexed), SampleCollections.CreateFlat(prefix + SampleCollections.Flat)]);
@@ -60,8 +64,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-7
     public async Task TheRolesAndTheNestedYearAreFoundInASampledCollection()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.Nested;
         await qdrant.SeedAsync([SampleCollections.CreateNested(name)]);
@@ -80,8 +84,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-8
     public async Task APastedSchemaGivesTheSameDraftAsSamplingEvenOnAnEmptyCollection()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var prefix = QdrantFixture.NewPrefix();
         await qdrant.SeedAsync([SampleCollections.CreateNested(prefix + "full"), SampleCollections.CreateEmpty(prefix + "empty")]);
@@ -98,8 +102,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-8
     public async Task ASchemaSentAsAnObjectIsAcceptedToo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + "empty";
         await qdrant.SeedAsync([SampleCollections.CreateEmpty(name)]);
@@ -116,8 +120,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [InlineData("{\"type\":\"object\"}")]
     public async Task ASchemaThatIsNotAnObjectSchemaIsRefused(string schema)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + "any";
         await qdrant.SeedAsync([SampleCollections.CreateEmpty(name)]);
@@ -131,8 +135,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-8
     public async Task ASchemaOverOneHundredKilobytesIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = "{\"type\":\"object\",\"description\":\"" + new string('x', 101 * 1024) + "\",\"properties\":{\"a\":{\"type\":\"string\"}}}";
 
         using var response = await InspectApi.PostAsync(admin, "http://[::1]:1", "any", schema: schema);
@@ -144,8 +147,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-9
     public async Task CollidingInvalidAndReservedNamesAreFlaggedAndNotProposed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + "names";
         await qdrant.SeedAsync([Custom(name, [Point(1, """{"text":"a","meta":{"year":1},"info":{"year":2},"Release-Date":"x","size_min":3,"team":"hr"}""")])]);
@@ -164,8 +167,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task AVisibleDictionaryFieldIsLinkedAndOneOfAnotherTypeIsAConflict()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + "known";
         await qdrant.SeedAsync([Custom(name, [Point(1, """{"text":"a","year":2024,"department":"hr","team":"x"}""")])]);
@@ -185,8 +188,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact] // AC-11 (the inspect half: the admin is told to choose)
     public async Task SeveralVectorsAndNoChosenNameAskTheAdminToChoose()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.NamedVectors;
         await qdrant.SeedAsync([SampleCollections.CreateNamedVectors(name)]);
@@ -208,8 +211,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task VectorsOfAnotherSizeThanTheModelsAreAMismatch()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.OtherVectorSize;
         await qdrant.SeedAsync([SampleCollections.CreateOtherVectorSize(name)]);
@@ -227,8 +230,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task MatchingDimensionsAreConfirmed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(name)]);
@@ -246,8 +249,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task AnEmptyCollectionHasNothingToSampleAndSaysSo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.Empty;
         await qdrant.SeedAsync([SampleCollections.CreateEmpty(name)]);
@@ -263,8 +266,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task AMissingCollectionIsReportedOnAReachableServer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         var report = await InspectApi.InspectOkAsync(admin, await qdrant.GetUrlAsync(), QdrantFixture.NewPrefix() + "missing");
@@ -280,8 +283,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task AServerThatDoesNotAnswerIsReportedAsUnreachableWithTheEmbeddingStillChecked()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         var report = await InspectApi.InspectOkAsync(admin, new Uri("http://[::1]:1"), "anything");
@@ -296,8 +299,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     public async Task TheApiKeyIsSentWhenThereIsOneAndNeverReturnedOrLogged()
     {
         const string key = "s3cr3t-key-for-the-test";
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(name)], apiKey: key);
@@ -320,8 +323,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task AnApiKeyWithCharactersAHeaderCannotCarryIsRefusedByName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await InspectApi.PostAsync(admin, "http://[::1]:1", "docs", apiKey: "key-with-é-in-it");
 
@@ -332,8 +334,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task ACallTheCallerCancelledIsCancelledNotReportedAsAFailureOfTheServer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         var connector = app.Services.GetRequiredService<QdrantConnector>();
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
@@ -346,8 +347,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task AModelTheEndpointDoesNotServeIsAWarningNotAFailure()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var name = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(name)]);
 
@@ -363,8 +363,8 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [Fact]
     public async Task InspectingLeavesNoQueryChunkTextOrDocumentNameInTheLogs()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var name = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(name)]);
@@ -385,8 +385,7 @@ public sealed class InspectTests(PostgresFixture postgres, QdrantFixture qdrant)
     [InlineData("Qdrant", "http://127.0.0.1:6333", "docs", "", "knowledge_base.invalid_embedding_model")]
     public async Task AnIncompleteRequestIsRefusedBeforeAnythingIsContacted(string? kind, string? url, string collection, string model, string code)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.PostAsJsonAsync(
             InspectApi.Inspect,

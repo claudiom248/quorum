@@ -6,8 +6,12 @@ using Quorum.SampleKnowledgeBase;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class KnowledgeBaseTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Secret = "s3cret-qdrant-key-8f2a";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -50,8 +54,8 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
     [Fact] // AC-16
     public async Task TheApiKeyIsEncryptedAtRestAndNeverReturnedOrLogged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)], Secret);
@@ -89,8 +93,8 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
     [InlineData("wrong-key", "knowledge_base.qdrant_unauthorized")]
     public async Task ACollectionThatIsNotReadyIsSavedUnavailableWithAWarningThatNamesTheCause(string situation, string code)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var prefix = QdrantFixture.NewPrefix();
         await qdrant.SeedAsync([SampleCollections.CreateOtherVectorSize(prefix + SampleCollections.OtherVectorSize)]);
@@ -187,8 +191,8 @@ public sealed class KnowledgeBaseTests(PostgresFixture postgres, QdrantFixture q
     [Fact] // AC-11
     public async Task ACollectionWithSeveralVectorsNeedsOneToBeChosen()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.NamedVectors;
         await qdrant.SeedAsync([SampleCollections.CreateNamedVectors(collection)]);

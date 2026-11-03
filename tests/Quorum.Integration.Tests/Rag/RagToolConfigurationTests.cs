@@ -10,8 +10,12 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>Configuring a rag tool: the definition generated from its binding, the limits, the rule between scopes (spec 003, AC-19 to AC-23).</summary>
-public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly string[] Hr = ["hr"];
@@ -22,7 +26,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-19
     public async Task TheDefinitionHasTheQueryAndTheFiltersOfTheExposedFieldsAndNoKnowledgeBaseParameterForASingleOne()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
 
@@ -41,7 +45,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-19, D-11
     public async Task SeveralKnowledgeBasesAddAParameterToChooseOneByName()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var beta = await setup.RegisterAsync("beta");
         var alpha = await setup.RegisterAsync("alpha");
 
@@ -55,7 +59,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-20
     public async Task EachTypeOfFieldGetsItsOwnParameters()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var flat = await setup.RegisterAsync("flat");
         var tags = await setup.RegisterAsync("tagged", SampleCollections.CreateTags, SearchApi.TagsMapping, SearchApi.TagsCreateFields);
         var fields = await setup.FieldsAsync();
@@ -78,7 +82,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // D-11
     public async Task TheDescriptionOfAFieldReachesTheModel()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         using var described = await setup.Admin.PutAsJsonAsync(DictionaryApi.Field(fields["department"]), new { description = "The owning department, like hr or finance" }, Ct);
@@ -92,7 +96,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-23
     public async Task ANewRagToolIsEnabledWithTheAutoPolicyAndListedAmongTheToolsWithOriginRag()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
 
@@ -111,7 +115,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-23
     public async Task TheAdministratorCanAskForConfirmationFromTheStart()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], policy: "Confirm"));
@@ -122,7 +126,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task TheDetailShowsTheConfigurationAndTheDefinitionTheModelWouldGet()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         var created = await RagApi.CreateOkAsync(
@@ -143,7 +147,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task TheDefaultLimitsApplyWhenTheRequestLeavesThemOut()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
@@ -160,7 +164,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [InlineData("this-name-is-longer-than-forty-characters-for-sure")]
     public async Task AnInvalidNameIsRejected(string name)
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(name: name, knowledgeBaseIds: [kb]));
@@ -172,7 +176,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task ADescriptionIsRequired()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(description: "  ", knowledgeBaseIds: [kb]));
@@ -184,7 +188,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-21
     public async Task MoreThanTenKnowledgeBasesAreRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: Enumerable.Range(0, 11).Select(_ => Guid.NewGuid())));
 
@@ -195,7 +199,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AToolWithoutKnowledgeBasesIsRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: []));
 
@@ -210,7 +214,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [InlineData(null, null, 50_001)]
     public async Task LimitsOutsideTheCeilingsAreRejected(int? topK, double? threshold, int? cap)
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], topK: topK, scoreThreshold: threshold, maxResultCharacters: cap));
@@ -222,7 +226,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-21
     public async Task MoreThanTenExposedFieldsAreRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: Enumerable.Range(0, 11).Select(_ => Guid.NewGuid())));
@@ -234,7 +238,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AFieldTheKnowledgeBasesDoNotMapCannotBeExposed()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var region = await DictionaryApi.CreateOkAsync(setup.Admin, "region", "Text");
 
@@ -255,7 +259,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [InlineData("""["department"]""")] // not an object
     public async Task AFixedFilterThatDoesNotFitItsFieldIsRejected(string filters)
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         using var document = JsonDocument.Parse(filters);
 
@@ -268,7 +272,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // D-11
     public async Task AFixedFilterOnAFieldThatIsNotExposedIsAccepted()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         var created = await RagApi.CreateOkAsync(
@@ -281,7 +285,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-22
     public async Task AGlobalToolCannotIncludeAKnowledgeBaseOnlyTheTenantSees()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var tenantOnly = await setup.RegisterAsync("tenant-only", createFields: [], mapping: KnowledgeBaseApi.TextOnly());
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [tenantOnly], scope: new { kind = "Global" }));
@@ -293,7 +297,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-22
     public async Task ATenantToolCannotIncludeAKnowledgeBaseOfSomeAssistantsOnly()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var assistantOnly = await setup.RegisterAsync("assistant-only", scope: new { kind = "Assistant", assistantIds = new[] { setup.AssistantId } });
 
         using var wide = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [assistantOnly]));
@@ -307,7 +311,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AKnowledgeBaseThatDoesNotExistIsNotVisible()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [Guid.NewGuid()]));
 
@@ -320,7 +324,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [InlineData("Agent")]
     public async Task AnInvalidScopeIsRejectedLikeTheOneOfAServer(string kind)
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], scope: new { kind }));
@@ -332,7 +336,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AnAgentThatDoesNotExistCannotBeInTheScope()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], scope: new { kind = "Agent", agentIds = new[] { Guid.NewGuid() } }));
@@ -344,7 +348,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task TheNameOfARagToolIsUniqueButMayBeThatOfABuiltinTool()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
 
@@ -360,7 +364,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task UpdatingARagToolChangesItsDefinitionAndKeepsItsActivation()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: [fields["year"]]));
@@ -414,7 +418,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task DeletingARagToolRemovesItsActivationAndNothingElse()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         await RagApi.ActivateAsync(setup.Admin, "rag__company", "builtin__calculator");
@@ -437,7 +441,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task ARagToolThatDoesNotExistIsNotFound()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var read = await setup.Admin.GetAsync(RagApi.One(Guid.NewGuid()), Ct);
@@ -450,7 +454,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task OnlyRagToolsAreReachableThroughTheRagRoutes()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var calculator = (await ToolsApi.ListToolsAsync(setup.Admin)).First(t => t.Origin == "Builtin");
 

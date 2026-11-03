@@ -10,8 +10,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>The tool-calling loop of an answer (spec 004, AC-15, AC-19, AC-20, AC-22 to AC-29, AC-31).</summary>
-public sealed class ToolLoopTests(PostgresFixture postgres)
+public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly Uri AssistantSettings = new("/api/settings/assistant", UriKind.Relative);
@@ -61,8 +65,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-15
     public async Task AModelEndpointThatDoesNotSupportToolsGetsNoToolsEvenWhenSomeAreActive()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         using var update = await client.PutAsJsonAsync(
             AssistantSettings,
             new { baseUrl = QuorumApp.ModelBaseUrl, modelName = "llama3.2", contextTokenBudget = 4096, systemPrompt = "x", supportsTools = false },
@@ -95,8 +99,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-20
     public async Task TheRequestCarriesTheActiveToolsWithPrefixedNames()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var id = await ChatApi.CreateConversationAsync(client);
 
         await ChatApi.SendAsync(client, id, "Hi");
@@ -126,8 +130,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task AToolCallIsRunTheResultGoesBackToTheModelAndTheFinalTextIsStreamed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.Reply("Let me compute. ") with { ToolCalls = [Calculate("2+2*3")] },
             ChatScript.Reply("The result", " is 8."));
@@ -170,8 +174,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [InlineData(ToolCallShape.WholeCallObjectArguments)]
     public async Task ToolCallsAreAssembledWhateverTheShapeTheServerStreamsThemIn(ToolCallShape shape)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(Calculate("(10 + 5) * 2")) with { ToolCallShape = shape },
             ChatScript.Reply("Done."));
@@ -187,8 +191,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task ACallWithoutAnIdGetsOneSoTheResultCanBeMatchedToIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"3*3"}""", Id: null)) with { ToolCallShape = ToolCallShape.WholeCallObjectArguments },
             ChatScript.Reply("Nine."));
@@ -205,8 +209,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task SeveralCallsInOneRoundAreAssembledByIndex()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(Calculate("1+1", "call_a"), Calculate("2+2", "call_b")),
             ChatScript.Reply("Done."));
@@ -222,8 +226,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-28
     public async Task OnlyTheFinalTextIsStoredAndLaterTurnsDoNotSeeTheToolMessages()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.Reply("Checking. ") with { ToolCalls = [Calculate("6*7")] },
             ChatScript.Reply("It is 42."));
@@ -244,8 +248,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-22
     public async Task AModelThatKeepsAskingForToolsEndsTheAnswerAsFailedAfterTheRoundLimitKeepingTheText()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = ChatScript.Reply("Still working. ") with { ToolCalls = [Calculate("1+1")] };
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -263,8 +267,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-22
     public async Task TheRoundLimitIsTheOneTheAdminConfigured()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await SetLimitsAsync(client, maxRounds: 2);
         app.ModelServer.Chat = ChatScript.CallTools(Calculate("1+1"));
         var id = await ChatApi.CreateConversationAsync(client);
@@ -279,8 +283,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-22
     public async Task WithASingleRoundACallIsNeverRunAndTheAnswerFails()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await SetLimitsAsync(client, maxRounds: 1);
         await ToolFixtures.AddProbeAsync(app);
         app.ModelServer.Chat = ChatScript.Reply("Trying. ") with { ToolCalls = [Probe("x")] };
@@ -298,8 +302,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-25
     public async Task AnUnknownToolIsReturnedToTheModelAsAnErrorAndTheRoundCounts()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__teleport", "{}")),
             ChatScript.Reply("I cannot do that."));
@@ -322,8 +326,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [InlineData("""[1,2]""")]
     public async Task ArgumentsThatDoNotMatchTheSchemaAreReturnedToTheModelAsAnError(string arguments)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__calculator", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
             ChatScript.Reply("Sorry."));
@@ -339,8 +343,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task AFailureOfTheToolItselfIsReturnedToTheModelAsAnError()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Calculate("1/0")), ChatScript.Reply("Cannot divide by zero."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -354,8 +358,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-25
     public async Task AToolThatIsNoLongerActiveWhenTheCallArrivesReturnsAnError()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = async (_, _) =>
         {
@@ -376,8 +380,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-26
     public async Task AResultLargerThanTheLimitIsNotTruncatedTheModelGetsATooLargeError()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await SetLimitsAsync(client, maxResult: 1000);
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = (_, _) => Task.FromResult(new string('x', 1001));
@@ -414,8 +418,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-27
     public async Task CallsOfOneRoundRunOneAtATimeInTheOrderTheModelEmittedThem()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddProbeAsync(app);
         var running = 0;
         var overlapped = false;
@@ -517,8 +521,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task StoppingTheAnswerDuringACallCancelsItAndStoresTheAnswerAsInterrupted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddProbeAsync(app);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         app.Probe.Handler = async (_, token) =>
@@ -548,8 +552,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact] // AC-29
     public async Task AModelThatRejectsTheToolsParameterFailsTheAnswerNamingTheSupportsToolsFlag()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = ChatScript.Reply("unused") with { RejectsTools = true };
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -566,8 +570,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task AnErrorOtherThanBadRequestIsStillReportedAsBefore()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = ChatScript.Reply() with { HttpErrorStatus = 503 };
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -581,8 +585,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task AFinalRoundWithoutTextIsAFailureNotAnEmptySuccess()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Calculate("1+1")), ChatScript.Reply());
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -595,8 +599,8 @@ public sealed class ToolLoopTests(PostgresFixture postgres)
     [Fact]
     public async Task ARegeneratedAnswerRunsTheToolsAgain()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Calculate("1+1")), ChatScript.Reply("Two."));
         var id = await ChatApi.CreateConversationAsync(client);
         await ChatApi.SendAsync(client, id, "1+1?");

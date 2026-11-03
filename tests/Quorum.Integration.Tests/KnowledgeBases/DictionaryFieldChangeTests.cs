@@ -5,15 +5,18 @@ using Quorum.Modules.KnowledgeBases.Domain;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
+public sealed class DictionaryFieldChangeTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-4: the description is editable
     public async Task TheDescriptionCanBeChanged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await DictionaryApi.CreateOkAsync(admin, "year", "Number", "Old");
 
         using var response = await admin.PutAsJsonAsync(DictionaryApi.Field(id), new { description = "New" }, Ct);
@@ -25,8 +28,7 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
     [Fact] // AC-4: name and type are fixed
     public async Task TheNameAndTheTypeCannotBeChanged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await DictionaryApi.CreateOkAsync(admin, "year", "Number", "Old");
 
         using var response = await admin.PutAsJsonAsync(DictionaryApi.Field(id), new { name = "month", type = "Text", scope = "Global", description = "New" }, Ct);
@@ -42,8 +44,7 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
     [Fact]
     public async Task ADescriptionCanBeCleared()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await DictionaryApi.CreateOkAsync(admin, "year", description: "Old");
 
         using var response = await admin.PutAsJsonAsync(DictionaryApi.Field(id), new { description = (string?)null }, Ct);
@@ -55,8 +56,7 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
     [Fact]
     public async Task AFieldCanBeDeleted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await DictionaryApi.CreateOkAsync(admin, "year");
         await DictionaryApi.CreateOkAsync(admin, "month");
 
@@ -69,8 +69,7 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
     [Fact]
     public async Task ADeletedNameCanBeUsedAgain()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await DictionaryApi.CreateOkAsync(admin, "year", "Number");
         using var deleted = await admin.DeleteAsync(DictionaryApi.Field(id), Ct);
 
@@ -82,8 +81,7 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownFieldIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var unknown = DictionaryApi.Field(Guid.NewGuid());
 
         using var update = await admin.PutAsJsonAsync(unknown, new { description = "New" }, Ct);
@@ -96,8 +94,8 @@ public sealed class DictionaryFieldChangeTests(PostgresFixture postgres)
     [Fact] // AC-43 (field half, writes): a Global field of another tenant is visible but never writable
     public async Task AFieldSharedByAnotherTenantCannotBeChangedOrDeleted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var shared = await DictionaryFixtures.AddFieldOfAnotherTenantAsync(app, "year", DictionaryFieldScope.Global);
 
         using var update = await admin.PutAsJsonAsync(DictionaryApi.Field(shared), new { description = "Mine now" }, Ct);

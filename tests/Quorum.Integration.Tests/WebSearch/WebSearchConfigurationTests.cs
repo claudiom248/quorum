@@ -4,15 +4,18 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.WebSearch;
 
-public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
+public sealed class WebSearchConfigurationTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-9
     public async Task AdminCanGetTheWebSearchConfiguration()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var config = await WebSearchApi.GetConfigurationAsync(admin);
 
@@ -24,8 +27,7 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task AdminCanUpdateTheWebSearchConfiguration()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with
         {
@@ -44,8 +46,7 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task AdminCannotSetAnInvalidUrl()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { SearchUrl = "not-a-url" };
         using var response = await WebSearchApi.UpdateConfigurationAsync(admin, request);
@@ -56,8 +57,7 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task AdminCannotSetATimeoutLessThanOneSecond()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with
         {
@@ -72,8 +72,7 @@ public sealed class WebSearchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task NonAdminGetsForbidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
 
         using var response = await member.GetAsync(WebSearchApi.WebSearchSettings, Ct);

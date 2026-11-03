@@ -10,8 +10,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>Tools that wait for the user: the confirmation of a call and the questions of the model (spec 004, AC-32 to AC-40).</summary>
-public sealed class ToolConfirmationTests(PostgresFixture postgres)
+public sealed class ToolConfirmationTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static FakeToolCall Probe(string text, string id = "call_1") =>
@@ -221,8 +225,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [Fact] // AC-36
     public async Task ADecisionOnAnUnknownCallOrOnAQuestionIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Ask("Which city?")), ChatScript.Reply("Thanks."));
         var id = await ChatApi.CreateConversationAsync(client);
         await using var answer = await LiveAnswer.StartAsync(client, id, "Go");
@@ -381,8 +385,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [Fact] // AC-37
     public async Task TheModelCanAskTheUserAQuestionAndGetTheAnswerBack()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.Reply("One moment. ") with { ToolCalls = [Ask("Which city?")] },
             ChatScript.Reply("Rome it is."));
@@ -434,8 +438,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [Fact] // D-15
     public async Task TheQuestionToolAsksEvenWhenItsPolicyIsConfirm()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.ExecuteAsync(app, "UPDATE agents.tools SET \"Policy\" = 'Confirm' WHERE \"Name\" = 'ask_user'");
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Ask("Which city?")), ChatScript.Reply("Thanks."));
         var id = await ChatApi.CreateConversationAsync(client);
@@ -454,8 +458,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [Fact] // D-10
     public async Task AnAnswerLongerThanTheResultLimitIsNotTruncatedTheModelGetsATooLargeError()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.SetLimitsAsync(client, maxResult: 1000);
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Ask("Describe it.")), ChatScript.Reply("Too long, sorry."));
         var id = await ChatApi.CreateConversationAsync(client);
@@ -476,8 +480,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [Fact] // AC-37, AC-40
     public async Task ClosingTheStreamWhileAQuestionIsPendingInterruptsTheAnswer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(ChatScript.Reply("Asking. ") with { ToolCalls = [Ask("Which city?")] });
         var id = await ChatApi.CreateConversationAsync(client);
         var answer = await LiveAnswer.StartAsync(client, id, "Weather?");
@@ -495,8 +499,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [InlineData("   ")]
     public async Task AnEmptyAnswerIsRejectedAndTheQuestionStaysOpen(string text)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Ask("Which city?")), ChatScript.Reply("Thanks."));
         var id = await ChatApi.CreateConversationAsync(client);
         await using var answer = await LiveAnswer.StartAsync(client, id, "Weather?");
@@ -518,8 +522,8 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [InlineData("""{}""")]
     public async Task AQuestionThatIsEmptyOrMissingIsReturnedToTheModelAsAnErrorWithoutAskingTheUser(string arguments)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(new FakeToolCall("builtin__ask_user", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
             ChatScript.Reply("Sorry."));
@@ -535,8 +539,7 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
     [Fact]
     public async Task AUserWithoutTheToolsUsePermissionDoesNotGetTheQuestionTool()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
         var id = await ChatApi.CreateConversationAsync(member);
 

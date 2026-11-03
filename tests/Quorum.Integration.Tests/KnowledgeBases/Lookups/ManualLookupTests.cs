@@ -7,15 +7,18 @@ using Quorum.Modules.KnowledgeBases.Domain;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>Manual lookups: values the administrator types, with a scope of their own (spec 007 D-5).</summary>
-public sealed class ManualLookupTests(PostgresFixture postgres)
+public sealed class ManualLookupTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task AManualLookupIsCreatedListedAndReadBackWithLabelsAndSynonyms()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var id = await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody(description: "Where people come from."));
 
@@ -35,8 +38,8 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task ATenantScopeIsInvisibleToOtherTenantsAndAGlobalOneIsSharedReadOnly()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var tenantId = await TenantScope.TenantIdAsync(app);
         var listed = await LookupApi.SeedManualOfAnotherTenantAsync(app, "listed", LookupScope.Tenant, tenantId);
         var hidden = await LookupApi.SeedManualOfAnotherTenantAsync(app, "hidden", LookupScope.Tenant, Guid.NewGuid());
@@ -69,8 +72,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task ANameAlreadyUsedByTheTenantIsRefusedOnCreateAndRename()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody("nationality"));
         var other = await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody("audience"));
 
@@ -88,8 +90,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task TheLimitOfFiveThousandValuesIsInclusive()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         object[] Many(int count) => [.. Enumerable.Range(0, count).Select(i => LookupApi.Value($"value-{i}"))];
 
         using var tooMany = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody("too_many", values: Many(5001)));
@@ -110,8 +111,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [InlineData("a_name_that_is_longer_than_forty_characters_long")]
     public async Task ANameThatIsNotValidIsRefused(string? name)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody(name!));
 
@@ -122,8 +122,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task ADescriptionLongerThanFiveHundredCharactersIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody(description: new string('d', 501)));
 
@@ -148,8 +147,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     public async Task AValueThatIsNotValidIsRefused(string reason, object[] values)
     {
         Assert.NotEmpty(reason);
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody(values: values));
 
@@ -160,8 +158,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task AValueOfExactlyTwoHundredCharactersAndAnEmptyListAreAccepted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var longest = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody("longest", values: [LookupApi.Value(new string('v', 200))]));
         using var empty = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody("empty", values: []));
@@ -175,8 +172,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [InlineData("Global", "tenant")]
     public async Task AScopeThatDoesNotFitIsRefused(string scope, string? withTenant)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         Guid[]? tenants = withTenant is null ? null : [Guid.NewGuid()];
 
         using var response = await LookupApi.CreateManualAsync(admin, LookupApi.ManualBody(scope: scope, scopeTenantIds: tenants));
@@ -188,8 +184,8 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task UpdatingReplacesTheValuesAsANewGenerationAndDropsTheOldRows()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var id = await LookupApi.CreateManualOkAsync(admin);
         var tenant = Guid.NewGuid();
 
@@ -213,8 +209,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task UpdatingWithInvalidValuesKeepsTheCurrentOnes()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await LookupApi.CreateManualOkAsync(admin);
 
         using var update = await admin.PutAsJsonAsync(LookupApi.ManualLookup(id), LookupApi.ManualBody(values: [LookupApi.Value("")]), Ct);
@@ -226,8 +221,7 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task UpdatingAndDeletingAnUnknownLookupReturnsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var unknown = Guid.NewGuid();
 
         using var update = await admin.PutAsJsonAsync(LookupApi.ManualLookup(unknown), LookupApi.ManualBody(), Ct);
@@ -240,8 +234,8 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task DeletingRemovesTheLookupItsSliceAndItsValues()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var id = await LookupApi.CreateManualOkAsync(admin);
         var kept = await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody("kept", values: [LookupApi.Value("A")]));
 
@@ -256,8 +250,8 @@ public sealed class ManualLookupTests(PostgresFixture postgres)
     [Fact]
     public async Task ALookupThatToolsUseCannotBeDeleted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var id = await LookupApi.CreateManualOkAsync(admin);
         await ToolFixtures.ExecuteAsync(app, $"UPDATE knowledge_base.lookup_slices SET \"ToolIds\" = ARRAY['{Guid.NewGuid()}']::uuid[]");
 

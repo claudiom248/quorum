@@ -18,8 +18,12 @@ namespace Quorum.Integration.Tests.LookupTools;
 /// that match filters the model chose (spec 007 D-7, AC-27, AC-29, AC-30, AC-31, AC-32). The contracts: c1 Acme/facilities/all (3 chunks),
 /// c2 Acme/it/it (2), c3 Globex/it/it+managers (2), c4 Initech/legal/managers (1), c5 Acme/facilities/all (2), c6 Globex/finance/managers (1).
 /// </summary>
-public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class LiveLookupToolTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly object[] ContractFields =
@@ -268,7 +272,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-A1-2
     public async Task WithTwoKnowledgeBasesACallReadsOnlyTheOneItNames()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var contracts = await setup.RegisterAsync("contracts", SampleCollections.CreateLookups, Mapping(false), ContractFields);
         var policies = await setup.RegisterAsync("policies", SampleCollections.CreateLookups, Mapping(false), ContractFields);
         var fields = await setup.FieldsAsync();
@@ -434,7 +438,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, QdrantFixture 
     [Fact] // AC-32
     public async Task AFilterOnAFieldWithoutAnIndexWarnsWhenTheToolIsSaved()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var knowledgeBase = await setup.RegisterAsync("contracts", SampleCollections.CreateLookupsUnindexed, Mapping(countedPoint: false, listable: false), ContractFields);
         var fields = await setup.FieldsAsync();
         var manual = await LookupApi.CreateManualOkAsync(setup.Admin);

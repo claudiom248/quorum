@@ -109,9 +109,11 @@ internal static class RagApi
     public sealed class Setup : IAsyncDisposable
     {
         private readonly QdrantFixture _qdrant;
+        private readonly bool _borrowed;
 
-        private Setup(QuorumApp app, HttpClient admin, QdrantFixture qdrant, Guid tenantId, Guid assistantId, string url)
+        private Setup(QuorumApp app, HttpClient admin, QdrantFixture qdrant, Guid tenantId, Guid assistantId, string url, bool borrowed = false)
         {
+            _borrowed = borrowed;
             App = app;
             Admin = admin;
             _qdrant = qdrant;
@@ -144,6 +146,21 @@ internal static class RagApi
                 (await qdrant.GetUrlAsync()).ToString());
         }
 
+        /// <summary>The same setup over the shared app of a class, already reset to its state after the installation; disposing it leaves that app running.</summary>
+        public static async Task<Setup> OverAsync(SharedQuorumApp host, QdrantFixture qdrant)
+        {
+            ArgumentNullException.ThrowIfNull(host);
+            KnowledgeBaseApi.ServeEmbeddings(host.App);
+            return new Setup(
+                host.App,
+                host.Admin,
+                qdrant,
+                await TenantScope.TenantIdAsync(host.App),
+                await ToolsApi.DefaultAssistantIdAsync(host.Admin),
+                (await qdrant.GetUrlAsync()).ToString(),
+                borrowed: true);
+        }
+
         /// <summary>Registers a sample collection as a knowledge base. Tests share the seeded collection, so none may change it.</summary>
         public async Task<Guid> RegisterAsync(
             string name,
@@ -167,6 +184,11 @@ internal static class RagApi
 
         public async ValueTask DisposeAsync()
         {
+            if (_borrowed)
+            {
+                return;
+            }
+
             Admin.Dispose();
             await App.DisposeAsync();
         }

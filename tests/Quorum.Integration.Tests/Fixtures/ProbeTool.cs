@@ -21,6 +21,12 @@ public sealed class ProbeTool : IBuiltinTool
 
     public Func<JsonElement, CancellationToken, Task<string>> Handler { get; set; } = (_, _) => Task.FromResult("probe result");
 
+    public void Reset()
+    {
+        _calls.Clear();
+        Handler = (_, _) => Task.FromResult("probe result");
+    }
+
     public Task<string> ExecuteAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         _calls.Enqueue(arguments.GetRawText());

@@ -7,8 +7,12 @@ using static Quorum.Integration.Tests.Attachments.DocumentFixtures;
 namespace Quorum.Integration.Tests.Attachments;
 
 /// <summary>PDF and DOCX attachments through the public API.</summary>
-public sealed class AttachmentDocumentTests(PostgresFixture postgres)
+public sealed class AttachmentDocumentTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1
@@ -49,8 +53,7 @@ public sealed class AttachmentDocumentTests(PostgresFixture postgres)
     [Fact] // AC-6
     public async Task AScannedPdfIsRejectedWithAClearCode()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         using var response = await AttachmentApi.UploadAsync(client, conversation, "scan.pdf", Pdf(string.Empty));
@@ -63,8 +66,7 @@ public sealed class AttachmentDocumentTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task AMacroEnabledDocumentIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         var withMacros = Docx(Paragraph("Invoice"), new Dictionary<string, byte[]> { ["word/vbaProject.bin"] = [1, 2, 3] });
 

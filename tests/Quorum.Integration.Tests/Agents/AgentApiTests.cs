@@ -8,8 +8,12 @@ using Quorum.Modules.Agents.Domain;
 namespace Quorum.Integration.Tests.Agents;
 
 /// <summary>Create, read, update and delete of agents and their sub-agent edges (spec 013, PR 3).</summary>
-public sealed class AgentApiTests(PostgresFixture postgres)
+public sealed class AgentApiTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Agents = new("/api/agents", UriKind.Relative);
     private static readonly Uri Endpoints = new("/api/model-endpoints", UriKind.Relative);
 
@@ -56,8 +60,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-2
     public async Task CreatesAnAgentAndListsIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
 
         using var response = await client.PostAsJsonAsync(Agents, Body("contracts-expert", endpoint), Ct);
@@ -83,8 +86,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [InlineData("this-slug-is-far-too-long-to-be-a-tool-name")]
     public async Task AMalformedSlugIsRejected(string slug)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PostAsJsonAsync(Agents, Body(slug, await EndpointIdAsync(client)), Ct);
 
@@ -95,8 +97,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-2
     public async Task ADuplicateSlugIsRejectedOnCreateAndOnUpdate()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         await CreateAsync(client, Body("researcher", endpoint));
         var other = await CreateAsync(client, Body("writer", endpoint));
@@ -115,8 +116,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact]
     public async Task RequiredFieldsAndTheEndpointAreChecked()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PostAsJsonAsync(
             Agents,
@@ -133,8 +133,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact]
     public async Task AnAgentMayHaveNoEndpointOfItsOwn()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         var id = await CreateAsync(client, Body("inherits", endpointId: null));
 
@@ -144,8 +143,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact]
     public async Task ReadingOrChangingAnUnknownAgentIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var unknown = Agent(Guid.NewGuid());
 
         using var get = await client.GetAsync(unknown, Ct);
@@ -160,8 +158,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact]
     public async Task TheListOfSubAgentsIsReplacedAtomically()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         await CreateAsync(client, Body("web-researcher", endpoint));
         await CreateAsync(client, Body("contracts-expert", endpoint));
@@ -186,8 +183,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact]
     public async Task TheSlugOfASubAgentMustExistBeUniqueAndHaveAKnownPolicy()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         await CreateAsync(client, Body("helper", endpoint));
 
@@ -205,8 +201,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-3
     public async Task AnAgentCannotBeItsOwnSubAgent()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
 
         using var onCreate = await client.PostAsJsonAsync(Agents, Body("loop", endpoint, [Edge("loop")]), Ct);
@@ -221,8 +216,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-4
     public async Task AParentOnAnEndpointWithoutToolsIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var plain = await CreateEndpointAsync(client, "plain", supportsTools: false);
         await CreateAsync(client, Body("child", plain));
 
@@ -237,8 +231,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-4
     public async Task AnEndpointThatLosesToolSupportIsRefusedWhileAnAgentNeedsThem()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var spare = await CreateEndpointAsync(client, "spare", supportsTools: true);
         var parent = await CreateAsync(client, Body("parent", spare));
         var child = await CreateAsync(client, Body("child", spare));
@@ -260,8 +253,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-4 (tools)
     public async Task ToolsCannotBeAttachedToAnAgentOnAnEndpointWithoutTools()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var plain = await CreateEndpointAsync(client, "plain", supportsTools: false);
         var agent = await CreateAsync(client, Body("plain-agent", plain));
         var calculator = await CalculatorIdAsync(client);
@@ -277,8 +269,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task AGlobalParentAcceptsOnlyGlobalChildren()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         await CreateAsync(client, Body("local-child", endpoint, scope: "Tenant"));
         await CreateAsync(client, Body("shared-child", endpoint, scope: "Global"));
@@ -294,8 +285,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ATenantParentNeedsChildrenThatReachItsTenants()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         var (one, two) = (Guid.NewGuid(), Guid.NewGuid());
         await CreateAsync(client, Body("narrow", endpoint, tenants: [one]));
@@ -313,8 +303,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact]
     public async Task AGlobalScopeListsNoTenants()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PostAsJsonAsync(Agents, Body("everywhere", await EndpointIdAsync(client), scope: "Global", tenants: [Guid.NewGuid()]), Ct);
 
@@ -325,8 +314,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-6
     public async Task NarrowingAChildThatBreaksAnEdgeIsAConflictListingTheParent()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         var other = Guid.NewGuid();
         var child = await CreateAsync(client, Body("child", endpoint, scope: "Global"));
@@ -347,8 +335,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-7
     public async Task AnAgentThatIsARootOrASubAgentIsNotDeletedAndListsTheReferences()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         var child = await CreateAsync(client, Body("child", endpoint));
         var parent = await CreateAsync(client, Body("parent", endpoint, [Edge("child")]));
@@ -368,8 +355,8 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-7
     public async Task AnUnreferencedAgentIsDeletedWithItsEdgesAndTools()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var endpoint = await EndpointIdAsync(client);
         var child = await CreateAsync(client, Body("child", endpoint));
         var parent = await CreateAsync(client, Body("parent", endpoint, [Edge("child")]));
@@ -389,8 +376,7 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-8
     public async Task AnEndpointUsedByAnAgentListsItWhenDeleted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var endpoint = await CreateEndpointAsync(client, "dedicated", supportsTools: true);
         var agent = await CreateAsync(client, Body("dedicated-agent", endpoint));
 
@@ -408,8 +394,8 @@ public sealed class AgentApiTests(PostgresFixture postgres)
     [Fact] // AC-24
     public async Task WithoutAgentsManageTheWritesAreForbidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         var endpoint = await EndpointIdAsync(admin);
         var agent = await CreateAsync(admin, Body("guarded", endpoint));

@@ -10,15 +10,18 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Attachments;
 
-public sealed class AttachmentUploadTests(PostgresFixture postgres)
+public sealed class AttachmentUploadTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1, AC-13
     public async Task ASupportedFileIsStoredListedAndItsTextCanBeRead()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         using var response = await AttachmentApi.UploadAsync(client, conversation, "notes.txt", "First line\nSecond line");
@@ -60,8 +63,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [InlineData("program.exe", new byte[] { 0x4D, 0x5A, 0x90, 0x00 })]
     public async Task AFileThatIsNotASupportedFormatIsRejectedWhateverItsName(string fileName, byte[] content)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         using var response = await AttachmentApi.UploadAsync(client, conversation, fileName, content);
@@ -74,8 +76,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-12
     public async Task TextThatIsNotUtf8IsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         var windows1252 = new byte[] { 0x63, 0x61, 0x66, 0xE9, 0x0A }; // "café" in Windows-1252
 
@@ -88,8 +89,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact]
     public async Task AFileWithoutTextIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         using var response = await AttachmentApi.UploadAsync(client, conversation, "empty.txt", "  \n\n ");
@@ -119,8 +119,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task IdenticalContentIsRejectedButTheSameNameWithOtherContentIsAccepted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         await AttachmentApi.AttachAsync(client, conversation, "a.txt", "same content");
 
@@ -138,8 +137,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task ACsvBecomesAMarkdownTable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         var id = await AttachmentApi.AttachAsync(client, conversation, "people.csv", "name,city\r\n\"Rossi, Mario\",Roma\r\nAnna,\"Cagli|ari\"\r\n");
@@ -151,8 +149,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task ASemicolonSeparatedCsvFromExcelIsRecognized()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         var id = await AttachmentApi.AttachAsync(client, conversation, "prezzi.csv", "prodotto;prezzo\nPane;1,50\n");
@@ -164,8 +161,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact]
     public async Task AUtf8ByteOrderMarkIsStripped()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         var withBom = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("# Title")).ToArray();
 
@@ -179,8 +175,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact]
     public async Task AnAttachmentCanBeRemoved()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         var id = await AttachmentApi.AttachAsync(client, conversation, "a.txt", "content");
 
@@ -243,8 +238,8 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-22
     public async Task AttachingOrRemovingWhileAnAnswerIsStreamingIsAConflict()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         var existing = await AttachmentApi.AttachAsync(client, conversation, "a.txt", "content");
         app.ModelServer.Chat = FakeModelServer.ChatScript.Slow(chunkCount: 20, delayPerChunk: TimeSpan.FromMilliseconds(50));
@@ -263,8 +258,8 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-24
     public async Task AnotherUsersOrTenantsAttachmentsAreNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var foreign = Guid.NewGuid();
         var foreignAttachment = Guid.NewGuid();
         await using (var connection = new NpgsqlConnection(app.ConnectionString))
@@ -298,8 +293,8 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-25
     public async Task DeletingAConversationDeletesItsAttachments()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         await AttachmentApi.AttachAsync(client, conversation, "a.txt", "content");
 
@@ -335,8 +330,8 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact] // AC-27
     public async Task NeitherTheTextNorTheFileNameIsLogged()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
 
         await AttachmentApi.AttachAsync(client, conversation, "confidential-salaries.txt", "The CEO earns 12345 euros");
@@ -369,8 +364,7 @@ public sealed class AttachmentUploadTests(PostgresFixture postgres)
     [Fact]
     public async Task ThePreviewIsNeverSniffedAsAnotherType()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var conversation = await ChatApi.CreateConversationAsync(client);
         var id = await AttachmentApi.AttachAsync(client, conversation, "page.md", "<script>alert(1)</script>");
 

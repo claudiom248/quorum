@@ -7,8 +7,12 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
+public sealed class KnowledgeBaseSharingTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string PrivateUrl = "http://qdrant.other-tenant.test:6334";
     private const string PrivateCollection = "other_tenant_secret_collection";
 
@@ -32,8 +36,8 @@ public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
     [Fact] // AC-43 (KB half)
     public async Task AGlobalKnowledgeBaseOfAnotherTenantShowsNameDescriptionAndStatusOnly()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var id = await AddKnowledgeBaseOfAnotherTenantAsync(app, "handbook", KnowledgeBaseScope.Global);
 
         var listed = Assert.Single(await KnowledgeBaseApi.ListAsync(admin));
@@ -58,8 +62,8 @@ public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
     [Fact] // AC-43
     public async Task ATenantScopeShowsTheKnowledgeBaseOnlyToTheTenantsItLists()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var tenantId = await TenantScope.TenantIdAsync(app);
         await AddKnowledgeBaseOfAnotherTenantAsync(app, "listed", KnowledgeBaseScope.Tenant, tenantId);
         await AddKnowledgeBaseOfAnotherTenantAsync(app, "elsewhere", KnowledgeBaseScope.Tenant, Guid.NewGuid());
@@ -75,8 +79,8 @@ public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
     [Fact] // AC-43
     public async Task AnAssistantScopeOfAnotherTenantIsNeverShown()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var id = await AddKnowledgeBaseOfAnotherTenantAsync(app, "assistant-only", KnowledgeBaseScope.Assistant);
 
         Assert.Empty(await KnowledgeBaseApi.ListAsync(admin));
@@ -87,8 +91,8 @@ public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
     [Fact] // AC-43
     public async Task AKnowledgeBaseSharedByAnotherTenantIsReadOnlyHere()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var id = await AddKnowledgeBaseOfAnotherTenantAsync(app, "handbook", KnowledgeBaseScope.Global);
 
         using var update = await admin.PutAsJsonAsync(KnowledgeBaseApi.One(id), KnowledgeBaseApi.Body("http://localhost:6334", "docs", "stolen", mapping: KnowledgeBaseApi.TextOnly(), createFields: []), Ct);
@@ -104,8 +108,8 @@ public sealed class KnowledgeBaseSharingTests(PostgresFixture postgres)
     [Fact]
     public async Task TheSameNameCanBeUsedByTwoTenants()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await AddKnowledgeBaseOfAnotherTenantAsync(app, "policies", KnowledgeBaseScope.Tenant);
 
         using var response = await KnowledgeBaseApi.RegisterAsync(admin, "http://[::1]:1", "docs", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);

@@ -7,8 +7,12 @@ using Quorum.Integration.Tests.Tools;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>What rag tools and the dictionary and the assistants of a scope owe each other (spec 003, AC-4, AC-48 and the check of assistant ids).</summary>
-public sealed class RagToolUsageTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolUsageTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly string[] Hr = ["hr"];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -16,7 +20,7 @@ public sealed class RagToolUsageTests(PostgresFixture postgres, QdrantFixture qd
     [Fact] // AC-4
     public async Task AFieldAToolExposesIsCountedAsInUseAndCannotBeDeleted()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         var tool = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: [fields["department"]]));
@@ -39,7 +43,7 @@ public sealed class RagToolUsageTests(PostgresFixture postgres, QdrantFixture qd
     [Fact] // AC-4
     public async Task AFieldOnlyAFixedFilterNamesIsInUseToo()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         var tool = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], fixedFilters: new { department = Hr }));
@@ -68,7 +72,7 @@ public sealed class RagToolUsageTests(PostgresFixture postgres, QdrantFixture qd
     [Fact] // AC-48
     public async Task DeletingAKnowledgeBaseLeavesTheToolsItWasInWithTheOthers()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kept = await setup.RegisterAsync("kept");
         var gone = await setup.RegisterAsync("gone");
         var tool = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kept, gone]));
@@ -85,7 +89,7 @@ public sealed class RagToolUsageTests(PostgresFixture postgres, QdrantFixture qd
     [Fact]
     public async Task AKnowledgeBaseScopedToAnAssistantThatDoesNotExistIsRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
 
         var collection = QdrantFixture.NewPrefix() + "sample_flat";
         await qdrant.SeedAsync([Quorum.SampleKnowledgeBase.SampleCollections.CreateFlat(collection)]);
@@ -103,7 +107,7 @@ public sealed class RagToolUsageTests(PostgresFixture postgres, QdrantFixture qd
     [Fact]
     public async Task AKnowledgeBaseCanBeScopedToAnExistingAssistantAndEditedToAnotherThatDoesNotExistIsRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies", scope: new { kind = "Assistant", assistantIds = new[] { setup.AssistantId } });
         var current = await KnowledgeBaseApi.GetAsync(setup.Admin, kb);
 

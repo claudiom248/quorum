@@ -7,6 +7,8 @@ namespace Quorum.Integration.Tests.Fixtures;
 internal sealed class QdrantGate
 {
     public Func<CancellationToken, Task>? Hold { get; set; }
+
+    public void Reset() => Hold = null;
 }
 
 /// <summary>The handler that applies <see cref="QdrantGate"/> to the HTTP client every Qdrant connection goes through.</summary>

@@ -63,6 +63,25 @@ public sealed class FakeModelServer : HttpMessageHandler
 
     public void Serve(string baseUrl, params string[] models) => _endpoints[baseUrl.TrimEnd('/')] = models;
 
+    /// <summary>Forgets everything a test scripted or recorded, as in a server that has just started.</summary>
+    public void Reset()
+    {
+        _endpoints.Clear();
+        _capabilities.Clear();
+        _chatRequests.Clear();
+        _rounds.Clear();
+        _embedders.Clear();
+        _embeddingFailures.Clear();
+        _embeddingRequests.Clear();
+        _withoutEmbeddingsApi.Clear();
+        _stalledEmbeddings.Clear();
+        LastAuthorization = null;
+        Chat = ChatScript.Reply("Hello", " from", " the", " model.");
+        Responder = null;
+        Volatile.Write(ref _inFlight, 0);
+        Volatile.Write(ref _maxInFlight, 0);
+    }
+
     /// <summary>Makes <c>POST {baseUrl}/embeddings</c> serve <paramref name="model"/> with <paramref name="embed"/>; any other model is "not found", as in Ollama.</summary>
     public void ServeEmbeddings(string baseUrl, string model, Func<string, float[]> embed) => _embedders[$"{baseUrl.TrimEnd('/')}|{model}"] = embed;
 

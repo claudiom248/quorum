@@ -12,6 +12,12 @@ internal sealed class FakeLookupComputer : ILookupComputer
     public Func<LookupComputationRequest, CancellationToken, Task<LookupComputation>> Handler { get; set; } =
         (_, _) => throw new LookupComputationException("The fake computer has no script.");
 
+    public void Reset()
+    {
+        Volatile.Write(ref _calls, 0);
+        Handler = (_, _) => throw new LookupComputationException("The fake computer has no script.");
+    }
+
     public static LookupComputation Of(params (string Value, int Count)[] values) =>
         new([.. values.Select(v => new ComputedValue(v.Value, v.Count))]);
 

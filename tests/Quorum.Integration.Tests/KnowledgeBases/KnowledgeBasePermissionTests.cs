@@ -4,15 +4,19 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
+public sealed class KnowledgeBasePermissionTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-42 (the /knowledge-bases half)
     public async Task ManagingTheDictionaryNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 
@@ -42,8 +46,8 @@ public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
     [Fact] // AC-42 (the /knowledge-bases half)
     public async Task ManagingKnowledgeBasesNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
         var id = Guid.NewGuid();
@@ -76,8 +80,8 @@ public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
     [Fact] // AC-40 (the /knowledge-bases half)
     public async Task ManagingLookupsNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
         var id = await Lookups.LookupApi.CreateManualOkAsync(admin);
@@ -107,8 +111,8 @@ public sealed class KnowledgeBasePermissionTests(PostgresFixture postgres)
     [Fact] // AC-42 (the /knowledge-bases half)
     public async Task InspectingNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 

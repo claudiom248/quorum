@@ -9,16 +9,20 @@ using Quorum.Integration.Tests.Fixtures;
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
 /// <summary>A reachable server that is not Qdrant (a web server, a proxy without the route, the REST port) must not look like a Qdrant with a missing collection.</summary>
-public sealed class InspectNonQdrantServerTests(PostgresFixture postgres)
+public sealed class InspectNonQdrantServerTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     [Theory]
     [InlineData("html404")]
     [InlineData("text200")]
     public async Task AnHttp2ServerThatDoesNotSpeakGrpcIsReportedAsUnexpected(string kind)
     {
         await using var server = await StartServerAsync(HttpProtocols.Http2);
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         var report = await InspectApi.InspectOkAsync(admin, new Uri($"{server.Urls.First()}/{kind}"), "docs");
@@ -33,8 +37,8 @@ public sealed class InspectNonQdrantServerTests(PostgresFixture postgres)
     public async Task AnHttp1ServerIsReportedWithAHintAboutThePort()
     {
         await using var server = await StartServerAsync(HttpProtocols.Http1);
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         var report = await InspectApi.InspectOkAsync(admin, new Uri(server.Urls.First()), "docs");

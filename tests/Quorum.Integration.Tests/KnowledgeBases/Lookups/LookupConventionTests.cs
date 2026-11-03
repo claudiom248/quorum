@@ -18,8 +18,12 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>What the draft mapping proposes for the counted point, what the inspection warns about, and the kinds that cannot list (spec 007 D-19, AC-3).</summary>
-public sealed class LookupConventionTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class LookupConventionTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static DiscoveredProperty Prop(string path, DictionaryFieldType type) => new(path, type);
@@ -71,8 +75,8 @@ public sealed class LookupConventionTests(PostgresFixture postgres, QdrantFixtur
     public async Task TheInspectionProposesTheCountedPointOfTheLookupsCollection()
     {
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateLookups);
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         var report = await InspectApi.InspectOkAsync(admin, await qdrant.GetUrlAsync(), collection);
@@ -87,8 +91,8 @@ public sealed class LookupConventionTests(PostgresFixture postgres, QdrantFixtur
     {
         var collection = QdrantFixture.NewPrefix() + SampleCollections.LookupsUnindexed;
         await qdrant.SeedAsync([SampleCollections.CreateLookupsUnindexed(collection)]);
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
 
         var report = await InspectApi.InspectOkAsync(admin, await qdrant.GetUrlAsync(), collection);

@@ -11,14 +11,18 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.LookupTools;
 
 /// <summary>The lean manifest of a lookup tool: describe and query in place of the full functions (spec 012 D-8, D-9).</summary>
-public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-14, AC-15, AC-16, AC-22
     public async Task ALeanActivationOffersDescribeAndQueryAndACountOfAListCountsItsMatchingValues()
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         await using var _ = setup;
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9), ("finance", 4)]);
@@ -43,7 +47,7 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
     [Fact] // AC-22
     public async Task ACountOfAListWithFiltersCountsTheValuesThatMatchThem()
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         await using var _ = setup;
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9), ("finance", 4)]);
@@ -65,7 +69,7 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
     [Fact] // AC-A1-8
     public async Task EveryFilterThatDescribeListsIsAcceptedByQueryAndAnotherIsRefused()
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         await using var _ = setup;
         var (knowledgeBase, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9)]);
@@ -140,7 +144,7 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
     [Fact] // AC-19
     public async Task AManifestOnAToolThatIsNotALookupToolIsRefused()
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         await using var _ = setup;
         var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
         var calculator = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.First(t => !t.Name.StartsWith("lookup__", StringComparison.Ordinal));

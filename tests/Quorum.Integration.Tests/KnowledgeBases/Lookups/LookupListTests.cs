@@ -10,8 +10,12 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>The aggregate list of lookups (spec 010 AC-19, server side): manual and derived in one page.</summary>
-public sealed class LookupListTests(PostgresFixture postgres)
+public sealed class LookupListTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Route = "/api/knowledge-bases/lookups";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -19,8 +23,8 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task ManualAndDerivedLookupsAreListedTogetherWithTheirSource()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         var friend = Guid.NewGuid();
         await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody(name: "nationality", scope: "Tenant", scopeTenantIds: [friend]));
@@ -42,8 +46,8 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task AnotherTenantsDerivedLookupsAreNotListedButItsSharedManualOnesAre()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var elsewhere = Guid.NewGuid();
         var field = await DictionaryApi.CreateOkAsync(admin, "department");
         await SeedDerivedAsync(app, elsewhere, "their-policies", field, [("hr", 1)], KnowledgeBaseScope.Global);
@@ -58,8 +62,8 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task TheKindAndScopeFiltersAndTheSearchApply()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody(name: "alpha_list", scope: "Global"));
         var field = await DictionaryApi.CreateOkAsync(admin, "department");
@@ -80,8 +84,8 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task ThePageIsInNameOrderAndTheCursorWalksEveryLookup()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         foreach (var name in new[] { "echo", "bravo" })
         {
@@ -105,8 +109,7 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [InlineData("status=Available")]
     public async Task AnUnsupportedFilterIsRejected(string query)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.GetAsync(new Uri($"{Route}?{query}", UriKind.Relative), Ct);
 
@@ -117,8 +120,8 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task TheKnowledgeBaseFilterKeepsTheLookupsComputedFromThoseKnowledgeBases()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var mine = await TenantScope.TenantIdAsync(app);
         await LookupApi.CreateManualOkAsync(admin, LookupApi.ManualBody(name: "typed"));
         var department = await DictionaryApi.CreateOkAsync(admin, "department");
@@ -136,8 +139,7 @@ public sealed class LookupListTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task OnlyAnAdministratorCanList()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
 
         using var response = await member.GetAsync(new Uri(Route, UriKind.Relative), Ct);

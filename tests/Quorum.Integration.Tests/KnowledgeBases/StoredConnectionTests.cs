@@ -12,8 +12,12 @@ namespace Quorum.Integration.Tests.KnowledgeBases;
 /// The connection of a knowledge base is one jsonb value per row, read and written whole (spec 008 D-1, A1): rows written before
 /// the connection became kind-specific keep their shape and need no data migration.
 /// </summary>
-public sealed class StoredConnectionTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class StoredConnectionTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static string Text(ulong chunk) => SampleCollections.CreateFlat().Points.Single(p => p.Id == chunk).EmbeddingText;
@@ -24,8 +28,8 @@ public sealed class StoredConnectionTests(PostgresFixture postgres, QdrantFixtur
     [Fact]
     public async Task AQdrantConnectionIsStoredWithTheMembersOfAlways()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateNamedVectors);
         var url = await qdrant.GetUrlAsync();
@@ -47,8 +51,8 @@ public sealed class StoredConnectionTests(PostgresFixture postgres, QdrantFixtur
     [Fact]
     public async Task ARowWrittenInTheOldShapeIsReadVerifiedAndSearched()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
         var url = await qdrant.GetUrlAsync();

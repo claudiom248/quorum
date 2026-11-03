@@ -13,14 +13,18 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>Who can use a rag tool: the scope rules of the pool, what other tenants see, and what happens when a scope narrows (spec 003, AC-23, AC-43, AC-44, AC-48).</summary>
-public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-23
     public async Task AnAgentScopeOnlyPutsTheToolInThePoolOfTheAssistantsWhoseRootItLists()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var (other, otherAgent) = await AssistantFixtures.AddWithAgentAsync(setup.App);
         var defaultAgent = await AssistantFixtures.RootAgentIdAsync(setup.App, setup.AssistantId);
@@ -38,7 +42,7 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
     [Fact] // AC-23
     public async Task ARagToolReachesTheModelOnlyWhenItIsActivated()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         var chat = await ChatApi.CreateConversationAsync(setup.Admin);
@@ -58,7 +62,7 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
     [Fact] // AC-23, AC-48
     public async Task AToolWithNoVisibleKnowledgeBaseIsNotInThePoolAndCannotBeActivated()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         using var delete = await setup.Admin.DeleteAsync(KnowledgeBaseApi.One(kb), Ct);
@@ -79,7 +83,7 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
     [Fact] // AC-44
     public async Task NarrowingTheScopeOfAKnowledgeBaseTakesItOutOfWhatTheToolOffers()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");
@@ -106,7 +110,7 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
     [Fact] // AC-43
     public async Task AnotherTenantsRagToolIsVisibleOnlyThroughItsScopeAndNeverWritable()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var stranger = Guid.CreateVersion7();
         var sharedKb = await AddForeignKnowledgeBaseAsync(setup.App, stranger, "shared-kb", KnowledgeBaseScope.Global);
         var privateKb = await AddForeignKnowledgeBaseAsync(setup.App, stranger, "private-kb", KnowledgeBaseScope.Tenant);
@@ -139,7 +143,7 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
     [Fact]
     public async Task ADisabledRagToolIsInNoPoolAndASharedOneOnlyWhileTheOwnerKeepsItEnabled()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var stranger = Guid.CreateVersion7();
         var sharedKb = await AddForeignKnowledgeBaseAsync(setup.App, stranger, "shared-kb", KnowledgeBaseScope.Global);
         await AddForeignRagToolAsync(setup.App, stranger, "off", [sharedKb], ToolScopeKind.Global, state: ToolState.Disabled);

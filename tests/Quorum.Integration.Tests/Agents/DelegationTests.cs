@@ -14,8 +14,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Agents;
 
 /// <summary>The delegation runtime of spec 013: a root agent calls its sub-agents as tools (AC-9 to AC-18, AC-20, AC-21, AC-25, AC-28 to AC-31).</summary>
-public sealed class DelegationTests(PostgresFixture postgres)
+public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string RootMarker = "Acme";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -170,8 +174,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-9
     public async Task TheModelSeesAToolNamedByTheSubAgentSlugAndCallingItReturnsTheSubAgentsFinalMessage()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER prompt.", description: "Researches facts. Call it with a topic.");
         new Router(app)
             .Script(RootMarker, ChatScript.CallTools(Delegate("researcher", "find the capital of France", "c1")), ChatScript.Reply("It is ", "Paris."))
@@ -197,8 +201,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // D-21
     public async Task AGlobalSubAgentOwnedByAnotherTenantIsOfferedAndRun()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await AddSubAgentAsync(app, await RootAgentAsync(app), "shared", "SHARED prompt.");
         var owner = Guid.NewGuid();
         await ToolFixtures.ExecuteAsync(app, $"UPDATE agents.agents SET \"TenantId\" = '{owner}', \"Scope\" = 'Global' WHERE \"Slug\" = 'shared'");
@@ -231,8 +235,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task TheSubAgentReceivesOnlyTheTaskNeverTheConversation()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER prompt.");
         new Router(app)
             .Script(RootMarker, ChatScript.CallTools(Delegate("researcher", "look up zebras", "c1")), ChatScript.Reply("Done."))
@@ -251,8 +255,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task ASubAgentWithoutAnEndpointUsesTheRootAgentsAndOneWithItsOwnUsesIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var root = await RootAgentAsync(app);
         var endpoint = await AddEndpointAsync(app, "http://other.test:11434/v1", "child-model");
         await AddSubAgentAsync(app, root, "inheriting", "INHERITING prompt.");
@@ -272,8 +276,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-12
     public async Task ASubAgentThatHasSubAgentsOfItsOwnOffersNoDelegationToolsWhenItRunsAsOne()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var middle = await AddSubAgentAsync(app, await RootAgentAsync(app), "middle", "MIDDLE prompt.");
         await AddSubAgentAsync(app, middle, "leaf", "LEAF prompt.");
         await AttachBuiltinAsync(app, middle, "calculator");
@@ -291,8 +295,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task EachAgentHasOnlyItsOwnTools()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var worker = await AddSubAgentAsync(app, await RootAgentAsync(app), "worker", "WORKER prompt.");
         await AttachProbeAsync(app, worker);
         new Router(app)
@@ -312,8 +316,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-31
     public async Task AskUserIsNotOfferedToAnAgentRunningAsASubAgent()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var worker = await AddSubAgentAsync(app, await RootAgentAsync(app), "worker", "WORKER prompt.");
         await AttachBuiltinAsync(app, worker, "ask_user");
         await AttachBuiltinAsync(app, worker, "calculator");
@@ -334,8 +338,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [InlineData(2, 2)]
     public async Task TheAssistantsLimitDecidesHowManySubAgentsRunAtTheSameTime(int limit, int expectedAtOnce)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var root = await RootAgentAsync(app);
         await AddSubAgentAsync(app, root, "alpha", "ALPHA prompt.");
         await AddSubAgentAsync(app, root, "beta", "BETA prompt.");
@@ -356,8 +360,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-29
     public async Task DelegationsOfARoundRunTogetherWhileOrdinaryToolsRunOneAtATime()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var root = await RootAgentAsync(app);
         await AddSubAgentAsync(app, root, "alpha", "ALPHA prompt.");
         await AddSubAgentAsync(app, root, "beta", "BETA prompt.");
@@ -394,8 +398,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-15
     public async Task AFailingSubAgentGivesTheModelAReadableErrorAndTheTurnContinues()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER prompt.");
         new Router(app)
             .Script(RootMarker, ChatScript.CallTools(Delegate("researcher", "work", "c1")), ChatScript.Reply("I could not ask the researcher."))
@@ -417,8 +421,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-16
     public async Task AFailureOnAnAbortTurnEdgeEndsTheTurnWithAnErrorToTheUser()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER prompt.", SubAgentFailurePolicy.AbortTurn);
         new Router(app)
             .Script(RootMarker, ChatScript.CallTools(Delegate("researcher", "work", "c1")), ChatScript.Reply("Should not be asked."))
@@ -436,8 +440,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-17
     public async Task AFinalMessageOverTheResultLimitIsNotTruncatedAndTheCallerGetsTheTooLargeError()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.SetLimitsAsync(client, maxResult: 1000);
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER prompt.");
         new Router(app)
@@ -459,8 +463,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-18
     public async Task StoppingTheAnswerCancelsTheSubAgentAndItsToolCall()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var worker = await AddSubAgentAsync(app, await RootAgentAsync(app), "worker", "WORKER prompt.");
         await AttachProbeAsync(app, worker);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -510,8 +514,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-20, AC-21, D-28
     public async Task TheAuditLogHoldsTheDelegationAndTheSubAgentsToolCallsWithTheirAgentButNoSubAgentText()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var root = await RootAgentAsync(app);
         var worker = await AddSubAgentAsync(app, root, "worker", "WORKER prompt.");
         await AttachProbeAsync(app, worker);
@@ -538,8 +542,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // D-11, D-32
     public async Task TheSubAgentsToolCallsAreNestedUnderTheDelegationAndItsTextIsNotStreamed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var worker = await AddSubAgentAsync(app, await RootAgentAsync(app), "worker", "WORKER prompt.");
         await AttachProbeAsync(app, worker);
         new Router(app)
@@ -563,8 +567,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-25
     public async Task EditingAnAgentWhileATurnRunsDoesNotAffectThatTurn()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER original prompt.");
         var router = new Router(app)
             .Script(RootMarker, ChatScript.CallTools(Delegate("researcher", "work", "c1")), ChatScript.Reply("Done."))
@@ -590,8 +594,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-28
     public async Task AConfirmToolOfASubAgentAsksTheUserInTheNestedEntryAndRunsOnApproval()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var worker = await AddSubAgentAsync(app, await RootAgentAsync(app), "worker", "WORKER prompt.");
         await AttachProbeAsync(app, worker, ToolPolicy.Confirm);
         new Router(app)
@@ -621,8 +625,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-28
     public async Task DenyingAConfirmToolOfASubAgentTellsTheSubAgentAndNothingRuns()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var worker = await AddSubAgentAsync(app, await RootAgentAsync(app), "worker", "WORKER prompt.");
         await AttachProbeAsync(app, worker, ToolPolicy.Confirm);
         new Router(app)
@@ -645,8 +649,8 @@ public sealed class DelegationTests(PostgresFixture postgres)
     [Fact] // AC-30
     public async Task ADelegationThatRunsLongerThanTheCallTimeoutIsNotCut()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.SetLimitsAsync(client, callSeconds: 1);
         await AddSubAgentAsync(app, await RootAgentAsync(app), "researcher", "RESEARCHER prompt.");
         new Router(app)

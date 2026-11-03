@@ -10,8 +10,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>Aliases of the exposed fields of a rag tool, over fields identified by cluster and name (spec 003, Amendment 1, AC-54 to AC-57).</summary>
-public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolAliasTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly string[] Year2024 = ["2024"];
 
     private static string[] Sorted(IEnumerable<string> names) => [.. names.Order(StringComparer.Ordinal)];
@@ -45,7 +49,7 @@ public sealed class RagToolAliasTests(PostgresFixture postgres, QdrantFixture qd
     /// <summary>Two knowledge bases that both map a field called year: text in cluster hr, a number in cluster finance.</summary>
     private async Task<Fixture> StartAsync()
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var hrYear = await DictionaryApi.CreateOkAsync(setup.Admin, "year", "Text", cluster: "hr");
         var financeYear = await DictionaryApi.CreateOkAsync(setup.Admin, "year", "Number", cluster: "finance");
         var hrBase = await setup.RegisterAsync("hr_docs", TextYear, Mapping("hr"), createFields: []);

@@ -8,15 +8,18 @@ namespace Quorum.Integration.Tests.WebFetch;
 /// The fetch defaults and web properties (spec 006, AC-1, AC-13, AC-14). They live in the platform's one web configuration row:
 /// reading it before anyone saved one answers with the defaults, and every PUT carries the whole row so the other fields keep their value.
 /// </summary>
-public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
+public sealed class WebFetchConfigurationTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-13
     public async Task AdminCanGetTheWebFetchDefaults()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var config = await WebFetchApi.GetConfigurationAsync(admin);
 
@@ -30,8 +33,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AdminCanUpdateTheWebFetchDefaults()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with
         {
@@ -54,8 +56,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AdminCannotSetAFetchTimeoutBelowTheMinimum()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { FetchTimeoutSeconds = 2 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -66,8 +67,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AdminCannotSetAFetchTimeoutAboveTheMaximum()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { FetchTimeoutSeconds = 200 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -78,8 +78,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AdminCannotSetInvalidMaxUrlsPerInvocation()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { FetchMaxUrlsPerInvocation = 20 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -90,8 +89,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AdminCannotSetInvalidTokenBudgetPerPage()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { FetchTokenBudgetPerPage = 50 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -102,8 +100,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task AdminCannotSetInvalidTotalTokenBudget()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { FetchTotalTokenBudget = 200000 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -114,8 +111,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task AdminCanGetTheWebProperties()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var config = await WebFetchApi.GetConfigurationAsync(admin);
 
@@ -129,8 +125,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task AdminCanUpdateTheWebProperties()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with
         {
@@ -155,8 +150,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task AdminCannotSetAnOverlyLongUserAgent()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { UserAgent = new string('x', WebFetchApi.MaxUserAgentLength + 1) };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -167,8 +161,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task AdminCannotSetAnInvalidCacheTtl()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { CacheTtlMinutes = 120 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -179,8 +172,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-14
     public async Task AdminCannotSetANegativeDelay()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with { FetchDelayMs = -1 };
         using var response = await WebFetchApi.UpdateConfigurationAsync(admin, request);
@@ -191,8 +183,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1, AC-13, AC-14
     public async Task TheUnifiedRowCarriesSearchAndFetchTogether()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var request = WebSearchApi.DefaultConfiguration with
         {
@@ -213,8 +204,7 @@ public sealed class WebFetchConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13, AC-14
     public async Task NonAdminGetsForbidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
 
         using var read = await member.GetAsync(WebSearchApi.WebSettings, Ct);
