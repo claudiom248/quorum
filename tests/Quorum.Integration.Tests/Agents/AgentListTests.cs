@@ -6,8 +6,12 @@ using Quorum.Integration.Tests.Tools;
 namespace Quorum.Integration.Tests.Agents;
 
 /// <summary>What an installation shows of its agents while they are read only (spec 013, PR 2).</summary>
-public sealed class AgentListTests(PostgresFixture postgres)
+public sealed class AgentListTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Agents = new("/api/agents", UriKind.Relative);
     private static readonly Uri Assistants = new("/api/assistants", UriKind.Relative);
 
@@ -16,8 +20,7 @@ public sealed class AgentListTests(PostgresFixture postgres)
     [Fact]
     public async Task TheWizardLeavesOneRootAgentWithTheBuiltInToolsAndItsEndpoint()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         var agents = await client.GetFromJsonAsync<List<AgentBody>>(Agents, Ct);
         var assistants = await client.GetFromJsonAsync<List<AssistantBody>>(Assistants, Ct);
@@ -36,8 +39,8 @@ public sealed class AgentListTests(PostgresFixture postgres)
     [Fact]
     public async Task OnlyAnAdministratorReadsTheAgents()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
 
         using var forbidden = await member.GetAsync(Agents, Ct);
@@ -53,8 +56,8 @@ public sealed class AgentListTests(PostgresFixture postgres)
     [Fact]
     public async Task AnAssistantAddedLaterGetsItsOwnRootAgentAndToolSet()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var defaultAssistant = await ToolsApi.DefaultAssistantIdAsync(client);
         var (second, secondAgent) = await AssistantFixtures.AddWithAgentAsync(app, "Second");
 

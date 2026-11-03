@@ -5,8 +5,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Chat;
 
-public sealed class ConversationTests(PostgresFixture postgres)
+public sealed class ConversationTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Theory] // AC-14
@@ -17,8 +21,7 @@ public sealed class ConversationTests(PostgresFixture postgres)
     [InlineData("  Many    spaces\n\nand lines  ", "Many spaces and lines")]
     public async Task TheTitleIsTheFirstWordsOfTheFirstMessage(string firstMessage, string expectedTitle)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var id = await ChatApi.CreateConversationAsync(client);
 
         await ChatApi.SendAsync(client, id, firstMessage);
@@ -32,8 +35,7 @@ public sealed class ConversationTests(PostgresFixture postgres)
     [Fact] // AC-20
     public async Task ConversationsAreListedByLastUpdateAndCanBeContinued()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var older = await ChatApi.CreateConversationAsync(client);
         await ChatApi.SendAsync(client, older, "First conversation");
         var newer = await ChatApi.CreateConversationAsync(client);
@@ -49,8 +51,7 @@ public sealed class ConversationTests(PostgresFixture postgres)
     [Fact] // AC-21
     public async Task RenameValidatesAndStoresTheTitle()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var id = await ChatApi.CreateConversationAsync(client);
 
         using var renamed = await client.PatchAsJsonAsync(ChatApi.Conversation(id), new { title = "Lease renewal" }, Ct);
@@ -66,8 +67,8 @@ public sealed class ConversationTests(PostgresFixture postgres)
     [Fact] // AC-22
     public async Task DeleteRemovesTheConversationAndItsMessages()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var id = await ChatApi.CreateConversationAsync(client);
         await ChatApi.SendAsync(client, id, "Something to forget");
 
@@ -86,8 +87,8 @@ public sealed class ConversationTests(PostgresFixture postgres)
     [Fact] // AC-23
     public async Task AnotherTenantsConversationIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var mine = await ChatApi.CreateConversationAsync(client);
 
         // A conversation that belongs to someone else, written directly as another tenant would have it.

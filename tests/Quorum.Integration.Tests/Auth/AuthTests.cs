@@ -4,8 +4,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Auth;
 
-public sealed class AuthTests(PostgresFixture postgres)
+public sealed class AuthTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Login = new("/api/auth/login", UriKind.Relative);
     private static readonly Uri Logout = new("/api/auth/logout", UriKind.Relative);
     private static readonly Uri Me = new("/api/auth/me", UriKind.Relative);
@@ -15,8 +19,7 @@ public sealed class AuthTests(PostgresFixture postgres)
     [Fact] // AC-10
     public async Task AdminSignsInWithAnHttpOnlyCookieAndCanReadItsProfile()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var _ = await app.SetUpAsync();
+        var app = host.App;
         using var client = app.CreateUiClient();
 
         using var login = await client.PostAsJsonAsync(Login, new { email = QuorumApp.AdminEmail, password = QuorumApp.AdminPassword }, Ct);
@@ -30,8 +33,7 @@ public sealed class AuthTests(PostgresFixture postgres)
     [Fact]
     public async Task WrongPasswordIsRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var _ = await app.SetUpAsync();
+        var app = host.App;
         using var client = app.CreateUiClient();
 
         using var login = await client.PostAsJsonAsync(Login, new { email = QuorumApp.AdminEmail, password = "not the right one" }, Ct);
@@ -44,8 +46,7 @@ public sealed class AuthTests(PostgresFixture postgres)
     [Fact] // AC-11
     public async Task FiveFailedAttemptsLockTheAccountEvenForTheRightPassword()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var _ = await app.SetUpAsync();
+        var app = host.App;
         using var client = app.CreateUiClient();
 
         for (var attempt = 0; attempt < 5; attempt++)
@@ -65,8 +66,7 @@ public sealed class AuthTests(PostgresFixture postgres)
     [InlineData("GET", "/api/settings/assistant")]
     public async Task UnauthenticatedRequestsGet401(string method, string url)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var _ = await app.SetUpAsync();
+        var app = host.App;
         using var anonymous = app.CreateUiClient();
 
         using var response = await anonymous.SendAsync(new HttpRequestMessage(new HttpMethod(method), url), Ct);
@@ -77,8 +77,7 @@ public sealed class AuthTests(PostgresFixture postgres)
     [Fact]
     public async Task LogoutEndsTheSession()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var logout = await client.PostAsync(Logout, content: null, Ct);
         using var me = await client.GetAsync(Me, Ct);
@@ -90,8 +89,7 @@ public sealed class AuthTests(PostgresFixture postgres)
     [Fact]
     public async Task StateChangingCallsWithTheCookieButWithoutTheAntiForgeryHeaderAreRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         client.DefaultRequestHeaders.Remove("X-Quorum-Request");
 
         using var create = await client.PostAsync(new Uri("/api/conversations", UriKind.Relative), content: null, Ct);

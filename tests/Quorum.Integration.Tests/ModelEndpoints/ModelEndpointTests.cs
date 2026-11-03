@@ -5,8 +5,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.ModelEndpoints;
 
-public sealed class ModelEndpointTests(PostgresFixture postgres)
+public sealed class ModelEndpointTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Endpoints = new("/api/model-endpoints", UriKind.Relative);
     private static readonly Uri TestConnection = new("/api/model-endpoints/test", UriKind.Relative);
 
@@ -32,8 +36,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task CreatesAnEndpointAndNeverReturnsItsKey()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var created = await client.PostAsJsonAsync(Endpoints, Body("cloud", apiKey: "sk-secret"), Ct);
         var raw = await client.GetStringAsync(Endpoints, Ct);
@@ -51,8 +54,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task ANameIsUniquePerTenant()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         using var _ = await client.PostAsJsonAsync(Endpoints, Body("cloud"), Ct);
 
         using var duplicate = await client.PostAsJsonAsync(Endpoints, Body(" cloud "), Ct);
@@ -67,8 +69,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task InvalidEndpointsAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PostAsJsonAsync(Endpoints, new { name = " ", baseUrl = "nope", modelName = "", contextTokenBudget = 10 }, Ct);
 
@@ -80,8 +81,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task UpdateKeepsTheKeyWhenOmittedAndRemovesItWhenEmpty()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         using var created = await client.PostAsJsonAsync(Endpoints, Body("cloud", apiKey: "sk-secret"), Ct);
         var uri = new Uri($"/api/model-endpoints/{(await created.Content.ReadFromJsonAsync<EndpointBody>(Ct))!.Id}", UriKind.Relative);
 
@@ -99,8 +99,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task UpdatingOrDeletingAnUnknownEndpointIsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var uri = new Uri($"/api/model-endpoints/{Guid.NewGuid()}", UriKind.Relative);
 
         using var update = await client.PutAsJsonAsync(uri, Body("x"), Ct);
@@ -113,8 +112,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact] // AC-8
     public async Task AnEndpointInUseIsNotDeletedAndListsWhatUsesIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var inUse = (await client.GetFromJsonAsync<List<EndpointBody>>(Endpoints, Ct))!.Single();
         using var spare = await client.PostAsJsonAsync(Endpoints, Body("spare"), Ct);
         var spareId = (await spare.Content.ReadFromJsonAsync<EndpointBody>(Ct))!.Id;
@@ -133,8 +131,8 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task TestsAnEndpointWithoutSavingIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
 
         using var reachable = await client.PostAsJsonAsync(TestConnection, new { baseUrl = QuorumApp.ModelBaseUrl, apiKey = "sk-try" }, Ct);
         var authorization = app.ModelServer.LastAuthorization;
@@ -151,8 +149,8 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
     [Fact] // AC-24 (endpoint writes)
     public async Task WithoutTheAgentsManagePermissionEveryCallIsForbidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         var id = (await admin.GetFromJsonAsync<List<EndpointBody>>(Endpoints, Ct))!.Single().Id;
         var item = new Uri($"/api/model-endpoints/{id}", UriKind.Relative);

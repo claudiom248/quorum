@@ -4,15 +4,19 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class McpToolReviewTests(PostgresFixture postgres)
+public sealed class McpToolReviewTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-7
     public async Task ARefreshSendsChangedAndNewToolsToReviewAndRemovesTheOnesThatVanished()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         const string schema = """{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"number"}}}""";
         await using var mcp = await McpTestServer.StartAsync(
             McpTestServer.NewTool("changes", "Before."),
@@ -60,8 +64,7 @@ public sealed class McpToolReviewTests(PostgresFixture postgres)
     [Fact] // AC-7, AC-8: a reviewed tool that changed is offered again only after the admin enables it again
     public async Task AChangedToolKeepsItsActivationAndReturnsToThePoolOnceReviewed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search", "Before."));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
         var tool = created.Tools.Single();
@@ -83,8 +86,7 @@ public sealed class McpToolReviewTests(PostgresFixture postgres)
     [Fact] // AC-8
     public async Task APendingToolCanBeActivatedOnlyAfterTheAdminEnablesIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
         var tool = created.Tools.Single();
@@ -105,8 +107,7 @@ public sealed class McpToolReviewTests(PostgresFixture postgres)
     [Fact] // D-25
     public async Task ARefreshOfAServerThatIsDownReturns422AndTakesItsToolsOutOfThePool()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
         using var approve = await client.PutAsJsonAsync(ToolsApi.Tool(created.Tools.Single().Id), new { state = "Enabled", policy = "Auto" }, Ct);

@@ -5,15 +5,19 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Chat;
 
-public sealed class ChatStreamingTests(PostgresFixture postgres)
+public sealed class ChatStreamingTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-13
     public async Task TheAnswerIsStreamedAndBothMessagesAreStoredAsCompleted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.Reply("Hello", " there", "!");
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -34,8 +38,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [InlineData("reasoning_content")] // LiteLLM and others
     public async Task TheModelsReasoningIsStreamedButNotStored(string field)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.Reply("The answer", " is 42.") with
         {
             Reasoning = ["Let me ", "think."],
@@ -114,8 +118,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact] // AC-16
     public async Task StoppingTheStreamStoresThePartialAnswerAsInterrupted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.Slow(chunkCount: 100, delayPerChunk: TimeSpan.FromMilliseconds(50));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -146,8 +150,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact] // AC-17
     public async Task AModelFailureMidStreamStoresThePartialAnswerAsFailed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.FailAfter(2, "Partial", " answer", " never sent");
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -164,8 +168,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact]
     public async Task AModelThatEndsWithoutAnAnswerIsAFailureNotAnEmptySuccess()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         // E.g. a reasoning model that used its whole budget thinking.
         app.ModelServer.Chat = FakeModelServer.ChatScript.Reply() with { Reasoning = ["Thinking, thinking…"] };
         var id = await ChatApi.CreateConversationAsync(client);
@@ -181,8 +185,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact]
     public async Task AnErrorStatusFromTheModelIsReportedWithItsDetails()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.Reply() with { HttpErrorStatus = 503 };
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -198,8 +202,7 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnreachableModelStoresTheQuestionAndAFailedAnswer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         using var _ = await client.PutAsJsonAsync(
             new Uri("/api/settings/assistant", UriKind.Relative),
             new { baseUrl = "http://turned-off.test/v1", modelName = "llama3.2", contextTokenBudget = 4096, systemPrompt = "x" },
@@ -217,8 +220,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact] // AC-18
     public async Task RegenerationReplacesTheLastAnswer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.FailAfter(1, "Broken", " answer");
         var id = await ChatApi.CreateConversationAsync(client);
         await ChatApi.SendAsync(client, id, "Hi");
@@ -238,8 +241,7 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact]
     public async Task RegeneratingAnEmptyConversationIsAConflict()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         var id = await ChatApi.CreateConversationAsync(client);
 
         using var response = await client.PostAsync(ChatApi.Regenerate(id), content: null, Ct);
@@ -250,8 +252,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact] // AC-19
     public async Task ASecondMessageWhileAnAnswerIsStreamingIsAConflict()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.Slow(chunkCount: 20, delayPerChunk: TimeSpan.FromMilliseconds(50));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -270,8 +272,8 @@ public sealed class ChatStreamingTests(PostgresFixture postgres)
     [Fact]
     public async Task DeletingAConversationWhileItStreamsCancelsTheAnswer()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Chat = FakeModelServer.ChatScript.Slow(chunkCount: 100, delayPerChunk: TimeSpan.FromMilliseconds(50));
         var id = await ChatApi.CreateConversationAsync(client);
 

@@ -7,8 +7,12 @@ using Quorum.Modules.Tenancy.Persistence;
 
 namespace Quorum.Integration.Tests.ServiceTokens;
 
-public sealed class ServiceTokenTests(PostgresFixture postgres)
+public sealed class ServiceTokenTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly Uri Tokens = new("/api/tenants/me/service-tokens", UriKind.Relative);
@@ -16,8 +20,7 @@ public sealed class ServiceTokenTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task GenerateReturnsPlaintextTokenAndId()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await admin.PostAsync(Tokens, content: null, Ct);
 
@@ -32,8 +35,7 @@ public sealed class ServiceTokenTests(PostgresFixture postgres)
     [Fact] // AC-2
     public async Task ListReturnsMetadataWithoutPlaintext()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await admin.PostAsync(Tokens, content: null, Ct);
 
         var list = await admin.GetFromJsonAsync<List<TokenInfo>>(Tokens, Ct);
@@ -46,8 +48,8 @@ public sealed class ServiceTokenTests(PostgresFixture postgres)
     [Fact] // AC-3
     public async Task RevokeRemovesTheTokenAndReturnsNoContent()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var created = await admin.PostAsJsonAsync(Tokens, new { }, Ct);
         var body = await created.Content.ReadFromJsonAsync<CreateResponse>(Ct);
 
@@ -64,8 +66,7 @@ public sealed class ServiceTokenTests(PostgresFixture postgres)
     [Fact] // AC-3
     public async Task RevokeUnknownTokenReturnsNotFound()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var delete = await admin.DeleteAsync(new Uri($"/api/tenants/me/service-tokens/{Guid.NewGuid()}", UriKind.Relative), Ct);
 

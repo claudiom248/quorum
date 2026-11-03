@@ -5,8 +5,12 @@ using Quorum.Integration.Tests.Setup;
 
 namespace Quorum.Integration.Tests.Tools;
 
-public sealed class ModelToolSupportTests(PostgresFixture postgres)
+public sealed class ModelToolSupportTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Settings = new("/api/settings/assistant", UriKind.Relative);
     private static readonly Uri TestConnection = new("/api/settings/assistant/test", UriKind.Relative);
 
@@ -46,8 +50,8 @@ public sealed class ModelToolSupportTests(PostgresFixture postgres)
     [Fact] // AC-30
     public async Task TheSettingsTestReportsTheSupportToo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         app.ModelServer.Describe(QuorumApp.ModelBaseUrl, "llama3.2", "completion", "tools");
 
         using var response = await client.PostAsJsonAsync(TestConnection, new { baseUrl = QuorumApp.ModelBaseUrl, modelName = "llama3.2" }, Ct);
@@ -59,8 +63,7 @@ public sealed class ModelToolSupportTests(PostgresFixture postgres)
     [Fact]
     public async Task TheFlagDefaultsToOnAndCanBeTurnedOffAndKeptWhenOmitted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         var initial = await client.GetFromJsonAsync<SettingsBody>(Settings, Ct);
         using var off = await client.PutAsJsonAsync(Settings, new { baseUrl = QuorumApp.ModelBaseUrl, modelName = "llama3.2", contextTokenBudget = 4096, systemPrompt = "x", supportsTools = false }, Ct);

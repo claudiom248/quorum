@@ -9,8 +9,12 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>Reading a page of a lookup, whatever its kind (spec 007 D-12, D-13): paging, search, sort and the cursor.</summary>
-public sealed class LookupValuesTests(PostgresFixture postgres)
+public sealed class LookupValuesTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static IReadOnlyList<(string Value, int Count)> Suppliers { get; } =
@@ -37,8 +41,7 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact] // AC-10 (admin view)
     public async Task ASearchFindsAManualValueByItsSynonymLabelOrValue()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await LookupApi.CreateManualOkAsync(admin);
 
         var bySynonym = await LookupApi.ReadValuesOkAsync(admin, id, "search=italiana");
@@ -57,8 +60,7 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task ASearchTreatsPercentUnderscoreAndBackslashAsPlainText()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await LookupApi.CreateManualOkAsync(
             admin,
             LookupApi.ManualBody(values: [LookupApi.Value("100%"), LookupApi.Value("a_b"), LookupApi.Value("axb"), LookupApi.Value(@"c\d"), LookupApi.Value("cd")]));
@@ -71,8 +73,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task TheDefaultOrderIsByCountThenValueAndAPageByNameIsAlphabetical()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers);
 
         var byCount = await LookupApi.ReadValuesOkAsync(admin, id);
@@ -93,8 +95,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [InlineData("sort=name&search=e", 2)]
     public async Task PagingWithTheCursorVisitsEveryValueOnceInTheOrderOfOnePage(string query, int limit)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers);
 
         var whole = (await LookupApi.ReadValuesOkAsync(admin, id, query)).Values.Select(v => v.Value).ToList();
@@ -107,8 +109,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task TheLastPageHasNoCursorAndAFullPageThatEndsTheListNeedsNoMoreRequests()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers);
 
         var exact = await LookupApi.ReadValuesOkAsync(admin, id, $"limit={Suppliers.Count}");
@@ -125,8 +127,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [InlineData("", 50)]
     public async Task TheLimitDefaultsToFiftyAndStaysBetweenOneAndTwoHundred(string query, int expected)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var many = Enumerable.Range(0, 250).Select(i => ($"supplier-{i:D3}", 1000 - i)).ToList();
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), many);
 
@@ -139,8 +141,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task ACursorOfAnOlderGenerationRestartsTheListAndSaysSo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var tenantId = await TenantScope.TenantIdAsync(app);
         var (id, sliceId) = await LookupApi.SeedComputedAsync(app, tenantId, Suppliers);
         var first = await LookupApi.ReadValuesOkAsync(admin, id, "limit=2");
@@ -168,8 +170,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [InlineData("cursor=e30")]
     public async Task ACursorThatWasNeverIssuedIsRefused(string query)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers);
 
         using var response = await admin.GetAsync(LookupApi.Values(id, query), Ct);
@@ -181,8 +183,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task ACursorOfAnotherSortIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers);
         var byName = await LookupApi.ReadValuesOkAsync(admin, id, "sort=name&limit=2");
 
@@ -195,8 +197,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownSortIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers);
 
         using var response = await admin.GetAsync(LookupApi.Values(id, "sort=size"), Ct);
@@ -208,8 +210,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task TheUnitTheDateAndTheFlagsOfTheSliceAreReturned()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), Suppliers, LookupUnit.Chunks);
         await ToolFixtures.ExecuteAsync(app, "UPDATE knowledge_base.lookup_slices SET \"Stale\" = true, \"Truncated\" = true");
 
@@ -222,8 +224,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task ASliceWithNoGenerationYetHasNoValuesAndNoDate()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (id, _) = await LookupApi.SeedComputedAsync(app, await TenantScope.TenantIdAsync(app), []);
         await ToolFixtures.ExecuteAsync(app, "UPDATE knowledge_base.lookup_slices SET \"CurrentGeneration\" = 0, \"ComputedAt\" = NULL");
 
@@ -237,8 +239,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task OnlyTheCurrentGenerationIsRead()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var tenantId = await TenantScope.TenantIdAsync(app);
         var (id, sliceId) = await LookupApi.SeedComputedAsync(app, tenantId, [("old", 1)]);
         await using (var scope = TenantScope.Open(app, tenantId))
@@ -258,8 +260,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task ASliceOtherThanTheWholeKnowledgeBaseIsFoundByItsHash()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var tenantId = await TenantScope.TenantIdAsync(app);
         var (id, _) = await LookupApi.SeedComputedAsync(app, tenantId, Suppliers);
         var hash = new string('a', 64);
@@ -282,8 +284,8 @@ public sealed class LookupValuesTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnknownLookupAndTheLookupsOfAnotherTenantReadAsMissing()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         var (other, _) = await LookupApi.SeedComputedAsync(app, Guid.NewGuid(), Suppliers);
 
         using var unknown = await admin.GetAsync(LookupApi.Values(Guid.NewGuid()), Ct);

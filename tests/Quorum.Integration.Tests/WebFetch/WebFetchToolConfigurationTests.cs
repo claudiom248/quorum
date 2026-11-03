@@ -5,15 +5,18 @@ using Quorum.Integration.Tests.WebSearch;
 namespace Quorum.Integration.Tests.WebFetch;
 
 /// <summary>The web fetch tools of a tenant: an administrator creates, lists, edits and removes them (spec 006, AC-1, AC-15).</summary>
-public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
+public sealed class WebFetchToolConfigurationTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1
     public async Task AdminCreatesAWebFetchToolWithItsDefaults()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
 
@@ -38,8 +41,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-13
     public async Task TheDefinitionOfAnInheritingToolSaysWhatThePlatformSaysNow()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
 
         using var changed = await WebFetchApi.UpdateConfigurationAsync(
@@ -55,8 +57,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AdminCanOverrideTheGlobalDefaultsOnTheTool()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(
             name: "read",
@@ -75,8 +76,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AdminReadsTheGeneratedToolDefinition()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read", maxUrlsPerInvocation: 4));
 
@@ -92,8 +92,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task TwoToolsCannotShareAName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
 
         using var second = await WebFetchApi.CreateAsync(admin, WebFetchApi.Body(name: "read"));
@@ -105,8 +104,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AdminUpdatesTheToolAndItsBinding()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
 
         using var update = await WebFetchApi.UpdateAsync(admin, created.Id, WebFetchApi.Body(
@@ -132,8 +130,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AdminListsTheToolsOfTheTenant()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
         await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "fetch-docs"));
 
@@ -147,8 +144,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AdminDeletesAToolAndItsBinding()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
 
         using var delete = await admin.DeleteAsync(WebFetchApi.WebFetchTool(created.Id), Ct);
@@ -161,8 +157,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AnInvalidNameIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await WebFetchApi.CreateAsync(admin, WebFetchApi.Body(name: "Read Pages"));
 
@@ -173,8 +168,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AnInvalidTokenBudgetPerPageIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await WebFetchApi.CreateAsync(admin, WebFetchApi.Body(tokenBudgetPerPage: 100));
 
@@ -185,8 +179,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AnInvalidMaxUrlsPerInvocationIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await WebFetchApi.CreateAsync(admin, WebFetchApi.Body(maxUrlsPerInvocation: 20));
 
@@ -197,8 +190,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task AnInvalidTimeoutIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await WebFetchApi.CreateAsync(admin, WebFetchApi.Body(timeout: 2));
 
@@ -209,8 +201,7 @@ public sealed class WebFetchToolConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-1
     public async Task NonAdminCannotManageTheTools()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
 
         using var read = await member.GetAsync(WebFetchApi.WebFetchTools, Ct);

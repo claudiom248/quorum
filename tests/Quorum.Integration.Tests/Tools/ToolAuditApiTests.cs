@@ -9,8 +9,12 @@ using Quorum.Modules.Agents.Persistence;
 namespace Quorum.Integration.Tests.Tools;
 
 /// <summary>Reading the audit log through the API (spec 004, AC-46, D-12, D-13).</summary>
-public sealed class ToolAuditApiTests(PostgresFixture postgres)
+public sealed class ToolAuditApiTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Audit = new("/api/tools/audit", UriKind.Relative);
 
     private static readonly Guid UserA = Guid.Parse("01a14800-0000-7000-8000-00000000000a");
@@ -33,8 +37,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task OnlyAnAdministratorCanReadTheLog()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 
@@ -48,8 +51,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task EntriesComeNewestFirstWithTheirTotalAndTheFieldsOfTheLog()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddHours(-2), tool: "old");
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "new", server: "files", outcome: ToolOutcome.Failed, userId: UserA, arguments: """{"path":"a.txt"}""");
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddHours(-1), tool: "middle");
@@ -74,8 +77,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task AnEntryStillStartedHasNoCompletionYet()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, outcome: ToolOutcome.Started);
 
         var item = Assert.Single((await ReadAsync(client, Audit)).Items);
@@ -88,8 +91,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact] // AC-46
     public async Task FilteringByPeriodReturnsOnlyEntriesStartedWithinIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddDays(-3), tool: "before");
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddDays(-1), tool: "inside");
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddDays(2), tool: "after");
@@ -103,8 +106,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact] // AC-46
     public async Task ThePeriodIncludesItsBounds()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "at-from");
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddHours(1), tool: "at-to");
 
@@ -122,8 +125,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [InlineData("missing", 0)]
     public async Task FilteringByToolMatchesTheNameTheModelSawOrTheToolsOwnName(string tool, int expected)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "calculator");
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "read", server: "files");
 
@@ -135,8 +138,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact] // AC-46
     public async Task FilteringByUserReturnsOnlyThatUsersCalls()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "mine", userId: UserA);
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "theirs", userId: UserB);
 
@@ -151,8 +154,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [InlineData("DENIED")]
     public async Task FilteringByOutcomeIgnoresCaseAndReturnsOnlyThatOutcome(string outcome)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "ok", outcome: ToolOutcome.Succeeded);
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "no", outcome: ToolOutcome.Denied);
 
@@ -164,8 +167,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact] // AC-46
     public async Task FiltersCombineSoAnEntryMustMatchAllOfThem()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "calculator", userId: UserA, outcome: ToolOutcome.Failed);
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "calculator", userId: UserB, outcome: ToolOutcome.Failed);
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(2), tool: "calculator", userId: UserA, outcome: ToolOutcome.Succeeded);
@@ -179,8 +182,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task PagesSplitTheLogAndTheTotalCountsAllMatchingEntries()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         for (var i = 0; i < 5; i++)
         {
             await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(i), tool: $"t{i}");
@@ -199,8 +202,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task WithoutPagingTheFirstPageHolds50Entries()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         for (var i = 0; i < 52; i++)
         {
             await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(i));
@@ -223,8 +226,7 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [InlineData("from=2026-10-12T00:00:00Z&to=2026-10-11T00:00:00Z")]
     public async Task InvalidParametersAreRejectedAsBadRequests(string query)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.GetAsync(new Uri($"/api/tools/audit?{query}", UriKind.Relative), Ct);
 
@@ -234,8 +236,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task AnotherTenantsEntriesAreNeverReturned()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon, tool: "mine");
         await ToolFixtures.AddAuditEntryAsync(app, Noon.AddMinutes(1), tool: "foreign", tenantId: Guid.CreateVersion7());
 
@@ -252,8 +254,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [InlineData("DELETE")]
     public async Task NoRouteModifiesOrDeletesEntries(string method)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon);
         var id = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.tool_audit_entries LIMIT 1");
 
@@ -273,8 +275,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task TheLogHoldsNoResultContentOnlyItsSize()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon);
 
         using var response = await client.GetAsync(Audit, Ct);
@@ -290,8 +292,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [InlineData(int.MaxValue)]
     public async Task APageFarBeyondTheEndIsEmptyNotAnError(int page)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, Noon);
 
         var result = await ReadAsync(client, Query(("page", page), ("pageSize", 200)));
@@ -303,8 +305,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task ADateWithoutATimeCoversTheWholeDayInUtc()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         var day = new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.Zero);
         await ToolFixtures.AddAuditEntryAsync(app, day.AddSeconds(-1), tool: "previous");
         await ToolFixtures.AddAuditEntryAsync(app, day, tool: "start");
@@ -319,8 +321,8 @@ public sealed class ToolAuditApiTests(PostgresFixture postgres)
     [Fact]
     public async Task ATimeWithoutAnOffsetIsTakenAsUtcAndAnOffsetIsRespected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         await ToolFixtures.AddAuditEntryAsync(app, new DateTimeOffset(2026, 10, 12, 10, 0, 0, TimeSpan.Zero), tool: "ten-utc");
 
         var withoutOffset = await ReadAsync(client, Query(("from", "2026-10-12T10:00:00"), ("to", "2026-10-12T10:00:00")));

@@ -8,8 +8,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.WebSearch;
 
 /// <summary>What the model reads when the instance does not answer, and how often one conversation may ask it (spec 005, AC-3, AC-5).</summary>
-public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
+public sealed class WebSearchToolLimitsTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static FakeToolCall Call(string query, string id) =>
         new("web_search__research", JsonSerializer.Serialize(new { query }), id);
 
@@ -22,8 +26,8 @@ public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
     [Fact] // AC-3
     public async Task AnInstanceThatNeverAnswersIsToldToTheModelAsUnavailable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.UpdateConfigurationAsync(admin, WebSearchApi.DefaultConfiguration with { SearchUrl = "http://searxng.test", SearchTimeoutSeconds = 1 });
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
         await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
@@ -41,8 +45,8 @@ public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task OneConversationCannotAskTheToolMoreThanItsAdministratorAllowed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 2));
         await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
@@ -66,8 +70,8 @@ public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task TheCountOfInvocationsIsPerConversationAndContinuesAcrossTheAnswersOfOneConversation()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 2));
         await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
@@ -93,8 +97,8 @@ public sealed class WebSearchToolLimitsTests(PostgresFixture postgres)
     [Fact] // AC-5
     public async Task ACallTheUserRefusedDoesNotUseTheConversationsBudget()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 1));
         await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");

@@ -5,8 +5,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Settings;
 
-public sealed class AssistantSettingsTests(PostgresFixture postgres)
+public sealed class AssistantSettingsTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Settings = new("/api/settings/assistant", UriKind.Relative);
     private static readonly Uri TestConnection = new("/api/settings/assistant/test", UriKind.Relative);
 
@@ -47,8 +51,7 @@ public sealed class AssistantSettingsTests(PostgresFixture postgres)
     [Fact] // AC-25
     public async Task TheApiKeyIsNeverReturnedAndIsKeptWhenOmitted()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var withKey = await client.PutAsJsonAsync(Settings, new { baseUrl = QuorumApp.ModelBaseUrl, modelName = "llama3.2", apiKey = "sk-secret", contextTokenBudget = 4096, systemPrompt = "x" }, Ct);
         using var withoutKey = await client.PutAsJsonAsync(Settings, new { baseUrl = QuorumApp.ModelBaseUrl, modelName = "llama3.2", contextTokenBudget = 4096, systemPrompt = "y" }, Ct);
@@ -91,8 +94,7 @@ public sealed class AssistantSettingsTests(PostgresFixture postgres)
     [Fact]
     public async Task InvalidSettingsAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
 
         using var response = await client.PutAsJsonAsync(Settings, new { baseUrl = "nope", modelName = "", contextTokenBudget = 10, systemPrompt = "x" }, Ct);
 
@@ -102,8 +104,8 @@ public sealed class AssistantSettingsTests(PostgresFixture postgres)
     [Fact]
     public async Task ConnectionTestUsesTheStoredKeyWhenNoneIsGiven()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var app = host.App;
+        var client = host.Admin;
         using var _ = await client.PutAsJsonAsync(Settings, new { baseUrl = QuorumApp.ModelBaseUrl, modelName = "llama3.2", apiKey = "sk-stored", contextTokenBudget = 4096, systemPrompt = "x" }, Ct);
 
         using var reachable = await client.PostAsJsonAsync(TestConnection, new { baseUrl = QuorumApp.ModelBaseUrl }, Ct);

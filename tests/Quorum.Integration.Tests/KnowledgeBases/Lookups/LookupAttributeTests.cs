@@ -12,8 +12,12 @@ using Quorum.Modules.KnowledgeBases.Persistence;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>Typed attributes on manual lookups: the rows, the filters on them, and the CSV that creates them (spec 012 D-3, D-5, D-7).</summary>
-public sealed class LookupAttributeTests(PostgresFixture postgres)
+public sealed class LookupAttributeTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static readonly Uri ImportPreview = new("/api/knowledge-bases/manual-lookups/import-preview", UriKind.Relative);
@@ -21,8 +25,7 @@ public sealed class LookupAttributeTests(PostgresFixture postgres)
     [Fact] // AC-3
     public async Task FiltersOnAttributesSelectTheRowsOfASnapshotAndAnUnknownAttributeIsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var id = await CreateVendorsAsync(admin, italyRating: 4.5, franceRating: 3);
 
         var filtered = await LookupApi.ReadValuesOkAsync(admin, id, "filters=" + Uri.EscapeDataString("{\"rating\":{\"min\":4}}"));
@@ -36,8 +39,7 @@ public sealed class LookupAttributeTests(PostgresFixture postgres)
     [Fact] // AC-7
     public async Task AValueThatDoesNotFitItsTypeNamesTheRowAndTheColumn()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await LookupApi.CreateManualAsync(admin, VendorsBody(italyRating: 4.5, franceRating: "high"));
 
@@ -52,8 +54,7 @@ public sealed class LookupAttributeTests(PostgresFixture postgres)
     [Fact] // AC-7
     public async Task TheImportPreviewProposesATypeForEachAttributeColumn()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var file = new MultipartFormDataContent { { new ByteArrayContent("value,rating,since\nIT,4.5,2020-01-01\nFR,3,2021-01-01\n"u8.ToArray()), "file", "vendors.csv" } };
 
         using var response = await admin.PostAsync(ImportPreview, file, Ct);

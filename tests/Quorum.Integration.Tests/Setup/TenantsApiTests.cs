@@ -6,8 +6,12 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Setup;
 
-public sealed class TenantsApiTests(PostgresFixture postgres)
+public sealed class TenantsApiTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly Uri Tenants = new("/api/tenants", UriKind.Relative);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -15,8 +19,7 @@ public sealed class TenantsApiTests(PostgresFixture postgres)
     [Fact] // AC-6
     public async Task AdminListsTheTenantsAndSeesWhichOneIsTheirs()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var tenants = await admin.GetFromJsonAsync<TenantBody[]>(Tenants, Ct);
 
@@ -28,8 +31,8 @@ public sealed class TenantsApiTests(PostgresFixture postgres)
     [Fact] // AC-6
     public async Task AnotherTenantIsListedButNotMarkedAsCurrent()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         await using (var scope = app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<Quorum.Modules.Tenancy.Persistence.TenancyDbContext>();
@@ -46,8 +49,7 @@ public sealed class TenantsApiTests(PostgresFixture postgres)
     [Fact] // AC-6
     public async Task NonAdminGetsForbidden()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         using var member = await app.CreateMemberClientAsync();
 
         using var response = await member.GetAsync(Tenants, Ct);

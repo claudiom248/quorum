@@ -4,8 +4,12 @@ using Quorum.Modules.Agents.Contracts;
 
 namespace Quorum.Integration.Tests.Embeddings;
 
-public sealed class EmbeddingsTests(PostgresFixture postgres)
+public sealed class EmbeddingsTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Model = "nomic-embed-text";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -13,8 +17,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task ATextIsEmbeddedWithTheNamedModelOnTheTenantsEndpoint()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.ServeEmbeddings(QuorumApp.ModelBaseUrl, Model, text => [text.Length, 0.5f, -1.25f]);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
@@ -30,8 +33,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task TheRequestAsksForPlainVectorsAndSendsNoCredentialsWhenThereIsNoKey()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.ServeEmbeddings(QuorumApp.ModelBaseUrl, Model, text => [text.Length]);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
@@ -45,8 +47,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task AModelTheEndpointDoesNotServeIsReportedByName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
         var result = await scope.ServiceProvider.GetRequiredService<IEmbeddings>().EmbedAsync("text", "missing-model", Ct);
@@ -59,8 +60,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task AnEndpointWithoutTheEmbeddingsApiIsReported()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.RemoveEmbeddingsApi(QuorumApp.ModelBaseUrl);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
@@ -72,8 +72,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task AnEndpointErrorIsReportedWithItsStatus()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.FailEmbeddings(QuorumApp.ModelBaseUrl, 503);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
@@ -86,8 +85,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task AnUnreachableEndpointIsReportedWithoutItsAddress()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.Stop(QuorumApp.ModelBaseUrl);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
@@ -100,8 +98,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task AnEmptyVectorIsNotAnEmbedding()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.ServeEmbeddings(QuorumApp.ModelBaseUrl, Model, _ => []);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 
@@ -113,8 +110,7 @@ public sealed class EmbeddingsTests(PostgresFixture postgres)
     [Fact]
     public async Task AnEmbeddingFailureLeavesNoTextInTheLogs()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
         app.ModelServer.FailEmbeddings(QuorumApp.ModelBaseUrl, 500);
         await using var scope = TenantScope.Open(app, await TenantScope.TenantIdAsync(app));
 

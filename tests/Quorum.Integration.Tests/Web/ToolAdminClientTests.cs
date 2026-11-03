@@ -4,15 +4,18 @@ using Quorum.Web.Client.Api;
 namespace Quorum.Integration.Tests.Web;
 
 /// <summary>The typed client of the tools admin page against the real server and a real MCP server (spec 004, AC-48).</summary>
-public sealed class ToolAdminClientTests(PostgresFixture postgres)
+public sealed class ToolAdminClientTests(SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task AnAdminRegistersReviewsRefreshesAndDeletesAServerThroughTheClient()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var http = await app.SetUpAsync();
+        var http = host.Admin;
         var api = new QuorumApi(http);
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("read", readOnly: true), McpTestServer.NewTool("search"));
         var tenantScope = new ToolScope(ScopeKinds.Tenant, [], []);
@@ -57,8 +60,7 @@ public sealed class ToolAdminClientTests(PostgresFixture postgres)
     [Fact]
     public async Task ARejectedRegistrationCarriesTheServersCode()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var http = await app.SetUpAsync();
+        var http = host.Admin;
         var api = new QuorumApi(http);
 
         var result = await api.CreateToolServerAsync(new ToolServerRequest("Bad Name", "http://x.test/mcp", Headers: null, new ToolScope(ScopeKinds.Tenant, [], [])), Ct);

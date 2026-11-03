@@ -6,8 +6,12 @@ using Quorum.Web.Client.Api;
 namespace Quorum.Integration.Tests.Web;
 
 /// <summary>The web client's side of attachments: the typed API client against the real server, and the view logic.</summary>
-public sealed class AttachmentClientTests(PostgresFixture postgres)
+public sealed class AttachmentClientTests(PostgresFixture postgres, SharedQuorumApp host) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static MemoryStream Utf8(string text) => new(Encoding.UTF8.GetBytes(text));
@@ -15,8 +19,7 @@ public sealed class AttachmentClientTests(PostgresFixture postgres)
     [Fact]
     public async Task TheClientUploadsListsPreviewsAndRemovesAnAttachment()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var http = await app.SetUpAsync();
+        var http = host.Admin;
         var api = new QuorumApi(http);
         var conversation = (await api.CreateConversationAsync(Ct)).Value;
 
@@ -38,8 +41,7 @@ public sealed class AttachmentClientTests(PostgresFixture postgres)
     [Fact]
     public async Task ARejectedUploadCarriesTheServersCodeAndMessage()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var http = await app.SetUpAsync();
+        var http = host.Admin;
         var api = new QuorumApi(http);
         var conversation = (await api.CreateConversationAsync(Ct)).Value;
 
@@ -71,8 +73,7 @@ public sealed class AttachmentClientTests(PostgresFixture postgres)
     [Fact]
     public async Task TheConversationDetailListsItsAttachments()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var http = await app.SetUpAsync();
+        var http = host.Admin;
         var api = new QuorumApi(http);
         var conversation = (await api.CreateConversationAsync(Ct)).Value;
         await api.UploadAttachmentAsync(conversation, Utf8("content"), "a.md", Ct);

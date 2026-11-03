@@ -21,6 +21,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Quorum.Host\Quorum.Host.csproj" />
     <ProjectReference Include="..\..\tools\Quorum.SampleKnowledgeBase\Quorum.SampleKnowledgeBase.csproj" />
   </ItemGroup>
