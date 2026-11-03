@@ -2,6 +2,7 @@
 @inject QuorumApi Api
 @inject OnboardingProgress Onboarding
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Settings · Quorum</PageTitle>
 
@@ -162,6 +163,22 @@
                 </MudStack>
             </MudTabPanel>
 
+            <MudTabPanel Text="Display" data-tab="display">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle1">Tool calls in a chat</MudText>
+                    <MudText Typo="Typo.body2" Class="tool-hint">How the calls an assistant makes, and the sub-agents it delegates to, are drawn while it answers. Saved in this browser only.</MudText>
+                    <MudRadioGroup T="LedgerStyle" Value="_ledger" ValueChanged="ChooseLedgerAsync" data-ledger-style>
+                        @foreach (var style in LedgerStyles.All)
+                        {
+                            <div class="ledger-choice">
+                                <MudRadio T="LedgerStyle" Value="style" Color="Color.Primary" Dense="true">@LedgerStyles.Label(style)</MudRadio>
+                                <MudText Typo="Typo.caption" Class="tool-hint">@LedgerStyles.Description(style)</MudText>
+                            </div>
+                        }
+                    </MudRadioGroup>
+                </MudStack>
+            </MudTabPanel>
+
             @if (_webSearch)
             {
                 @* One tab for the platform's single web row: three sections of one form, saved together. *@
@@ -311,14 +328,22 @@
     private bool _cacheEnabled = true;
     private int _cacheTtlMinutes = WebConfigurationLimits.DefaultCacheTtlMinutes;
     private int _tab;
+    private LedgerStyle _ledger;
 
     private const int BehaviourTab = 1;
 
     [SupplyParameterFromQuery]
     public string? Unverified { get; set; }
 
+    private async Task ChooseLedgerAsync(LedgerStyle style)
+    {
+        _ledger = style;
+        await JS.InvokeVoidAsync("quorumLedger.write", LedgerStyles.CookieName, LedgerStyles.Key(style));
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        _ledger = LedgerStyles.Parse(await JS.InvokeAsync<string?>("quorumLedger.read", LedgerStyles.CookieName));
         var result = await Api.GetAssistantSettingsAsync();
         _loading = false;
 

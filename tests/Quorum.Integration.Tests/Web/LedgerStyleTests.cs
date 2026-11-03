@@ -64,6 +64,16 @@ public sealed class LedgerStyleTests : BunitContext
     }
 
     [Fact]
+    public void TheClassicLedgerNumbersOnlyTheTopLevel()
+    {
+        var delegation = Call("contract-analyst");
+        var page = Draw(LedgerStyle.Classic, delegation, Call("rag__search_contracts", parent: delegation.CallId, agent: "contract-analyst"), Call("builtin__calculator"));
+
+        Assert.Equal(["01", "02"], page.FindAll(".tool-ledger-index").Select(index => index.TextContent));
+        Assert.Empty(page.FindAll(".tool-ledger-nested .tool-ledger-index"));
+    }
+
+    [Fact]
     public void CardsPutThePlainCallsInOneToolsCardAndEachDelegationInItsOwn()
     {
         var delegation = Call("deadline-planner", arguments: """{"task":"Calcola la data limite"}""");

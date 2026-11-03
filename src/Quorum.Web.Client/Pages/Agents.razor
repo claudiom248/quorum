@@ -7,7 +7,7 @@
 <MudStack Spacing="3" Class="list-page">
     <div>
         <MudText Typo="Typo.h5">Agents</MudText>
-        <MudText Typo="Typo.body2" Class="tool-hint">An agent is a prompt, a model endpoint and tools. An agent can call other agents as tools; an assistant starts from its root agent.</MudText>
+        <MudText Typo="Typo.body2" Class="tool-hint">An agent is a prompt, a model endpoint and tools. It can call other agents as tools, and be offered as an assistant that people chat with.</MudText>
     </div>
 
     <ProblemMessage Problem="_problem" />
@@ -23,6 +23,7 @@
                 <MudTh>Agent</MudTh>
                 <MudTh>Scope</MudTh>
                 <MudTh>Endpoint</MudTh>
+                <MudTh>Assistant</MudTh>
                 <MudTh>Sub-agents</MudTh>
                 <MudTh>Tools</MudTh>
                 <MudTh></MudTh>
@@ -34,6 +35,7 @@
                 </MudTd>
                 <MudTd DataLabel="Scope">@agent.Scope</MudTd>
                 <MudTd DataLabel="Endpoint">@EndpointName(agent.ModelEndpointId)</MudTd>
+                <MudTd DataLabel="Assistant">@AssistantNames(agent.Slug)</MudTd>
                 <MudTd DataLabel="Sub-agents">@agent.SubAgentCount</MudTd>
                 <MudTd DataLabel="Tools">@agent.ToolCount</MudTd>
                 <MudTd>
@@ -65,7 +67,7 @@
                                 <option value="">Same as the caller</option>
                                 @foreach (var endpoint in _endpoints)
                                 {
-                                    <option value="@endpoint.Id">@endpoint.Name · @endpoint.ModelName</option>
+                                    <option value="@endpoint.Id">@endpoint.Name</option>
                                 }
                             </select>
                         </label>
@@ -79,6 +81,7 @@
 
                         <div>
                             <MudText Typo="Typo.subtitle2">Sub-agents</MudText>
+                            <MudText Typo="Typo.body2" Class="tool-hint">The agents this one may call as tools. Say what should happen when one of them fails: its error goes back to this agent, which decides how to go on, or the whole answer stops.</MudText>
                             @foreach (var other in _agents.Where(a => a.Id != _editing?.Id))
                             {
                                 var slug = other.Slug;
@@ -87,10 +90,12 @@
                                                  Label="@other.DisplayName" Dense="true" />
                                     @if (_form.SubAgents.TryGetValue(slug, out var policy))
                                     {
-                                        <select aria-label="@($"If {slug} fails")" value="@policy" @onchange="e => _form.SubAgents[slug] = e.Value?.ToString() ?? FailurePolicies.ReturnError">
-                                            <option value="@FailurePolicies.ReturnError">Tell the caller</option>
-                                            <option value="@FailurePolicies.AbortTurn">Stop the answer</option>
-                                        </select>
+                                        <label class="tool-policy">If it fails
+                                            <select aria-label="@($"If {slug} fails")" value="@policy" @onchange="e => _form.SubAgents[slug] = e.Value?.ToString() ?? FailurePolicies.ReturnError">
+                                                <option value="@FailurePolicies.ReturnError">Report it to this agent</option>
+                                                <option value="@FailurePolicies.AbortTurn">Stop the whole answer</option>
+                                            </select>
+                                        </label>
                                     }
                                 </MudStack>
                             }
@@ -118,6 +123,23 @@
                                 }
                             </div>
                         }
+
+                        <div data-section="assistant">
+                            <MudSwitch T="bool" @bind-Value="_form.OfferAsAssistant" Label="Offer as an assistant" Color="Color.Primary" />
+                            <MudText Typo="Typo.body2" Class="tool-hint">People start a chat with an assistant, which answers through this agent.</MudText>
+                            @if (_form.OfferAsAssistant)
+                            {
+                                <MudStack Spacing="2" Class="mt-2">
+                                    <MudTextField @bind-Value="_form.AssistantName" Label="Assistant name" Variant="Variant.Outlined"
+                                                  HelperText="Shown in the chat. Empty uses the agent's name." />
+                                    @if (_form.SubAgents.Count > 0)
+                                    {
+                                        <MudNumericField T="int" @bind-Value="_form.MaxParallelSubAgents" Label="Sub-agents at the same time" Variant="Variant.Outlined" Min="1"
+                                                         HelperText="1 runs them one after the other." />
+                                    }
+                                </MudStack>
+                            }
+                        </div>
 
                         @if (_form.SubAgents.Count + _activeTools.Count > WarnAbove)
                         {
@@ -159,9 +181,18 @@
         public IReadOnlyList<Guid> ScopeTenantIds { get; set; } = [];
 
         public Dictionary<string, string> SubAgents { get; } = [];
+
+        public bool OfferAsAssistant { get; set; }
+
+        public string AssistantName { get; set; } = string.Empty;
+
+        public int MaxParallelSubAgents { get; set; } = 1;
     }
 
     private List<AgentListItem>? _agents;
+    private List<AssistantInfo> _assistants = [];
+    // The assistant this form manages: the first one that answers through the agent being edited.
+    private AssistantInfo? _assistant;
     private List<ModelEndpointInfo> _endpoints = [];
     private AgentDocument? _editing;
     private AgentForm? _form;
@@ -183,14 +214,24 @@
         var result = await Api.ListAgentItemsAsync();
         _problem = result.Problem;
         _agents = result.IsSuccess ? result.Value : [];
+
+        var assistants = await Api.ListAssistantInfosAsync();
+        _assistants = assistants.IsSuccess ? assistants.Value : [];
     }
 
     private string EndpointName(Guid? id) =>
         id is null ? "Same as the caller" : _endpoints.FirstOrDefault(e => e.Id == id)?.Name ?? "Unknown";
 
+    private string AssistantNames(string slug)
+    {
+        var names = _assistants.Where(a => a.RootAgentSlug == slug).Select(a => a.Name).ToList();
+        return names.Count == 0 ? "—" : string.Join(", ", names);
+    }
+
     private void New()
     {
         _editing = null;
+        _assistant = null;
         _form = new AgentForm();
         _tools = null;
         _activeTools.Clear();
@@ -221,6 +262,14 @@
         foreach (var edge in agent.SubAgents)
         {
             _form.SubAgents[edge.Slug] = edge.FailurePolicy;
+        }
+
+        _assistant = _assistants.FirstOrDefault(a => a.RootAgentSlug == agent.Slug);
+        if (_assistant is not null)
+        {
+            _form.OfferAsAssistant = true;
+            _form.AssistantName = _assistant.Name;
+            _form.MaxParallelSubAgents = _assistant.MaxParallelSubAgents;
         }
 
         _formProblem = null;
@@ -303,6 +352,12 @@
             result = await Api.SetAgentToolsAsync(id, [.. _activeTools]);
         }
 
+        // The assistant follows the agent it answers through: the agent already exists by now.
+        if (result.IsSuccess)
+        {
+            result = await SaveAssistantAsync(request.Slug);
+        }
+
         _busy = false;
         _formProblem = result.Problem;
         if (result.IsSuccess)
@@ -310,22 +365,63 @@
             _form = null;
         }
 
-        // The agent is saved even when its tools were refused: the list must show it, and the form stays open for the tools.
+        // The agent is saved even when its tools or assistant were refused: the list must show it, and the form stays open for them.
         if (agentSaved)
         {
             await LoadAsync();
+            if (!result.IsSuccess && _editing is null && savedId is { } created)
+            {
+                // A second save must update the agent just created, not add another.
+                var problem = result.Problem;
+                await EditAsync(created);
+                _formProblem = problem;
+            }
         }
+    }
+
+    private async Task<ApiResult> SaveAssistantAsync(string slug)
+    {
+        var form = _form!;
+        var name = string.IsNullOrWhiteSpace(form.AssistantName) ? form.DisplayName.Trim() : form.AssistantName.Trim();
+        var parallel = form.SubAgents.Count > 0 ? form.MaxParallelSubAgents : (_assistant?.MaxParallelSubAgents ?? 1);
+
+        if (!form.OfferAsAssistant)
+        {
+            return _assistant is null ? ApiResult.Success : await Api.DeleteAssistantAsync(_assistant.Id);
+        }
+
+        var request = new AssistantRequest(name, slug, parallel);
+        if (_assistant is null)
+        {
+            return await Api.CreateAssistantAsync(request);
+        }
+
+        return await Api.UpdateAssistantAsync(_assistant.Id, request);
     }
 
     private async Task DeleteAsync(AgentListItem agent)
     {
-        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete agent", $"Delete {agent.DisplayName}?", yesText: "Delete", cancelText: "Cancel");
+        var assistants = _assistants.Where(a => a.RootAgentSlug == agent.Slug).ToList();
+        var message = assistants.Count == 0
+            ? $"Delete {agent.DisplayName}?"
+            : $"Delete {agent.DisplayName} and its assistant {string.Join(", ", assistants.Select(a => a.Name))}? Their conversations stay readable.";
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete agent", message, yesText: "Delete", cancelText: "Cancel");
         if (confirmed != true)
         {
             return;
         }
 
-        // 409 lists the assistants and agents that still reference it.
+        // An assistant cannot outlive its root agent; 409 lists the other assistants and agents that still reference the agent.
+        foreach (var assistant in assistants)
+        {
+            var removed = await Api.DeleteAssistantAsync(assistant.Id);
+            if (!removed.IsSuccess)
+            {
+                _problem = removed.Problem;
+                return;
+            }
+        }
+
         var result = await Api.DeleteAgentAsync(agent.Id);
         _problem = result.Problem;
         if (result.IsSuccess)

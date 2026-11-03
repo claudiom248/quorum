@@ -217,13 +217,17 @@ else
             }
         </details>;
 
-    private RenderFragment Row(ToolCallView call, string index)
+    // Only the top level is numbered: the calls of a sub-agent hang under it by indentation alone.
+    private RenderFragment Row(ToolCallView call, string? index)
     {
         var children = ChildrenOf(call);
         return @<li class="tool-ledger-row @Tone(call)">
             <details>
                 <summary>
-                    <span class="tool-ledger-index">@index</span>
+                    @if (index is not null)
+                    {
+                        <span class="tool-ledger-index">@index</span>
+                    }
                     <span class="tool-ledger-name">@call.DisplayName</span>
                     @if (call.AgentSlug is { } slug)
                     {
@@ -248,7 +252,7 @@ else
                 <ol class="tool-ledger tool-ledger-nested">
                     @for (var i = 0; i < children.Count; i++)
                     {
-                        @Row(children[i], $"{index}.{i + 1}")
+                        @Row(children[i], null)
                     }
                 </ol>
             }

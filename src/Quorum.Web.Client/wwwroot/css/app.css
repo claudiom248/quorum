@@ -303,3 +303,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .lg-bars .lg-plain .lg-meta { margin-left: auto; }
 .lg-bars .lg-task, .lg-bars .lg-more, .lg-bars .tool-pre { margin-left: 0; }
 .lg-bars .lg-children .lg-plain { border-left: 2px solid var(--mud-palette-lines-default); padding-left: .5rem; margin-top: .2rem; }
+
+/* Settings: one choice of how tool calls are drawn, with its description under it. */
+.ledger-choice { display: flex; flex-direction: column; margin-bottom: .6rem; }
+.ledger-choice .tool-hint { margin-left: 2rem; }

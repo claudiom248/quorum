@@ -182,10 +182,7 @@
     [Parameter]
     public Guid? Id { get; set; }
 
-    /// <summary><c>?ledger=a|b|c|classic</c> picks how tool calls are drawn and keeps the choice in a cookie.</summary>
-    [SupplyParameterFromQuery(Name = LedgerStyles.QueryName)]
-    public string? LedgerQuery { get; set; }
-
+    // How tool calls are drawn: the person's choice in the settings, kept in a cookie.
     private LedgerStyle _ledger;
 
     private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(60);
@@ -251,16 +248,7 @@
 
     private async Task ReadLedgerStyleAsync()
     {
-        if (!string.IsNullOrWhiteSpace(LedgerQuery))
-        {
-            _ledger = LedgerStyles.Parse(LedgerQuery);
-            await JS.InvokeVoidAsync("quorumLedger.write", LedgerStyles.CookieName, LedgerStyles.Key(_ledger));
-        }
-        else
-        {
-            _ledger = LedgerStyles.Parse(await JS.InvokeAsync<string?>("quorumLedger.read", LedgerStyles.CookieName));
-        }
-
+        _ledger = LedgerStyles.Parse(await JS.InvokeAsync<string?>("quorumLedger.read", LedgerStyles.CookieName));
         StateHasChanged();
     }
 

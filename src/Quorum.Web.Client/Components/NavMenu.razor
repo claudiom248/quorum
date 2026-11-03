@@ -9,6 +9,11 @@
 
         @if (IsAdmin)
         {
+            <MudNavGroup Title="Agents" Icon="@Icons.Material.Filled.SmartToy" Expanded="true">
+                <MudNavLink Href="agents" Match="NavLinkMatch.All">Agents</MudNavLink>
+                <MudNavLink Href="agents/endpoints" Match="NavLinkMatch.Prefix">Model endpoints</MudNavLink>
+            </MudNavGroup>
+
             <MudNavGroup Title="Tools" Icon="@Icons.Material.Filled.Build" Expanded="true">
                 @foreach (var entry in ToolEntries)
                 {
@@ -20,12 +25,6 @@
                         }
                     </MudNavLink>
                 }
-            </MudNavGroup>
-
-            <MudNavGroup Title="Agents" Icon="@Icons.Material.Filled.SmartToy" Expanded="true">
-                <MudNavLink Href="agents" Match="NavLinkMatch.All">Agents</MudNavLink>
-                <MudNavLink Href="agents/assistants" Match="NavLinkMatch.Prefix">Assistants</MudNavLink>
-                <MudNavLink Href="agents/endpoints" Match="NavLinkMatch.Prefix">Model endpoints</MudNavLink>
             </MudNavGroup>
 
             <MudNavGroup Title="Knowledge" Icon="@Icons.Material.Filled.LibraryBooks" Expanded="true">
