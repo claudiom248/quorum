@@ -47,7 +47,7 @@ internal static class LookupLeanDefinition
         return new GeneratedLookupDefinition(
         [
             new GeneratedLookupFunction(DescribeOperation, describe, DescribeSchema(targets).ToJsonString()),
-            new GeneratedLookupFunction(QueryOperation, query, QuerySchema(targets).ToJsonString()),
+            new GeneratedLookupFunction(QueryOperation, query, QuerySchema(lookups, bases).ToJsonString()),
         ]);
     }
 
@@ -69,25 +69,58 @@ internal static class LookupLeanDefinition
         ["required"] = Names([TargetsParameter]),
     };
 
-    private static JsonObject QuerySchema(IReadOnlyList<string> targets) => new()
+    // The operations of a target depend on what it is: a list takes values and count, a knowledge base documents and count. The rule is
+    // written per target so the model sees which operation fits the target it chose (spec 012 A1-6); the read still refuses the others.
+    private static JsonObject QuerySchema(List<string> lookups, List<string> bases)
     {
-        ["type"] = "object",
-        ["properties"] = new JsonObject
+        var targets = lookups.Concat(bases).ToList();
+        var rules = new JsonArray();
+        if (lookups.Count > 0)
         {
-            [TargetParameter] = new JsonObject { ["type"] = "string", ["enum"] = Names(targets) },
-            [OperationParameter] = new JsonObject
-            {
-                ["type"] = "string",
-                ["enum"] = Names([.. LookupOperations, .. KnowledgeBaseOperations.Where(o => !LookupOperations.Contains(o))]),
-                ["description"] = "The operation describe names for the target.",
-            },
-            [FiltersParameter] = new JsonObject { ["type"] = "object", ["description"] = "Filters by field or attribute, as describe lists them." },
-            ["search"] = new JsonObject { ["type"] = "string" },
-            ["sort"] = new JsonObject { ["type"] = "string", ["description"] = "An order that describe lists for the target. Put '-' in front for the largest first, as in -headcount." },
-            ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = LookupToolDefinition.MaxLimit },
-            ["cursor"] = new JsonObject { ["type"] = "string" },
+            rules.Add(OperationRule(lookups, LookupLeanDefinition.LookupOperations));
+        }
+
+        if (bases.Count > 0)
+        {
+            rules.Add(OperationRule(bases, KnowledgeBaseOperations));
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = QueryProperties(targets),
+            ["required"] = Names([TargetParameter, OperationParameter]),
+            ["allOf"] = rules,
+        };
+    }
+
+    private static JsonObject OperationRule(IReadOnlyList<string> targets, IEnumerable<string> operations) => new()
+    {
+        ["if"] = new JsonObject
+        {
+            ["properties"] = new JsonObject { [TargetParameter] = new JsonObject { ["enum"] = Names(targets) } },
+            ["required"] = Names([TargetParameter]),
         },
-        ["required"] = Names([TargetParameter, OperationParameter]),
+        ["then"] = new JsonObject
+        {
+            ["properties"] = new JsonObject { [OperationParameter] = new JsonObject { ["enum"] = Names(operations) } },
+        },
+    };
+
+    private static JsonObject QueryProperties(IReadOnlyList<string> targets) => new()
+    {
+        [TargetParameter] = new JsonObject { ["type"] = "string", ["enum"] = Names(targets) },
+        [OperationParameter] = new JsonObject
+        {
+            ["type"] = "string",
+            ["enum"] = Names([.. LookupOperations, .. KnowledgeBaseOperations.Where(o => !LookupOperations.Contains(o))]),
+            ["description"] = "The operation describe names for the target: values and count for a list, documents and count for a knowledge base.",
+        },
+        [FiltersParameter] = new JsonObject { ["type"] = "object", ["description"] = "Filters by field or attribute, as describe lists them." },
+        ["search"] = new JsonObject { ["type"] = "string" },
+        ["sort"] = new JsonObject { ["type"] = "string", ["description"] = "An order that describe lists for the target. Put '-' in front for the largest first, as in -headcount." },
+        ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = LookupToolDefinition.MaxLimit },
+        ["cursor"] = new JsonObject { ["type"] = "string" },
     };
 
     private static JsonArray Names(IEnumerable<string> names)

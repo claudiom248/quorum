@@ -89,6 +89,10 @@ public sealed class LeanManifestTests(PostgresFixture postgres, QdrantFixture qd
         var offered = setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")).Single(f => f.GetProperty("name").GetString() == "lookup_query__lists");
         Assert.Contains("A list takes the operations values and count only; documents is for a knowledge base only", offered.GetProperty("description").GetString(), StringComparison.Ordinal);
 
+        // The schema states the operations per target: a list takes values and count, a knowledge base documents and count.
+        var rules = offered.GetProperty("parameters").GetProperty("allOf").EnumerateArray().Select(r => r.GetProperty("then").GetProperty("properties").GetProperty("operation").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToList()).ToList();
+        Assert.Equal([["values", "count"], ["documents", "count"]], rules);
+
         // A number states its type and its operators, min and max among them (spec 012 D-5, D-8).
         var years = targets.SelectMany(t => t.GetProperty("operations").EnumerateObject()).SelectMany(o => o.Value.GetProperty("filters").EnumerateArray())
             .Where(f => f.GetProperty("name").GetString() == "year").ToList();
