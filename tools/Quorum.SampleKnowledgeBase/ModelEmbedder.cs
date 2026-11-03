@@ -20,9 +20,51 @@ public sealed class ModelEmbedder(HttpClient client, string model, string docume
     {
         ArgumentNullException.ThrowIfNull(text);
 
+        var vectors = await EmbedBatchAsync([text], cancellationToken)
+            ?? throw new InvalidOperationException("The embedding endpoint answered without a vector.");
+        return vectors[0];
+    }
+
+    /// <summary>
+    /// The vectors of every text. The endpoint is asked in batches, because an ingestion of three thousand chunks cannot afford three
+    /// thousand requests; an endpoint that answers one vector per request whatever the input gets the texts one by one instead.
+    /// </summary>
+    public async Task<IReadOnlyList<float[]>> EmbedAllAsync(IReadOnlyList<string> texts, int batchSize, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(texts);
+
+        var all = new List<float[]>(texts.Count);
+        for (var from = 0; from < texts.Count; from += batchSize)
+        {
+            var batch = texts.Skip(from).Take(batchSize).ToArray();
+            if (await EmbedBatchAsync(batch, cancellationToken) is { } vectors)
+            {
+                all.AddRange(vectors);
+                continue;
+            }
+
+            foreach (var text in batch)
+            {
+                var one = await EmbedBatchAsync([text], cancellationToken);
+                if (one is null or { Count: 0 })
+                {
+                    throw new InvalidOperationException("The embedding endpoint answered no vector, for a batch or for a single text.");
+                }
+
+                all.Add(one[0]);
+            }
+        }
+
+        return all;
+    }
+
+    /// <summary>The vectors of the texts, or <see langword="null"/> when the endpoint did not answer one vector per text.</summary>
+    private async Task<IReadOnlyList<float[]>?> EmbedBatchAsync(string[] texts, CancellationToken cancellationToken)
+    {
+        var input = new JsonArray([.. texts.Select(text => (JsonNode?)JsonValue.Create(documentPrefix + text))]);
         using var response = await client.PostAsJsonAsync(
             new Uri("embeddings", UriKind.Relative),
-            new JsonObject { ["model"] = model, ["input"] = documentPrefix + text },
+            new JsonObject { ["model"] = model, ["input"] = input },
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -31,13 +73,20 @@ public sealed class ModelEmbedder(HttpClient client, string model, string docume
         }
 
         var body = await response.Content.ReadFromJsonAsync<JsonNode>(cancellationToken);
-        var values = body?["data"]?[0]?["embedding"]?.AsArray();
-        if (values is null or { Count: 0 })
+        var data = body?["data"]?.AsArray();
+        if (data is null or { Count: 0 })
         {
-            throw new InvalidOperationException("The embedding endpoint answered without a vector.");
+            return null;
         }
 
-        return values.Select(value => value!.GetValue<float>()).ToArray();
+        var vectors = data
+            .OrderBy(item => item?["index"]?.GetValue<int>() ?? 0)
+            .Select(item => item?["embedding"]?.AsArray())
+            .Select(values => values is null or { Count: 0 }
+                ? throw new InvalidOperationException("The embedding endpoint answered without a vector.")
+                : values.Select(value => value!.GetValue<float>()).ToArray())
+            .ToList();
+        return vectors.Count == texts.Length ? vectors : null;
     }
 
     public static ModelEmbedder Create(HttpClient client, Uri baseAddress, string model, string documentPrefix, string? apiKey)

@@ -13,6 +13,7 @@ if (options.ContainsKey("help"))
           --url <url>        Qdrant REST address (default http://localhost:6333, the dev compose)
           --api-key <key>    Qdrant API key, if the server needs one
           --prefix <text>    prepended to every collection name
+          --only <names>    comma-separated collection names to seed, leaving the others alone
           --schema <name>    prints the pasteable JSON Schema of 'flat', 'nested', 'relation-flat' or 'relation-langchain' and exits
 
         To seed sample relations into a PostgreSQL with pgvector instead (spec 008, D-18; Qdrant is then left alone):
@@ -89,6 +90,17 @@ try
 {
     ModelEmbedder? embedder = null;
     var datasets = SampleCollections.All(options.GetValueOrDefault("prefix", string.Empty));
+    if (options.TryGetValue("only", out var only))
+    {
+        var wanted = only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        datasets = [.. datasets.Where(dataset => wanted.Contains(dataset.Name, StringComparer.Ordinal))];
+        if (datasets.Count == 0)
+        {
+            Console.Error.WriteLine("--only names none of the collections: " + string.Join(", ", SampleCollections.All(options.GetValueOrDefault("prefix", string.Empty)).Select(dataset => dataset.Name)) + ".");
+            return 1;
+        }
+    }
+
     if (options.TryGetValue("embedding-url", out var embeddingUrl))
     {
         if (!options.TryGetValue("embedding-model", out var embeddingModel) || embeddingModel.Length == 0)
