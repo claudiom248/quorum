@@ -29,6 +29,9 @@ internal sealed record AgentInput(
     public static ValidationProblem SlugTaken() =>
         TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["slug"] = ["Another agent already has this slug."] });
 
+    public static ValidationProblem SubAgentGone() =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["subAgents"] = ["A sub-agent was deleted while saving. Reload and try again."] });
+
     /// <param name="existing">The agent being replaced; <see langword="null"/> when creating.</param>
     public static async Task<AgentInput> ValidateAsync(AgentRequest request, Agent? existing, AgentsDbContext db, CancellationToken cancellationToken)
     {

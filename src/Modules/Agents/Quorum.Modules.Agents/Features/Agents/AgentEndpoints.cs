@@ -97,6 +97,10 @@ internal sealed class AgentEndpoints : IEndpointGroup
         {
             return AgentInput.SlugTaken();
         }
+        catch (DbUpdateException exception) when (exception.IsForeignKeyViolation())
+        {
+            return AgentInput.SubAgentGone();
+        }
 
         return TypedResults.CreatedAtRoute(
             await AgentDocument.LoadAsync(db, agent, cancellationToken),
@@ -156,6 +160,10 @@ internal sealed class AgentEndpoints : IEndpointGroup
         {
             return AgentInput.SlugTaken();
         }
+        catch (DbUpdateException exception) when (exception.IsForeignKeyViolation())
+        {
+            return AgentInput.SubAgentGone();
+        }
 
         return TypedResults.NoContent();
     }
@@ -177,7 +185,20 @@ internal sealed class AgentEndpoints : IEndpointGroup
         }
 
         db.Agents.Remove(agent);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (exception.IsForeignKeyViolation())
+        {
+            // Something started to use the agent after the check above.
+            db.ChangeTracker.Clear();
+            return BlockingReference.Conflict(
+                "agent.in_use",
+                "The agent is in use. Point these to another agent, or remove it from them, first.",
+                await AgentReferences.OfAsync(db, id, cancellationToken));
+        }
+
         return TypedResults.NoContent();
     }
 }
