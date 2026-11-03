@@ -85,7 +85,7 @@ public sealed record ConversationContext(
     int RemainingTokens,
     int ToolsTokens = 0);
 
-public sealed record AssistantSummary(Guid Id, string Name);
+public sealed record AssistantSummary(Guid Id, string Name, string? RootAgentSlug = null);
 
 /// <param name="Current">Whether this is the tenant of the signed-in user: the one a scope never lists as "another tenant".</param>
 public sealed record ChecklistItem(string Key, bool Done);
@@ -104,14 +104,14 @@ public sealed record ServiceTokenInfo(Guid Id, DateTimeOffset CreatedAt);
 /// <param name="Token">The plaintext, shown once at generation and never returned again.</param>
 public sealed record CreatedServiceToken(Guid Id, string Token, DateTimeOffset CreatedAt);
 
-/// <summary>A tool an assistant may use, and whether it is activated on it.</summary>
-/// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this assistant; <see langword="null"/> for the other tools.</param>
+/// <summary>A tool an agent may use, and whether it is activated on it.</summary>
+/// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this agent; <see langword="null"/> for the other tools.</param>
 public sealed record PoolTool(Guid ToolId, string Name, bool Active, string? Manifest = null);
 
 public sealed record ToolWarning(string Code, string Message);
 
-/// <summary>The tools in an assistant's pool and what to watch out for in the active set (too many, too large).</summary>
-public sealed record AssistantTools(IReadOnlyList<PoolTool> Pool, IReadOnlyList<ToolWarning> Warnings);
+/// <summary>The tools in an agent's pool and what to watch out for in the active set (too many, too large).</summary>
+public sealed record AgentTools(IReadOnlyList<PoolTool> Pool, IReadOnlyList<ToolWarning> Warnings);
 
 public static class ToolStates
 {

@@ -51,19 +51,19 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult<List<AgentSummary>>> ListAgentsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<AgentSummary>>("api/agents", cancellationToken);
 
-    public Task<ApiResult<AssistantTools>> GetAssistantToolsAsync(Guid assistantId, CancellationToken cancellationToken = default) =>
-        GetAsync<AssistantTools>($"api/assistants/{assistantId}/tools", cancellationToken);
+    public Task<ApiResult<AgentTools>> GetAgentToolsAsync(Guid agentId, CancellationToken cancellationToken = default) =>
+        GetAsync<AgentTools>($"api/agents/{agentId}/tools", cancellationToken);
 
-    /// <summary>Activates exactly these tools on the assistant.</summary>
+    /// <summary>Activates exactly these tools on the agent.</summary>
     /// <param name="manifests">For lookup tools: <c>full</c> or <c>lean</c> by tool id; a tool left out keeps its manifest.</param>
-    public Task<ApiResult> SetAssistantToolsAsync(
-        Guid assistantId,
+    public Task<ApiResult> SetAgentToolsAsync(
+        Guid agentId,
         IReadOnlyList<Guid> toolIds,
         IReadOnlyDictionary<Guid, string>? manifests = null,
         CancellationToken cancellationToken = default) =>
         SendAsync(
             HttpMethod.Put,
-            $"api/assistants/{assistantId}/tools",
+            $"api/agents/{agentId}/tools",
             new { toolIds, manifests = manifests?.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value.ToLowerInvariant()) },
             setupToken: null,
             cancellationToken);

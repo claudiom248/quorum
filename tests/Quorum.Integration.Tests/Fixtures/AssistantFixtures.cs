@@ -24,6 +24,7 @@ internal static class AssistantFixtures
         db.Agents.Add(agent);
         db.Assistants.Add(assistant);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        Tools.ToolsApi.RememberRootAgent(assistant.Id, agent.Id);
         return (assistant.Id, agent.Id);
     }
 

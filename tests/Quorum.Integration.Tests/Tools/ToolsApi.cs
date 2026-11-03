@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -74,7 +75,15 @@ internal static class ToolsApi
 
     public sealed record RefreshBody(string Status, List<string> Added, List<string> Changed, List<string> Removed);
 
-    public static Uri AssistantTools(Guid assistantId) => new($"/api/assistants/{assistantId}/tools", UriKind.Relative);
+    // Tools belong to the root agent of an assistant (spec 013 D-17); the tests of the tools think in assistants, so this remembers which agent is whose.
+    private static readonly ConcurrentDictionary<Guid, Guid> RootAgents = new();
+
+    public static Uri AgentTools(Guid agentId) => new($"/api/agents/{agentId}/tools", UriKind.Relative);
+
+    /// <summary>The tools route of the root agent of an assistant seen through <see cref="DefaultAssistantIdAsync"/> or <see cref="Fixtures.AssistantFixtures"/>; an unknown id is used as it is.</summary>
+    public static Uri AssistantTools(Guid assistantId) => AgentTools(RootAgents.GetValueOrDefault(assistantId, assistantId));
+
+    public static void RememberRootAgent(Guid assistantId, Guid agentId) => RootAgents[assistantId] = agentId;
 
     public static async Task<IReadOnlyList<ToolBody>> ListToolsAsync(HttpClient client) =>
         (await client.GetFromJsonAsync<List<ToolBody>>(Tools, TestContext.Current.CancellationToken))!;
@@ -82,7 +91,17 @@ internal static class ToolsApi
     public static async Task<Guid> DefaultAssistantIdAsync(HttpClient client)
     {
         var assistants = await client.GetFromJsonAsync<List<AssistantBody>>(Assistants, TestContext.Current.CancellationToken);
-        return Assert.Single(assistants!).Id;
+        var assistant = Assert.Single(assistants!);
+
+        // A signed-in user who may not read the agents only needs the assistant.
+        using var agents = await client.GetAsync(new Uri("/api/agents", UriKind.Relative), TestContext.Current.CancellationToken);
+        if (agents.IsSuccessStatusCode)
+        {
+            var root = (await agents.Content.ReadFromJsonAsync<List<AgentBody>>(TestContext.Current.CancellationToken))!.Single(a => a.Slug == assistant.RootAgentSlug);
+            RememberRootAgent(assistant.Id, root.Id);
+        }
+
+        return assistant.Id;
     }
 
     public static async Task<AssistantToolsBody> GetAssistantToolsAsync(HttpClient client, Guid assistantId) =>
@@ -97,7 +116,9 @@ internal static class ToolsApi
 
     public sealed record ToolBody(Guid Id, string Origin, string? ServerName, string Name, string Description, string State, string Policy, JsonElement? Annotations = null);
 
-    public sealed record AssistantBody(Guid Id, string Name);
+    public sealed record AssistantBody(Guid Id, string Name, string RootAgentSlug);
+
+    public sealed record AgentBody(Guid Id, string Slug);
 
     public sealed record PoolToolBody(Guid ToolId, string Name, bool Active);
 

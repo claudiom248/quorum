@@ -82,6 +82,26 @@ internal sealed class Agent
         SystemPrompt = systemPrompt;
         UpdatedAt = now;
     }
+
+    public void Revise(
+        string slug,
+        string displayName,
+        string description,
+        string systemPrompt,
+        Guid? modelEndpointId,
+        AgentScope scope,
+        IEnumerable<Guid> scopeTenantIds,
+        DateTimeOffset now)
+    {
+        Slug = slug;
+        DisplayName = displayName;
+        Description = description;
+        SystemPrompt = systemPrompt;
+        ModelEndpointId = modelEndpointId;
+        Scope = scope;
+        ScopeTenantIds = [.. scopeTenantIds];
+        UpdatedAt = now;
+    }
 }
 
 /// <summary>The edge of the graph (spec 013 D-2, D-24): <see cref="ParentAgentId"/> can call <see cref="ChildAgentId"/> as a tool.</summary>
@@ -98,6 +118,8 @@ internal sealed class AgentSubAgent
     public Guid TenantId { get; private set; }
 
     public SubAgentFailurePolicy FailurePolicy { get; private set; }
+
+    public void ChangeFailurePolicy(SubAgentFailurePolicy failurePolicy) => FailurePolicy = failurePolicy;
 
     public static AgentSubAgent Create(Guid tenantId, Guid parentAgentId, Guid childAgentId, SubAgentFailurePolicy failurePolicy) => new()
     {
