@@ -1,0 +1,201 @@
+@page "/agents/endpoints"
+@inject QuorumApi Api
+@inject IDialogService Dialogs
+
+<PageTitle>Model endpoints · Quorum</PageTitle>
+
+<MudStack Spacing="3" Class="list-page">
+    <div>
+        <MudText Typo="Typo.h5">Model endpoints</MudText>
+        <MudText Typo="Typo.body2" Class="tool-hint">The language models agents run on. Each one is an OpenAI-compatible address with a model name; an agent picks one, and a sub-agent without its own uses its caller's.</MudText>
+    </div>
+
+    <ProblemMessage Problem="_problem" />
+
+    @if (_endpoints is null)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable T="ModelEndpointInfo" Items="_endpoints" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="endpoints">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Address</MudTh>
+                <MudTh>Model</MudTh>
+                <MudTh>Context</MudTh>
+                <MudTh>Tools</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate Context="endpoint">
+                <MudTd DataLabel="Name"><span class="tool-name">@endpoint.Name</span></MudTd>
+                <MudTd DataLabel="Address"><span class="tool-hint">@endpoint.BaseUrl</span></MudTd>
+                <MudTd DataLabel="Model">@endpoint.ModelName</MudTd>
+                <MudTd DataLabel="Context">@endpoint.ContextTokenBudget.ToString("N0") tokens</MudTd>
+                <MudTd DataLabel="Tools">@(endpoint.SupportsTools ? "yes" : "no")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" OnClick="() => Edit(endpoint)">Edit</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(endpoint)">Delete</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_form is null)
+        {
+            <div><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="New">Add endpoint</MudButton></div>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="pa-4">
+                <form @onsubmit="SaveAsync" data-form="endpoint">
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.h6">@(_editing is null ? "New endpoint" : "Edit endpoint")</MudText>
+                        <MudTextField @bind-Value="_form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="100" />
+                        <MudTextField @bind-Value="_form.BaseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true" />
+                        <MudTextField @bind-Value="_form.ModelName" Label="Model name" Variant="Variant.Outlined" Required="true" />
+                        <MudTextField @bind-Value="_form.ApiKey" Label="API key" Variant="Variant.Outlined" InputType="InputType.Password"
+                                      HelperText="@(_editing?.HasApiKey == true ? "A key is stored. Leave empty to keep it." : "Optional.")" />
+                        @if (_editing?.HasApiKey == true)
+                        {
+                            <MudCheckBox T="bool" @bind-Value="_form.RemoveKey" Label="Remove the stored key" Dense="true" />
+                        }
+                        <MudNumericField T="int" @bind-Value="_form.ContextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined" Min="1" />
+                        <MudCheckBox T="bool" @bind-Value="_form.SupportsTools" Label="The model supports tools" Dense="true" />
+
+                        @if (_test is not null)
+                        {
+                            <MudAlert Severity="@(_test.Reachable ? Severity.Success : Severity.Warning)" Variant="Variant.Outlined">
+                                @(_test.Reachable ? $"Reachable, {_test.Models.Count} models." : "Not reachable.")
+                                @(_test.SupportsTools is { } tools ? (tools ? " The model supports tools." : " The model does not report tool support.") : string.Empty)
+                            </MudAlert>
+                        }
+
+                        <ProblemMessage Problem="_formProblem" />
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
+                            <MudButton Variant="Variant.Outlined" Disabled="_busy" OnClick="TestAsync">Test connection</MudButton>
+                            <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="Cancel">Cancel</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </form>
+            </MudPaper>
+        }
+    }
+</MudStack>
+
+@code {
+    private sealed class EndpointForm
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string BaseUrl { get; set; } = string.Empty;
+
+        public string ModelName { get; set; } = string.Empty;
+
+        public string ApiKey { get; set; } = string.Empty;
+
+        public bool RemoveKey { get; set; }
+
+        public int ContextTokenBudget { get; set; } = 8192;
+
+        public bool SupportsTools { get; set; } = true;
+    }
+
+    private List<ModelEndpointInfo>? _endpoints;
+    private ModelEndpointInfo? _editing;
+    private EndpointForm? _form;
+    private ModelConnection? _test;
+    private ApiProblem? _problem;
+    private ApiProblem? _formProblem;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var result = await Api.ListModelEndpointsAsync();
+        _problem = result.Problem;
+        _endpoints = result.IsSuccess ? result.Value : [];
+    }
+
+    private void New()
+    {
+        _editing = null;
+        _form = new EndpointForm();
+        _test = null;
+        _formProblem = null;
+    }
+
+    private void Edit(ModelEndpointInfo endpoint)
+    {
+        _editing = endpoint;
+        _form = new EndpointForm
+        {
+            Name = endpoint.Name,
+            BaseUrl = endpoint.BaseUrl,
+            ModelName = endpoint.ModelName,
+            ContextTokenBudget = endpoint.ContextTokenBudget,
+            SupportsTools = endpoint.SupportsTools,
+        };
+        _test = null;
+        _formProblem = null;
+    }
+
+    private void Cancel() => _form = null;
+
+    // Omitted keeps the stored key, an empty string removes it (spec 013 API).
+    private string? KeyToSend => _form!.RemoveKey ? string.Empty : string.IsNullOrEmpty(_form.ApiKey) ? null : _form.ApiKey;
+
+    private async Task SaveAsync()
+    {
+        if (_form is null || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        var request = new ModelEndpointRequest(_form.Name.Trim(), _form.BaseUrl.Trim(), _form.ModelName.Trim(), KeyToSend, _form.ContextTokenBudget, _form.SupportsTools);
+        var result = _editing is null
+            ? await Api.CreateModelEndpointAsync(request)
+            : await Api.UpdateModelEndpointAsync(_editing.Id, request);
+        _busy = false;
+
+        _formProblem = result.Problem;
+        if (result.IsSuccess)
+        {
+            _form = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task TestAsync()
+    {
+        if (_form is null || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        var result = await Api.TestModelEndpointAsync(_form.BaseUrl.Trim(), KeyToSend, _form.ModelName.Trim());
+        _busy = false;
+        _formProblem = result.Problem;
+        _test = result.IsSuccess ? result.Value : null;
+    }
+
+    private async Task DeleteAsync(ModelEndpointInfo endpoint)
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete endpoint", $"Delete {endpoint.Name}?", yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        // 409 lists the agents and assistants that still use it.
+        var result = await Api.DeleteModelEndpointAsync(endpoint.Id);
+        _problem = result.Problem;
+        if (result.IsSuccess)
+        {
+            await LoadAsync();
+        }
+    }
+}

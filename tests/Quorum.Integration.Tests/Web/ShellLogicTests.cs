@@ -65,6 +65,8 @@ public sealed class ShellLogicTests
     [InlineData("", false)]
     [InlineData("settings", false)]
     [InlineData("lab/editor", false)]
+    [InlineData("agents", true)]
+    [InlineData("agents/endpoints", true)]
     [InlineData("toolshed", false)]
     public void ToolsAndKnowledgeAreTheAdminSections(string path, bool adminOnly)
     {

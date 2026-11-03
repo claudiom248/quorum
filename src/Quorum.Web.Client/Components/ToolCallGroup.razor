@@ -12,28 +12,12 @@
     </div>
 
     <ol class="tool-ledger">
-        @for (var i = 0; i < Calls.Count; i++)
+        @{
+            var roots = Roots;
+        }
+        @for (var i = 0; i < roots.Count; i++)
         {
-            var call = Calls[i];
-            <li class="tool-ledger-row @Tone(call)">
-                <details>
-                    <summary>
-                        <span class="tool-ledger-index">@((i + 1).ToString("00"))</span>
-                        <span class="tool-ledger-name">@call.DisplayName</span>
-                        <span class="tool-ledger-args">@Preview(call)</span>
-                        <span class="tool-ledger-state">@call.StatusLabel</span>
-                        <MudIcon Icon="@Icons.Material.Outlined.ExpandMore" Size="Size.Small" Class="tool-ledger-chevron" />
-                    </summary>
-                    @if (call.HasArguments)
-                    {
-                        <pre class="tool-pre">@call.ArgumentsText</pre>
-                    }
-                    @if (call.Result is not null)
-                    {
-                        <pre class="tool-pre">@call.Result</pre>
-                    }
-                </details>
-            </li>
+            @Row(roots[i], (i + 1).ToString("00"))
         }
     </ol>
 
@@ -57,6 +41,53 @@
 
     [Parameter, EditorRequired]
     public Func<ToolCallView, string, Task> OnAnswer { get; set; } = (_, _) => Task.CompletedTask;
+
+    // A call made by a sub-agent hangs under its delegation call; one whose delegation is not (yet) known stays at the top level.
+    private IReadOnlyList<ToolCallView> Roots => [.. Calls.Where(call => ParentOf(call) is null)];
+
+    private ToolCallView? ParentOf(ToolCallView call) =>
+        call.ParentCallId is { } parent ? Calls.FirstOrDefault(other => other.CallId == parent) : null;
+
+    private IReadOnlyList<ToolCallView> ChildrenOf(ToolCallView call) =>
+        [.. Calls.Where(other => other.ParentCallId == call.CallId)];
+
+    private RenderFragment Row(ToolCallView call, string index)
+    {
+        var children = ChildrenOf(call);
+        return @<li class="tool-ledger-row @Tone(call)">
+            <details>
+                <summary>
+                    <span class="tool-ledger-index">@index</span>
+                    <span class="tool-ledger-name">@call.DisplayName</span>
+                    @if (call.AgentSlug is { } slug)
+                    {
+                        <span class="tool-ledger-agent">@slug</span>
+                    }
+                    <span class="tool-ledger-args">@Preview(call)</span>
+                    <span class="tool-ledger-state">@call.StatusLabel</span>
+                    <MudIcon Icon="@Icons.Material.Outlined.ExpandMore" Size="Size.Small" Class="tool-ledger-chevron" />
+                </summary>
+                @if (call.HasArguments)
+                {
+                    <pre class="tool-pre">@call.ArgumentsText</pre>
+                }
+                @* The text of a sub-agent is not shown to the user (spec 013 D-32): its entry carries the state, its calls are nested. A failure keeps its message. *@
+                @if (call.Result is not null && !(call.IsDelegation && call.State == ToolCallState.Succeeded))
+                {
+                    <pre class="tool-pre">@call.Result</pre>
+                }
+            </details>
+            @if (children.Count > 0)
+            {
+                <ol class="tool-ledger tool-ledger-nested">
+                    @for (var i = 0; i < children.Count; i++)
+                    {
+                        @Row(children[i], $"{index}.{i + 1}")
+                    }
+                </ol>
+            }
+        </li>;
+    }
 
     private string Summary
     {

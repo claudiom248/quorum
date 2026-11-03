@@ -5,7 +5,7 @@ public static class AccessRules
 {
     public const string Admin = "Admin";
 
-    private static readonly string[] AdminSections = ["tools", "knowledge"];
+    private static readonly string[] AdminSections = ["tools", "knowledge", "agents"];
 
     public static bool IsAdmin(string? role) => string.Equals(role, Admin, StringComparison.Ordinal);
 
