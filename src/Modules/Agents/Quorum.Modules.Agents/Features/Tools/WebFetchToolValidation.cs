@@ -115,7 +115,7 @@ internal sealed partial class WebFetchToolValidation(AgentsDbContext db)
                 request.Timeout,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
-                scope.Value.AssistantIds));
+                scope.Value.AgentIds));
     }
 
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,39}$")]

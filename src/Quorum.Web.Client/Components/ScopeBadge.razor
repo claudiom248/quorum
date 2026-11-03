@@ -1,6 +1,6 @@
 <span class="scope-badge" data-scope="@Scope.Kind.ToLowerInvariant()">
-    <MudTooltip Text="@ScopeView.Description(Scope, Assistants)">
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@ColorOf(Scope.Kind)">@ScopeView.Label(Scope, Assistants)</MudChip>
+    <MudTooltip Text="@ScopeView.Description(Scope, Assistants, Agents)">
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@ColorOf(Scope.Kind)">@ScopeView.Label(Scope, Assistants, Agents)</MudChip>
     </MudTooltip>
     @if (Shared)
     {
@@ -16,9 +16,13 @@
     [Parameter]
     public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
 
+    /// <summary>Names for the agents of an Agent scope.</summary>
+    [Parameter]
+    public IReadOnlyList<AgentSummary> Agents { get; set; } = [];
+
     /// <summary>The item belongs to another tenant, which shares it with this one.</summary>
     [Parameter]
     public bool Shared { get; set; }
 
-    private static Color ColorOf(string kind) => kind == ScopeKinds.Assistant ? Color.Primary : Color.Default;
+    private static Color ColorOf(string kind) => kind is ScopeKinds.Assistant or ScopeKinds.Agent ? Color.Primary : Color.Default;
 }

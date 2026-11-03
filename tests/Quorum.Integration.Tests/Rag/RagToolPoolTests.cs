@@ -18,13 +18,14 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-23
-    public async Task AnAssistantScopeOnlyPutsTheToolInThePoolOfTheAssistantsItLists()
+    public async Task AnAgentScopeOnlyPutsTheToolInThePoolOfTheAssistantsWhoseRootItLists()
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         var kb = await setup.RegisterAsync("policies");
-        var other = await AssistantFixtures.AddAsync(setup.App);
-        await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-other", knowledgeBaseIds: [kb], scope: new { kind = "Assistant", assistantIds = new[] { other } }));
-        await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-default", knowledgeBaseIds: [kb], scope: new { kind = "Assistant", assistantIds = new[] { setup.AssistantId } }));
+        var (other, otherAgent) = await AssistantFixtures.AddWithAgentAsync(setup.App);
+        var defaultAgent = await AssistantFixtures.RootAgentIdAsync(setup.App, setup.AssistantId);
+        await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-other", knowledgeBaseIds: [kb], scope: new { kind = "Agent", agentIds = new[] { otherAgent } }));
+        await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-default", knowledgeBaseIds: [kb], scope: new { kind = "Agent", agentIds = new[] { defaultAgent } }));
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-tenant", knowledgeBaseIds: [kb]));
 
         var defaultPool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Select(t => t.Name).Where(n => n.StartsWith("rag__", StringComparison.Ordinal)).Order().ToArray();
@@ -113,7 +114,7 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
         var global = await AddForeignRagToolAsync(setup.App, stranger, "shared-global", [sharedKb], ToolScopeKind.Global);
         await AddForeignRagToolAsync(setup.App, stranger, "shared-us", [sharedKb], ToolScopeKind.Tenant, tenantIds: [setup.TenantId]);
         await AddForeignRagToolAsync(setup.App, stranger, "elsewhere", [sharedKb], ToolScopeKind.Tenant, tenantIds: [Guid.NewGuid()]);
-        await AddForeignRagToolAsync(setup.App, stranger, "assistants", [sharedKb], ToolScopeKind.Assistant, assistantIds: [setup.AssistantId]);
+        await AddForeignRagToolAsync(setup.App, stranger, "agents", [sharedKb], ToolScopeKind.Agent, agentIds: [await AssistantFixtures.RootAgentIdAsync(setup.App, setup.AssistantId)]);
         // Shared with everyone, but over a knowledge base this tenant cannot see: listed, yet there is nothing to search.
         await AddForeignRagToolAsync(setup.App, stranger, "blind", [privateKb], ToolScopeKind.Global);
 
@@ -168,13 +169,13 @@ public sealed class RagToolPoolTests(PostgresFixture postgres, QdrantFixture qdr
         IEnumerable<Guid> knowledgeBaseIds,
         ToolScopeKind scope,
         IEnumerable<Guid>? tenantIds = null,
-        IEnumerable<Guid>? assistantIds = null,
+        IEnumerable<Guid>? agentIds = null,
         ToolState state = ToolState.Enabled)
     {
         await using var services = app.Services.CreateAsyncScope();
         var db = services.ServiceProvider.GetRequiredService<AgentsDbContext>();
         var now = DateTimeOffset.UtcNow;
-        var configuration = new RagConfiguration([.. knowledgeBaseIds], [], "{}", [], 5, null, 6000, scope, [.. tenantIds ?? []], [.. assistantIds ?? []]);
+        var configuration = new RagConfiguration([.. knowledgeBaseIds], [], "{}", [], 5, null, 6000, scope, [.. tenantIds ?? []], [.. agentIds ?? []]);
         var tool = Tool.CreateRag(owner, name, "A tool of another tenant.", "hash-" + name, ToolPolicy.Auto);
         if (state != ToolState.Enabled)
         {

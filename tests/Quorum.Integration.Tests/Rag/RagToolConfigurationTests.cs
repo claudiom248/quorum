@@ -297,7 +297,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
         var assistantOnly = await setup.RegisterAsync("assistant-only", scope: new { kind = "Assistant", assistantIds = new[] { setup.AssistantId } });
 
         using var wide = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [assistantOnly]));
-        var narrow = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [assistantOnly], scope: new { kind = "Assistant", assistantIds = new[] { setup.AssistantId } }));
+        var narrow = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [assistantOnly], scope: new { kind = "Agent", agentIds = new[] { await AssistantFixtures.RootAgentIdAsync(setup.App, setup.AssistantId) } }));
 
         Assert.Equal("rag.knowledge_base_not_visible", await ToolsApi.ProblemCodeAsync(wide));
         Assert.Equal(HttpStatusCode.Created, narrow.StatusCode);
@@ -326,16 +326,16 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], scope: new { kind }));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(kind == "Agent" ? "tool.scope_not_supported" : "tool.invalid_scope", await ToolsApi.ProblemCodeAsync(response));
+        Assert.Equal("tool.invalid_scope", await ToolsApi.ProblemCodeAsync(response));
     }
 
     [Fact]
-    public async Task AnAssistantThatDoesNotExistCannotBeInTheScope()
+    public async Task AnAgentThatDoesNotExistCannotBeInTheScope()
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
-        using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], scope: new { kind = "Assistant", assistantIds = new[] { Guid.NewGuid() } }));
+        using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], scope: new { kind = "Agent", agentIds = new[] { Guid.NewGuid() } }));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("tool.invalid_scope", await ToolsApi.ProblemCodeAsync(response));
@@ -429,7 +429,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, QdrantFi
         Assert.DoesNotContain(pool, t => t.Name == "rag__company");
         Assert.True(Assert.Single(pool, t => t.Name == "builtin__calculator").Active);
         Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(setup.App, "SELECT count(*) FROM agents.rag_tools"));
-        Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(setup.App, "SELECT count(*) FROM agents.assistant_tools a JOIN agents.tools t ON t.\"Id\" = a.\"ToolId\" WHERE t.\"Origin\" = 'Rag'"));
+        Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(setup.App, "SELECT count(*) FROM agents.agent_tools a JOIN agents.tools t ON t.\"Id\" = a.\"ToolId\" WHERE t.\"Origin\" = 'Rag'"));
         // The knowledge base is only referenced.
         Assert.Single(await KnowledgeBaseApi.ListAsync(setup.Admin));
     }

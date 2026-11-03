@@ -55,7 +55,7 @@ internal static class ToolsApi
         return (await response.Content.ReadFromJsonAsync<RefreshBody>(TestContext.Current.CancellationToken))!;
     }
 
-    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AssistantIds);
+    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AgentIds);
 
     public sealed record ServerBody(
         Guid Id,

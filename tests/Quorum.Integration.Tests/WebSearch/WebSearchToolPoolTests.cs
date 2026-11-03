@@ -15,15 +15,16 @@ public sealed class WebSearchToolPoolTests(PostgresFixture postgres)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-1
-    public async Task AnAssistantScopeOnlyPutsTheToolInThePoolOfTheAssistantsItLists()
+    public async Task AnAgentScopeOnlyPutsTheToolInThePoolOfTheAssistantsWhoseRootItLists()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
         await WebSearchApi.ConfigureAsync(admin);
         var assistant = await ToolsApi.DefaultAssistantIdAsync(admin);
-        var other = await AssistantFixtures.AddAsync(app);
-        await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "for-other", scope: new { kind = "Assistant", assistantIds = new[] { other } }));
-        await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "for-default", scope: new { kind = "Assistant", assistantIds = new[] { assistant } }));
+        var (other, otherAgent) = await AssistantFixtures.AddWithAgentAsync(app);
+        var assistantAgent = await AssistantFixtures.RootAgentIdAsync(app, assistant);
+        await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "for-other", scope: new { kind = "Agent", agentIds = new[] { otherAgent } }));
+        await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "for-default", scope: new { kind = "Agent", agentIds = new[] { assistantAgent } }));
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "for-tenant"));
 
         var defaultPool = await PoolNamesAsync(admin, assistant);

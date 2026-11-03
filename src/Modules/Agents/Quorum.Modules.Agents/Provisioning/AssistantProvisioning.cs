@@ -22,15 +22,26 @@ internal sealed class AssistantProvisioning(AgentsDbContext db, ApiKeyProtector 
             request.ContextTokenBudget,
             request.SupportsTools,
             now);
-        var assistant = Assistant.Create(tenantId, AssistantDefaults.AssistantName, request.SystemPrompt, endpoint.Id, now);
+        var agent = Agent.Create(
+            tenantId,
+            AgentRules.SlugFrom(AssistantDefaults.AssistantName),
+            AssistantDefaults.AssistantName,
+            AssistantDefaults.AgentDescription,
+            request.SystemPrompt,
+            endpoint.Id,
+            AgentScope.Tenant,
+            [],
+            now);
+        var assistant = Assistant.Create(tenantId, AssistantDefaults.AssistantName, agent.Id, now);
 
         db.ModelEndpoints.Add(endpoint);
+        db.Agents.Add(agent);
         db.Assistants.Add(assistant);
         await db.SaveChangesAsync(cancellationToken);
 
         // A new installation starts with the built-in tools active; existing installations keep their behaviour on upgrade.
         var builtinTools = await BuiltinToolProvisioner.EnsureAsync(db, tenantId, cancellationToken);
-        db.AssistantTools.AddRange(builtinTools.Select(tool => AssistantTool.Create(tenantId, assistant.Id, tool.Id)));
+        db.AgentTools.AddRange(builtinTools.Select(tool => AgentTool.Create(tenantId, agent.Id, tool.Id)));
         await db.SaveChangesAsync(cancellationToken);
     }
 }

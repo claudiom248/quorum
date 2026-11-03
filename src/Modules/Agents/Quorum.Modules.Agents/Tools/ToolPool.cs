@@ -12,7 +12,7 @@ internal sealed class PoolTool
     /// <summary>Null for built-in, rag and lookup tools.</summary>
     public string? ServerName { get; init; }
 
-    /// <summary>The server of an MCP tool, loaded by the admin listings only (the pool an assistant draws from does not need it).</summary>
+    /// <summary>The server of an MCP tool, loaded by the admin listings only (the pool an agent draws from does not need it).</summary>
     public McpServer? Server { get; init; }
 
     public string ExposedName => Tool.Origin switch
@@ -30,13 +30,13 @@ internal sealed class PoolTool
 }
 
 /// <summary>
-/// The tools an assistant of the current tenant can use (D-2, D-23): enabled built-in tools of the tenant, enabled tools of
-/// available MCP servers whose scope covers the assistant, and enabled rag tools whose scope covers it. Activation
-/// (<see cref="AssistantTool"/>) picks from this pool.
+/// The tools an agent of the current tenant can use (D-2, D-23): enabled built-in tools of the tenant, enabled tools of
+/// available MCP servers whose scope covers the agent, and enabled rag tools whose scope covers it. Activation
+/// (<see cref="AgentTool"/>) picks from this pool.
 /// </summary>
 internal static class ToolPool
 {
-    public static IQueryable<PoolTool> For(AgentsDbContext db, Guid assistantId)
+    public static IQueryable<PoolTool> For(AgentsDbContext db, Guid agentId)
     {
         ArgumentNullException.ThrowIfNull(db);
 
@@ -61,24 +61,24 @@ internal static class ToolPool
                           && server.Status == McpServerStatus.Available
                           && (server.Scope == ToolScopeKind.Global
                               || (server.Scope == ToolScopeKind.Tenant && (server.TenantId == tenantId || server.ScopeTenantIds.Contains(tenantId)))
-                              // An owner lists only its own assistants; a foreign owner naming ours reaches nothing.
-                              || (server.Scope == ToolScopeKind.Assistant && server.TenantId == tenantId && server.ScopeAssistantIds.Contains(assistantId))))
+                              // An owner lists only its own agents; a foreign owner naming ours reaches nothing.
+                              || (server.Scope == ToolScopeKind.Agent && server.TenantId == tenantId && server.ScopeAgentIds.Contains(agentId))))
                       || (rag != null
                           && (rag.Scope == ToolScopeKind.Global
                               || (rag.Scope == ToolScopeKind.Tenant && (rag.TenantId == tenantId || rag.ScopeTenantIds.Contains(tenantId)))
-                              || (rag.Scope == ToolScopeKind.Assistant && rag.TenantId == tenantId && rag.ScopeAssistantIds.Contains(assistantId))))
+                              || (rag.Scope == ToolScopeKind.Agent && rag.TenantId == tenantId && rag.ScopeAgentIds.Contains(agentId))))
                       || (lookup != null
                           && (lookup.Scope == ToolScopeKind.Global
                               || (lookup.Scope == ToolScopeKind.Tenant && (lookup.TenantId == tenantId || lookup.ScopeTenantIds.Contains(tenantId)))
-                              || (lookup.Scope == ToolScopeKind.Assistant && lookup.TenantId == tenantId && lookup.ScopeAssistantIds.Contains(assistantId))))
+                              || (lookup.Scope == ToolScopeKind.Agent && lookup.TenantId == tenantId && lookup.ScopeAgentIds.Contains(agentId))))
                       || (webSearch != null
                           && (webSearch.Scope == ToolScopeKind.Global
                               || (webSearch.Scope == ToolScopeKind.Tenant && (webSearch.TenantId == tenantId || webSearch.ScopeTenantIds.Contains(tenantId)))
-                              || (webSearch.Scope == ToolScopeKind.Assistant && webSearch.TenantId == tenantId && webSearch.ScopeAssistantIds.Contains(assistantId))))
+                              || (webSearch.Scope == ToolScopeKind.Agent && webSearch.TenantId == tenantId && webSearch.ScopeAgentIds.Contains(agentId))))
                       || (webFetch != null
                           && (webFetch.Scope == ToolScopeKind.Global
                               || (webFetch.Scope == ToolScopeKind.Tenant && (webFetch.TenantId == tenantId || webFetch.ScopeTenantIds.Contains(tenantId)))
-                              || (webFetch.Scope == ToolScopeKind.Assistant && webFetch.TenantId == tenantId && webFetch.ScopeAssistantIds.Contains(assistantId)))))
+                              || (webFetch.Scope == ToolScopeKind.Agent && webFetch.TenantId == tenantId && webFetch.ScopeAgentIds.Contains(agentId)))))
             select new PoolTool { Tool = tool, ServerName = server == null ? null : server.Name };
     }
 }

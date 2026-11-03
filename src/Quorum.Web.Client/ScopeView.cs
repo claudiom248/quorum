@@ -8,7 +8,7 @@ public static class ScopeView
     /// <summary>Above this many assistants the badge shows a count instead of the names.</summary>
     public const int NamedAssistantsLimit = 2;
 
-    public static string Label(ToolScope scope, IReadOnlyList<AssistantSummary> assistants)
+    public static string Label(ToolScope scope, IReadOnlyList<AssistantSummary> assistants, IReadOnlyList<AgentSummary>? agents = null)
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(assistants);
@@ -27,12 +27,19 @@ public static class ScopeView
 
                 var names = scope.AssistantIds.Select(id => assistants.FirstOrDefault(a => a.Id == id)?.Name ?? "an assistant you cannot see");
                 return $"Assistants: {string.Join(", ", names)}";
+            case ScopeKinds.Agent:
+                if (scope.AgentIds.Count > NamedAssistantsLimit)
+                {
+                    return $"{scope.AgentIds.Count} agents";
+                }
+
+                return $"Agents: {string.Join(", ", ToolAdminView.AgentNames(scope, agents))}";
             default:
                 return scope.Kind;
         }
     }
 
     /// <summary>The full sentence, for the tooltip of a badge that had to be short.</summary>
-    public static string Description(ToolScope scope, IReadOnlyList<AssistantSummary> assistants) =>
-        ToolAdminView.ScopeSummary(scope, assistants);
+    public static string Description(ToolScope scope, IReadOnlyList<AssistantSummary> assistants, IReadOnlyList<AgentSummary>? agents = null) =>
+        ToolAdminView.ScopeSummary(scope, assistants, agents);
 }

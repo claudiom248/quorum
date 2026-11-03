@@ -8,8 +8,8 @@ namespace Quorum.Modules.Agents.Features.Tools;
 
 /// <summary>
 /// The filters of the admin lists of servers and tools (spec 010), one rule for all of them: <c>scope</c> is the kind; <c>tenant</c>
-/// matches the owner or a tenant the item is shared with; <c>assistant</c> matches an item scoped to it or any item that is not
-/// scoped to assistants (it applies to every assistant); <c>status</c> is the state of the server or the tool. Values of one filter
+/// matches the owner or a tenant the item is shared with; <c>agent</c> matches an item scoped to it or any item that is not
+/// scoped to agents (it applies to every agent); <c>status</c> is the state of the server or the tool. Values of one filter
 /// are alternatives; different filters all have to match. <c>type</c> means nothing for these lists and is refused, which is how a
 /// client learns not to offer it.
 /// </summary>
@@ -27,12 +27,12 @@ internal static class ScopeFilter
         Expression<Func<T, ToolScopeKind>> scope,
         Expression<Func<T, Guid>> owner,
         Expression<Func<T, List<Guid>>> tenantIds,
-        Expression<Func<T, List<Guid>>> assistantIds,
+        Expression<Func<T, List<Guid>>> agentIds,
         Expression<Func<T, TState>> state,
         params Expression<Func<T, string?>>[] searched)
         where TState : struct, Enum
     {
-        var scoped = Scope(source, query, scope, owner, tenantIds, assistantIds);
+        var scoped = Scope(source, query, scope, owner, tenantIds, agentIds);
         if (!scoped.IsSuccess)
         {
             return scoped;
@@ -51,7 +51,7 @@ internal static class ScopeFilter
         Expression<Func<T, ToolScopeKind>> scope,
         Expression<Func<T, Guid>> owner,
         Expression<Func<T, List<Guid>>> tenantIds,
-        Expression<Func<T, List<Guid>>> assistantIds)
+        Expression<Func<T, List<Guid>>> agentIds)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(query);
@@ -67,7 +67,7 @@ internal static class ScopeFilter
         }
 
         var tenants = query.Tenant.ToList();
-        var assistants = query.Assistant.ToList();
+        var agents = query.Agent.ToList();
         var row = Expression.Parameter(typeof(T), "row");
 
         Expression Body<TMember>(Expression<Func<T, TMember>> member) => new Rebase(member.Parameters[0], row).Visit(member.Body);
@@ -84,10 +84,10 @@ internal static class ScopeFilter
             source = source.Where(Lambda<T>(row, Expression.OrElse(ownerIsOne, sharedWithOne)));
         }
 
-        if (assistants.Count > 0)
+        if (agents.Count > 0)
         {
-            var notForAssistants = Expression.NotEqual(Body(scope), Expression.Constant(ToolScopeKind.Assistant));
-            source = source.Where(Lambda<T>(row, Expression.OrElse(notForAssistants, AnyIn(Body(assistantIds), assistants))));
+            var notForAgents = Expression.NotEqual(Body(scope), Expression.Constant(ToolScopeKind.Agent));
+            source = source.Where(Lambda<T>(row, Expression.OrElse(notForAgents, AnyIn(Body(agentIds), agents))));
         }
 
         return Result<IQueryable<T>>.Success(source);

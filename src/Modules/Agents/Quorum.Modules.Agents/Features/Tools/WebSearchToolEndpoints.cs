@@ -58,7 +58,7 @@ internal sealed partial class WebSearchToolEndpoints : IEndpointGroup
             v => v.Binding.Scope,
             v => v.Tool.TenantId,
             v => v.Binding.ScopeTenantIds,
-            v => v.Binding.ScopeAssistantIds,
+            v => v.Binding.ScopeAgentIds,
             v => v.Tool.State,
             v => v.Tool.Name,
             v => v.Tool.Description);
@@ -247,7 +247,7 @@ internal sealed record WebSearchToolListItem(
         view.Tool.Id,
         view.Tool.Name,
         view.Tool.Description,
-        new ScopeResponse(view.Binding.Scope.ToString(), view.Binding.ScopeTenantIds, view.Binding.ScopeAssistantIds),
+        new ScopeResponse(view.Binding.Scope.ToString(), view.Binding.ScopeTenantIds, view.Binding.ScopeAgentIds),
         view.Tool.State.ToString(),
         view.Tool.Policy.ToString(),
         Shared: false);
@@ -289,7 +289,7 @@ internal sealed record WebSearchToolDetail(
         binding.SafeSearch,
         binding.TimeRange,
         binding.MaxInvocationsPerConversation,
-        new ScopeResponse(binding.Scope.ToString(), binding.ScopeTenantIds, binding.ScopeAssistantIds),
+        new ScopeResponse(binding.Scope.ToString(), binding.ScopeTenantIds, binding.ScopeAgentIds),
         tool.State.ToString(),
         tool.Policy.ToString(),
         WebSearchToolEndpoints.Preview(tool, binding));

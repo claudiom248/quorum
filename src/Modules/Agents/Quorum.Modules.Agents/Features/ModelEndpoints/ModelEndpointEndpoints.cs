@@ -168,18 +168,18 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
             return NotFound.ToProblem();
         }
 
-        var assistants = await db.Assistants
+        var agents = await db.Agents
             .AsNoTracking()
             .Where(a => a.ModelEndpointId == id)
-            .OrderBy(a => a.Name)
-            .Select(a => new EndpointReference("assistant", a.Id, a.Name))
+            .OrderBy(a => a.DisplayName)
+            .Select(a => new EndpointReference("agent", a.Id, a.DisplayName))
             .ToListAsync(cancellationToken);
-        if (assistants.Count > 0)
+        if (agents.Count > 0)
         {
             return TypedResults.Problem(
                 detail: "The model endpoint is in use. Point these to another endpoint first.",
                 statusCode: StatusCodes.Status409Conflict,
-                extensions: new Dictionary<string, object?> { ["code"] = "model_endpoint.in_use", ["references"] = assistants });
+                extensions: new Dictionary<string, object?> { ["code"] = "model_endpoint.in_use", ["references"] = agents });
         }
 
         db.ModelEndpoints.Remove(endpoint);

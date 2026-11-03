@@ -54,7 +54,7 @@ public sealed class McpToolReviewTests(PostgresFixture postgres)
         Assert.Equal(("Enabled", "Auto"), (after["stays"].State, after["stays"].Policy));
         Assert.Equal(["builtin__calculator", "files__stays"], pool.Where(t => t.Active).Select(t => t.Name).Order().ToArray());
         Assert.DoesNotContain(pool, t => t.Name is "files__changes" or "files__brand-new" or "files__vanishes");
-        Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.assistant_tools WHERE \"ToolId\" = '" + tools["vanishes"].Id + "'"));
+        Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.agent_tools WHERE \"ToolId\" = '" + tools["vanishes"].Id + "'"));
     }
 
     [Fact] // AC-7, AC-8: a reviewed tool that changed is offered again only after the admin enables it again

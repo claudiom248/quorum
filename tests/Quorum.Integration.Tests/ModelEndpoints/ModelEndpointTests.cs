@@ -125,7 +125,7 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
         var problem = await refused.Content.ReadFromJsonAsync<JsonElement>(Ct);
         var reference = Assert.Single(problem.GetProperty("references").EnumerateArray());
-        Assert.Equal("assistant", reference.GetProperty("kind").GetString());
+        Assert.Equal("agent", reference.GetProperty("kind").GetString());
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
         Assert.Single((await client.GetFromJsonAsync<List<EndpointBody>>(Endpoints, Ct))!);
     }

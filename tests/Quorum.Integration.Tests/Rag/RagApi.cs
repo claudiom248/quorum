@@ -77,7 +77,7 @@ internal static class RagApi
 
     public sealed record KnowledgeBaseBody(Guid Id, string Name);
 
-    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AssistantIds);
+    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AgentIds);
 
     public sealed record WarningBody(string Code, string Message);
 

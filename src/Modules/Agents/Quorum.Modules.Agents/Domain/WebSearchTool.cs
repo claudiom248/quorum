@@ -59,8 +59,8 @@ internal sealed class WebSearchTool
     /// <summary>With <see cref="ToolScopeKind.Tenant"/>: the tenants besides the owner that may use the tool.</summary>
     public List<Guid> ScopeTenantIds { get; private set; } = [];
 
-    /// <summary>With <see cref="ToolScopeKind.Assistant"/>: the owner's assistants that may use the tool.</summary>
-    public List<Guid> ScopeAssistantIds { get; private set; } = [];
+    /// <summary>With <see cref="ToolScopeKind.Agent"/>: the owner's agents that may use the tool.</summary>
+    public List<Guid> ScopeAgentIds { get; private set; } = [];
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -85,7 +85,7 @@ internal sealed class WebSearchTool
         MaxInvocationsPerConversation = configuration.MaxInvocationsPerConversation;
         Scope = configuration.Scope;
         ScopeTenantIds = [.. configuration.ScopeTenantIds];
-        ScopeAssistantIds = [.. configuration.ScopeAssistantIds];
+        ScopeAgentIds = [.. configuration.ScopeAgentIds];
         UpdatedAt = now;
     }
 }
@@ -100,4 +100,4 @@ internal sealed record WebSearchToolConfiguration(
     int MaxInvocationsPerConversation,
     ToolScopeKind Scope,
     IReadOnlyList<Guid> ScopeTenantIds,
-    IReadOnlyList<Guid> ScopeAssistantIds);
+    IReadOnlyList<Guid> ScopeAgentIds);

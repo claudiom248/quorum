@@ -75,7 +75,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             return query.Error.ToProblem();
         }
 
-        var filtered = ScopeFilter.Apply(ToolVisibility.Servers(db).AsNoTracking(), query.Value, s => s.Scope, s => s.TenantId, s => s.ScopeTenantIds, s => s.ScopeAssistantIds, s => s.Status, s => s.Name, s => s.Url);
+        var filtered = ScopeFilter.Apply(ToolVisibility.Servers(db).AsNoTracking(), query.Value, s => s.Scope, s => s.TenantId, s => s.ScopeTenantIds, s => s.ScopeAgentIds, s => s.Status, s => s.Name, s => s.Url);
         if (!filtered.IsSuccess)
         {
             return filtered.Error.ToProblem();
@@ -113,7 +113,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             return query.Error.ToProblem();
         }
 
-        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Assistant.Count + query.Value.Type.Count > 0)
+        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Agent.Count + query.Value.Type.Count > 0)
         {
             return ScopeFilter.NotForTools.ToProblem();
         }
@@ -195,7 +195,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             protector.ProtectHeaders(input.Headers),
             input.Scope,
             input.TenantIds,
-            input.AssistantIds,
+            input.AgentIds,
             now);
         db.McpServers.Add(server);
 
@@ -260,7 +260,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
         var headers = request.Headers is null ? server.ProtectedHeaders : protector.ProtectHeaders(input.Headers);
         var now = clock.GetUtcNow();
         var urlChanged = !string.Equals(server.Url, input.Url!.AbsoluteUri, StringComparison.Ordinal);
-        server.Edit(input.Name!, input.Url.AbsoluteUri, headers, input.Scope, input.TenantIds, input.AssistantIds, now);
+        server.Edit(input.Name!, input.Url.AbsoluteUri, headers, input.Scope, input.TenantIds, input.AgentIds, now);
         if (urlChanged)
         {
             // What was approved was approved for the old address: the server offers nothing until a refresh reads
@@ -353,7 +353,7 @@ internal sealed record ServerInput(
     Dictionary<string, string>? Headers,
     ToolScopeKind Scope,
     List<Guid> TenantIds,
-    List<Guid> AssistantIds)
+    List<Guid> AgentIds)
 {
     private static readonly Error InvalidName = Error.Validation(
         "tool.invalid_name",
@@ -395,11 +395,11 @@ internal sealed record ServerInput(
             return failed(scope.Error);
         }
 
-        return new ServerInput(null, request.Name, new Uri(request.Url!.Trim()), request.Headers, scope.Value.Kind, scope.Value.TenantIds, scope.Value.AssistantIds);
+        return new ServerInput(null, request.Name, new Uri(request.Url!.Trim()), request.Headers, scope.Value.Kind, scope.Value.TenantIds, scope.Value.AgentIds);
     }
 }
 
-internal sealed record ScopeRequest(string? Kind, List<Guid>? TenantIds, List<Guid>? AssistantIds);
+internal sealed record ScopeRequest(string? Kind, List<Guid>? TenantIds, List<Guid>? AgentIds);
 
 /// <param name="Headers">Static request headers (for example <c>Authorization</c>). Omitted on an update: the stored ones stay.</param>
 internal sealed record ServerRequest(string? Name, string? Url, Dictionary<string, string>? Headers, ScopeRequest? Scope);
@@ -410,7 +410,7 @@ internal sealed record TestedToolResponse(string Name, string Description, JsonE
 
 internal sealed record TestServerResponse(bool Reachable, List<TestedToolResponse> Tools);
 
-internal sealed record ScopeResponse(string Kind, IReadOnlyList<Guid> TenantIds, IReadOnlyList<Guid> AssistantIds);
+internal sealed record ScopeResponse(string Kind, IReadOnlyList<Guid> TenantIds, IReadOnlyList<Guid> AgentIds);
 
 /// <param name="HasHeaders">Whether static headers are stored. Their values are never returned.</param>
 /// <param name="Shared"><see langword="true"/> for a server of another tenant made visible by its scope: read-only here.</param>
@@ -436,7 +436,7 @@ internal sealed record ServerResponse(
         server.Status.ToString(),
         server.LastError,
         server.LastRefreshedAt,
-        new ScopeResponse(server.Scope.ToString(), server.ScopeTenantIds, server.ScopeAssistantIds),
+        new ScopeResponse(server.Scope.ToString(), server.ScopeTenantIds, server.ScopeAgentIds),
         toolCount,
         pendingReviewCount,
         server.TenantId != currentTenantId,

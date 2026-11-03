@@ -66,7 +66,7 @@ public sealed class RagToolResultLimitTests(PostgresFixture postgres, QdrantFixt
             await using var scope = TenantScope.Open(setup.App, setup.TenantId);
             var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
             var resolver = scope.ServiceProvider.GetRequiredService<RagToolResolver>();
-            var active = await ActiveToolsQuery.LoadAsync(db, setup.AssistantId, Ct);
+            var active = await ActiveToolsQuery.LoadAsync(db, await AssistantFixtures.RootAgentIdAsync(setup.App, setup.AssistantId), Ct);
             var resolved = await resolver.ResolveActiveAsync(active, setup.TenantId, setup.AssistantId, Ct, allowRecent);
             return resolved.Count(t => t.Rag is not null);
         }

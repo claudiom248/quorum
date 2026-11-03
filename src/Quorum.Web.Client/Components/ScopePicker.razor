@@ -1,16 +1,31 @@
 <label class="tool-policy">Who can use it
     <select aria-label="Scope" @bind="Form.Kind">
         <option value="@ScopeKinds.Tenant">This tenant</option>
-        <option value="@ScopeKinds.Assistant">Chosen assistants</option>
+        @if (Agents is null)
+        {
+            <option value="@ScopeKinds.Assistant">Chosen assistants</option>
+        }
+        else
+        {
+            <option value="@ScopeKinds.Agent">Chosen agents</option>
+        }
         <option value="@ScopeKinds.Global">Every tenant</option>
     </select>
 </label>
-@if (Form.Kind == ScopeKinds.Assistant)
+@if (Form.Kind == ScopeKinds.Agent && Agents is not null)
+{
+    @foreach (var agent in Agents)
+    {
+        <MudCheckBox T="bool" Value="Form.AgentIds.Contains(agent.Id)"
+                     ValueChanged="on => Toggle(Form.AgentIds, agent.Id, on)" Label="@agent.DisplayName" Dense="true" />
+    }
+}
+else if (Form.Kind == ScopeKinds.Assistant)
 {
     @foreach (var assistant in Assistants)
     {
         <MudCheckBox T="bool" Value="Form.AssistantIds.Contains(assistant.Id)"
-                     ValueChanged="on => ToggleAssistant(assistant.Id, on)" Label="@assistant.Name" Dense="true" />
+                     ValueChanged="on => Toggle(Form.AssistantIds, assistant.Id, on)" Label="@assistant.Name" Dense="true" />
     }
 }
 else if (Form.Kind == ScopeKinds.Tenant)
@@ -45,6 +60,10 @@ else
     [Parameter]
     public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
 
+    /// <summary>The agents a tool or server can be scoped to; when given, the picker offers agents instead of assistants.</summary>
+    [Parameter]
+    public IReadOnlyList<AgentSummary>? Agents { get; set; }
+
     /// <summary>The tenants of the installation, when known; <see langword="null"/> falls back to typing ids.</summary>
     [Parameter]
     public IReadOnlyList<TenantSummary>? Tenants { get; set; }
@@ -67,15 +86,15 @@ else
     private void TenantsChanged(IEnumerable<string>? values) =>
         Form.TenantsText = string.Join(Environment.NewLine, values ?? []);
 
-    private void ToggleAssistant(Guid id, bool on)
+    private static void Toggle(HashSet<Guid> ids, Guid id, bool on)
     {
         if (on)
         {
-            Form.AssistantIds.Add(id);
+            ids.Add(id);
         }
         else
         {
-            Form.AssistantIds.Remove(id);
+            ids.Remove(id);
         }
     }
 }

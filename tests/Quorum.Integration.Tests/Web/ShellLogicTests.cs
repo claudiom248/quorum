@@ -91,6 +91,45 @@ public sealed class ShellLogicTests
     }
 
     [Fact]
+    public void AToolScopeNamesAgentsAndAKnowledgeBaseScopeNamesAssistants()
+    {
+        AgentSummary[] agents = [new(AssistantId, "support", "Support agent")];
+
+        Assert.Equal("Agents: Support agent", ScopeView.Label(new ToolScope(ScopeKinds.Agent, [], null, [AssistantId]), Assistants, agents));
+        Assert.Equal("Agents: an agent you cannot see", ScopeView.Label(new ToolScope(ScopeKinds.Agent, [], null, [Guid.NewGuid()]), Assistants, agents));
+        Assert.Equal("3 agents", ScopeView.Label(new ToolScope(ScopeKinds.Agent, [], null, [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()]), Assistants, agents));
+        Assert.Equal("Agents: Support agent", ToolAdminView.ScopeSummary(new ToolScope(ScopeKinds.Agent, [], null, [AssistantId]), Assistants, agents));
+    }
+
+    [Fact]
+    public void TheScopeFormBuildsAnAgentScopeAndAsksForAtLeastOneAgent()
+    {
+        var agent = Guid.NewGuid();
+
+        var built = new ScopeForm { Kind = ScopeKinds.Agent, AgentIds = [agent] }.Build();
+        var empty = new ScopeForm { Kind = ScopeKinds.Agent }.Build();
+
+        Assert.Equal([agent], built.Scope!.AgentIds);
+        Assert.Empty(built.Scope.AssistantIds);
+        Assert.NotNull(empty.Error);
+    }
+
+    [Fact]
+    public void AScopeReadsBothHoldersFromTheJsonOfTheApi()
+    {
+        var agent = Guid.NewGuid();
+        var assistant = Guid.NewGuid();
+
+        var tool = global::System.Text.Json.JsonSerializer.Deserialize<ToolScope>($$"""{"kind":"Agent","tenantIds":[],"agentIds":["{{agent}}"]}""", global::System.Text.Json.JsonSerializerOptions.Web);
+        var knowledgeBase = global::System.Text.Json.JsonSerializer.Deserialize<ToolScope>($$"""{"kind":"Assistant","tenantIds":[],"assistantIds":["{{assistant}}"]}""", global::System.Text.Json.JsonSerializerOptions.Web);
+
+        Assert.Equal([agent], tool!.AgentIds);
+        Assert.Empty(tool.AssistantIds);
+        Assert.Equal([assistant], knowledgeBase!.AssistantIds);
+        Assert.Empty(knowledgeBase.AgentIds);
+    }
+
+    [Fact]
     public void ManyAssistantsCollapseToACount()
     {
         var scope = new ToolScope(ScopeKinds.Assistant, [], [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()]);

@@ -103,7 +103,7 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres)
 
     [Theory] // D-9, D-17
     [InlineData("UPDATE agents.tools SET \"State\" = 'Disabled' WHERE \"Name\" = 'probe'")]
-    [InlineData("DELETE FROM agents.assistant_tools WHERE \"ToolId\" IN (SELECT \"Id\" FROM agents.tools WHERE \"Name\" = 'probe')")]
+    [InlineData("DELETE FROM agents.agent_tools WHERE \"ToolId\" IN (SELECT \"Id\" FROM agents.tools WHERE \"Name\" = 'probe')")]
     public async Task AToolThatStopsBeingAvailableWhileWaitingIsNotRunEvenWhenApproved(string change)
     {
         var (app, client, id) = await StartConfirmationAsync(postgres);

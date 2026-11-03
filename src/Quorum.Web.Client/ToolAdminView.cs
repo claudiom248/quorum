@@ -91,7 +91,7 @@ public static class ToolAdminView
     }
 
     /// <summary>Who can use a server, in words.</summary>
-    public static string ScopeSummary(ToolScope scope, IReadOnlyList<AssistantSummary> assistants)
+    public static string ScopeSummary(ToolScope scope, IReadOnlyList<AssistantSummary> assistants, IReadOnlyList<AgentSummary>? agents = null)
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(assistants);
@@ -107,10 +107,16 @@ public static class ToolAdminView
             case ScopeKinds.Assistant:
                 var names = scope.AssistantIds.Select(id => assistants.FirstOrDefault(a => a.Id == id)?.Name ?? "an assistant you cannot see");
                 return $"Assistants: {string.Join(", ", names)}";
+            case ScopeKinds.Agent:
+                return $"Agents: {string.Join(", ", AgentNames(scope, agents))}";
             default:
                 return scope.Kind;
         }
     }
+
+    /// <summary>The names of the agents of a scope; one the admin cannot list is said so, not hidden.</summary>
+    public static IEnumerable<string> AgentNames(ToolScope scope, IReadOnlyList<AgentSummary>? agents) =>
+        scope.AgentIds.Select(id => agents?.FirstOrDefault(a => a.Id == id)?.DisplayName ?? "an agent you cannot see");
 
     public static string StateLabel(string state) => state switch
     {

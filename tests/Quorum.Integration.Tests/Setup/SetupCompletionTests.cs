@@ -29,7 +29,7 @@ public sealed class SetupCompletionTests(PostgresFixture postgres)
         await connection.OpenAsync(Ct);
         var tenantId = (Guid)(await ScalarAsync(connection, "SELECT \"Id\" FROM tenancy.tenants"))!;
         Assert.Equal("admin@acme.test", await ScalarAsync(connection, "SELECT \"Email\" FROM tenancy.users WHERE \"TenantId\" = @tenant", tenantId));
-        Assert.Equal("You are Acme's assistant.", await ScalarAsync(connection, "SELECT \"SystemPrompt\" FROM agents.assistants WHERE \"TenantId\" = @tenant", tenantId));
+        Assert.Equal("You are Acme's assistant.", await ScalarAsync(connection, "SELECT g.\"SystemPrompt\" FROM agents.agents g JOIN agents.assistants a ON a.\"RootAgentId\" = g.\"Id\" WHERE a.\"TenantId\" = @tenant", tenantId));
         Assert.Equal("llama3.2", await ScalarAsync(connection, "SELECT \"ModelName\" FROM agents.model_endpoints WHERE \"TenantId\" = @tenant", tenantId));
 
         var storedKey = (string)(await ScalarAsync(connection, "SELECT \"ProtectedApiKey\" FROM agents.model_endpoints"))!;

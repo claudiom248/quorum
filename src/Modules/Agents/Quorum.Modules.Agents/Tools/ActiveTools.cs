@@ -8,7 +8,7 @@ using Quorum.Modules.Agents.Tools.WebSearch;
 
 namespace Quorum.Modules.Agents.Tools;
 
-/// <summary>A tool of an assistant as stored: what the model sees (name, description, schema) and what the invoker needs to audit, check and run it.</summary>
+/// <summary>A tool of an agent as stored: what the model sees (name, description, schema) and what the invoker needs to audit, check and run it.</summary>
 /// <param name="Server">Where an MCP tool runs; <see langword="null"/> for built-in, rag and lookup tools.</param>
 /// <param name="Rag">The binding of a rag tool; <see langword="null"/> for the others.</param>
 /// <param name="Lookup">The binding of a lookup tool; <see langword="null"/> for the others.</param>
@@ -54,18 +54,19 @@ internal sealed record ToolRunContext(
     Guid TenantId,
     Guid UserId,
     Guid AssistantId,
+    Guid AgentId,
     Guid ConversationId,
     ToolLimits Limits);
 
 internal static class ActiveToolsQuery
 {
-    /// <summary>The tools of the assistant that are in its pool and activated, in a stable order.</summary>
-    public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid assistantId, CancellationToken cancellationToken)
+    /// <summary>The tools of the agent that are in its pool and activated, in a stable order.</summary>
+    public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken)
     {
         var tools = await (
-            from pooled in ToolPool.For(db, assistantId)
-            join activation in db.AssistantTools on pooled.Tool.Id equals activation.ToolId
-            where activation.AssistantId == assistantId
+            from pooled in ToolPool.For(db, agentId)
+            join activation in db.AgentTools on pooled.Tool.Id equals activation.ToolId
+            where activation.AgentId == agentId
             select pooled)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
@@ -93,11 +94,11 @@ internal static class ActiveToolsQuery
                 .Where(lookup => lookupIds.Contains(lookup.ToolId))
                 .ToDictionaryAsync(lookup => lookup.ToolId, LookupBinding.From, cancellationToken);
 
-        // The manifest is the activation's, so the same tool can be lean on one assistant and full on another (spec 012 D-8).
+        // The manifest is the activation's, so the same tool can be lean on one agent and full on another (spec 012 D-8).
         var manifests = lookupIds.Count == 0
             ? new Dictionary<Guid, string>()
-            : await db.AssistantTools.IgnoreQueryFilters().AsNoTracking()
-                .Where(activation => activation.AssistantId == assistantId && lookupIds.Contains(activation.ToolId))
+            : await db.AgentTools.IgnoreQueryFilters().AsNoTracking()
+                .Where(activation => activation.AgentId == agentId && lookupIds.Contains(activation.ToolId))
                 .ToDictionaryAsync(activation => activation.ToolId, activation => activation.Manifest, cancellationToken);
 
         var webSearchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebSearch).Select(pooled => pooled.Tool.Id).ToList();

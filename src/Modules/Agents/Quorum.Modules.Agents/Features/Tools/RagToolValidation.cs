@@ -156,7 +156,7 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
         var check = await catalog.CheckScopeAsync(
             new ScopeCheckQuery(
                 tenantId,
-                new BindingScope(ToolScopeRules.KindOf(scope.Value.Kind), scope.Value.TenantIds, scope.Value.AssistantIds),
+                new BindingScope(ToolScopeRules.KindOf(scope.Value.Kind), scope.Value.TenantIds, scope.Value.BindingAssistantIds),
                 knowledgeBaseIds,
                 [.. exposedFieldIds.Concat(filterFieldIds).Distinct()]),
             cancellationToken);
@@ -179,7 +179,7 @@ internal sealed partial class RagToolValidation(AgentsDbContext db, IKnowledgeBa
                 limits.Value.MaxResultCharacters,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
-                scope.Value.AssistantIds,
+                scope.Value.AgentIds,
                 aliases,
                 allowDocumentIds));
     }

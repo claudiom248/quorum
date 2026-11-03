@@ -24,19 +24,38 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Assistant", b =>
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Agent", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("ModelEndpointId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
-                    b.Property<string>("Name")
+                    b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ModelEndpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("SystemPrompt")
                         .IsRequired()
@@ -45,18 +64,49 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ModelEndpointId");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("TenantId", "Slug")
+                        .IsUnique();
 
-                    b.ToTable("assistants", "agents");
+                    b.ToTable("agents", "agents");
                 });
 
-            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AssistantTool", b =>
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentSubAgent", b =>
                 {
-                    b.Property<Guid>("AssistantId")
+                    b.Property<Guid>("ParentAgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChildAgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FailurePolicy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("ReturnError");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ParentAgentId", "ChildAgentId");
+
+                    b.HasIndex("ChildAgentId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("agent_sub_agents", "agents");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentTool", b =>
+                {
+                    b.Property<Guid>("AgentId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ToolId")
@@ -72,13 +122,44 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
-                    b.HasKey("AssistantId", "ToolId");
+                    b.HasKey("AgentId", "ToolId");
 
                     b.HasIndex("TenantId");
 
                     b.HasIndex("ToolId");
 
-                    b.ToTable("assistant_tools", "agents");
+                    b.ToTable("agent_tools", "agents");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Assistant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("MaxParallelSubAgents")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("RootAgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RootAgentId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("assistants", "agents");
                 });
 
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.LookupTool", b =>
@@ -132,7 +213,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                    b.PrimitiveCollection<List<Guid>>("ScopeAgentIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
@@ -182,7 +263,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                    b.PrimitiveCollection<List<Guid>>("ScopeAgentIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
@@ -299,7 +380,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                    b.PrimitiveCollection<List<Guid>>("ScopeAgentIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
@@ -390,6 +471,9 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AgentId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Arguments")
@@ -553,7 +637,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                    b.PrimitiveCollection<List<Guid>>("ScopeAgentIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
@@ -605,7 +689,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.PrimitiveCollection<List<Guid>>("ScopeAssistantIds")
+                    b.PrimitiveCollection<List<Guid>>("ScopeAgentIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
@@ -635,20 +719,34 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("web_search_tools", "agents");
                 });
 
-            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Assistant", b =>
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Agent", b =>
                 {
                     b.HasOne("Quorum.Modules.Agents.Domain.ModelEndpoint", null)
                         .WithMany()
                         .HasForeignKey("ModelEndpointId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentSubAgent", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("ChildAgentId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Quorum.Modules.Agents.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("ParentAgentId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AssistantTool", b =>
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentTool", b =>
                 {
-                    b.HasOne("Quorum.Modules.Agents.Domain.Assistant", null)
+                    b.HasOne("Quorum.Modules.Agents.Domain.Agent", null)
                         .WithMany()
-                        .HasForeignKey("AssistantId")
+                        .HasForeignKey("AgentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -656,6 +754,15 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ToolId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Assistant", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("RootAgentId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

@@ -150,7 +150,7 @@ internal sealed partial class WebSearchToolValidation(AgentsDbContext db)
                 maxInvocations,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
-                scope.Value.AssistantIds));
+                scope.Value.AgentIds));
     }
 
     /// <summary>Distinct and in order: which engines an administrator listed is not part of what the tool is.</summary>

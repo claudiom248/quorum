@@ -71,7 +71,7 @@ internal static class WebFetchApi
         return document.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
-    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AssistantIds);
+    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AgentIds);
 
     public sealed record PreviewBody(string Name, string Description, JsonElement InputSchema, int EstimatedTokens)
     {

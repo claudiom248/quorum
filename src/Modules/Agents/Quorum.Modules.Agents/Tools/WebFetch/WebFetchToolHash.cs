@@ -29,7 +29,7 @@ internal static class WebFetchToolHash
             WriteOptional("timeout", configuration.Timeout);
             writer.WriteString("scope", configuration.Scope.ToString());
             ToolHashWriter.WriteIds(writer, "scopeTenants", configuration.ScopeTenantIds);
-            ToolHashWriter.WriteIds(writer, "scopeAssistants", configuration.ScopeAssistantIds);
+            ToolHashWriter.WriteIds(writer, "scopeAgents", configuration.ScopeAgentIds);
             writer.WriteEndObject();
 
             void WriteOptional(string field, int? value)
