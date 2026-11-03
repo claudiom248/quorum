@@ -140,6 +140,26 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
             return NameTaken.ToProblem();
         }
 
+        // Spec 013 D-19: an endpoint that stops supporting tools must not leave agents that need them on it. The settings facade
+        // (D-35) is not held to this, so the first-run flow keeps turning the flag off for the assistant's own endpoint.
+        if (endpoint.SupportsTools && request.SupportsTools == false)
+        {
+            var needTools = await (
+                from agent in db.Agents.AsNoTracking()
+                where agent.ModelEndpointId == id
+                      && (db.AgentSubAgents.Any(e => e.ParentAgentId == agent.Id) || db.AgentTools.Any(t => t.AgentId == agent.Id))
+                orderby agent.DisplayName
+                select new BlockingReference(BlockingReference.AgentKind, agent.Id, agent.DisplayName))
+                .ToListAsync(cancellationToken);
+            if (needTools.Count > 0)
+            {
+                return BlockingReference.Conflict(
+                    "model_endpoint.agents_need_tools",
+                    "Agents on this endpoint have tools or sub-agents, which need a model that supports tools. Remove them from these agents or point them to another endpoint first.",
+                    needTools);
+            }
+        }
+
         var now = clock.GetUtcNow();
         endpoint.Rename(name, now);
         endpoint.Configure(baseUrl!, request.ModelName!.Trim(), request.ContextTokenBudget, request.SupportsTools, now);
@@ -172,14 +192,11 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
             .AsNoTracking()
             .Where(a => a.ModelEndpointId == id)
             .OrderBy(a => a.DisplayName)
-            .Select(a => new EndpointReference("agent", a.Id, a.DisplayName))
+            .Select(a => new BlockingReference("agent", a.Id, a.DisplayName))
             .ToListAsync(cancellationToken);
         if (agents.Count > 0)
         {
-            return TypedResults.Problem(
-                detail: "The model endpoint is in use. Point these to another endpoint first.",
-                statusCode: StatusCodes.Status409Conflict,
-                extensions: new Dictionary<string, object?> { ["code"] = "model_endpoint.in_use", ["references"] = agents });
+            return BlockingReference.Conflict("model_endpoint.in_use", "The model endpoint is in use. Point these to another endpoint first.", agents);
         }
 
         db.ModelEndpoints.Remove(endpoint);
@@ -246,5 +263,3 @@ internal sealed record ModelEndpointResponse(
 
 internal sealed record ModelConnectionResult(bool Reachable, IReadOnlyList<string> Models, bool? SupportsTools);
 
-/// <summary>An entity that blocks a delete, listed in the <c>references</c> extension of the 409 response.</summary>
-internal sealed record EndpointReference(string Kind, Guid Id, string Name);

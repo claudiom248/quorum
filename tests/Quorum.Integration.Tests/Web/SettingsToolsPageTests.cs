@@ -12,6 +12,7 @@ namespace Quorum.Integration.Tests.Web;
 public sealed class SettingsToolsPageTests : BunitContext
 {
     private static readonly Guid AssistantId = Guid.Parse("01a146c8-cab3-74b1-9132-40f5e9a95eef");
+    private static readonly Guid AgentId = Guid.Parse("01a146c8-cab3-74b1-9132-40f5e9a95ef0");
     private static readonly Guid Calculator = Guid.Parse("01a14797-6817-7d25-b071-1da93d0b11bd");
     private static readonly Guid Clock = Guid.Parse("01a14797-67f1-7bc5-baba-742fda518aa9");
     private static readonly string[] Models = ["llama3.2", "tiny"];
@@ -58,10 +59,15 @@ public sealed class SettingsToolsPageTests : BunitContext
 
             if (method == HttpMethod.Get && path == "/api/assistants")
             {
-                return FakeApiHandler.Json(new[] { new { id = AssistantId, name = "Assistant" } });
+                return FakeApiHandler.Json(new[] { new { id = AssistantId, name = "Assistant", rootAgentSlug = "assistant", maxParallelSubAgents = 1 } });
             }
 
-            if (method == HttpMethod.Get && path == $"/api/assistants/{AssistantId}/tools")
+            if (method == HttpMethod.Get && path == "/api/agents")
+            {
+                return FakeApiHandler.Json(new[] { new { id = AgentId, slug = "assistant", displayName = "Assistant" } });
+            }
+
+            if (method == HttpMethod.Get && path == $"/api/agents/{AgentId}/tools")
             {
                 return FakeApiHandler.Json(new
                 {
@@ -74,7 +80,7 @@ public sealed class SettingsToolsPageTests : BunitContext
                 });
             }
 
-            if (method == HttpMethod.Put && path == $"/api/assistants/{AssistantId}/tools")
+            if (method == HttpMethod.Put && path == $"/api/agents/{AgentId}/tools")
             {
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
@@ -179,8 +185,8 @@ public sealed class SettingsToolsPageTests : BunitContext
         page.FindAll(".mud-checkbox input")[1].Change(true);
         page.Find("form").Submit();
 
-        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Put, $"/api/assistants/{AssistantId}/tools")));
-        using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Put, $"/api/assistants/{AssistantId}/tools")!);
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Put, $"/api/agents/{AgentId}/tools")));
+        using var body = JsonDocument.Parse(_api.LastBody(HttpMethod.Put, $"/api/agents/{AgentId}/tools")!);
         Assert.Equal([Clock.ToString()], body.RootElement.GetProperty("toolIds").EnumerateArray().Select(e => e.GetString()));
         page.WaitForAssertion(() => Assert.Contains("Tools saved.", page.Markup, StringComparison.Ordinal));
     }

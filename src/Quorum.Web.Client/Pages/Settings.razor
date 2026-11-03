@@ -286,7 +286,7 @@
     private bool _modelSaved;
     private ApiProblem? _behaviourProblem;
     private bool _behaviourSaved;
-    private Guid? _assistantId;
+    private Guid? _agentId;
     private List<PoolEntry>? _pool;
     private IReadOnlyList<ToolWarning> _warnings = [];
     private ApiProblem? _toolsProblem;
@@ -460,8 +460,16 @@
             return;
         }
 
-        _assistantId = assistants.Value[0].Id;
-        var tools = await Api.GetAssistantToolsAsync(_assistantId.Value);
+        // The tools belong to the agent the assistant answers through (spec 013 D-17), named by its slug.
+        var agents = await Api.ListAgentsAsync();
+        var root = agents.IsSuccess ? agents.Value.FirstOrDefault(a => a.Slug == assistants.Value[0].RootAgentSlug) : null;
+        if (root is null)
+        {
+            return;
+        }
+
+        _agentId = root.Id;
+        var tools = await Api.GetAgentToolsAsync(root.Id);
         if (!tools.IsSuccess)
         {
             // Not everyone who may change the model may manage tools: the tab is simply absent.
@@ -567,7 +575,7 @@
 
     private async Task SaveToolsAsync()
     {
-        if (_assistantId is not { } assistantId || _pool is null)
+        if (_agentId is not { } agentId || _pool is null)
         {
             return;
         }
@@ -576,7 +584,7 @@
         _toolsProblem = null;
         _toolsSaved = false;
         var manifests = _pool.Where(t => t.Active && t.Manifest is not null).ToDictionary(t => t.ToolId, t => t.Manifest!);
-        var result = await Api.SetAssistantToolsAsync(assistantId, _pool.Where(t => t.Active).Select(t => t.ToolId).ToList(), manifests);
+        var result = await Api.SetAgentToolsAsync(agentId, _pool.Where(t => t.Active).Select(t => t.ToolId).ToList(), manifests);
         _busy = false;
 
         if (!result.IsSuccess)
@@ -586,7 +594,7 @@
         }
 
         _toolsSaved = true;
-        var tools = await Api.GetAssistantToolsAsync(assistantId);
+        var tools = await Api.GetAgentToolsAsync(agentId);
         if (tools.IsSuccess)
         {
             _warnings = tools.Value.Warnings;
