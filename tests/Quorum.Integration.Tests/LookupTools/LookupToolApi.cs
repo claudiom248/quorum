@@ -140,7 +140,7 @@ internal static class LookupToolApi
 
     public sealed record WarningBody(string Code, string Message);
 
-    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AssistantIds);
+    public sealed record ScopeBody(string Kind, List<Guid> TenantIds, List<Guid> AgentIds);
 
     public sealed record ListItemBody(Guid Id, string Name, List<NamedBody> Lookups, List<NamedBody> KnowledgeBases, ScopeBody Scope, string State, string Policy, bool Shared, List<WarningBody> Warnings);
 

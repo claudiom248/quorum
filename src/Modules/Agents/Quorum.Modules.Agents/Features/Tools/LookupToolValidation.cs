@@ -176,7 +176,7 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
             return fixedFilters.Error;
         }
 
-        var bindingScope = new BindingScope(ToolScopeRules.KindOf(scope.Value.Kind), scope.Value.TenantIds, scope.Value.AssistantIds);
+        var bindingScope = new BindingScope(ToolScopeRules.KindOf(scope.Value.Kind), scope.Value.TenantIds, scope.Value.BindingAssistantIds);
         var check = await catalog.CheckScopeAsync(
             new ScopeCheckQuery(tenantId, bindingScope, knowledgeBaseIds, [.. exposed.Value.Ids.Concat(fixedFilters.Value.FieldIds).Distinct()]),
             cancellationToken);
@@ -199,7 +199,7 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
                 fixedFilters.Value.FieldIds,
                 scope.Value.Kind,
                 scope.Value.TenantIds,
-                scope.Value.AssistantIds,
+                scope.Value.AgentIds,
                 lookupFilters.Value));
     }
 

@@ -72,6 +72,11 @@ public sealed class LookupAndBuiltinToolsPageTests : ListPageTestContext
                 return FakeApiHandler.Json(Array.Empty<object>());
             }
 
+            if (path == "/api/agents")
+            {
+                return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), slug = "assistant", displayName = "Assistant" } });
+            }
+
             if (path == "/api/assistants")
             {
                 return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), name = "Assistant" } });

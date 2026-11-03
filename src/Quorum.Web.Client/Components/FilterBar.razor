@@ -31,13 +31,26 @@
 
         @if (AgentVisible)
         {
-            <MudSelect T="string" Label="Agent" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+            <MudSelect T="string" Label="Assistant" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
                        SelectedValues="Query.Assistant.Select(id => id.ToString()).ToList()"
                        SelectedValuesChanged="values => ChangeAsync(Query with { Assistant = PickIds(values) })"
                        ToStringFunc="AssistantName">
                 @foreach (var assistant in Assistants)
                 {
                     <MudSelectItem T="string" Value="@assistant.Id.ToString()">@assistant.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        @if (ShowAgent && Agents.Count > 0)
+        {
+            <MudSelect T="string" Label="Agent" Variant="Variant.Outlined" Margin="Margin.Dense" MultiSelection="true" Class="filter-select"
+                       SelectedValues="Query.Agent.Select(id => id.ToString()).ToList()"
+                       SelectedValuesChanged="values => ChangeAsync(Query with { Agent = PickIds(values) })"
+                       ToStringFunc="AgentName">
+                @foreach (var agent in Agents)
+                {
+                    <MudSelectItem T="string" Value="@agent.Id.ToString()">@agent.DisplayName</MudSelectItem>
                 }
             </MudSelect>
         }
@@ -100,6 +113,14 @@
         new("assistant", "Assistant"),
     ];
 
+    /// <summary>The scopes of tools and servers: they are scoped to agents, where knowledge bases are scoped to assistants.</summary>
+    public static readonly IReadOnlyList<FilterOption> ToolScopes =
+    [
+        new("global", "Global"),
+        new("tenant", "Tenant"),
+        new("agent", "Agent"),
+    ];
+
     private sealed record Chip(string Group, string Value, string Label);
 
     [Parameter, EditorRequired]
@@ -122,6 +143,10 @@
     /// <summary>The assistants to filter by; the filter shows when there is at least one.</summary>
     [Parameter]
     public IReadOnlyList<AssistantSummary> Assistants { get; set; } = [];
+
+    /// <summary>The agents to filter tools and servers by; the filter shows when there is at least one.</summary>
+    [Parameter]
+    public IReadOnlyList<AgentSummary> Agents { get; set; } = [];
 
     [Parameter]
     public bool ShowAgent { get; set; } = true;
@@ -168,6 +193,9 @@
     private string KnowledgeBaseName(string value) =>
         Guid.TryParse(value, out var id) ? KnowledgeBases?.FirstOrDefault(k => k.Id == id)?.Name ?? value : value;
 
+    private string AgentName(string value) =>
+        Guid.TryParse(value, out var id) ? Agents.FirstOrDefault(a => a.Id == id)?.DisplayName ?? value : value;
+
     private string AssistantName(string value) =>
         Guid.TryParse(value, out var id) ? Assistants.FirstOrDefault(a => a.Id == id)?.Name ?? value : value;
 
@@ -185,7 +213,12 @@
 
         foreach (var assistant in Query.Assistant)
         {
-            yield return new Chip("assistant", assistant.ToString(), $"Agent: {AssistantName(assistant.ToString())}");
+            yield return new Chip("assistant", assistant.ToString(), $"Assistant: {AssistantName(assistant.ToString())}");
+        }
+
+        foreach (var agent in Query.Agent)
+        {
+            yield return new Chip("agent", agent.ToString(), $"Agent: {AgentName(agent.ToString())}");
         }
 
         foreach (var knowledgeBase in Query.KnowledgeBase)
@@ -214,6 +247,7 @@
         "scope" => Query with { Scope = [.. Query.Scope.Where(v => v != chip.Value)] },
         "tenant" => Query with { Tenant = [.. Query.Tenant.Where(v => v.ToString() != chip.Value)] },
         "assistant" => Query with { Assistant = [.. Query.Assistant.Where(v => v.ToString() != chip.Value)] },
+        "agent" => Query with { Agent = [.. Query.Agent.Where(v => v.ToString() != chip.Value)] },
         "type" => Query with { Type = [.. Query.Type.Where(v => v != chip.Value)] },
         "status" => Query with { Status = [.. Query.Status.Where(v => v != chip.Value)] },
         "knowledgeBase" => Query with { KnowledgeBase = [.. Query.KnowledgeBase.Where(v => v.ToString() != chip.Value)] },

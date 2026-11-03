@@ -14,7 +14,10 @@ using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Agents.Features.Tools;
 
-/// <summary>The assistants of the tenant and which tools of the pool each one has active.</summary>
+/// <summary>
+/// The assistants of the tenant, and which tools of the pool the root agent of each has active. The tools belong to agents (spec 013 D-17);
+/// these routes stay as a facade over the root agent until the agents API replaces them.
+/// </summary>
 internal sealed class AssistantToolsEndpoints : IEndpointGroup
 {
     private static readonly Error AssistantNotFound = Error.NotFound("assistant.not_found", "The assistant does not exist.");
@@ -37,10 +40,12 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
     }
 
     private static async Task<Ok<List<AssistantResponse>>> ListAsync(AgentsDbContext db, CancellationToken cancellationToken) =>
-        TypedResults.Ok(await db.Assistants
+        TypedResults.Ok(await (
+            from assistant in db.Assistants
+            join agent in db.Agents on assistant.RootAgentId equals agent.Id
+            orderby assistant.Id
+            select new AssistantResponse(assistant.Id, assistant.Name, agent.Slug, assistant.MaxParallelSubAgents))
             .AsNoTracking()
-            .OrderBy(a => a.Id)
-            .Select(a => new AssistantResponse(a.Id, a.Name))
             .ToListAsync(cancellationToken));
 
     private static async Task<Results<Ok<AssistantToolsResponse>, ProblemHttpResult>> GetToolsAsync(
@@ -50,24 +55,26 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         LookupToolResolver lookupResolver,
         CancellationToken cancellationToken)
     {
-        var budget = await (
+        var root = await (
             from assistant in db.Assistants
-            join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
+            join agent in db.Agents on assistant.RootAgentId equals agent.Id
+            join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
             where assistant.Id == id
-            select (int?)endpoint.ContextTokenBudget)
+            select new { AgentId = agent.Id, endpoint.ContextTokenBudget })
             .SingleOrDefaultAsync(cancellationToken);
-        if (budget is null)
+        if (root is null)
         {
             return AssistantNotFound.ToProblem();
         }
 
-        var pool = await ToolPool.For(db, id).AsNoTracking().ToListAsync(cancellationToken);
+        var budget = root.ContextTokenBudget;
+        var pool = await ToolPool.For(db, root.AgentId).AsNoTracking().ToListAsync(cancellationToken);
         // A rag tool whose knowledge bases this assistant cannot see is not in its pool: there is nothing it could search.
         var rag = await resolver.ResolvePoolAsync(pool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
         // The same for a lookup tool whose lookups this assistant cannot see.
         var lookups = await lookupResolver.ResolvePoolAsync(pool, db.CurrentTenantId ?? Guid.Empty, id, cancellationToken);
         pool = [.. pool.Where(t => (t.Tool.Origin != ToolOrigin.Rag || rag.ContainsKey(t.Tool.Id)) && (t.Tool.Origin != ToolOrigin.Lookup || lookups.ContainsKey(t.Tool.Id)))];
-        var activations = await db.AssistantTools.Where(a => a.AssistantId == id).ToDictionaryAsync(a => a.ToolId, a => a.Manifest, cancellationToken);
+        var activations = await db.AgentTools.Where(a => a.AgentId == root.AgentId).ToDictionaryAsync(a => a.ToolId, a => a.Manifest, cancellationToken);
         var active = activations.Keys.ToHashSet();
 
         // The size a rag tool takes is that of the definition the model gets, not of the stored one.
@@ -83,7 +90,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
         var warnings = ToolWarnings.Evaluate(
             activeDefinitions.Count,
             ToolDefinitionRenderer.Length(activeDefinitions),
-            budget.Value * ContextUsage.CharactersPerToken);
+            budget * ContextUsage.CharactersPerToken);
 
         return TypedResults.Ok(new AssistantToolsResponse(
             pool.Select(t => new PoolToolResponse(
@@ -114,8 +121,9 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
             return AssistantNotFound.ToProblem();
         }
 
+        var agentId = assistant.RootAgentId;
         var wanted = (request.ToolIds ?? []).Distinct().ToList();
-        var inPool = await ToolPool.For(db, id).AsNoTracking().Where(t => wanted.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
+        var inPool = await ToolPool.For(db, agentId).AsNoTracking().Where(t => wanted.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
         if (inPool.Count != wanted.Count)
         {
             return NotInPool.ToProblem();
@@ -148,8 +156,8 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
             manifests[toolId] = manifest;
         }
 
-        var current = await db.AssistantTools.Where(a => a.AssistantId == id).ToListAsync(cancellationToken);
-        db.AssistantTools.RemoveRange(current.Where(a => !wanted.Contains(a.ToolId)));
+        var current = await db.AgentTools.Where(a => a.AgentId == agentId).ToListAsync(cancellationToken);
+        db.AgentTools.RemoveRange(current.Where(a => !wanted.Contains(a.ToolId)));
         foreach (var activation in current.Where(a => wanted.Contains(a.ToolId) && manifests.ContainsKey(a.ToolId)))
         {
             activation.SetManifest(manifests[activation.ToolId]);
@@ -157,13 +165,13 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
 
         foreach (var toolId in wanted.Where(toolId => current.All(a => a.ToolId != toolId)))
         {
-            var created = AssistantTool.Create(assistant.TenantId, id, toolId);
+            var created = AgentTool.Create(assistant.TenantId, agentId, toolId);
             if (manifests.TryGetValue(toolId, out var manifest))
             {
                 created.SetManifest(manifest);
             }
 
-            db.AssistantTools.Add(created);
+            db.AgentTools.Add(created);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -187,7 +195,7 @@ internal sealed class AssistantToolsEndpoints : IEndpointGroup
     }
 }
 
-internal sealed record AssistantResponse(Guid Id, string Name);
+internal sealed record AssistantResponse(Guid Id, string Name, string RootAgentSlug, int MaxParallelSubAgents);
 
 /// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this assistant; <see langword="null"/> for the other tools.</param>
 internal sealed record PoolToolResponse(Guid ToolId, string Name, bool Active, string? Manifest = null);

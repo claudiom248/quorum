@@ -258,7 +258,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         using var enable = await client.PutAsJsonAsync(ToolsApi.Tool(tool.Id), new { state = "Enabled", policy = "Auto" }, Ct);
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
         using var activate = await client.PutAsJsonAsync(ToolsApi.AssistantTools(assistantId), new { toolIds = new[] { tool.Id } }, Ct);
-        var activationsBefore = await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.assistant_tools WHERE \"ToolId\" = '" + tool.Id + "'");
+        var activationsBefore = await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.agent_tools WHERE \"ToolId\" = '" + tool.Id + "'");
 
         using var delete = await client.DeleteAsync(ToolsApi.Server(created.Id), Ct);
         using var after = await client.GetAsync(ToolsApi.Server(created.Id), Ct);
@@ -267,7 +267,7 @@ public sealed class McpServerRegistryTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, after.StatusCode);
         Assert.DoesNotContain(await ToolsApi.ListToolsAsync(client), t => t.Origin == "Mcp");
-        Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.assistant_tools WHERE \"ToolId\" = '" + tool.Id + "'"));
+        Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.agent_tools WHERE \"ToolId\" = '" + tool.Id + "'"));
         Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.tools WHERE \"Origin\" = 'Mcp'"));
     }
 

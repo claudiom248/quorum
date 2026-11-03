@@ -18,14 +18,14 @@ internal static class ToolFixtures
     public static async Task<Guid> AddProbeAsync(QuorumApp app, ToolPolicy policy = ToolPolicy.Auto)
     {
         var tenantId = await ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
-        var assistantId = await ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.assistants LIMIT 1");
+        var agentId = await ScalarAsync<Guid>(app, "SELECT \"RootAgentId\" FROM agents.assistants LIMIT 1");
 
         await using var scope = app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
         var tool = Tool.CreateBuiltin(tenantId, ProbeTool.ToolName, "A tool that tests control.", ProbeSchema);
         tool.Review(ToolState.Enabled, policy);
         db.Tools.Add(tool);
-        db.AssistantTools.Add(AssistantTool.Create(tenantId, assistantId, tool.Id));
+        db.AgentTools.Add(AgentTool.Create(tenantId, agentId, tool.Id));
         await db.SaveChangesAsync(Ct);
         return tool.Id;
     }
@@ -93,7 +93,7 @@ internal static class ToolFixtures
         Guid? conversationId = null)
     {
         var entry = ToolAuditEntry.Start(
-            tenant, userId, assistant, conversationId ?? Guid.NewGuid(), Guid.NewGuid(), server, tool, ToolDecision.Auto, arguments, false, startedAt);
+            tenant, userId, assistant, Guid.NewGuid(), conversationId ?? Guid.NewGuid(), Guid.NewGuid(), server, tool, ToolDecision.Auto, arguments, false, startedAt);
         if (outcome != ToolOutcome.Started)
         {
             entry.Complete(outcome, 5, null, startedAt.AddMilliseconds(40), TimeSpan.FromMilliseconds(40));

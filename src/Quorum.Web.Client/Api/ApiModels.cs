@@ -137,6 +137,9 @@ public static class ScopeKinds
     public const string Global = "Global";
     public const string Tenant = "Tenant";
     public const string Assistant = "Assistant";
+
+    /// <summary>Tools and servers are scoped to agents (spec 013 D-17); knowledge bases and lookups keep <see cref="Assistant"/>.</summary>
+    public const string Agent = "Agent";
 }
 
 /// <param name="Annotations">What the server claims about the tool (<c>readOnlyHint</c>...): information only, it never changes the policy.</param>
@@ -154,8 +157,17 @@ public sealed record ToolInfo(
     bool Shared = false);
 
 /// <param name="TenantIds">Tenants besides the owner that see the server (scope <c>Tenant</c>).</param>
-/// <param name="AssistantIds">Assistants that may use the server (scope <c>Assistant</c>).</param>
-public sealed record ToolScope(string Kind, IReadOnlyList<Guid> TenantIds, IReadOnlyList<Guid> AssistantIds);
+/// <param name="AssistantIds">Assistants that may use a knowledge base or lookup (scope <c>Assistant</c>); empty for tools and servers.</param>
+/// <param name="AgentIds">Agents that may use a tool or server (scope <c>Agent</c>); empty for knowledge bases and lookups.</param>
+public sealed record ToolScope(string Kind, IReadOnlyList<Guid> TenantIds, IReadOnlyList<Guid>? AssistantIds = null, IReadOnlyList<Guid>? AgentIds = null)
+{
+    public IReadOnlyList<Guid> AssistantIds { get; init; } = AssistantIds ?? [];
+
+    public IReadOnlyList<Guid> AgentIds { get; init; } = AgentIds ?? [];
+}
+
+/// <summary>An agent as the scope pickers list it.</summary>
+public sealed record AgentSummary(Guid Id, string Slug, string DisplayName);
 
 /// <param name="HasHeaders">Whether static headers are stored. Their values are never returned.</param>
 /// <param name="Shared"><see langword="true"/> for a server of another tenant made visible by its scope: read-only here.</param>

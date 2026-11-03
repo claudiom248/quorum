@@ -50,7 +50,7 @@ internal static class RagToolHash
             writer.WriteNumber("maxResultCharacters", configuration.MaxResultCharacters);
             writer.WriteString("scope", configuration.Scope.ToString());
             ToolHashWriter.WriteIds(writer, "scopeTenants", configuration.ScopeTenantIds);
-            ToolHashWriter.WriteIds(writer, "scopeAssistants", configuration.ScopeAssistantIds);
+            ToolHashWriter.WriteIds(writer, "scopeAgents", configuration.ScopeAgentIds);
             writer.WriteEndObject();
         }
 

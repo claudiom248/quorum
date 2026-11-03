@@ -8,12 +8,11 @@ internal enum McpServerStatus
     Unavailable,
 }
 
-/// <summary>Who may use a server's tools (D-2). <see cref="Agent"/> is reserved for spec 005 and rejected until then.</summary>
+/// <summary>Who may use a server's tools (D-2, spec 013 D-17): everyone, some tenants, or some agents of the owner.</summary>
 internal enum ToolScopeKind
 {
     Global,
     Tenant,
-    Assistant,
     Agent,
 }
 
@@ -48,8 +47,8 @@ internal sealed class McpServer
     /// <summary>With <see cref="ToolScopeKind.Tenant"/>: the tenants besides the owner that may use the server's tools.</summary>
     public List<Guid> ScopeTenantIds { get; private set; } = [];
 
-    /// <summary>With <see cref="ToolScopeKind.Assistant"/>: the assistants that may use the server's tools.</summary>
-    public List<Guid> ScopeAssistantIds { get; private set; } = [];
+    /// <summary>With <see cref="ToolScopeKind.Agent"/>: the agents that may use the server's tools.</summary>
+    public List<Guid> ScopeAgentIds { get; private set; } = [];
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -62,7 +61,7 @@ internal sealed class McpServer
         string? protectedHeaders,
         ToolScopeKind scope,
         IEnumerable<Guid> scopeTenantIds,
-        IEnumerable<Guid> scopeAssistantIds,
+        IEnumerable<Guid> scopeAgentIds,
         DateTimeOffset now) => new()
         {
             Id = Guid.CreateVersion7(now),
@@ -73,7 +72,7 @@ internal sealed class McpServer
             Status = McpServerStatus.Unavailable,
             Scope = scope,
             ScopeTenantIds = [.. scopeTenantIds],
-            ScopeAssistantIds = [.. scopeAssistantIds],
+            ScopeAgentIds = [.. scopeAgentIds],
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -85,7 +84,7 @@ internal sealed class McpServer
         string? protectedHeaders,
         ToolScopeKind scope,
         IEnumerable<Guid> scopeTenantIds,
-        IEnumerable<Guid> scopeAssistantIds,
+        IEnumerable<Guid> scopeAgentIds,
         DateTimeOffset now)
     {
         Name = name;
@@ -93,7 +92,7 @@ internal sealed class McpServer
         ProtectedHeaders = protectedHeaders;
         Scope = scope;
         ScopeTenantIds = [.. scopeTenantIds];
-        ScopeAssistantIds = [.. scopeAssistantIds];
+        ScopeAgentIds = [.. scopeAgentIds];
         UpdatedAt = now;
     }
 

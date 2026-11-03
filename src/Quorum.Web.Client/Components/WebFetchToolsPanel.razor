@@ -10,7 +10,7 @@
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
           EmptyTitle="No web fetch tool is configured yet" EmptyText="Add one to let an assistant read a page instead of guessing from a snippet.">
     <FilterContent>
-        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Agents="_agents" ScopeOptions="FilterBar.ToolScopes"
                    StatusOptions="StatusOptions" SearchPlaceholder="Search by name or description" />
     </FilterContent>
     <ChildContent>
@@ -26,7 +26,7 @@
                     <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-fetch-tool="@tool.Name">web_fetch__@tool.Name</MudLink>
                     <div class="tool-row-description">@tool.Description</div>
                 </MudTd>
-                <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Assistants="_assistants" Shared="tool.Shared" /></MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Agents="_agents" Shared="tool.Shared" /></MudTd>
                 <MudTd DataLabel="State">
                     <ToolStateCell @key="(tool.Id, _rowGeneration)" Tool="AsToolInfo(tool)" ReadOnly="tool.Shared" Busy="_busy" OnChange="ChangeToolAsync" />
                 </MudTd>
@@ -93,7 +93,7 @@
                         </select>
                     </label>
 
-                    <ScopePicker Form="form.Scope" Assistants="_assistants" Tenants="_tenants" Subject="tool"
+                    <ScopePicker Form="form.Scope" Agents="_agents" Tenants="_tenants" Subject="tool"
                                  GlobalWarning="Every tenant of this installation will see the tool and may read pages through it." />
 
                     @if (_formProblems.Count > 0)
@@ -152,7 +152,7 @@
 
     private ListDrawer? _drawer;
     private ListScreen<WebFetchToolListItem> _screen = null!;
-    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<AgentSummary> _agents = [];
     private IReadOnlyList<TenantSummary>? _tenants;
     private WebConfigurationInfo? _web;
     private ApiProblem? _problem;
@@ -183,8 +183,8 @@
             (query, cursor) => Api.ListWebFetchToolsPageAsync(query, ListScreen<WebFetchToolListItem>.PageSize, cursor),
             () => InvokeAsync(StateHasChanged));
 
-        var assistants = await Api.ListAssistantsAsync();
-        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var agents = await Api.ListAgentsAsync();
+        _agents = agents.IsSuccess ? agents.Value : [];
         var tenants = await Api.ListTenantsAsync();
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 

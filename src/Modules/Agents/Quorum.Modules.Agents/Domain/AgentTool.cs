@@ -1,6 +1,6 @@
 namespace Quorum.Modules.Agents.Domain;
 
-/// <summary>How a lookup tool is offered to the model on one assistant (spec 012 D-8).</summary>
+/// <summary>How a lookup tool is offered to the model on one agent (spec 012 D-8, spec 013 D-42).</summary>
 internal static class LookupManifest
 {
     /// <summary>The functions of spec 007: values, documents and count, each with its full parameters.</summary>
@@ -12,14 +12,14 @@ internal static class LookupManifest
     public static bool IsValid(string? manifest) => manifest is Full or Lean;
 }
 
-/// <summary>A tool the admin activated on an assistant: only active tools are offered to the model.</summary>
-internal sealed class AssistantTool
+/// <summary>A tool the admin activated on an agent: only active tools are offered to the model.</summary>
+internal sealed class AgentTool
 {
-    private AssistantTool()
+    private AgentTool()
     {
     }
 
-    public Guid AssistantId { get; private set; }
+    public Guid AgentId { get; private set; }
 
     public Guid ToolId { get; private set; }
 
@@ -28,10 +28,10 @@ internal sealed class AssistantTool
     /// <summary>Only meaningful for a lookup tool (spec 012 D-8); the other tools have the default.</summary>
     public string Manifest { get; private set; } = LookupManifest.Full;
 
-    public static AssistantTool Create(Guid tenantId, Guid assistantId, Guid toolId) => new()
+    public static AgentTool Create(Guid tenantId, Guid agentId, Guid toolId) => new()
     {
         TenantId = tenantId,
-        AssistantId = assistantId,
+        AgentId = agentId,
         ToolId = toolId,
     };
 

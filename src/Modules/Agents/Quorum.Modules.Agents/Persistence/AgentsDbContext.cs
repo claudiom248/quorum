@@ -18,7 +18,11 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<Tool> Tools => Set<Tool>();
 
-    public DbSet<AssistantTool> AssistantTools => Set<AssistantTool>();
+    public DbSet<Agent> Agents => Set<Agent>();
+
+    public DbSet<AgentSubAgent> AgentSubAgents => Set<AgentSubAgent>();
+
+    public DbSet<AgentTool> AgentTools => Set<AgentTool>();
 
     public DbSet<ToolSettings> ToolSettings => Set<ToolSettings>();
 
@@ -60,9 +64,35 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
         {
             assistant.ToTable("assistants");
             assistant.Property(a => a.Name).HasMaxLength(200);
+            assistant.Property(a => a.MaxParallelSubAgents).HasDefaultValue(Assistant.DefaultMaxParallelSubAgents);
             assistant.HasIndex(a => a.TenantId);
-            assistant.HasOne<ModelEndpoint>().WithMany().HasForeignKey(a => a.ModelEndpointId).OnDelete(DeleteBehavior.Restrict);
+            assistant.HasOne<Agent>().WithMany().HasForeignKey(a => a.RootAgentId).OnDelete(DeleteBehavior.Restrict);
             assistant.HasQueryFilter(a => a.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Agent>(agent =>
+        {
+            agent.ToTable("agents");
+            agent.Property(a => a.Slug).HasMaxLength(AgentRules.MaxSlugLength);
+            agent.Property(a => a.DisplayName).HasMaxLength(AgentRules.MaxDisplayNameLength);
+            agent.Property(a => a.Description).HasMaxLength(AgentRules.MaxDescriptionLength);
+            agent.Property(a => a.Scope).HasConversion<string>().HasMaxLength(20);
+            agent.HasIndex(a => new { a.TenantId, a.Slug }).IsUnique();
+            agent.HasOne<ModelEndpoint>().WithMany().HasForeignKey(a => a.ModelEndpointId).OnDelete(DeleteBehavior.Restrict);
+            agent.HasQueryFilter(a => a.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<AgentSubAgent>(edge =>
+        {
+            edge.ToTable("agent_sub_agents");
+            edge.HasKey(e => new { e.ParentAgentId, e.ChildAgentId });
+            edge.Property(e => e.FailurePolicy).HasConversion<string>().HasMaxLength(20).HasDefaultValue(SubAgentFailurePolicy.ReturnError);
+            edge.HasIndex(e => e.TenantId);
+            edge.HasIndex(e => e.ChildAgentId);
+            edge.HasOne<Agent>().WithMany().HasForeignKey(e => e.ParentAgentId).OnDelete(DeleteBehavior.Cascade);
+            // An agent that is somebody's sub-agent cannot be deleted (D-16): the edge is what the 409 lists.
+            edge.HasOne<Agent>().WithMany().HasForeignKey(e => e.ChildAgentId).OnDelete(DeleteBehavior.Restrict);
+            edge.HasQueryFilter(e => e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Tool>(tool =>
@@ -152,13 +182,13 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             webFetch.HasQueryFilter(w => w.TenantId == CurrentTenantId);
         });
 
-        modelBuilder.Entity<AssistantTool>(activation =>
+        modelBuilder.Entity<AgentTool>(activation =>
         {
-            activation.ToTable("assistant_tools");
-            activation.HasKey(a => new { a.AssistantId, a.ToolId });
+            activation.ToTable("agent_tools");
+            activation.HasKey(a => new { a.AgentId, a.ToolId });
             activation.Property(a => a.Manifest).HasMaxLength(10).HasDefaultValue(LookupManifest.Full);
             activation.HasIndex(a => a.TenantId);
-            activation.HasOne<Assistant>().WithMany().HasForeignKey(a => a.AssistantId).OnDelete(DeleteBehavior.Cascade);
+            activation.HasOne<Agent>().WithMany().HasForeignKey(a => a.AgentId).OnDelete(DeleteBehavior.Cascade);
             activation.HasOne<Tool>().WithMany().HasForeignKey(a => a.ToolId).OnDelete(DeleteBehavior.Cascade);
             activation.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });

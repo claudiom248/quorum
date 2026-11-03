@@ -38,6 +38,9 @@ internal sealed class ToolAuditEntry
 
     public Guid AssistantId { get; private set; }
 
+    /// <summary>The agent that made the call (spec 013 D-28); null on entries written before agents existed.</summary>
+    public Guid? AgentId { get; private set; }
+
     public Guid ConversationId { get; private set; }
 
     /// <summary>The model's id for the call, also used by the confirmation endpoints.</summary>
@@ -76,6 +79,7 @@ internal sealed class ToolAuditEntry
         Guid tenantId,
         Guid userId,
         Guid assistantId,
+        Guid agentId,
         Guid conversationId,
         Guid callId,
         string? serverName,
@@ -89,6 +93,7 @@ internal sealed class ToolAuditEntry
             TenantId = tenantId,
             UserId = userId,
             AssistantId = assistantId,
+            AgentId = agentId,
             ConversationId = conversationId,
             CallId = callId,
             ServerName = serverName,

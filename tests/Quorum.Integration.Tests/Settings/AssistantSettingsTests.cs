@@ -62,6 +62,32 @@ public sealed class AssistantSettingsTests(PostgresFixture postgres)
         Assert.False(afterClear!.HasApiKey);
     }
 
+    [Fact] // AC-22
+    public async Task TheWizardAndTheSettingsWriteToTheRootAgentOfTheDefaultAssistantAndItsEndpoint()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        using var client = await app.SetUpAsync(systemPrompt: "Be brief.");
+        const string RootAgent = "FROM agents.assistants a JOIN agents.agents g ON g.\"Id\" = a.\"RootAgentId\" JOIN agents.model_endpoints e ON e.\"Id\" = g.\"ModelEndpointId\"";
+
+        // The wizard created the agent and its endpoint, and the assistant points to them.
+        Assert.Equal("Be brief.", await Tools.ToolFixtures.ScalarAsync<string>(app, "SELECT g.\"SystemPrompt\" " + RootAgent));
+        Assert.Equal("assistant", await Tools.ToolFixtures.ScalarAsync<string>(app, "SELECT g.\"Slug\" " + RootAgent));
+        Assert.Equal("llama3.2", await Tools.ToolFixtures.ScalarAsync<string>(app, "SELECT e.\"ModelName\" " + RootAgent));
+
+        app.ModelServer.Serve("http://vllm.test:8000/v1", "qwen2.5:14b");
+        using var update = await client.PutAsJsonAsync(
+            Settings,
+            new { baseUrl = "http://vllm.test:8000/v1", modelName = "qwen2.5:14b", apiKey = "sk-new", contextTokenBudget = 16384, systemPrompt = "Answer in haiku." },
+            Ct);
+
+        Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
+        Assert.Equal("Answer in haiku.", await Tools.ToolFixtures.ScalarAsync<string>(app, "SELECT g.\"SystemPrompt\" " + RootAgent));
+        Assert.Equal("qwen2.5:14b", await Tools.ToolFixtures.ScalarAsync<string>(app, "SELECT e.\"ModelName\" " + RootAgent));
+        Assert.Equal(16384, await Tools.ToolFixtures.ScalarAsync<int>(app, "SELECT e.\"ContextTokenBudget\" " + RootAgent));
+        Assert.Equal(1L, await Tools.ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.agents"));
+        Assert.Equal(1L, await Tools.ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.model_endpoints"));
+    }
+
     [Fact]
     public async Task InvalidSettingsAreRejected()
     {

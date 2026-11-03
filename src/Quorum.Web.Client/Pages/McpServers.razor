@@ -14,7 +14,7 @@
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
           EmptyTitle="No MCP server is registered yet" EmptyText="Add one to give the assistants tools beyond the built-in ones.">
     <FilterContent>
-        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Assistants="_assistants"
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" Tenants="_tenants" Agents="_agents" ScopeOptions="FilterBar.ToolScopes"
                    StatusOptions="StatusOptions" SearchPlaceholder="Search by name or address" />
     </FilterContent>
     <ChildContent>
@@ -33,7 +33,7 @@
                     <MudLink Href="@_screen.DrawerUri(server.Id.ToString())" Class="tool-name" data-server="@server.Name">@server.Name</MudLink>
                 </MudTd>
                 <MudTd DataLabel="Address"><span class="tool-hint">@server.Url</span></MudTd>
-                <MudTd DataLabel="Scope"><ScopeBadge Scope="server.Scope" Assistants="_assistants" Shared="server.Shared" /></MudTd>
+                <MudTd DataLabel="Scope"><ScopeBadge Scope="server.Scope" Agents="_agents" Shared="server.Shared" /></MudTd>
                 <MudTd DataLabel="Status">
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
                              Color="@(server.Status == ServerStatuses.Available ? Color.Success : Color.Warning)">@server.Status</MudChip>
@@ -103,12 +103,12 @@
                         <MudCheckBox T="bool" @bind-Value="_form.RemoveHeaders" Label="Remove the stored headers" Dense="true" />
                     }
 
-                    <ScopePicker Form="_form.Scope" Assistants="_assistants" Tenants="_tenants" Subject="server"
+                    <ScopePicker Form="_form.Scope" Agents="_agents" Tenants="_tenants" Subject="server"
                                  GlobalWarning="Every tenant of this installation will see the server and its enabled tools." />
                 }
                 else if (_server is not null)
                 {
-                    <div><ScopeBadge Scope="_server.Scope" Assistants="_assistants" Shared="true" /></div>
+                    <div><ScopeBadge Scope="_server.Scope" Agents="_agents" Shared="true" /></div>
                 }
 
                 <ProblemMessage Problem="_formProblem" />
@@ -179,7 +179,7 @@
 
     private ListDrawer? _drawer;
     private ListScreen<ToolServer> _screen = null!;
-    private IReadOnlyList<AssistantSummary> _assistants = [];
+    private IReadOnlyList<AgentSummary> _agents = [];
     private IReadOnlyList<TenantSummary>? _tenants;
     private string? _notice;
     private bool _busy;
@@ -210,13 +210,13 @@
     {
         _screen = new ListScreen<ToolServer>(Navigation, "/tools/mcp", (query, cursor) => Api.ListToolServersPageAsync(query, ListScreen<ToolServer>.PageSize, cursor), () => InvokeAsync(StateHasChanged));
 
-        var assistantsTask = Api.ListAssistantsAsync();
+        var agentsTask = Api.ListAgentsAsync();
         var tenantsTask = Api.ListTenantsAsync();
         var reloadTask = _screen.ReloadAsync();
-        await Task.WhenAll(assistantsTask, tenantsTask, reloadTask);
+        await Task.WhenAll(agentsTask, tenantsTask, reloadTask);
 
-        var assistants = await assistantsTask;
-        _assistants = assistants.IsSuccess ? assistants.Value : [];
+        var agents = await agentsTask;
+        _agents = agents.IsSuccess ? agents.Value : [];
         var tenants = await tenantsTask;
         _tenants = tenants.IsSuccess ? tenants.Value : null;
 

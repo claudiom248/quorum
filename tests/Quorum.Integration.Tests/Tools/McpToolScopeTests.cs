@@ -12,16 +12,17 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-11
-    public async Task AnAssistantScopeOnlyReachesTheAssistantsItLists()
+    public async Task AnAgentScopeOnlyReachesTheAgentsItLists()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var defaultAssistant = await ToolsApi.DefaultAssistantIdAsync(client);
-        var otherAssistant = await AddAssistantAsync(app);
+        var (otherAssistant, otherAgent) = await AssistantFixtures.AddWithAgentAsync(app);
+        var defaultAgent = await AssistantFixtures.RootAgentIdAsync(app, defaultAssistant);
 
-        var forOther = await ToolsApi.RegisterServerOkAsync(client, "other", mcp.Url, scope: new { kind = "Assistant", assistantIds = new[] { otherAssistant } });
-        var forDefault = await ToolsApi.RegisterServerOkAsync(client, "mine", mcp.Url, scope: new { kind = "Assistant", assistantIds = new[] { defaultAssistant } });
+        var forOther = await ToolsApi.RegisterServerOkAsync(client, "other", mcp.Url, scope: new { kind = "Agent", agentIds = new[] { otherAgent } });
+        var forDefault = await ToolsApi.RegisterServerOkAsync(client, "mine", mcp.Url, scope: new { kind = "Agent", agentIds = new[] { defaultAgent } });
         await EnableAllAsync(client, forOther, forDefault);
 
         var defaultPool = (await ToolsApi.GetAssistantToolsAsync(client, defaultAssistant)).Pool.Select(t => t.Name).ToArray();
@@ -62,7 +63,7 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         using var response = await ToolsApi.RegisterServerAsync(client, "files", mcp.Url, scope: new { kind = "Agent" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("tool.scope_not_supported", await ToolsApi.ProblemCodeAsync(response));
+        Assert.Equal("tool.invalid_scope", await ToolsApi.ProblemCodeAsync(response));
         Assert.Empty(await ToolsApi.ListServersAsync(client));
     }
 
@@ -71,9 +72,9 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
     [InlineData("5", false, false)]
     [InlineData("Global", true, false)]
     [InlineData("Tenant", false, true)]
-    [InlineData("Assistant", false, false)]
-    [InlineData("Assistant", true, false)]
-    public async Task AnIncoherentScopeIsRejected(string kind, bool withTenants, bool withAssistants)
+    [InlineData("Agent", false, false)]
+    [InlineData("Agent", true, false)]
+    public async Task AnIncoherentScopeIsRejected(string kind, bool withTenants, bool withAgents)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
@@ -84,20 +85,20 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
             client,
             "files",
             mcp.Url,
-            scope: new { kind, tenantIds = withTenants ? new[] { Guid.NewGuid() } : null, assistantIds = withAssistants ? new[] { assistantId } : null });
+            scope: new { kind, tenantIds = withTenants ? new[] { Guid.NewGuid() } : null, agentIds = withAgents ? new[] { assistantId } : null });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("tool.invalid_scope", await ToolsApi.ProblemCodeAsync(response));
     }
 
     [Fact]
-    public async Task AnAssistantThatDoesNotExistCannotBeInTheScope()
+    public async Task AnAgentThatDoesNotExistCannotBeInTheScope()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var client = await app.SetUpAsync();
         await using var mcp = await McpTestServer.StartAsync();
 
-        using var response = await ToolsApi.RegisterServerAsync(client, "files", mcp.Url, scope: new { kind = "Assistant", assistantIds = new[] { Guid.NewGuid() } });
+        using var response = await ToolsApi.RegisterServerAsync(client, "files", mcp.Url, scope: new { kind = "Agent", agentIds = new[] { Guid.NewGuid() } });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("tool.invalid_scope", await ToolsApi.ProblemCodeAsync(response));
@@ -110,20 +111,21 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         using var client = await app.SetUpAsync();
         await using var mcp = await McpTestServer.StartAsync(McpTestServer.NewTool("search"));
         var defaultAssistant = await ToolsApi.DefaultAssistantIdAsync(client);
-        var otherAssistant = await AddAssistantAsync(app);
+        var (otherAssistant, otherAgent) = await AssistantFixtures.AddWithAgentAsync(app);
+        var defaultAgent = await AssistantFixtures.RootAgentIdAsync(app, defaultAssistant);
         var created = await ToolsApi.RegisterServerOkAsync(client, "files", mcp.Url);
         await EnableAllAsync(client, created);
 
         using var narrow = await client.PutAsJsonAsync(
             ToolsApi.Server(created.Id),
-            new { name = "files", url = mcp.Url, scope = new { kind = "Assistant", assistantIds = new[] { otherAssistant } } },
+            new { name = "files", url = mcp.Url, scope = new { kind = "Agent", agentIds = new[] { otherAgent } } },
             Ct);
         var server = await ToolsApi.GetServerAsync(client, created.Id);
         var defaultPool = (await ToolsApi.GetAssistantToolsAsync(client, defaultAssistant)).Pool;
 
         Assert.Equal(HttpStatusCode.NoContent, narrow.StatusCode);
-        Assert.Equal("Assistant", server.Scope.Kind);
-        Assert.Equal([otherAssistant], server.Scope.AssistantIds);
+        Assert.Equal("Agent", server.Scope.Kind);
+        Assert.Equal([otherAgent], server.Scope.AgentIds);
         Assert.DoesNotContain(defaultPool, t => t.Name == "files__search");
     }
 
@@ -138,8 +140,8 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         var global = await AddForeignServerAsync(app, stranger, "shared-global", ToolScopeKind.Global);
         var listingUs = await AddForeignServerAsync(app, stranger, "shared-us", ToolScopeKind.Tenant, tenantIds: [tenantId]);
         await AddForeignServerAsync(app, stranger, "tenant-private", ToolScopeKind.Tenant, tenantIds: [Guid.CreateVersion7()]);
-        await AddForeignServerAsync(app, stranger, "assistant-private", ToolScopeKind.Assistant, assistantIds: [Guid.CreateVersion7()]);
-        await AddForeignServerAsync(app, stranger, "assistant-ours", ToolScopeKind.Assistant, assistantIds: [assistantId]);
+        await AddForeignServerAsync(app, stranger, "agent-private", ToolScopeKind.Agent, agentIds: [Guid.CreateVersion7()]);
+        await AddForeignServerAsync(app, stranger, "agent-ours", ToolScopeKind.Agent, agentIds: [await AssistantFixtures.RootAgentIdAsync(app, assistantId)]);
         await AddForeignServerAsync(app, stranger, "down", ToolScopeKind.Global, status: McpServerStatus.Unavailable);
 
         var servers = await ToolsApi.ListServersAsync(client);
@@ -171,19 +173,6 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         }
     }
 
-    private static async Task<Guid> AddAssistantAsync(QuorumApp app)
-    {
-        var tenantId = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"TenantId\" FROM agents.assistants LIMIT 1");
-        var endpointId = await ToolFixtures.ScalarAsync<Guid>(app, "SELECT \"Id\" FROM agents.model_endpoints LIMIT 1");
-
-        await using var scope = app.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
-        var assistant = Assistant.Create(tenantId, "Second", "You are the second assistant.", endpointId, DateTimeOffset.UtcNow);
-        db.Assistants.Add(assistant);
-        await db.SaveChangesAsync(Ct);
-        return assistant.Id;
-    }
-
     /// <summary>A server of another tenant with one enabled tool called <c>tool</c>, written straight to the database.</summary>
     private static async Task<(Guid ServerId, Guid ToolId)> AddForeignServerAsync(
         QuorumApp app,
@@ -191,13 +180,13 @@ public sealed class McpToolScopeTests(PostgresFixture postgres)
         string name,
         ToolScopeKind scope,
         IEnumerable<Guid>? tenantIds = null,
-        IEnumerable<Guid>? assistantIds = null,
+        IEnumerable<Guid>? agentIds = null,
         McpServerStatus status = McpServerStatus.Available)
     {
         await using var scopeFactory = app.Services.CreateAsyncScope();
         var db = scopeFactory.ServiceProvider.GetRequiredService<AgentsDbContext>();
         var now = DateTimeOffset.UtcNow;
-        var server = McpServer.Create(owner, name, "http://[::1]:1/mcp", protectedHeaders: null, scope, tenantIds ?? [], assistantIds ?? [], now);
+        var server = McpServer.Create(owner, name, "http://[::1]:1/mcp", protectedHeaders: null, scope, tenantIds ?? [], agentIds ?? [], now);
         if (status == McpServerStatus.Available)
         {
             server.MarkAvailable(now);

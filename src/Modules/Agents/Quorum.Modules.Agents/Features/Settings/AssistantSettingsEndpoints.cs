@@ -11,7 +11,7 @@ using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Agents.Features.Settings;
 
-/// <summary>The default assistant's model and system prompt, editable by the administrator after the setup.</summary>
+/// <summary>The default assistant's model and system prompt, kept as a facade over its root agent and that agent's endpoint (spec 013 D-35), editable by the administrator after the setup.</summary>
 internal sealed class AssistantSettingsEndpoints : IEndpointGroup
 {
     private static readonly Error NotConfigured = Error.NotFound("assistant.not_configured", "The default assistant is not configured.");
@@ -31,14 +31,15 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
     {
         var settings = await (
             from assistant in db.Assistants
-            join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
+            join agent in db.Agents on assistant.RootAgentId equals agent.Id
+            join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
             orderby assistant.Id
             select new AssistantSettingsResponse(
                 endpoint.BaseUrl,
                 endpoint.ModelName,
                 endpoint.ProtectedApiKey != null,
                 endpoint.ContextTokenBudget,
-                assistant.SystemPrompt,
+                agent.SystemPrompt,
                 endpoint.SupportsTools))
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -62,9 +63,12 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
             return TypedResults.ValidationProblem(errors);
         }
 
-        var assistant = await db.Assistants.OrderBy(a => a.Id).FirstOrDefaultAsync(cancellationToken);
-        var endpoint = assistant is null ? null : await db.ModelEndpoints.SingleOrDefaultAsync(e => e.Id == assistant.ModelEndpointId, cancellationToken);
-        if (assistant is null || endpoint is null)
+        var assistant = await db.Assistants.AsNoTracking().OrderBy(a => a.Id).FirstOrDefaultAsync(cancellationToken);
+        var agent = assistant is null ? null : await db.Agents.SingleOrDefaultAsync(a => a.Id == assistant.RootAgentId, cancellationToken);
+        var endpoint = agent?.ModelEndpointId is { } endpointId
+            ? await db.ModelEndpoints.SingleOrDefaultAsync(e => e.Id == endpointId, cancellationToken)
+            : null;
+        if (agent is null || endpoint is null)
         {
             return NotConfigured.ToProblem();
         }
@@ -76,7 +80,7 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
             endpoint.ReplaceApiKey(apiKeyProtector.Protect(request.ApiKey.Trim()), now);
         }
 
-        assistant.ChangeSystemPrompt(string.IsNullOrWhiteSpace(request.SystemPrompt) ? AssistantDefaults.SystemPrompt : request.SystemPrompt.Trim());
+        agent.ChangeSystemPrompt(string.IsNullOrWhiteSpace(request.SystemPrompt) ? AssistantDefaults.SystemPrompt : request.SystemPrompt.Trim(), now);
         await db.SaveChangesAsync(cancellationToken);
 
         return TypedResults.NoContent();
@@ -100,7 +104,8 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
         {
             var stored = await (
                 from assistant in db.Assistants
-                join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
+                join agent in db.Agents on assistant.RootAgentId equals agent.Id
+                join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
                 orderby assistant.Id
                 select endpoint.ProtectedApiKey)
                 .FirstOrDefaultAsync(cancellationToken);

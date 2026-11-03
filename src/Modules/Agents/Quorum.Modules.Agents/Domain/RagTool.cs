@@ -73,8 +73,8 @@ internal sealed class RagTool
     /// <summary>With <see cref="ToolScopeKind.Tenant"/>: the tenants besides the owner that may use the tool.</summary>
     public List<Guid> ScopeTenantIds { get; private set; } = [];
 
-    /// <summary>With <see cref="ToolScopeKind.Assistant"/>: the owner's assistants that may use the tool.</summary>
-    public List<Guid> ScopeAssistantIds { get; private set; } = [];
+    /// <summary>With <see cref="ToolScopeKind.Agent"/>: the owner's agents that may use the tool.</summary>
+    public List<Guid> ScopeAgentIds { get; private set; } = [];
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -102,7 +102,7 @@ internal sealed class RagTool
         MaxResultCharacters = configuration.MaxResultCharacters;
         Scope = configuration.Scope;
         ScopeTenantIds = [.. configuration.ScopeTenantIds];
-        ScopeAssistantIds = [.. configuration.ScopeAssistantIds];
+        ScopeAgentIds = [.. configuration.ScopeAgentIds];
         UpdatedAt = now;
     }
 }
@@ -118,6 +118,6 @@ internal sealed record RagConfiguration(
     int MaxResultCharacters,
     ToolScopeKind Scope,
     IReadOnlyList<Guid> ScopeTenantIds,
-    IReadOnlyList<Guid> ScopeAssistantIds,
+    IReadOnlyList<Guid> ScopeAgentIds,
     IReadOnlyDictionary<Guid, string>? ExposedAliases = null,
     bool AllowDocumentIds = false);

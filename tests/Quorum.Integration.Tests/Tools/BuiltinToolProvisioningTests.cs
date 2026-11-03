@@ -40,7 +40,7 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres)
     {
         await using var first = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var _ = await first.SetUpAsync();
-        await ExecuteAsync(first.ConnectionString, "DELETE FROM agents.assistant_tools; DELETE FROM agents.tools; DELETE FROM agents.tool_settings;");
+        await ExecuteAsync(first.ConnectionString, "DELETE FROM agents.agent_tools; DELETE FROM agents.tools; DELETE FROM agents.tool_settings;");
 
         await using var upgraded = first.Restart();
         using var client = upgraded.CreateUiClient();

@@ -48,6 +48,9 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult<List<AssistantSummary>>> ListAssistantsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<AssistantSummary>>("api/assistants", cancellationToken);
 
+    public Task<ApiResult<List<AgentSummary>>> ListAgentsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<AgentSummary>>("api/agents", cancellationToken);
+
     public Task<ApiResult<AssistantTools>> GetAssistantToolsAsync(Guid assistantId, CancellationToken cancellationToken = default) =>
         GetAsync<AssistantTools>($"api/assistants/{assistantId}/tools", cancellationToken);
 

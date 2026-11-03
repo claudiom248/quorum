@@ -11,11 +11,13 @@ namespace Quorum.Shared.Endpoints;
 /// <param name="Scope">The scope kinds to keep (any of them).</param>
 /// <param name="Tenant">Items owned by, or shared with, any of these tenants.</param>
 /// <param name="Assistant">Items an assistant can use: scoped to it, or not scoped to assistants at all.</param>
+/// <param name="Agent">Items an agent can use (tools and servers): scoped to it, or not scoped to agents at all.</param>
 /// <param name="Cursor">Opaque position after the last item of the previous page; see <see cref="ListCursor"/>.</param>
 public sealed record ListQuery(
     IReadOnlyList<string> Scope,
     IReadOnlyList<Guid> Tenant,
     IReadOnlyList<Guid> Assistant,
+    IReadOnlyList<Guid> Agent,
     IReadOnlyList<string> Type,
     IReadOnlyList<string> Status,
     string? Q,
@@ -41,9 +43,9 @@ public sealed record ListQuery(
         Error.Validation("list.invalid_filter", $"The search text must be at most {MaxSearchLength} characters.");
 
     private static readonly Error InvalidIds =
-        Error.Validation("list.invalid_filter", "The tenant and assistant filters take ids.");
+        Error.Validation("list.invalid_filter", "The tenant, assistant and agent filters take ids.");
 
-    public static ListQuery Empty { get; } = new([], [], [], [], [], null, DefaultLimit, null);
+    public static ListQuery Empty { get; } = new([], [], [], [], [], [], null, DefaultLimit, null);
 
     /// <summary>Reads the query string. A value may repeat or be comma separated; unknown keys are ignored.</summary>
     public static Result<ListQuery> Parse(IQueryCollection query)
@@ -57,7 +59,7 @@ public sealed record ListQuery(
             return InvalidLimit;
         }
 
-        if (!TryIds(query, "tenant", out var tenants) || !TryIds(query, "assistant", out var assistants))
+        if (!TryIds(query, "tenant", out var tenants) || !TryIds(query, "assistant", out var assistants) || !TryIds(query, "agent", out var agents))
         {
             return InvalidIds;
         }
@@ -65,7 +67,7 @@ public sealed record ListQuery(
         var scopes = Values(query, "scope");
         var types = Values(query, "type");
         var statuses = Values(query, "status");
-        if (new[] { scopes.Count, tenants.Count, assistants.Count, types.Count, statuses.Count }.Any(count => count > MaxFilterValues))
+        if (new[] { scopes.Count, tenants.Count, assistants.Count, agents.Count, types.Count, statuses.Count }.Any(count => count > MaxFilterValues))
         {
             return TooManyValues;
         }
@@ -78,7 +80,7 @@ public sealed record ListQuery(
 
         var cursor = query.TryGetValue("cursor", out var cursorText) && !string.IsNullOrEmpty(cursorText) ? cursorText.ToString() : null;
 
-        return new ListQuery(scopes, tenants, assistants, types, statuses, string.IsNullOrEmpty(q) ? null : q, limit, cursor);
+        return new ListQuery(scopes, tenants, assistants, agents, types, statuses, string.IsNullOrEmpty(q) ? null : q, limit, cursor);
     }
 
     private static List<string> Values(IQueryCollection query, string key) =>

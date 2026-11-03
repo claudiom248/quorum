@@ -15,6 +15,9 @@ public sealed record ListQuery
 
     public IReadOnlyList<Guid> Assistant { get; init; } = [];
 
+    /// <summary>Tools and servers usable by these agents (or by every agent).</summary>
+    public IReadOnlyList<Guid> Agent { get; init; } = [];
+
     public IReadOnlyList<string> Type { get; init; } = [];
 
     public IReadOnlyList<string> Status { get; init; } = [];
@@ -24,7 +27,7 @@ public sealed record ListQuery
 
     public string? Q { get; init; }
 
-    public bool HasFilters => Scope.Count + Tenant.Count + Assistant.Count + Type.Count + Status.Count + KnowledgeBase.Count > 0 || !string.IsNullOrWhiteSpace(Q);
+    public bool HasFilters => Scope.Count + Tenant.Count + Assistant.Count + Agent.Count + Type.Count + Status.Count + KnowledgeBase.Count > 0 || !string.IsNullOrWhiteSpace(Q);
 
     public static ListQuery Empty => new();
 
@@ -58,6 +61,7 @@ public sealed record ListQuery
                 "status" => query with { Status = Merge(query.Status, Values(value)) },
                 "tenant" => query with { Tenant = Merge(query.Tenant, Ids(value)) },
                 "assistant" => query with { Assistant = Merge(query.Assistant, Ids(value)) },
+                "agent" => query with { Agent = Merge(query.Agent, Ids(value)) },
                 "knowledgebase" => query with { KnowledgeBase = Merge(query.KnowledgeBase, Ids(value)) },
                 "q" => query with { Q = string.IsNullOrWhiteSpace(Decode(value)) ? null : Decode(value).Trim() },
                 _ => query,
@@ -74,6 +78,7 @@ public sealed record ListQuery
         Add(parts, "scope", Scope);
         Add(parts, "tenant", Tenant.Select(id => id.ToString()));
         Add(parts, "assistant", Assistant.Select(id => id.ToString()));
+        Add(parts, "agent", Agent.Select(id => id.ToString()));
         Add(parts, "type", Type);
         Add(parts, "status", Status);
         Add(parts, "knowledgeBase", KnowledgeBase.Select(id => id.ToString()));

@@ -166,7 +166,7 @@ public sealed class McpToolExecutionTests(PostgresFixture postgres)
     [InlineData("UPDATE agents.tools SET \"State\" = 'Disabled' WHERE \"ServerId\" IS NOT NULL")]
     [InlineData("UPDATE agents.tools SET \"State\" = 'PendingReview' WHERE \"ServerId\" IS NOT NULL")]
     [InlineData("UPDATE agents.tools SET \"DefinitionHash\" = 'a-different-definition' WHERE \"ServerId\" IS NOT NULL")]
-    [InlineData("DELETE FROM agents.assistant_tools WHERE \"ToolId\" IN (SELECT \"Id\" FROM agents.tools WHERE \"ServerId\" IS NOT NULL)")]
+    [InlineData("DELETE FROM agents.agent_tools WHERE \"ToolId\" IN (SELECT \"Id\" FROM agents.tools WHERE \"ServerId\" IS NOT NULL)")]
     public async Task AnMcpToolThatStopsBeingAvailableWhileWaitingIsNotRunEvenWhenApproved(string change)
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);

@@ -16,13 +16,13 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     private const string Rag = "/api/tools/rag";
     private const string Lookup = "/api/tools/lookup";
 
-    private static readonly Guid AssistantA = Guid.NewGuid();
-    private static readonly Guid AssistantB = Guid.NewGuid();
+    private static readonly Guid AgentA = Guid.NewGuid();
+    private static readonly Guid AgentB = Guid.NewGuid();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-5
-    public async Task ServersFilterByScopeTenantAssistantStatusAndSearch()
+    public async Task ServersFilterByScopeTenantAgentStatusAndSearch()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
@@ -30,15 +30,15 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
         var friend = Guid.NewGuid();
         await AddServerAsync(app, mine, "files", ToolScopeKind.Global);
         await AddServerAsync(app, mine, "wiki", ToolScopeKind.Tenant, tenants: [friend], status: McpServerStatus.Unavailable);
-        await AddServerAsync(app, mine, "for-a", ToolScopeKind.Assistant, assistants: [AssistantA]);
-        await AddServerAsync(app, mine, "for-b", ToolScopeKind.Assistant, assistants: [AssistantB]);
+        await AddServerAsync(app, mine, "for-a", ToolScopeKind.Agent, agents: [AgentA]);
+        await AddServerAsync(app, mine, "for-b", ToolScopeKind.Agent, agents: [AgentB]);
         await AddServerAsync(app, Guid.NewGuid(), "their-global", ToolScopeKind.Global);
         await AddServerAsync(app, Guid.NewGuid(), "their-private", ToolScopeKind.Tenant);
 
         Assert.Equal(["files", "for-a", "for-b", "their-global", "wiki"], await NamesAsync(admin, Servers, string.Empty));
         Assert.Equal(["files", "their-global"], await NamesAsync(admin, Servers, "scope=global"));
         Assert.Equal(["wiki"], await NamesAsync(admin, Servers, "tenant=" + friend));
-        Assert.Equal(["files", "for-a", "their-global", "wiki"], await NamesAsync(admin, Servers, "assistant=" + AssistantA));
+        Assert.Equal(["files", "for-a", "their-global", "wiki"], await NamesAsync(admin, Servers, "agent=" + AgentA));
         Assert.Equal(["wiki"], await NamesAsync(admin, Servers, "status=unavailable"));
         Assert.Equal(["files", "for-a", "for-b", "their-global"], await NamesAsync(admin, Servers, "status=Available"));
         Assert.Equal(["files", "their-global"], await NamesAsync(admin, Servers, "q=I&scope=global"));
@@ -96,7 +96,7 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
     }
 
     [Fact] // AC-5
-    public async Task RagToolsFilterByScopeStateTenantAndAssistantAndPage()
+    public async Task RagToolsFilterByScopeStateTenantAndAgentAndPage()
     {
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
         using var admin = await app.SetUpAsync();
@@ -104,8 +104,8 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
         var friend = Guid.NewGuid();
         await AddRagToolAsync(app, mine, "global_docs", ToolScopeKind.Global);
         await AddRagToolAsync(app, mine, "tenant_docs", ToolScopeKind.Tenant, tenants: [friend], state: ToolState.PendingReview);
-        await AddRagToolAsync(app, mine, "for_a", ToolScopeKind.Assistant, assistants: [AssistantA], state: ToolState.Disabled);
-        await AddRagToolAsync(app, mine, "for_b", ToolScopeKind.Assistant, assistants: [AssistantB]);
+        await AddRagToolAsync(app, mine, "for_a", ToolScopeKind.Agent, agents: [AgentA], state: ToolState.Disabled);
+        await AddRagToolAsync(app, mine, "for_b", ToolScopeKind.Agent, agents: [AgentB]);
         await AddRagToolAsync(app, Guid.NewGuid(), "their_global", ToolScopeKind.Global);
         await AddRagToolAsync(app, Guid.NewGuid(), "their_disabled", ToolScopeKind.Global, state: ToolState.Disabled);
 
@@ -115,7 +115,7 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
         Assert.Equal(["tenant_docs"], await NamesAsync(admin, Rag, "status=pendingreview"));
         Assert.Equal(["tenant_docs"], await NamesAsync(admin, Rag, "status=To%20review"));
         Assert.Equal(["for_a"], await NamesAsync(admin, Rag, "status=disabled"));
-        Assert.Equal(["for_a", "global_docs", "tenant_docs", "their_global"], await NamesAsync(admin, Rag, "assistant=" + AssistantA));
+        Assert.Equal(["for_a", "global_docs", "tenant_docs", "their_global"], await NamesAsync(admin, Rag, "agent=" + AgentA));
         Assert.Equal(["for_a", "for_b"], await NamesAsync(admin, Rag, "q=FOR_"));
 
         var first = await GetPageAsync<NamedBody>(admin, $"{Rag}?limit=2");
@@ -245,14 +245,14 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
         string name,
         ToolScopeKind scope,
         Guid[]? tenants = null,
-        Guid[]? assistants = null,
+        Guid[]? agents = null,
         McpServerStatus status = McpServerStatus.Available,
         (string Name, ToolState State)[]? tools = null)
     {
         await using var services = app.Services.CreateAsyncScope();
         var db = services.ServiceProvider.GetRequiredService<AgentsDbContext>();
         var now = DateTimeOffset.UtcNow;
-        var server = McpServer.Create(owner, name, $"http://{name}.test/mcp", protectedHeaders: null, scope, tenants ?? [], assistants ?? [], now);
+        var server = McpServer.Create(owner, name, $"http://{name}.test/mcp", protectedHeaders: null, scope, tenants ?? [], agents ?? [], now);
         if (status == McpServerStatus.Available)
         {
             server.MarkAvailable(now);
@@ -284,12 +284,12 @@ public sealed class ToolListQueryTests(PostgresFixture postgres)
         string name,
         ToolScopeKind scope,
         Guid[]? tenants = null,
-        Guid[]? assistants = null,
+        Guid[]? agents = null,
         ToolState state = ToolState.Enabled)
     {
         await using var services = app.Services.CreateAsyncScope();
         var db = services.ServiceProvider.GetRequiredService<AgentsDbContext>();
-        var configuration = new RagConfiguration([], [], "{}", [], 5, null, 6000, scope, [.. tenants ?? []], [.. assistants ?? []]);
+        var configuration = new RagConfiguration([], [], "{}", [], 5, null, 6000, scope, [.. tenants ?? []], [.. agents ?? []]);
         var tool = Tool.CreateRag(owner, name, $"The {name} tool.", "hash-" + name, ToolPolicy.Auto);
         if (state != ToolState.Enabled)
         {

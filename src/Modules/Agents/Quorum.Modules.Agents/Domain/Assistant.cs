@@ -1,7 +1,10 @@
 namespace Quorum.Modules.Agents.Domain;
 
+/// <summary>What a conversation talks to: a root agent (spec 013 D-2) and the parallelism its delegations may use (D-14).</summary>
 internal sealed class Assistant
 {
+    public const int DefaultMaxParallelSubAgents = 1;
+
     private Assistant()
     {
     }
@@ -12,18 +15,16 @@ internal sealed class Assistant
 
     public string Name { get; private set; } = null!;
 
-    public string SystemPrompt { get; private set; } = null!;
+    public Guid RootAgentId { get; private set; }
 
-    public Guid ModelEndpointId { get; private set; }
+    /// <summary>How many sub-agents may run at once; 1 runs them one after the other, as local hardware needs (D-23).</summary>
+    public int MaxParallelSubAgents { get; private set; } = DefaultMaxParallelSubAgents;
 
-    public static Assistant Create(Guid tenantId, string name, string systemPrompt, Guid modelEndpointId, DateTimeOffset now) => new()
+    public static Assistant Create(Guid tenantId, string name, Guid rootAgentId, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(now),
         TenantId = tenantId,
         Name = name,
-        SystemPrompt = systemPrompt,
-        ModelEndpointId = modelEndpointId,
+        RootAgentId = rootAgentId,
     };
-
-    public void ChangeSystemPrompt(string systemPrompt) => SystemPrompt = systemPrompt;
 }

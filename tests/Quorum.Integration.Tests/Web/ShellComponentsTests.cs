@@ -41,7 +41,7 @@ public sealed class ShellComponentsTests : BunitContext
     }
 
     [Fact]
-    public void TheAgentFilterNeedsAnAssistantAndTheTypeFilterAListOfTypes()
+    public void TheAssistantAndAgentFiltersNeedSomethingToChooseAndTheTypeFilterAListOfTypes()
     {
         Popovers();
         var bare = Render<FilterBar>(p => p.Add(c => c.Query, ListQuery.Empty));
@@ -51,8 +51,11 @@ public sealed class ShellComponentsTests : BunitContext
             .Add(c => c.TypeLabel, "Tool type")
             .Add(c => c.TypeOptions, [new FilterOption("mcp", "MCP"), new FilterOption("rag", "RAG")]));
 
-        Assert.DoesNotContain(bare.FindAll("label"), l => l.TextContent is "Agent" or "Tool type");
-        Assert.Contains(full.FindAll("label"), l => l.TextContent == "Agent");
+        var agents = Render<FilterBar>(p => p.Add(c => c.Query, ListQuery.Empty).Add(c => c.Agents, [new AgentSummary(Guid.NewGuid(), "support", "Support")]));
+
+        Assert.DoesNotContain(bare.FindAll("label"), l => l.TextContent is "Assistant" or "Agent" or "Tool type");
+        Assert.Contains(full.FindAll("label"), l => l.TextContent == "Assistant");
+        Assert.Contains(agents.FindAll("label"), l => l.TextContent == "Agent");
         Assert.Contains(full.FindAll("label"), l => l.TextContent == "Tool type");
     }
 
@@ -68,7 +71,7 @@ public sealed class ShellComponentsTests : BunitContext
             .Add(c => c.QueryChanged, q => changed = q));
 
         Assert.Equal("Scope: Assistant", bar.Find("[data-filter=scope]").TextContent.Trim());
-        Assert.Equal("Agent: Support", bar.Find("[data-filter=assistant]").TextContent.Trim());
+        Assert.Equal("Assistant: Support", bar.Find("[data-filter=assistant]").TextContent.Trim());
 
         bar.Find("[data-filter=scope] .mud-chip-close-button").Click();
 

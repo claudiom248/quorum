@@ -52,6 +52,11 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
                     : new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 
+            if (path == "/api/agents")
+            {
+                return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), slug = "assistant", displayName = "Assistant" } });
+            }
+
             if (path == "/api/assistants")
             {
                 return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), name = "Assistant" } });

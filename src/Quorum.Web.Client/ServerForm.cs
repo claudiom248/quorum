@@ -89,5 +89,6 @@ public sealed class ServerForm
         RemoveHeaders,
         Scope.Kind,
         Scope.TenantsText,
-        string.Join(',', Scope.AssistantIds.Order()));
+        string.Join(',', Scope.AssistantIds.Order()),
+        string.Join(',', Scope.AgentIds.Order()));
 }

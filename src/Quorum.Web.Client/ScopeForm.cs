@@ -12,6 +12,8 @@ public sealed class ScopeForm
 
     public HashSet<Guid> AssistantIds { get; init; } = [];
 
+    public HashSet<Guid> AgentIds { get; init; } = [];
+
     public static ScopeForm From(ToolScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -20,6 +22,7 @@ public sealed class ScopeForm
             Kind = scope.Kind,
             TenantsText = string.Join(Environment.NewLine, scope.TenantIds),
             AssistantIds = [.. scope.AssistantIds],
+            AgentIds = [.. scope.AgentIds],
         };
     }
 
@@ -37,6 +40,10 @@ public sealed class ScopeForm
                 return AssistantIds.Count == 0
                     ? (null, "Choose at least one assistant, or another scope.")
                     : (new ToolScope(ScopeKinds.Assistant, [], [.. AssistantIds]), null);
+            case ScopeKinds.Agent:
+                return AgentIds.Count == 0
+                    ? (null, "Choose at least one agent, or another scope.")
+                    : (new ToolScope(ScopeKinds.Agent, [], null, [.. AgentIds]), null);
             default:
                 return (null, "Choose who can use it.");
         }

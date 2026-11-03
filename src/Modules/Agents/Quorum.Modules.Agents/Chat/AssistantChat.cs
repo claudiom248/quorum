@@ -80,6 +80,7 @@ internal sealed class AssistantChat(
             prepared.Caller?.TenantId ?? Guid.Empty,
             prepared.Caller?.UserId ?? Guid.Empty,
             assistantId,
+            prepared.Configuration.AgentId,
             conversationId,
             prepared.Limits);
 
@@ -142,10 +143,12 @@ internal sealed class AssistantChat(
     {
         var configuration = await (
             from assistant in db.Assistants
-            join endpoint in db.ModelEndpoints on assistant.ModelEndpointId equals endpoint.Id
+            join agent in db.Agents on assistant.RootAgentId equals agent.Id
+            join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
             where assistant.Id == assistantId
             select new AssistantConfiguration(
-                assistant.SystemPrompt,
+                agent.Id,
+                agent.SystemPrompt,
                 endpoint.BaseUrl,
                 endpoint.ModelName,
                 endpoint.ProtectedApiKey,
@@ -159,7 +162,7 @@ internal sealed class AssistantChat(
         }
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
-        IReadOnlyList<ActiveTool> active = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, assistantId, cancellationToken);
+        IReadOnlyList<ActiveTool> active = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, configuration.AgentId, cancellationToken);
         // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
         active = caller is null ? active : await ragResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
         active = caller is null ? active : await lookupResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
@@ -236,6 +239,7 @@ internal sealed class AssistantChat(
     }
 
     private sealed record AssistantConfiguration(
+        Guid AgentId,
         string SystemPrompt,
         string BaseUrl,
         string ModelName,
