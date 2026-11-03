@@ -379,11 +379,17 @@ internal static class CompanyContractProse
 
     private static (string, IReadOnlyList<string>) Relations(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
     {
+        // A framework document has no Framework or Predecessor, so @RELATED@ would name a sibling or a companion and the clause
+        // would claim the family is framed by the wrong paper. For the framework itself the family names this agreement.
+        var familyClause = contract.FamilySize > 1
+            ? contract.FamilyIndex == 0
+                ? "it is number @FAMILYINDEX@ of @FAMILYSIZE@ on the @FAMILY@, this agreement being the framework every other paper of the family refers back to (@ID@)"
+                : "it is number @FAMILYINDEX@ of @FAMILYSIZE@ on the @FAMILY@, the framework being @RELATED@"
+            : "the @FAMILY@ is carried by this agreement alone (@ID@); the other needs of @S@ have their own papers";
+
         var body = new List<string>
         {
-            Fill(contract.FamilySize > 1
-                ? "it is number @FAMILYINDEX@ of @FAMILYSIZE@ on the @FAMILY@, the framework being @RELATED@"
-                : "the @FAMILY@ is carried by this agreement alone (@ID@); the other needs of @S@ have their own papers", contract.Tokens),
+            Fill(familyClause, contract.Tokens),
         };
 
         if (contract.Companion is not null)
