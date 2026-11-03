@@ -88,6 +88,15 @@ public sealed class SearchFilterParserTests
     }
 
     [Fact]
+    public void AMinAndMaxOnADateAreTheSameRangeAsFromAndTo()
+    {
+        var range = Assert.IsType<DateRange>(Single(("published_on_min", "\"2024-01-15\""), ("published_on_max", "\"2024-03-10\"")));
+
+        Assert.Equal(new DateTimeOffset(2024, 1, 15, 0, 0, 0, TimeSpan.Zero), range.From);
+        Assert.Equal(new DateTimeOffset(2024, 3, 11, 0, 0, 0, TimeSpan.Zero).AddTicks(-1), range.To);
+    }
+
+    [Fact]
     public void ADateWithATimeAndAnOffsetIsKeptAsThatInstant()
     {
         var range = Assert.IsType<DateRange>(Single(("published_on_from", "\"2024-01-15T10:30:00+02:00\"")));
@@ -163,7 +172,6 @@ public sealed class SearchFilterParserTests
     [InlineData("query")]
     [InlineData("department_min")]
     [InlineData("year_from")]
-    [InlineData("published_on_min")]
     [InlineData("confidential_max")]
     public void AParameterThatIsNotAFilterOfTheFieldsIsRefused(string name)
     {

@@ -56,6 +56,8 @@ internal static class SearchFilterParser
                 {
                     "_min" or "_max" when target.Type == DictionaryFieldType.Number => ReadNumber(name, value, suffix == "_min" ? minimums : maximums, target),
                     "_from" or "_to" when target.Type == DictionaryFieldType.Date => ReadDate(name, value, suffix == "_from" ? starts : ends, target, endOfDay: suffix == "_to"),
+                    // The lean lookup tool writes every range as {"min": v} or {"max": v}, dates included, and flattens it to _min and _max.
+                    "_min" or "_max" when target.Type == DictionaryFieldType.Date => ReadDate(name, value, suffix == "_min" ? starts : ends, target, endOfDay: suffix == "_max"),
                     _ => $"'{name}' is not a filter.",
                 };
             }
