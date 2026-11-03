@@ -8,9 +8,21 @@ namespace Quorum.SampleKnowledgeBase;
 /// <param name="Id">The second segment, decoded.</param>
 /// <param name="Details">What the data say about the document besides its text, in the order they were written.</param>
 /// <param name="Sections">The text of each chunk, in order: what was embedded.</param>
-public sealed record SampleDocument(string Kind, string Id, string Title, IReadOnlyList<KeyValuePair<string, string>> Details, IReadOnlyList<string> Sections)
+/// <param name="Headings">The name the data give to each chunk when they have one; a page shows it instead of a bare "Section n".</param>
+public sealed record SampleDocument(
+    string Kind,
+    string Id,
+    string Title,
+    IReadOnlyList<KeyValuePair<string, string>> Details,
+    IReadOnlyList<string> Sections,
+    IReadOnlyList<string>? Headings = null)
 {
     public string Path => $"/{Kind}/{Uri.EscapeDataString(Id)}";
+
+    /// <summary>The heading of a section, or the position it holds when the data declare no name for it.</summary>
+    public string HeadingOf(int index) => Headings is not null && index < Headings.Count && Headings[index].Length > 0
+        ? $"{index + 1}. {Headings[index]}"
+        : $"Section {index + 1}";
 }
 
 /// <summary>
@@ -87,7 +99,7 @@ public static class SampleDocuments
         ];
     }
 
-    private sealed record Chunk(string? Url, string? Text, string? Title, double Order, List<KeyValuePair<string, string>> Details);
+    private sealed record Chunk(string? Url, string? Text, string? Title, string? Heading, double Order, List<KeyValuePair<string, string>> Details);
 
     private static Chunk ChunkOf(JsonObject payload)
     {
@@ -103,6 +115,7 @@ public static class SampleDocuments
             flat.FirstOrDefault(pair => pair.Key is "source_url" or "cmetadata.source_url").Value,
             Find(TextKeys),
             Find(TitleKeys),
+            flat.FirstOrDefault(pair => pair.Key == "section_heading").Value,
             order.Value is not null && double.TryParse(order.Value, CultureInfo.InvariantCulture, out var number) ? number : double.MaxValue,
             details);
     }
@@ -144,19 +157,27 @@ public static class SampleDocuments
         var id = Uri.UnescapeDataString(segments[1]);
         var first = chunks[0];
 
-        // The same text can be embedded by more than one sample (the flat collection and the relation made from it): it is shown once.
-        var sections = chunks
+        // The same text can be embedded by more than one sample (the flat collection and the relation made from it): it is shown once,
+        // and the heading of that chunk travels with it, so the two lists stay in step.
+        var ordered = chunks
             .Where(chunk => !string.IsNullOrWhiteSpace(chunk.Text))
             .OrderBy(chunk => chunk.Order)
-            .Select(chunk => chunk.Text!)
-            .Distinct(StringComparer.Ordinal)
+            .GroupBy(chunk => chunk.Text!, StringComparer.Ordinal)
+            .Select(group => group.First())
             .ToList();
+        var sections = ordered.Select(chunk => chunk.Text!).ToList();
+        var headings = ordered.Select(chunk => chunk.Heading ?? string.Empty).ToList();
+        if (headings.All(string.IsNullOrEmpty))
+        {
+            headings = null;
+        }
+
         var details = chunks
             .SelectMany(chunk => chunk.Details)
-            .Where(pair => pair.Key != "title" && pair.Key != "file_name" && pair.Key != "document_id" && pair.Key != "doc_id" && pair.Key != "id" && pair.Key != "uuid" && pair.Key is not ("page" or "chunk_index" or "is_first_chunk"))
+            .Where(pair => pair.Key != "title" && pair.Key != "file_name" && pair.Key != "document_id" && pair.Key != "doc_id" && pair.Key != "id" && pair.Key != "uuid" && pair.Key != "section_heading" && pair.Key is not ("page" or "chunk_index" or "is_first_chunk"))
             .GroupBy(pair => pair.Key, StringComparer.Ordinal)
             .Select(group => group.First())
             .ToList();
-        return new SampleDocument(segments[0], id, chunks.Select(chunk => chunk.Title).FirstOrDefault(title => !string.IsNullOrWhiteSpace(title)) ?? first.Title ?? id, details, sections);
+        return new SampleDocument(segments[0], id, chunks.Select(chunk => chunk.Title).FirstOrDefault(title => !string.IsNullOrWhiteSpace(title)) ?? first.Title ?? id, details, sections, headings);
     }
 }

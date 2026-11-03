@@ -17,19 +17,6 @@ internal static class CompanyContractProse
 
     private static readonly string[] Uptimes = ["99.5", "99.9", "99.95", "99.99"];
 
-    /// <summary>A few names for each part of an agreement: the label of a chunk is part of what makes two documents read differently.</summary>
-    private static readonly string[] ObjectLabels = ["Object and scope", "Scope of the agreement", "What is bought", "The requirement this answers", "Subject of the paper"];
-
-    private static readonly string[] CommercialLabels = ["Commercial terms", "Prices and payment", "Money, invoicing and approvals", "The economic terms"];
-
-    private static readonly string[] ServiceLabels = ["Service levels and remedies", "What is measured and what it costs when it fails", "Levels of service", "The service levels"];
-
-    private static readonly string[] GovernanceLabels = ["Confidentiality, data and compliance", "Data, secrecy and rules", "Confidentiality and the rules that apply", "Protection of data and compliance"];
-
-    private static readonly string[] ExitLabels = ["Term, renewal and exit", "How long it lasts and how it ends", "Term and termination", "Duration, renewal and exit"];
-
-    private static readonly string[] HistoryLabels = ["Relationship and history", "The story of this agreement", "Background and relations", "Who else does what here, and what happened"];
-
     private static readonly string[] Openings =
     [
         "This @ROLE@ agreement (@ID@) between the company and @VENDOR@ covers the @DEPT@ requirement at @S@.",
@@ -209,49 +196,77 @@ internal static class CompanyContractProse
         tokens["TERMINATION"] = contract.Termination is null ? "the term ran out" : Fill(contract.Termination, tokens);
     }
 
-    /// <summary>The sections of one agreement, each one a chunk of the document.</summary>
-    internal static string[] SectionsOf(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
+    /// <summary>
+    /// The articles of one agreement, each one its own chunk: what is bought, the money, who runs the file, what is measured, the
+    /// clauses of compliance the kind really has, the term, the exit, the related agreements and what happened. One article is one
+    /// topic, so the vector of the chunk is about that topic and not about five of them at once.
+    /// </summary>
+    internal static IReadOnlyList<(string Heading, string Text)> SectionsOf(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
     {
-        var sections = new List<string>();
-        var clause = 0;
-
-        sections.Add(Object(contract, rng, clause++));
-        sections.Add(Commercial(contract, rng, clause++));
-        sections.Add(ServiceLevels(contract, rng, clause++));
-
-        if (contract.Role is not ("amendment" or "extension") && rng.Chance(75))
+        var (scope, levels) = CompanyFacts.ArticlesOf(contract.Kind.Id);
+        var articles = new List<(string Heading, IReadOnlyList<string> Body)>
         {
-            sections.Add(Governance(contract, rng, clause++));
+            Scope(contract, rng, scope),
+            Money(contract, rng),
+            Management(contract, rng),
+        };
+
+        if (contract.Role is not ("amendment" or "extension"))
+        {
+            articles.Add(Levels(contract, rng, levels));
+            articles.Add(Reporting(contract, rng));
+            articles.AddRange(Compliance(contract, rng));
         }
 
-        sections.Add(TermAndExit(contract, rng, clause++));
+        articles.Add(Term(contract, rng));
 
         if (contract.Role is not ("amendment" or "extension") || rng.Chance(50))
         {
-            sections.Add(Relationship(contract, rng, clause));
+            articles.Add(Transition(contract, rng));
         }
 
-        return [.. sections];
+        articles.Add(Relations(contract, rng));
+        articles.Add(History(contract, rng));
+
+        return [.. articles.Select((article, index) => (article.Heading, Numbered(article, contract, index)))];
     }
 
-    /// <summary>
-    /// A section opens with its name and with the place it holds in the agreement, the way a clause does: the label is what a chunk of
-    /// one document never shares with a chunk of another, so no two chunks in the collection can read alike.
-    /// </summary>
-    private static string Section(string label, CompanyContractGraph.Contract contract, int clause, IReadOnlyList<string> body)
+    /// <summary>The heading of the article, its reference in the agreement and its text: the reference is what makes the chunk unique.</summary>
+    private static string Numbered((string Heading, IReadOnlyList<string> Body) article, CompanyContractGraph.Contract contract, int index)
     {
-        var text = string.Join(" ", body.Where(sentence => !string.IsNullOrWhiteSpace(sentence)).Select(Sentence));
-        return $"{label} ({contract.Id}, clause {clause + 1}). {Cap(text)}";
+        var body = string.Join(" ", article.Body.Where(sentence => !string.IsNullOrWhiteSpace(sentence)).Select(Sentence));
+        return $"{article.Heading} ({contract.Id}, clause {index + 1}). {Cap(body)}";
     }
 
-    private static string Object(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, int clause)
+    private static (string, IReadOnlyList<string>) Scope(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, string heading)
     {
-        var openings = Pick(rng, Openings, 1, contract.Tokens);
-        var body = new List<string> { openings[0] };
-        body.AddRange(Pick(rng, contract.Kind.Deliverables, Math.Min(2 + rng.Next(0, 2), contract.Kind.Deliverables.Length), contract.Tokens));
-        if (rng.Chance(60))
+        var body = new List<string>(Pick(rng, Openings, 1, contract.Tokens));
+        body.AddRange(Pick(rng, contract.Kind.Deliverables, Math.Min(1 + rng.Next(0, 2), contract.Kind.Deliverables.Length), contract.Tokens));
+        if (contract.Role == "framework" && rng.Chance(55))
         {
-            body.Add(Pick(rng, SiteNotes, 1, contract.Tokens)[0]);
+            body.AddRange(Pick(rng, SiteNotes, 1, contract.Tokens));
+        }
+
+        return (heading, body);
+    }
+
+    private static (string, IReadOnlyList<string>) Money(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
+    {
+        var body = new List<string>(Pick(rng, CompanyFacts.PaymentClauses, 1, contract.Tokens));
+        if (rng.Chance(70))
+        {
+            body.AddRange(Pick(rng, CompanyFacts.IndexationClauses, 1, contract.Tokens));
+        }
+
+        return ("Fees, invoicing and approvals", body);
+    }
+
+    private static (string, IReadOnlyList<string>) Management(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
+    {
+        var body = new List<string>(Pick(rng, PeopleTemplates, 1, contract.Tokens));
+        if (contract.OwnerHandlesVendor)
+        {
+            body.Add(Pick(rng, VendorContactTails, 1, contract.Tokens)[0].Trim());
         }
 
         if (rng.Chance(45))
@@ -259,78 +274,70 @@ internal static class CompanyContractProse
             body.Add(Pick(rng, Exclusions, 1, contract.Tokens)[0]);
         }
 
-        if (contract.HandoverFrom is not null && rng.Chance(40))
-        {
-            body.Add(Pick(rng, HandoverTemplates, 1, contract.Tokens)[0]);
-        }
-
-        return Section(rng.Of(ObjectLabels), contract, clause, body);
+        return ("Contract management and contacts", body);
     }
 
-    private static string Commercial(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, int clause)
+    private static (string, IReadOnlyList<string>) Levels(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, string heading)
     {
-        var body = Pick(rng, CompanyFacts.PaymentClauses, 1 + rng.Next(0, 1), contract.Tokens);
-        body.AddRange(Pick(rng, CompanyFacts.IndexationClauses, 1, contract.Tokens));
-        body.AddRange(Pick(rng, PeopleTemplates, 1, contract.Tokens));
-        if (contract.OwnerHandlesVendor)
-        {
-            body.Add(Pick(rng, VendorContactTails, 1, contract.Tokens)[0].Trim());
-        }
-
-        if (rng.Chance(60))
-        {
-            body.AddRange(Pick(rng, CompanyFacts.ReportingClauses, 1, contract.Tokens));
-        }
-
-        return Section(rng.Of(CommercialLabels), contract, clause, [.. body.Where(text => text.Length > 0)]);
+        var body = Pick(rng, contract.Kind.ServiceLevels, Math.Min(1 + rng.Next(0, 2), contract.Kind.ServiceLevels.Length), contract.Tokens);
+        return (heading, body);
     }
 
-    private static string ServiceLevels(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, int clause)
+    private static (string, IReadOnlyList<string>) Reporting(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
     {
-        var body = Pick(rng, contract.Kind.ServiceLevels, Math.Min(2 + rng.Next(0, 2), contract.Kind.ServiceLevels.Length), contract.Tokens);
+        var body = new List<string>(Pick(rng, CompanyFacts.ReportingClauses, 1, contract.Tokens));
         if (rng.Chance(40))
         {
             body.AddRange(Pick(rng, CompanyFacts.AuditClauses, 1, contract.Tokens));
         }
 
-        return Section(rng.Of(ServiceLabels), contract, clause, body);
+        return ("Reporting and service reviews", body);
     }
 
-    private static string Governance(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, int clause)
+    /// <summary>
+    /// The clauses that are not about the service, each one an article of its own when the agreement has it: a contract about the
+    /// cleaning does not speak of intellectual property, and an insurance programme does not speak of subcontracted crews.
+    /// </summary>
+    private static IEnumerable<(string, IReadOnlyList<string>)> Compliance(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
     {
-        var body = new List<string>();
-        body.AddRange(Pick(rng, contract.Confidential ? CompanyFacts.ConfidentialClauses : CompanyFacts.OpenClauses, 1, contract.Tokens));
-        body.AddRange(Pick(rng, CompanyFacts.DataClauses, 1 + rng.Next(0, 1), contract.Tokens));
-        if (rng.Chance(55))
+        yield return (
+            contract.Confidential ? "Confidentiality of the agreement" : "Confidentiality and public references",
+            Pick(rng, contract.Confidential ? CompanyFacts.ConfidentialClauses : CompanyFacts.OpenClauses, 1, contract.Tokens));
+
+        if (rng.Chance(75))
         {
-            body.AddRange(Pick(rng, CompanyFacts.SubcontractingClauses, 1, contract.Tokens));
+            yield return ("Personal data and security", Pick(rng, CompanyFacts.DataClauses, 1, contract.Tokens));
         }
 
         if (rng.Chance(45))
         {
-            body.AddRange(Pick(rng, CompanyFacts.InsuranceClauses, 1, contract.Tokens));
+            yield return ("Staff and subcontracting", Pick(rng, CompanyFacts.SubcontractingClauses, 1, contract.Tokens));
         }
 
-        if (rng.Chance(50))
+        if (rng.Chance(40))
         {
-            body.AddRange(Pick(rng, CompanyFacts.IpClauses, 1, contract.Tokens));
+            yield return ("Insurance and liability", Pick(rng, CompanyFacts.InsuranceClauses, 1, contract.Tokens));
         }
 
-        if (rng.Chance(45))
+        if (rng.Chance(40))
         {
-            body.AddRange(Pick(rng, CompanyFacts.SustainabilityClauses, 1, contract.Tokens));
+            yield return ("Intellectual property in the work", Pick(rng, CompanyFacts.IpClauses, 1, contract.Tokens));
         }
 
         if (rng.Chance(35))
         {
-            body.AddRange(Pick(rng, CompanyFacts.DisputeClauses, 1, contract.Tokens));
+            yield return ("Environment and sustainability", Pick(rng, CompanyFacts.SustainabilityClauses, 1, contract.Tokens));
         }
 
-        body.AddRange(Pick(rng, PolicyTemplates, 1, contract.Tokens));
-        return Section(rng.Of(GovernanceLabels), contract, clause, body);
+        if (rng.Chance(30))
+        {
+            yield return ("Disputes and applicable law", Pick(rng, CompanyFacts.DisputeClauses, 1, contract.Tokens));
+        }
+
+        yield return ("The rules of the handbook it is read with", Pick(rng, PolicyTemplates, 1, contract.Tokens));
     }
 
-    private static string TermAndExit(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, int clause)
+    private static (string, IReadOnlyList<string>) Term(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
     {
         IReadOnlyList<string> life = contract.Status switch
         {
@@ -340,17 +347,10 @@ internal static class CompanyContractProse
             _ => TermTemplates,
         };
 
-        var body = new List<string>();
-        body.AddRange(Pick(rng, life, 1, contract.Tokens));
-        body.AddRange(Pick(rng, contract.Kind.ExitClauses, Math.Min(1 + rng.Next(0, 2), contract.Kind.ExitClauses.Length), contract.Tokens));
+        var body = new List<string>(Pick(rng, life, 1, contract.Tokens));
         if (contract.Status is not ("draft" or "under_review"))
         {
             body.AddRange(Pick(rng, CompanyFacts.ExitClauses, 1, contract.Tokens));
-        }
-
-        if (rng.Chance(65))
-        {
-            body.AddRange(Pick(rng, CompanyFacts.HandoverClauses, 1, contract.Tokens));
         }
 
         if (contract.Termination is not null)
@@ -358,15 +358,34 @@ internal static class CompanyContractProse
             body.AddRange(Pick(rng, TerminationTemplates, 1, contract.Tokens));
         }
 
-        return Section(rng.Of(ExitLabels), contract, clause, body);
+        return ("Term, renewal and notice", body);
     }
 
-    private static string Relationship(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng, int clause)
+    private static (string, IReadOnlyList<string>) Transition(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
     {
-        var body = new List<string>();
-        body.Add(Fill(contract.FamilySize > 1
-            ? "it is number @FAMILYINDEX@ of @FAMILYSIZE@ on the @FAMILY@, the framework being @RELATED@"
-            : "the @FAMILY@ is carried by this agreement alone (@ID@); the other needs of @S@ have their own papers", contract.Tokens));
+        var body = new List<string>(Pick(rng, contract.Kind.ExitClauses, Math.Min(1 + rng.Next(0, 1), contract.Kind.ExitClauses.Length), contract.Tokens));
+        if (rng.Chance(60))
+        {
+            body.AddRange(Pick(rng, CompanyFacts.HandoverClauses, 1, contract.Tokens));
+        }
+
+        if (contract.HandoverFrom is not null)
+        {
+            body.AddRange(Pick(rng, HandoverTemplates, 1, contract.Tokens));
+        }
+
+        return ("Transition and exit of the scope", body);
+    }
+
+    private static (string, IReadOnlyList<string>) Relations(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
+    {
+        var body = new List<string>
+        {
+            Fill(contract.FamilySize > 1
+                ? "it is number @FAMILYINDEX@ of @FAMILYSIZE@ on the @FAMILY@, the framework being @RELATED@"
+                : "the @FAMILY@ is carried by this agreement alone (@ID@); the other needs of @S@ have their own papers", contract.Tokens),
+        };
+
         if (contract.Companion is not null)
         {
             body.Add(Fill("the parallel agreement at @S@ is @COMPANION@, which @COMPANIONVENDOR@ holds for the @COMPANIONKIND@; the two are kept separate on purpose", contract.Tokens));
@@ -377,9 +396,14 @@ internal static class CompanyContractProse
             body.Add(Fill("the same kind of contract in @RIVALSITE@ is @RIVAL@ with @RIVALVENDOR@, so the group can compare the rates and the service", contract.Tokens));
         }
 
-        body.AddRange(Pick(rng, [.. CompanyFacts.RationaleClauses], 1, contract.Tokens));
-        body.AddRange(Pick(rng, contract.History, Math.Min(contract.History.Length, 1 + rng.Next(0, 2)), contract.Tokens));
-        return Section(rng.Of(HistoryLabels), contract, clause, body);
+        body.AddRange(Pick(rng, CompanyFacts.RationaleClauses, 1, contract.Tokens));
+        return ("Related agreements", body);
+    }
+
+    private static (string, IReadOnlyList<string>) History(CompanyContractGraph.Contract contract, CompanyContractGraph.Deterministic rng)
+    {
+        var body = Pick(rng, contract.History, Math.Min(contract.History.Length, 1 + rng.Next(0, 2)), contract.Tokens);
+        return ("What happened during the term", body);
     }
 
     private static string RoleWords(CompanyContractGraph.Contract contract) => contract.Role switch
@@ -406,12 +430,6 @@ internal static class CompanyContractProse
         }
 
         return chosen;
-    }
-
-    private static string Section(string label, IReadOnlyList<string> body)
-    {
-        var text = string.Join(" ", body.Where(sentence => !string.IsNullOrWhiteSpace(sentence)).Select(Sentence));
-        return $"{label}. {Cap(text)}";
     }
 
     private static string Sentence(string text)

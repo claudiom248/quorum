@@ -15,7 +15,8 @@ public static class CompanySampleData
     private static readonly Lazy<IReadOnlyList<CompanyContractGraph.Contract>> Contracts = new(CompanyContractGraph.Build);
 
     /// <summary>
-    /// The contracts, one point for every clause of every agreement: <c>supplier</c>, <c>department</c>, <c>nationality</c>,
+    /// The contracts, one point for every article of every agreement: <c>section_heading</c> (the name the article carries inside the
+    /// document, read by the page and not indexed), <c>supplier</c>, <c>department</c>, <c>nationality</c>,
     /// <c>audience</c> (a list), <c>kind</c>, <c>contract_role</c>, <c>family_id</c>, <c>sites</c>, <c>contract_manager</c>,
     /// <c>requester</c>, <c>governed_by</c>, <c>cost_center</c>, <c>related_document_ids</c>, <c>year</c>, <c>status</c>,
     /// <c>confidential</c>, <c>value_eur</c>, <c>term_months</c>, <c>signed_on</c>, <c>ends_on</c>, <c>is_first_chunk</c> and
@@ -82,15 +83,16 @@ public static class CompanySampleData
         foreach (var contract in Contracts.Value)
         {
             var title = TitleOf(contract);
-            for (var chunk = 0; chunk < contract.Sections.Length; chunk++)
+            for (var chunk = 0; chunk < contract.Sections.Count; chunk++)
             {
-                var text = contract.Sections[chunk];
+                var (heading, text) = contract.Sections[chunk];
                 points.Add(new SamplePoint(
                     id++,
                     text,
                     new JsonObject
                     {
                         ["text"] = text,
+                        ["section_heading"] = heading,
                         ["document_id"] = contract.Id,
                         ["title"] = title,
                         ["source_url"] = SampleDocuments.Url("contracts", contract.Id),

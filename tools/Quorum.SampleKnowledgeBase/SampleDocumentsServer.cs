@@ -94,7 +94,7 @@ public static class SampleDocumentsServer
 
         for (var i = 0; i < document.Sections.Count; i++)
         {
-            body.Append("<section><h2>Section ").Append(i + 1).Append("</h2><p>").Append(Encode(document.Sections[i])).Append("</p></section>");
+            body.Append("<section><h2>").Append(Encode(document.HeadingOf(i))).Append("</h2><p>").Append(Encode(document.Sections[i])).Append("</p></section>");
         }
 
         body.Append("<p><a href=\"").Append(Encode(document.Path)).Append(".txt\">Plain text</a></p></article>");
@@ -110,9 +110,14 @@ public static class SampleDocumentsServer
             text.Append(name).Append(": ").AppendLine(value);
         }
 
-        foreach (var section in document.Sections)
+        for (var i = 0; i < document.Sections.Count; i++)
         {
-            text.AppendLine().AppendLine(section);
+            if (document.Headings is not null)
+            {
+                text.AppendLine().AppendLine(document.HeadingOf(i)).AppendLine(new string('-', document.HeadingOf(i).Length));
+            }
+
+            text.AppendLine().AppendLine(document.Sections[i]);
         }
 
         return text.ToString();

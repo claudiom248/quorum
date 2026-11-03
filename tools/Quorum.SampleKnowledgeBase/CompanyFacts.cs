@@ -936,6 +936,54 @@ public static class CompanyFacts
 
     public static ContractKind KindOf(string id) => Kinds.Single(kind => kind.Id == id);
 
+    /// <summary>
+    /// The two article names a real agreement of that kind would carry: the one of the object and the one of what is measured. The other
+    /// articles keep a name shared between contracts (fees, confidentiality, term), which is what they are called in practice as well.
+    /// </summary>
+    public static (string Scope, string Levels) ArticlesOf(string kindId) =>
+        KindArticles.TryGetValue(kindId, out var names) ? names : ("Services and scope", "Service levels");
+
+    private static readonly Dictionary<string, (string Scope, string Levels)> KindArticles =
+        new(StringComparer.Ordinal)
+        {
+            ["cleaning"] = ("Services at the site", "Cleanliness standards and credits"),
+            ["waste-and-recycling"] = ("Waste fractions and collection", "Collection reliability and recycled share"),
+            ["building-maintenance"] = ("Plant and equipment covered", "Response times and asset register"),
+            ["catering"] = ("The catering service", "Menu, temperatures and waiting time"),
+            ["office-supplies"] = ("Goods and catalogue", "Delivery and catalogue prices"),
+            ["managed-print"] = ("The print fleet", "Fleet availability and page counts"),
+            ["laptops-and-workstations"] = ("Devices and lifecycle", "Replacement times and spares"),
+            ["network-connectivity"] = ("Circuits and network equipment", "Circuit availability and outage handling"),
+            ["cloud-hosting"] = ("Platform, regions and workloads", "Availability, downtime credits and recovery"),
+            ["software-licences"] = ("Seats, modules and licence keys", "Support response and seat review"),
+            ["helpdesk-support"] = ("First and second level support", "Response, closure rate and satisfaction"),
+            ["datacenter-colocation"] = ("Cabinets, power and space", "Power, cooling and remote hands"),
+            ["managed-detection"] = ("Monitoring scope and telemetry", "Alert times and containment"),
+            ["security-guarding"] = ("Posts, patrols and shifts", "Licences, rounds and escalation"),
+            ["alarm-monitoring"] = ("Alarm lines and response", "Acknowledgement and call-out"),
+            ["legal-retainer"] = ("Instructions and areas of advice", "Response times and retainer hours"),
+            ["ip-and-patents"] = ("Matters and filings", "Deadlines, searches and annuities"),
+            ["compliance-consulting"] = ("Regulatory scope of the mandate", "Findings and their closure"),
+            ["statutory-audit"] = ("Engagement and scope of the audit", "Reporting calendar and independence"),
+            ["insurance-programme"] = ("Cover, limits and deductibles", "Claims handling and renewal"),
+            ["payroll-services"] = ("Payroll runs and declarations", "Closing dates and corrections"),
+            ["banking-payments"] = ("Accounts, payments and limits", "Execution times and recalls"),
+            ["travel-management"] = ("Bookings and the travel service", "Reissues, spend report and duty of care"),
+            ["logistics-delivery"] = ("Lanes, volumes and transit times", "On-time delivery and losses"),
+            ["warehousing"] = ("Storage, picking and stock", "Stock accuracy and despatch times"),
+            ["fleet-mobility"] = ("Vehicles, charging and cards", "Replacement, reporting and emissions"),
+            ["recruitment-search"] = ("Roles and search mandate", "Shortlist times and replacement"),
+            ["interim-staffing"] = ("Seconded staff and profiles", "Fill times and cover of absences"),
+            ["training-programmes"] = ("Courses and learning paths", "Attendance, evaluation and materials"),
+            ["marketing-services"] = ("Campaigns and deliverables", "Plans, receipts and reporting"),
+            ["events-and-trade-shows"] = ("Events and stand services", "Build times and event reporting"),
+            ["research-partnership"] = ("Project, phases and team", "Milestones, publications and ownership"),
+            ["laboratory-services"] = ("Tests and methods", "Turnaround and repeat tests"),
+            ["calibration-and-instruments"] = ("Instruments and traceability", "Calibration dates and loaned instruments"),
+            ["management-consulting"] = ("Mandate and workstreams", "Deliverables and named team"),
+            ["data-and-analytics"] = ("Platform, sources and models", "Loads, access and model handover"),
+        };
+
     /// <summary>Clause pools that are not specific to a kind: the writers mix them so that two contracts of the same kind never read alike.</summary>
     public static IReadOnlyList<string> PaymentClauses { get; } =
     [

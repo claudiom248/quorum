@@ -90,7 +90,7 @@ internal static class CompanyContractGraph
 
         public Dictionary<string, string> Tokens { get; } = new(StringComparer.Ordinal);
 
-        public string[] Sections { get; set; } = [];
+        public IReadOnlyList<(string Heading, string Text)> Sections { get; set; } = [];
 
         public string SiteNames => OtherSites.Length == 0
             ? Site.Name
