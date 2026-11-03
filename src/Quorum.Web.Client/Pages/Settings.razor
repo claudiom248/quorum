@@ -509,18 +509,38 @@
         _warnings = tools.Value.Warnings;
     }
 
+    private const string SearchGroup = "search tools";
+    private const string WebGroup = "web tools";
+
     // "files__read" comes from the server files, "builtin__calculator" is built in: the part before the double underscore.
+    // The tools made in Quorum are grouped as the menu does, so the ones that search and the ones that read the web sit together.
     private static string SourceOf(string exposedName)
     {
         var split = exposedName.IndexOf("__", StringComparison.Ordinal);
-        return split > 0 ? exposedName[..split] : "other";
+        var origin = split > 0 ? exposedName[..split] : "other";
+        return origin switch
+        {
+            "rag" or "lookup" => SearchGroup,
+            "web_fetch" or "web_search" => WebGroup,
+            _ => origin,
+        };
     }
+
+    // The built-in tools first, then the ones made in Quorum, then one group per MCP server.
+    private static int GroupRank(string source) => source switch
+    {
+        "builtin" => 0,
+        SearchGroup => 1,
+        WebGroup => 2,
+        _ => 3,
+    };
 
     private IEnumerable<(string Source, List<PoolEntry> Tools)> Groups() =>
         _pool!
             .Where(t => string.IsNullOrWhiteSpace(_toolSearch) || t.Label.Contains(_toolSearch.Trim(), StringComparison.OrdinalIgnoreCase))
             .GroupBy(t => t.Source)
-            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .OrderBy(g => GroupRank(g.Key))
+            .ThenBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => (g.Key, g.ToList()));
 
     private Task<ApiResult<ModelConnection>> TestModelAsync(string baseUrl, string? key, string? model) => Api.TestAssistantModelAsync(baseUrl, key, model);

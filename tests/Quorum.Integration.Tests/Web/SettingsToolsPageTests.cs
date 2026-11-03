@@ -21,6 +21,7 @@ public sealed class SettingsToolsPageTests : BunitContext
     private bool? _reported = true;
     private bool _supportsToolsStored = true;
     private object[] _warnings = [];
+    private object[] _moreTools = [];
 
     public SettingsToolsPageTests()
     {
@@ -75,7 +76,7 @@ public sealed class SettingsToolsPageTests : BunitContext
                     {
                         new { toolId = Calculator, name = "builtin__calculator", active = true },
                         new { toolId = Clock, name = "builtin__current_datetime", active = false },
-                    },
+                    }.Concat(_moreTools).ToArray(),
                     warnings = _warnings,
                 });
             }
@@ -270,5 +271,24 @@ public sealed class SettingsToolsPageTests : BunitContext
         page.Find("input[type=text]").Input("calc");
 
         page.WaitForAssertion(() => Assert.Equal(["calculator"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).ToArray()));
+    }
+
+    [Fact]
+    public void TheToolsMadeInQuorumAreGroupedAsTheMenuDoesAndEachServerKeepsItsOwnGroup()
+    {
+        _moreTools =
+        [
+            new { toolId = Guid.NewGuid(), name = "files__read", active = false },
+            new { toolId = Guid.NewGuid(), name = "rag__search_contracts", active = false },
+            new { toolId = Guid.NewGuid(), name = "lookup__contracts", active = false },
+            new { toolId = Guid.NewGuid(), name = "web_fetch__fetch", active = false },
+            new { toolId = Guid.NewGuid(), name = "web_search__web", active = false },
+        ];
+        var page = RenderPage();
+        OpenTools(page);
+
+        Assert.Equal(["builtin", "search tools", "web tools", "files"], page.FindAll("[data-source]").Select(s => s.GetAttribute("data-source")).ToArray());
+        var search = page.Find("[data-source='search tools']").ParentElement!;
+        Assert.Equal(["lookup · contracts", "rag · search_contracts"], search.QuerySelectorAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
     }
 }
