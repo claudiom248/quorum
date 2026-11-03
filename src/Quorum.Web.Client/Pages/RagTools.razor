@@ -9,7 +9,7 @@
 <PageTitle>Rag tools · Quorum</PageTitle>
 
 <ListPage Title="Rag tools"
-          Description="A rag tool lets an assistant search one or more knowledge bases and cite what it finds. Which fields a model can filter on, and which filters it can never change, are decided here. Register the knowledge bases in Knowledge; activate a tool on an assistant in Settings."
+          Description="A rag tool lets an assistant search one or more knowledge bases and cite what it finds. Which fields a model can filter on, and which filters it can never change, are decided here. Register the knowledge bases in Knowledge; activate a tool on an agent in Agents."
           AddLabel="Add rag tool" OnAdd="() => _screen.OpenDrawer(ListScreen<RagToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
@@ -567,7 +567,7 @@
             if (saved.IsSuccess)
             {
                 await OpenAsync(saved.Value);
-                _notice = $"rag__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"rag__{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();

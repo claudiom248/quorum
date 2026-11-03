@@ -4,7 +4,7 @@
 @inject IDialogService Dialogs
 
 <ListPage Title="Web search tools"
-          Description="A web search tool lets an assistant ask the platform's SearXNG instance for what is newest or for what it does not know. The instance itself is set in Settings; here you decide how a search answers: how many results, which engines, in which language, and how often one conversation may ask. Activate a tool on an assistant in its settings."
+          Description="A web search tool lets an assistant ask the platform's SearXNG instance for what is newest or for what it does not know. The instance itself is set in Settings; here you decide how a search answers: how many results, which engines, in which language, and how often one conversation may ask. Activate a tool on an agent in Agents."
           AddLabel="Add web search tool" OnAdd="() => _screen.OpenDrawer(ListScreen<WebSearchToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
@@ -329,7 +329,7 @@
             if (saved.IsSuccess)
             {
                 Open(saved.Value);
-                _notice = $"web_search__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"web_search__{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();

@@ -8,7 +8,7 @@
 
 <PageTitle>MCP servers · Quorum</PageTitle>
 
-<ListPage Title="MCP servers" Description="Register MCP servers, review the tools they offer and decide which ones may run and whether they ask first. Which tools an assistant uses is chosen in Settings."
+<ListPage Title="MCP servers" Description="Register MCP servers, review the tools they offer and decide which ones may run and whether they ask first. Which tools an agent uses is chosen in Agents."
           AddLabel="Add server" OnAdd="() => _screen.OpenDrawer(ListScreen<ToolServer>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"

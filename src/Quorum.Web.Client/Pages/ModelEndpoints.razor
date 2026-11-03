@@ -14,6 +14,12 @@
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
           EmptyTitle="No model endpoint yet" EmptyText="Add the address of a model server for agents to run on.">
     <FilterContent>
+        @if (Unverified is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-3">
+                The model could not be reached during setup. Open the endpoint below and use "Test connection".
+            </MudAlert>
+        }
         <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" ShowScope="false" TypeLabel="Tools" TypeOptions="ToolOptions"
                    SearchPlaceholder="Search by name, model or address" />
     </FilterContent>
@@ -97,6 +103,10 @@
     private string _opened = string.Empty;
     private string? _notice;
     private bool _busy;
+
+    /// <summary>Set by the setup when it could not reach the model: the list says so until the admin has looked at the endpoint.</summary>
+    [SupplyParameterFromQuery]
+    public string? Unverified { get; set; }
 
     /// <summary>The drawer: <c>new</c> or the id of the endpoint. Without it only the list shows.</summary>
     [Parameter]

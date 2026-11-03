@@ -4,6 +4,7 @@
 @inject QuorumApi Api
 @inject NavigationManager Navigation
 @inject IDialogService Dialogs
+@inject OnboardingProgress Onboarding
 
 <PageTitle>Agents · Quorum</PageTitle>
 
@@ -119,15 +120,14 @@
                         }
                         else
                         {
-                            @foreach (var tool in _tools.Pool)
+                            <AgentToolPicker Pool="_tools.Pool" Active="_activeTools" Manifests="_manifests" Changed="ToolsChanged" />
+                            @foreach (var warning in _tools.Warnings)
                             {
-                                var id = tool.ToolId;
-                                <MudCheckBox T="bool" Value="_activeTools.Contains(id)" ValueChanged="on => ToggleTool(id, on)" Label="@tool.Name" Dense="true" />
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">@warning.Message</MudAlert>
                             }
                         }
                     </div>
                 }
-
                 <div data-section="assistant">
                     <MudSwitch T="bool" @bind-Value="_form.OfferAsAssistant" Label="Offer as an assistant" Color="Color.Primary" />
                     <MudText Typo="Typo.body2" Class="tool-hint">People start a chat with an assistant, which answers through this agent.</MudText>
@@ -214,6 +214,7 @@
     private AgentForm? _form;
     private AgentTools? _tools;
     private readonly HashSet<Guid> _activeTools = [];
+    private readonly Dictionary<Guid, string> _manifests = [];
     private ApiProblem? _drawerProblem;
     private ApiProblem? _formProblem;
     private ApiProblem? _carriedProblem;
@@ -253,6 +254,7 @@
         _form = null;
         _tools = null;
         _activeTools.Clear();
+        _manifests.Clear();
         _drawerProblem = null;
         _formProblem = _carriedProblem;
         _carriedProblem = null;
@@ -343,6 +345,9 @@
             return;
         }
 
+        // Opening an agent to read or change its prompt completes the checklist step of that name.
+        _ = Onboarding.MarkAsync("prompt");
+
         var agent = result.Value;
         _editing = agent;
         _form = new AgentForm
@@ -373,6 +378,10 @@
         {
             _tools = tools.Value;
             _activeTools.UnionWith(tools.Value.Pool.Where(t => t.Active).Select(t => t.ToolId));
+            foreach (var tool in tools.Value.Pool.Where(t => t.Manifest is not null))
+            {
+                _manifests[tool.ToolId] = tool.Manifest!;
+            }
         }
         else
         {
@@ -397,7 +406,8 @@
             _form.AssistantName,
             _form.MaxParallelSubAgents,
             string.Join(',', _form.SubAgents.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}:{pair.Value}")),
-            string.Join(',', _activeTools.Order()));
+            string.Join(',', _activeTools.Order()),
+            string.Join(',', _manifests.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}:{pair.Value}")));
 
     private void ToggleSub(string slug, bool on)
     {
@@ -411,17 +421,8 @@
         }
     }
 
-    private void ToggleTool(Guid id, bool on)
-    {
-        if (on)
-        {
-            _activeTools.Add(id);
-        }
-        else
-        {
-            _activeTools.Remove(id);
-        }
-    }
+    // The picker changes the sets itself; asking for a render keeps the drawer's unsaved-changes guard current.
+    private Task ToolsChanged() => Task.CompletedTask;
 
     private async Task SaveAsync()
     {
@@ -459,7 +460,8 @@
         // The tools are saved after the agent: attaching needs its own permission and its own checks.
         if (agentSaved && _tools is not null && savedId is { } id)
         {
-            result = await Api.SetAgentToolsAsync(id, [.. _activeTools]);
+            var manifests = _manifests.Where(pair => _activeTools.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            result = await Api.SetAgentToolsAsync(id, [.. _activeTools], manifests);
         }
 
         // The assistant follows the agent it answers through: the agent already exists by now.

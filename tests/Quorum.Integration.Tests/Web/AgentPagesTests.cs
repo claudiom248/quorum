@@ -19,7 +19,7 @@ public sealed class AgentPagesTests : ListPageTestContext
     private static object EndpointItem(Guid id, string name, string model = "m", bool supportsTools = true) =>
         new { id, name, baseUrl = "http://x/v1", modelName = model, hasApiKey = true, contextTokenBudget = 4096, supportsTools };
 
-    private void RespondWithAgents(int others, bool toolsAvailable = true, bool withAssistant = false, IReadOnlyList<object>? items = null)
+    private void RespondWithAgents(int others, bool toolsAvailable = true, bool withAssistant = false, IReadOnlyList<object>? items = null, IReadOnlyList<object>? pool = null, IReadOnlyList<object>? warnings = null)
     {
         items ??= [AgentItem(Root, "root"), .. Enumerable.Range(0, others).Select(i => AgentItem(Guid.NewGuid(), $"helper-{i}"))];
         object[] assistants = withAssistant ? [new { id = AssistantId, name = "Desk", rootAgentSlug = "root", maxParallelSubAgents = 1 }] : [];
@@ -59,7 +59,7 @@ public sealed class AgentPagesTests : ListPageTestContext
             if (method == HttpMethod.Get && path == $"/api/agents/{Root}/tools")
             {
                 return toolsAvailable
-                    ? FakeApiHandler.Json(new { pool = Array.Empty<object>(), warnings = Array.Empty<object>() })
+                    ? FakeApiHandler.Json(new { pool = pool ?? [], warnings = warnings ?? [] })
                     : new HttpResponseMessage(HttpStatusCode.NotFound);
             }
 
@@ -232,17 +232,17 @@ public sealed class AgentPagesTests : ListPageTestContext
         var names = page.FindAll("[data-grid=endpoints] tbody tr").Select(row => row.QuerySelector("[data-endpoint]")!.GetAttribute("data-endpoint")!);
         Assert.Equal(expected.Split(','), names);
     }
-    private IRenderedComponent<Quorum.Web.Client.Pages.ModelEndpoints> OpenEndpoint()
+    private IRenderedComponent<Quorum.Web.Client.Pages.ModelEndpoints> OpenEndpoint(bool supportsTools = true, bool? reported = true)
     {
         Api.Respond = (method, path) =>
         {
             if (method == HttpMethod.Get && path == "/api/model-endpoints")
             {
-                return FakeApiHandler.Json(new[] { EndpointItem(Endpoint, "e") });
+                return FakeApiHandler.Json(new[] { EndpointItem(Endpoint, "e", supportsTools: supportsTools) });
             }
 
             return method == HttpMethod.Post && path == "/api/model-endpoints/test"
-                ? FakeApiHandler.Json(new { reachable = true, models = Models, supportsTools = true })
+                ? FakeApiHandler.Json(new { reachable = true, models = Models, supportsTools = reported })
                 : new HttpResponseMessage(HttpStatusCode.NoContent);
         };
         var page = Visit<Quorum.Web.Client.Pages.ModelEndpoints>($"/agents/endpoints/{Endpoint}", p => p.Add(c => c.Id, Endpoint.ToString()));
@@ -286,5 +286,100 @@ public sealed class AgentPagesTests : ListPageTestContext
 
         page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, $"/api/model-endpoints/{Endpoint}")));
         Assert.Equal(string.Empty, Body(Api, HttpMethod.Put, "/api/model-endpoints/").GetProperty("apiKey").GetString());
+    }
+
+    private static bool SwitchIsOn(IRenderedComponent<Quorum.Web.Client.Pages.ModelEndpoints> page) => page.Find("[data-form=model] .mud-switch input").HasAttribute("checked");
+
+    [Theory]
+    [InlineData(true, true, "supports tools")]
+    [InlineData(false, false, "does not support tools")]
+    public void TestingTheConnectionPreFillsTheFlagFromWhatTheServerReports(bool reported, bool expected, string hint)
+    {
+        var page = OpenEndpoint(supportsTools: !reported, reported: reported);
+
+        ClickButton(page, "Test connection");
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains(hint, page.Find("#tools-support-hint").TextContent, StringComparison.Ordinal);
+            Assert.Equal(expected, SwitchIsOn(page));
+        });
+    }
+
+    [Fact]
+    public void WhenTheServerDoesNotSayTheAdminsValueStaysAndTheHintSaysSo()
+    {
+        var page = OpenEndpoint(supportsTools: false, reported: null);
+
+        ClickButton(page, "Test connection");
+
+        page.WaitForAssertion(() => Assert.Contains("does not say", page.Find("#tools-support-hint").TextContent, StringComparison.Ordinal));
+        Assert.False(SwitchIsOn(page));
+    }
+
+    [Fact]
+    public void SavingAnEndpointSendsTheFlag()
+    {
+        var page = OpenEndpoint(supportsTools: false);
+
+        page.Find("[data-form=endpoint]").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, $"/api/model-endpoints/{Endpoint}")));
+        Assert.False(Body(Api, HttpMethod.Put, "/api/model-endpoints/").GetProperty("supportsTools").GetBoolean());
+    }
+
+    private static readonly Guid Calculator = Guid.Parse("01a14130-0000-7208-890d-b78925ebb291");
+    private static readonly Guid Clock = Guid.Parse("01a14131-0000-7208-890d-b78925ebb291");
+    private static readonly Guid LookupTool = Guid.Parse("01a14132-0000-7208-890d-b78925ebb291");
+
+    [Fact]
+    public void SavingAnAgentSendsExactlyTheActiveToolsAndTheManifestOfTheLookupOnes()
+    {
+        RespondWithAgents(
+            others: 0,
+            pool:
+            [
+                new { toolId = Calculator, name = "builtin__calculator", active = true },
+                new { toolId = Clock, name = "builtin__current_datetime", active = false },
+                new { toolId = LookupTool, name = "lookup__contracts", active = true, manifest = "Full" },
+            ]);
+        var page = OpenAgent(Root.ToString());
+
+        // Swap the calculator for the clock, and offer the lookup lean.
+        var boxes = page.FindAll("[data-tool-picker] .mud-checkbox input");
+        boxes[0].Change(false);
+        boxes[1].Change(true);
+        page.Find("[data-tool-picker] .mud-switch input").Change(true);
+        page.Find("[data-form=agent]").Submit();
+
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, $"/api/agents/{Root}/tools")));
+        var body = Body(Api, HttpMethod.Put, $"/api/agents/{Root}/tools");
+        Assert.Equal([Clock.ToString(), LookupTool.ToString()], body.GetProperty("toolIds").EnumerateArray().Select(e => e.GetString()).Order());
+        Assert.Equal("lean", body.GetProperty("manifests").GetProperty(LookupTool.ToString()).GetString());
+    }
+
+    [Fact]
+    public void TheWarningsOfTheServerAreShownAboutTheActiveSet()
+    {
+        RespondWithAgents(
+            others: 0,
+            pool: [new { toolId = Calculator, name = "builtin__calculator", active = true }],
+            warnings: [new { code = "tool.too_many", message = "More than 15 tools are active: small models choose worse among many." }]);
+
+        var page = OpenAgent(Root.ToString());
+
+        Assert.Contains("More than 15 tools are active", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheEndpointsPageWarnsWhenTheSetupCouldNotReachTheModel()
+    {
+        Api.Respond = (method, path) => method == HttpMethod.Get && path == "/api/model-endpoints"
+            ? FakeApiHandler.Json(new[] { EndpointItem(Endpoint, "e") })
+            : new HttpResponseMessage(HttpStatusCode.NoContent);
+
+        var page = Visit<Quorum.Web.Client.Pages.ModelEndpoints>("/agents/endpoints?unverified=1");
+
+        Assert.Contains("could not be reached during setup", page.Markup, StringComparison.Ordinal);
     }
 }

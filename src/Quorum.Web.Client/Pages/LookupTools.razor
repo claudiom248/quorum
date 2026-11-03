@@ -9,7 +9,7 @@
 <PageTitle>Lookup tools · Quorum</PageTitle>
 
 <ListPage Title="Lookup tools"
-          Description="A lookup tool lets an assistant read lists of values (the suppliers, the departments, the audiences) so it knows what exists before it searches. Choose the lists here, and the knowledge bases it may also ask about live. Create the lists in Knowledge; activate a tool on an assistant in Settings."
+          Description="A lookup tool lets an assistant read lists of values (the suppliers, the departments, the audiences) so it knows what exists before it searches. Choose the lists here, and the knowledge bases it may also ask about live. Create the lists in Knowledge; activate a tool on an agent in Agents."
           AddLabel="Add lookup tool" OnAdd="() => _screen.OpenDrawer(ListScreen<LookupToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
@@ -644,7 +644,7 @@
             if (saved.IsSuccess)
             {
                 await OpenAsync(saved.Value);
-                _notice = $"lookup__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"lookup__{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();

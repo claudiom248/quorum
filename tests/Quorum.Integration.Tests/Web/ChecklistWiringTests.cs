@@ -9,6 +9,8 @@ namespace Quorum.Integration.Tests.Web;
 /// <summary>Opening a page of a step completes it, once, and never breaks the page (spec 010, D-13; AC-13).</summary>
 public sealed class ChecklistWiringTests : ListPageTestContext
 {
+    private static readonly Guid AgentId = Guid.Parse("01a14140-0000-7208-890d-b78925ebb291");
+
     private bool _promptDone;
     private bool _dismissed;
     private HttpStatusCode _putStatus = HttpStatusCode.NoContent;
@@ -26,7 +28,21 @@ public sealed class ChecklistWiringTests : ListPageTestContext
             }),
             ("PUT", _) when path.StartsWith("/api/onboarding/checklist/", StringComparison.Ordinal) => new HttpResponseMessage(_putStatus),
             ("GET", "/api/tools/servers" or "/api/knowledge-bases") => Page(),
-            ("GET", "/api/assistants" or "/api/tenants") => FakeApiHandler.Json(Array.Empty<object>()),
+            ("GET", "/api/assistants" or "/api/tenants" or "/api/model-endpoints") => FakeApiHandler.Json(Array.Empty<object>()),
+            ("GET", "/api/agents") => FakeApiHandler.Json(new[] { new { id = AgentId, slug = "assistant", displayName = "Assistant", description = "d", scope = "Tenant", modelEndpointId = (Guid?)null, subAgentCount = 0, toolCount = 0 } }),
+            ("GET", _) when path == $"/api/agents/{AgentId}" => FakeApiHandler.Json(new
+            {
+                id = AgentId,
+                slug = "assistant",
+                displayName = "Assistant",
+                description = "d",
+                systemPrompt = "Be brief.",
+                modelEndpointId = (Guid?)null,
+                scope = "Tenant",
+                scopeTenantIds = Array.Empty<Guid>(),
+                subAgents = Array.Empty<object>(),
+            }),
+            ("GET", _) when path == $"/api/agents/{AgentId}/tools" => FakeApiHandler.Json(new { pool = Array.Empty<object>(), warnings = Array.Empty<object>() }),
             ("GET", "/api/settings/assistant") => FakeApiHandler.Json(new
             {
                 baseUrl = "http://ollama:11434/v1",
@@ -78,15 +94,12 @@ public sealed class ChecklistWiringTests : ListPageTestContext
     }
 
     [Fact]
-    public void OpeningTheBehaviourTabCompletesPrompt()
+    public void OpeningAnAgentCompletesPrompt()
     {
-        var page = Visit<Quorum.Web.Client.Pages.Settings>("/settings");
+        Visit<Quorum.Web.Client.Pages.Agents>($"/agents/{AgentId}", p => p.Add(c => c.Id, AgentId.ToString()));
 
-        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Behaviour", StringComparison.Ordinal)).Click();
-
-        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, Put("prompt"))));
+        Eventually(() => Assert.Equal(1, Api.Count(HttpMethod.Put, Put("prompt"))));
     }
-
     [Fact]
     public void ADismissedChecklistCostsNoWrite()
     {
@@ -102,14 +115,12 @@ public sealed class ChecklistWiringTests : ListPageTestContext
     public void AStepAlreadyDoneIsNotWrittenAgain()
     {
         _promptDone = true;
-        var page = Visit<Quorum.Web.Client.Pages.Settings>("/settings");
+        var page = Visit<Quorum.Web.Client.Pages.Agents>($"/agents/{AgentId}", p => p.Add(c => c.Id, AgentId.ToString()));
 
-        page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Behaviour", StringComparison.Ordinal)).Click();
-
-        page.WaitForAssertion(() => page.Find("textarea"));
+        page.WaitForAssertion(() => page.Find("[data-form=agent]"));
+        Thread.Sleep(200);
         Assert.Equal(0, Api.Count(HttpMethod.Put, Put("prompt")));
     }
-
     [Fact]
     public void AFailedWriteDoesNotBreakThePage()
     {

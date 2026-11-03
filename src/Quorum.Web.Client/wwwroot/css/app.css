@@ -305,10 +305,14 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .lg-bars .lg-children .lg-plain { border-left: 2px solid var(--mud-palette-lines-default); padding-left: .5rem; margin-top: .2rem; }
 
 /* Settings: one choice of how tool calls are drawn, with its description under it. */
-.ledger-choice { display: flex; flex-direction: column; margin-bottom: .6rem; }
+.ledger-choice { display: flex; flex-direction: column; margin-bottom: .8rem; }
 .ledger-choice .tool-hint { margin-left: 2rem; }
 
 /* Wide forms: the model connection splits in two columns when its container has the room, and the tools of the settings flow in columns. */
 .model-connection { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1.5rem 2rem; align-items: start; }
 .settings-columns { column-width: 20rem; column-gap: 2rem; }
 .settings-columns > .settings-group { break-inside: avoid; margin-bottom: 1rem; }
+
+/* Settings: the display choices stack in one column, and the token list does not stretch across the whole page. */
+.ledger-choices.mud-radio-group { display: flex; flex-direction: column; gap: .25rem; }
+.settings-display, .settings-narrow { max-width: 44rem; }

@@ -4,7 +4,7 @@
 @inject IDialogService Dialogs
 
 <ListPage Title="Web fetch tools"
-          Description="A web fetch tool lets an assistant read the pages themselves: a search gives the model a snippet, this gives it what the article says. The wait between fetches, the identity the platform announces and the budgets a tool falls back on are set in Settings; here you decide what one tool allows. Activate a tool on an assistant in its settings."
+          Description="A web fetch tool lets an assistant read the pages themselves: a search gives the model a snippet, this gives it what the article says. The wait between fetches, the identity the platform announces and the budgets a tool falls back on are set in Settings; here you decide what one tool allows. Activate a tool on an agent in Agents."
           AddLabel="Add web fetch tool" OnAdd="() => _screen.OpenDrawer(ListScreen<WebFetchToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
@@ -316,7 +316,7 @@
             if (saved.IsSuccess)
             {
                 Open(saved.Value);
-                _notice = $"web_fetch__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"web_fetch__{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();
