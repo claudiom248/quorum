@@ -28,7 +28,7 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
         new(slug, JsonSerializer.Serialize(new { task }), id);
 
     private static FakeToolCall Probe(string text, string id) =>
-        new("builtin__probe", JsonSerializer.Serialize(new { text }), id);
+        new("probe", JsonSerializer.Serialize(new { text }), id);
 
     private static string SystemPrompt(JsonElement request) =>
         request.GetProperty("messages")[0].GetProperty("content").GetString() ?? string.Empty;
@@ -190,6 +190,8 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
         Assert.Equal(["task"], tool.GetProperty("parameters").GetProperty("required").EnumerateArray().Select(e => e.GetString()));
         var call = Assert.Single(events, e => e.Type == "tool_call");
         Assert.Equal("researcher", call.Data.GetProperty("tool").GetString());
+        // A sub-agent is called by its slug as a tool is by its name, so the event says which it is (spec 015 D-7).
+        Assert.True(call.Data.GetProperty("isDelegation").GetBoolean());
         var result = Assert.Single(events, e => e.Type == "tool_result");
         Assert.Equal("succeeded", result.Data.GetProperty("status").GetString());
         Assert.Equal("The capital is Paris.", result.Data.GetProperty("content").GetString());
@@ -228,7 +230,7 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
 
         Assert.Equal("succeeded", events.Last(e => e.Type == "tool_result").Data.GetProperty("status").GetString());
         Assert.Equal("shared answer", events.Last(e => e.Type == "tool_result").Data.GetProperty("content").GetString());
-        Assert.Equal(["builtin__probe"], ToolNames(RequestsOf(app, "SHARED")[0]));
+        Assert.Equal(["probe"], ToolNames(RequestsOf(app, "SHARED")[0]));
         Assert.Single(app.Probe.Calls);
     }
 
@@ -288,7 +290,7 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
 
         await ChatApi.SendAsync(client, id, "Go");
 
-        Assert.Equal(["builtin__calculator"], ToolNames(Assert.Single(RequestsOf(app, "MIDDLE"))));
+        Assert.Equal(["calculator"], ToolNames(Assert.Single(RequestsOf(app, "MIDDLE"))));
         Assert.Empty(RequestsOf(app, "LEAF"));
     }
 
@@ -306,11 +308,11 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
 
         await ChatApi.SendAsync(client, id, "Go");
 
-        Assert.Equal(["builtin__probe"], ToolNames(Assert.Single(RequestsOf(app, "WORKER"))));
+        Assert.Equal(["probe"], ToolNames(Assert.Single(RequestsOf(app, "WORKER"))));
         var rootTools = ToolNames(RequestsOf(app, RootMarker)[0]);
-        Assert.Contains("builtin__calculator", rootTools);
+        Assert.Contains("calculator", rootTools);
         Assert.Contains("worker", rootTools);
-        Assert.DoesNotContain("builtin__probe", rootTools);
+        Assert.DoesNotContain("probe", rootTools);
     }
 
     [Fact] // AC-31
@@ -329,7 +331,7 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
         await ChatApi.SendAsync(client, id, "Go");
 
         var request = Assert.Single(RequestsOf(app, "WORKER"));
-        Assert.Equal(["builtin__calculator"], ToolNames(request));
+        Assert.Equal(["calculator"], ToolNames(request));
         Assert.DoesNotContain("ask_user", SystemPrompt(request), StringComparison.Ordinal);
     }
 
@@ -554,7 +556,7 @@ public sealed class DelegationTests(SharedQuorumApp host) : IClassFixture<Shared
         var events = await ChatApi.SendAsync(client, id, "Go");
 
         var calls = events.Where(e => e.Type == "tool_call").ToList();
-        Assert.Equal(["worker", "builtin__probe"], calls.Select(e => e.Data.GetProperty("tool").GetString()));
+        Assert.Equal(["worker", "probe"], calls.Select(e => e.Data.GetProperty("tool").GetString()));
         var delegationId = calls[0].Data.GetProperty("callId").GetString();
         Assert.False(calls[0].Data.TryGetProperty("parentCallId", out var rootParent) && rootParent.ValueKind != JsonValueKind.Null);
         Assert.Equal(delegationId, calls[1].Data.GetProperty("parentCallId").GetString());

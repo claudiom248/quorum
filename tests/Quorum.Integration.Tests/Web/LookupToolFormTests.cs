@@ -37,7 +37,7 @@ public sealed class LookupToolFormTests
     {
         var problems = new LookupToolForm().Problems(Dictionary, []);
 
-        Assert.Contains(problems, p => p.Contains("The name is 1 to 40 characters", StringComparison.Ordinal) && p.Contains("lookup__name", StringComparison.Ordinal));
+        Assert.Contains(problems, p => p.Contains("The name is 1 to 40 characters", StringComparison.Ordinal) && p.Contains("read the same name", StringComparison.Ordinal));
         Assert.Contains(problems, p => p.Contains("The description is required", StringComparison.Ordinal));
         Assert.Contains(problems, p => p.Contains("Choose at least one lookup", StringComparison.Ordinal));
     }

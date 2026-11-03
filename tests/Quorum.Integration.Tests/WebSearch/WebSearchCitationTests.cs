@@ -21,7 +21,7 @@ public sealed class WebSearchCitationTests(PostgresFixture postgres, SharedQuoru
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static FakeToolCall Call(string query, string id = "call_1") =>
-        new("web_search__research", JsonSerializer.Serialize(new { query }), id);
+        new("research", JsonSerializer.Serialize(new { query }), id);
 
     private static JsonElement[] SourcesOf(SseEvent sourcesEvent) => [.. sourcesEvent.Data.GetProperty("sources").EnumerateArray()];
 
@@ -41,7 +41,7 @@ public sealed class WebSearchCitationTests(PostgresFixture postgres, SharedQuoru
         var admin = await app.SetUpAsync();
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "research");
         app.Searxng.Answers(
             ("AI News", "https://example.com/ai-news", "The newest of the new."),
             ("Second", "https://other.test/report", "Another extract."));
@@ -77,7 +77,7 @@ public sealed class WebSearchCitationTests(PostgresFixture postgres, SharedQuoru
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [knowledgeBase]));
         await WebSearchApi.ConfigureAsync(setup.Admin);
         await WebSearchApi.CreateOkAsync(setup.Admin, WebSearchApi.Body(name: "research"));
-        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "rag__company", "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "company", "research");
         setup.App.ModelServer.EnqueueRounds(ChatScript.Reply("Answered from both."));
 
         await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Is this in the policies or on the web?");
@@ -85,8 +85,8 @@ public sealed class WebSearchCitationTests(PostgresFixture postgres, SharedQuoru
         var request = setup.App.ModelServer.ChatRequests[0];
         string[] offered = [.. request.GetProperty("tools").EnumerateArray()
             .Select(t => t.GetProperty("function").GetProperty("name").GetString()!)];
-        Assert.Contains("rag__company", offered);
-        Assert.Contains("web_search__research", offered);
+        Assert.Contains("company", offered);
+        Assert.Contains("research", offered);
 
         // Both kinds of source carry the same numbers, so the answer can cite them in one list.
         var system = request.GetProperty("messages").EnumerateArray()

@@ -216,9 +216,9 @@ public sealed class LookupToolUnitTests
     [Fact]
     public void TheFunctionsAreNamedAfterWhatTheyDo()
     {
-        Assert.Equal("lookup_entries__lists", ToolNaming.LookupFunction("lists", "entries"));
-        Assert.Equal("lookup_documents__lists", ToolNaming.LookupFunction("lists", "documents"));
-        Assert.Equal("lookup_count__lists", ToolNaming.LookupFunction("lists", "count"));
+        Assert.Equal("lists_entries", ToolNaming.LookupFunction("lists", "entries"));
+        Assert.Equal("lists_documents", ToolNaming.LookupFunction("lists", "documents"));
+        Assert.Equal("lists_count", ToolNaming.LookupFunction("lists", "count"));
         Assert.True(ToolNaming.LookupDocuments(new string('x', 40)).Length <= ToolNaming.MaxLength);
     }
 

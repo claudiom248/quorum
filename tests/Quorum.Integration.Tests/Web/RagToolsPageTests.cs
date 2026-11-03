@@ -146,7 +146,7 @@ public sealed class RagToolsPageTests : ListPageTestContext
 
     private static object Definition(string name) => new
     {
-        name = $"rag__{name}",
+        name,
         description = "Searches the company policies.",
         inputSchema = new { type = "object", properties = new { query = new { type = "string" } }, required = new[] { "query" } },
         estimatedTokens = 1250,
@@ -230,7 +230,7 @@ public sealed class RagToolsPageTests : ListPageTestContext
         var page = Visit<RagTools>($"/tools/rag/{ToolId}", p => p.Add(c => c.Id, ToolId.ToString()));
 
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=rag]")));
-        Assert.Contains("rag__company", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("company", page.Markup, StringComparison.Ordinal);
         Assert.Contains("Definition the model gets", page.Markup, StringComparison.Ordinal);
         Assert.Contains("Delete", page.Find("[data-form=rag]").TextContent, StringComparison.Ordinal);
     }

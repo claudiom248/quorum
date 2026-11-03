@@ -31,7 +31,7 @@ public sealed class McpToolReviewTests(SharedQuorumApp host) : IClassFixture<Sha
         }
 
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "calculator");
         using var activate = await client.PutAsJsonAsync(
             ToolsApi.AssistantTools(assistantId),
             new { toolIds = new[] { calculator.ToolId, tools["changes"].Id, tools["stays"].Id, tools["vanishes"].Id } },
@@ -56,7 +56,7 @@ public sealed class McpToolReviewTests(SharedQuorumApp host) : IClassFixture<Sha
         Assert.Equal("After.", after["changes"].Description);
         Assert.Equal(("PendingReview", "Confirm"), (after["brand-new"].State, after["brand-new"].Policy));
         Assert.Equal(("Enabled", "Auto"), (after["stays"].State, after["stays"].Policy));
-        Assert.Equal(["builtin__calculator", "files__stays"], pool.Where(t => t.Active).Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["calculator", "files__stays"], pool.Where(t => t.Active).Select(t => t.Name).Order().ToArray());
         Assert.DoesNotContain(pool, t => t.Name is "files__changes" or "files__brand-new" or "files__vanishes");
         Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(app, "SELECT count(*) FROM agents.agent_tools WHERE \"ToolId\" = '" + tools["vanishes"].Id + "'"));
     }

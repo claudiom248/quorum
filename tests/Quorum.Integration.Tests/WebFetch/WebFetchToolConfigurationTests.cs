@@ -81,7 +81,7 @@ public sealed class WebFetchToolConfigurationTests(SharedQuorumApp host) : IClas
         var created = await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read", maxUrlsPerInvocation: 4));
 
         Assert.NotNull(created.Definition);
-        Assert.Equal("web_fetch__read", created.Definition.Name);
+        Assert.Equal("read", created.Definition.Name);
         Assert.Equal(["urls"], created.Definition.Parameters);
 
         var urls = created.Definition.Parameter("urls");

@@ -19,10 +19,13 @@ public sealed class LedgerStyleTests : BunitContext
         Services.AddMudServices();
     }
 
-    private static ToolCallView Call(string tool, Guid? id = null, Guid? parent = null, string? agent = null, string arguments = "{}") =>
+    private static ToolCallView Call(string tool, Guid? id = null, Guid? parent = null, string? agent = null, string arguments = "{}", bool delegation = false) =>
         ToolCallView.From(
-            new ToolCallEvent(id ?? Guid.NewGuid(), tool, JsonDocument.Parse(arguments).RootElement.Clone(), false, null, parent, agent),
+            new ToolCallEvent(id ?? Guid.NewGuid(), tool, JsonDocument.Parse(arguments).RootElement.Clone(), false, null, parent, agent, delegation),
             Start);
+
+    // A sub-agent is called by its slug, as a tool is by its name: the server says which it is.
+    private static ToolCallView Agent(string slug, Guid? id = null, string arguments = "{}") => Call(slug, id, arguments: arguments, delegation: true);
 
     private static void Succeed(ToolCallView call, int seconds) =>
         call.Apply(new ToolResultEvent(call.CallId, "succeeded", "ok", 2), Start.AddSeconds(seconds));
@@ -57,7 +60,7 @@ public sealed class LedgerStyleTests : BunitContext
     [Fact]
     public void TheClassicLedgerIsUnchangedWhenNoStyleIsPicked()
     {
-        var page = Draw(LedgerStyle.Classic, Call("builtin__calculator"));
+        var page = Draw(LedgerStyle.Classic, Call("calculator"));
 
         Assert.NotEmpty(page.FindAll(".tool-ledger-row"));
         Assert.Empty(page.FindAll(".lg"));
@@ -66,8 +69,8 @@ public sealed class LedgerStyleTests : BunitContext
     [Fact]
     public void TheClassicLedgerNumbersOnlyTheTopLevel()
     {
-        var delegation = Call("contract-analyst");
-        var page = Draw(LedgerStyle.Classic, delegation, Call("rag__search_contracts", parent: delegation.CallId, agent: "contract-analyst"), Call("builtin__calculator"));
+        var delegation = Agent("contract-analyst");
+        var page = Draw(LedgerStyle.Classic, delegation, Call("search_contracts", parent: delegation.CallId, agent: "contract-analyst"), Call("calculator"));
 
         Assert.Equal(["01", "02"], page.FindAll(".tool-ledger-index").Select(index => index.TextContent));
         Assert.Empty(page.FindAll(".tool-ledger-nested .tool-ledger-index"));
@@ -76,9 +79,9 @@ public sealed class LedgerStyleTests : BunitContext
     [Fact]
     public void CardsPutThePlainCallsInOneToolsCardAndEachDelegationInItsOwn()
     {
-        var delegation = Call("deadline-planner", arguments: """{"task":"Calcola la data limite"}""");
+        var delegation = Agent("deadline-planner", arguments: """{"task":"Calcola la data limite"}""");
         var nested = Call("sample-reference-data__notice_deadline", parent: delegation.CallId, agent: "deadline-planner");
-        var page = Draw(LedgerStyle.Cards, Call("builtin__current_datetime"), Call("builtin__calculator"), delegation, nested);
+        var page = Draw(LedgerStyle.Cards, Call("current_datetime"), Call("calculator"), delegation, nested);
 
         var tools = Assert.Single(page.FindAll(".lg-tools"));
         Assert.Equal(2, tools.QuerySelectorAll(".lg-plain").Length);
@@ -93,8 +96,8 @@ public sealed class LedgerStyleTests : BunitContext
     [InlineData(LedgerStyle.Bars, "lg-bars")]
     public void EveryStyleDrawsTheSameCallsUnderItsOwnClass(LedgerStyle style, string cssClass)
     {
-        var delegation = Call("contract-analyst");
-        var page = Draw(style, Call("builtin__calculator"), delegation, Call("rag__search_contracts", parent: delegation.CallId, agent: "contract-analyst"));
+        var delegation = Agent("contract-analyst");
+        var page = Draw(style, Call("calculator"), delegation, Call("search_contracts", parent: delegation.CallId, agent: "contract-analyst"));
 
         Assert.Contains(cssClass, page.Find(".lg").ClassList);
         Assert.Equal(2, page.FindAll(".lg-plain").Count);
@@ -104,9 +107,9 @@ public sealed class LedgerStyleTests : BunitContext
     [Fact]
     public void ADelegationSaysWhenItRunsAtTheSameTimeAsAnotherAndHowLongItTook()
     {
-        var first = Call("contract-analyst");
-        var second = Call("finance-analyst");
-        var finished = Call("deadline-planner");
+        var first = Agent("contract-analyst");
+        var second = Agent("finance-analyst");
+        var finished = Agent("deadline-planner");
         Succeed(finished, 12);
 
         var parallel = Draw(LedgerStyle.Cards, first, second);
@@ -122,9 +125,9 @@ public sealed class LedgerStyleTests : BunitContext
     {
         foreach (var style in new[] { LedgerStyle.Cards, LedgerStyle.Timeline, LedgerStyle.Bars })
         {
-            var ok = Call("contract-analyst");
+            var ok = Agent("contract-analyst");
             ok.Apply(new ToolResultEvent(ok.CallId, "succeeded", "The sub-agent text", 18));
-            var failed = Call("finance-analyst");
+            var failed = Agent("finance-analyst");
             failed.Apply(new ToolResultEvent(failed.CallId, "failed", "The sub-agent failed: context", 30));
 
             var page = Draw(style, ok, failed);
@@ -140,7 +143,7 @@ public sealed class LedgerStyleTests : BunitContext
         foreach (var style in new[] { LedgerStyle.Cards, LedgerStyle.Timeline, LedgerStyle.Bars })
         {
             var waiting = ToolCallView.From(
-                new ToolCallEvent(Guid.NewGuid(), "builtin__calculator", JsonDocument.Parse("{}").RootElement.Clone(), true, Start.AddMinutes(5), null, null),
+                new ToolCallEvent(Guid.NewGuid(), "calculator", JsonDocument.Parse("{}").RootElement.Clone(), true, Start.AddMinutes(5), null, null),
                 Start);
 
             var page = Draw(style, waiting);
@@ -154,7 +157,7 @@ public sealed class LedgerStyleTests : BunitContext
     {
         Assert.Equal(LedgerStyles.TintOf("deadline-planner"), LedgerStyles.TintOf("finance-analyst"));
 
-        var page = Draw(LedgerStyle.Cards, Call("deadline-planner"), Call("finance-analyst"));
+        var page = Draw(LedgerStyle.Cards, Agent("deadline-planner"), Agent("finance-analyst"));
 
         var tints = page.FindAll(".lg-agent").Select(agent => agent.ClassList.Single(c => c.StartsWith("lg-tint-", StringComparison.Ordinal))).ToList();
         Assert.Equal(2, tints.Distinct().Count());

@@ -62,7 +62,7 @@ public sealed class AgentListTests(SharedQuorumApp host) : IClassFixture<SharedQ
         var (second, secondAgent) = await AssistantFixtures.AddWithAgentAsync(app, "Second");
 
         var pool = (await ToolsApi.GetAssistantToolsAsync(client, second)).Pool;
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, defaultAssistant)).Pool.Single(t => t.Name == "builtin__calculator").ToolId;
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, defaultAssistant)).Pool.Single(t => t.Name == "calculator").ToolId;
         using var activate = await client.PutAsJsonAsync(ToolsApi.AssistantTools(defaultAssistant), new { toolIds = new[] { calculator } }, Ct);
         activate.EnsureSuccessStatusCode();
         var secondActive = (await ToolsApi.GetAssistantToolsAsync(client, second)).Pool.Where(t => t.Active).ToList();
@@ -71,7 +71,7 @@ public sealed class AgentListTests(SharedQuorumApp host) : IClassFixture<SharedQ
         // Tools belong to the agent: changing the default assistant's set leaves the other assistant's alone.
         Assert.NotEmpty(pool);
         Assert.Empty(secondActive);
-        Assert.Equal(["builtin__calculator"], defaultActive.Select(t => t.Name));
+        Assert.Equal(["calculator"], defaultActive.Select(t => t.Name));
         Assert.Equal(secondAgent, await AssistantFixtures.RootAgentIdAsync(app, second));
     }
 

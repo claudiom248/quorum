@@ -22,7 +22,7 @@ public sealed class RagCitationTests(SharedQuorumApp host, QdrantFixture qdrant)
     private static string Text(ulong chunk) => SampleCollections.CreateFlat().Points.Single(p => p.Id == chunk).EmbeddingText;
 
     private static FakeToolCall Call(object arguments, string id = "call_1") =>
-        new("rag__company", JsonSerializer.Serialize(arguments), id);
+        new("company", JsonSerializer.Serialize(arguments), id);
 
     /// <summary>One knowledge base called <c>policies</c> and a rag tool over it, activated on the assistant.</summary>
     private async Task<RagApi.Setup> StartAsync(int topK = 2, double? scoreThreshold = null)
@@ -30,7 +30,7 @@ public sealed class RagCitationTests(SharedQuorumApp host, QdrantFixture qdrant)
         var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], topK: topK, scoreThreshold: scoreThreshold));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         return setup;
     }
 

@@ -28,7 +28,7 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
         await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9), ("finance", 4)]);
         await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup, "department")]));
         var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
-        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
+        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lists").ToolId;
 
         using var activate = await setup.Admin.PutAsJsonAsync(
             ToolsApi.AssistantTools(assistant),
@@ -36,11 +36,11 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
             Ct);
         Assert.Equal(HttpStatusCode.NoContent, activate.StatusCode);
 
-        var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", "{\"targets\":[\"department\"]}", "call_1")));
+        var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lists_describe", "{\"targets\":[\"department\"]}", "call_1")));
         Assert.Contains("\"operations\":{\"entries\":{", describe, StringComparison.Ordinal);
         Assert.Contains("\"count\":{", describe, StringComparison.Ordinal);
 
-        var count = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"count\"}", "call_2")));
+        var count = ResultOf(await AskAsync(setup, new FakeToolCall("lists_query", "{\"target\":\"department\",\"operation\":\"count\"}", "call_2")));
         Assert.Contains("department: 3 values match.", count, StringComparison.Ordinal);
     }
 
@@ -54,14 +54,14 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
         var fields = await setup.FieldsAsync();
         await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup, "department")], exposedFields: [new { fieldId = fields["department"] }]));
         var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
-        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
+        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lists").ToolId;
         using var activate = await setup.Admin.PutAsJsonAsync(
             ToolsApi.AssistantTools(assistant),
             new { toolIds = new[] { toolId }, manifests = new Dictionary<string, string> { [toolId.ToString()] = "lean" } },
             Ct);
         Assert.Equal(HttpStatusCode.NoContent, activate.StatusCode);
 
-        var count = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"count\",\"filters\":{\"department\":[\"hr\"]}}", "call_1")));
+        var count = ResultOf(await AskAsync(setup, new FakeToolCall("lists_query", "{\"target\":\"department\",\"operation\":\"count\",\"filters\":{\"department\":[\"hr\"]}}", "call_1")));
 
         Assert.Contains("department: 1 values match.", count, StringComparison.Ordinal);
     }
@@ -79,18 +79,18 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
             knowledgeBaseIds: [knowledgeBase],
             exposedFields: [new { fieldId = fields["department"] }, new { fieldId = fields["year"] }, new { fieldId = fields["confidential"] }]));
         var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
-        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lookup__lists").ToolId;
+        var toolId = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.Single(t => t.Name == "lists").ToolId;
         using var activate = await setup.Admin.PutAsJsonAsync(
             ToolsApi.AssistantTools(assistant),
             new { toolIds = new[] { toolId }, manifests = new Dictionary<string, string> { [toolId.ToString()] = "lean" } },
             Ct);
         Assert.Equal(HttpStatusCode.NoContent, activate.StatusCode);
 
-        var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", "{\"targets\":[\"department\",\"policies\"]}", "call_1")));
+        var describe = ResultOf(await AskAsync(setup, new FakeToolCall("lists_describe", "{\"targets\":[\"department\",\"policies\"]}", "call_1")));
         var targets = JsonDocument.Parse(describe).RootElement.GetProperty("targets").EnumerateArray().ToList();
 
         // The query the model is offered says which operations a list takes and which a knowledge base takes (spec 012 D-8, A1-6).
-        var offered = setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")).Single(f => f.GetProperty("name").GetString() == "lookup_query__lists");
+        var offered = setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")).Single(f => f.GetProperty("name").GetString() == "lists_query");
         Assert.Contains("A list takes the operations entries and count only; documents is for a knowledge base only", offered.GetProperty("description").GetString(), StringComparison.Ordinal);
 
 
@@ -119,7 +119,7 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
                 {
                     var parameter = filter.GetProperty("name").GetString()!;
                     var arguments = JsonSerializer.Serialize(new { target = name, operation = operation.Name, filters = new Dictionary<string, string[]> { [parameter] = ["x"] } });
-                    var answer = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", arguments, $"call_{++call}")));
+                    var answer = ResultOf(await AskAsync(setup, new FakeToolCall("lists_query", arguments, $"call_{++call}")));
                     Assert.DoesNotContain("cannot be filtered", answer, StringComparison.Ordinal);
                     listed++;
                 }
@@ -127,17 +127,17 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
         }
 
         Assert.Equal(12, listed);
-        var refused = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"department\",\"operation\":\"entries\",\"filters\":{\"nothing\":[\"x\"]}}", $"call_{++call}")));
+        var refused = ResultOf(await AskAsync(setup, new FakeToolCall("lists_query", "{\"target\":\"department\",\"operation\":\"entries\",\"filters\":{\"nothing\":[\"x\"]}}", $"call_{++call}")));
         Assert.Contains("cannot be filtered by nothing", refused, StringComparison.Ordinal);
 
         // A range takes min or max; any other bound under a field is refused by name.
-        var bound = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"policies\",\"operation\":\"documents\",\"filters\":{\"year\":{\"between\":[1,2]}}}", $"call_{++call}")));
+        var bound = ResultOf(await AskAsync(setup, new FakeToolCall("lists_query", "{\"target\":\"policies\",\"operation\":\"documents\",\"filters\":{\"year\":{\"between\":[1,2]}}}", $"call_{++call}")));
         Assert.Contains("'between' is not one of them", bound, StringComparison.Ordinal);
 
         // The sort values are written out in describe; a knowledge base takes no search or sort.
         var departmentSort = targets.Single(t => t.GetProperty("name").GetString() == "department").GetProperty("operations").GetProperty("entries").GetProperty("sort").EnumerateArray().Select(e => e.GetString());
         Assert.Equal(["name", "count"], departmentSort);
-        var withSearch = await AskAsync(setup, new FakeToolCall("lookup_query__lists", "{\"target\":\"policies\",\"operation\":\"documents\",\"search\":\"x\"}", $"call_{++call}"));
+        var withSearch = await AskAsync(setup, new FakeToolCall("lists_query", "{\"target\":\"policies\",\"operation\":\"documents\",\"search\":\"x\"}", $"call_{++call}"));
         Assert.Contains("takes no search or sort", ResultOf(withSearch), StringComparison.Ordinal);
     }
 
@@ -147,7 +147,7 @@ public sealed class LeanManifestTests(SharedQuorumApp host, QdrantFixture qdrant
         var setup = await RagApi.Setup.OverAsync(host, qdrant);
         await using var _ = setup;
         var assistant = await ToolsApi.DefaultAssistantIdAsync(setup.Admin);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.First(t => !t.Name.StartsWith("lookup__", StringComparison.Ordinal));
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, assistant)).Pool.First(t => t.Origin != "lookup");
 
         using var response = await setup.Admin.PutAsJsonAsync(
             ToolsApi.AssistantTools(assistant),

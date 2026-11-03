@@ -1,4 +1,4 @@
-﻿using Bunit;
+using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
 using Quorum.Web.Client.Api;
@@ -23,7 +23,9 @@ public sealed class AgentToolPickerTests : BunitContext
         Services.AddMudServices();
     }
 
-    private static PoolTool Tool(string name, Guid? id = null, string? manifest = null) => new(id ?? Guid.NewGuid(), name, false, manifest);
+    // The name does not say where a tool comes from, the server does: a tool made in Quorum has its own name, an MCP tool its server's.
+    private static PoolTool Tool(string origin, string name, Guid? id = null, string? manifest = null) =>
+        new(id ?? Guid.NewGuid(), name, false, manifest, origin, origin == "mcp" ? name[..name.IndexOf("__", StringComparison.Ordinal)] : null);
 
     private IRenderedComponent<AgentToolPicker> Draw(params PoolTool[] pool) =>
         Render<AgentToolPicker>(parameters => parameters
@@ -36,22 +38,32 @@ public sealed class AgentToolPickerTests : BunitContext
     public void TheToolsMadeInQuorumAreGroupedAsTheMenuDoesAndEachServerKeepsItsOwnGroup()
     {
         var page = Draw(
-            Tool("files__read"),
-            Tool("rag__search_contracts"),
-            Tool("lookup__contracts", Lookup, "Full"),
-            Tool("web_fetch__fetch"),
-            Tool("web_search__web"),
-            Tool("builtin__calculator", Calculator));
+            Tool("mcp", "files__read"),
+            Tool("rag", "search_contracts"),
+            Tool("lookup", "contracts", Lookup, "Full"),
+            Tool("web_fetch", "WebFetch"),
+            Tool("web_search", "WebSearch"),
+            Tool("builtin", "calculator", Calculator));
 
         Assert.Equal(["builtin", "search tools", "web tools", "files"], page.FindAll("[data-source]").Select(s => s.GetAttribute("data-source")).ToArray());
         var search = page.Find("[data-source='search tools']").ParentElement!;
         Assert.Equal(["contracts", "search_contracts"], search.QuerySelectorAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
+        var web = page.Find("[data-source='web tools']").ParentElement!;
+        Assert.Equal(["WebFetch", "WebSearch"], web.QuerySelectorAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
     }
 
     [Fact]
-    public void ToolsAreListedWithFriendlyNamesAndTheActiveOnesAreChecked()
+    public void AnMcpToolIsShownWithItsServerAndTheOthersByTheirOwnName()
     {
-        var page = Draw(Tool("builtin__calculator", Calculator), Tool("builtin__current_datetime", Clock));
+        var page = Draw(Tool("mcp", "files__read"), Tool("builtin", "calculator", Calculator));
+
+        Assert.Equal(["calculator", "files · read"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
+    }
+
+    [Fact]
+    public void ToolsAreListedByTheirOwnNameAndTheActiveOnesAreChecked()
+    {
+        var page = Draw(Tool("builtin", "calculator", Calculator), Tool("builtin", "current_datetime", Clock));
 
         Assert.Equal(["calculator", "current_datetime"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).ToArray());
         var boxes = page.FindAll(".mud-checkbox input");
@@ -62,7 +74,7 @@ public sealed class AgentToolPickerTests : BunitContext
     [Fact]
     public void SearchingNarrowsTheTools()
     {
-        var page = Draw(Tool("builtin__calculator", Calculator), Tool("builtin__current_datetime", Clock));
+        var page = Draw(Tool("builtin", "calculator", Calculator), Tool("builtin", "current_datetime", Clock));
 
         page.Find("input[type=text]").Input("calc");
 
@@ -72,7 +84,7 @@ public sealed class AgentToolPickerTests : BunitContext
     [Fact]
     public void SwitchingAToolChangesTheSetAndSaysSo()
     {
-        var page = Draw(Tool("builtin__calculator", Calculator), Tool("builtin__current_datetime", Clock));
+        var page = Draw(Tool("builtin", "calculator", Calculator), Tool("builtin", "current_datetime", Clock));
 
         page.FindAll(".mud-checkbox input")[0].Change(false);
         page.FindAll(".mud-checkbox input")[1].Change(true);
@@ -84,7 +96,7 @@ public sealed class AgentToolPickerTests : BunitContext
     [Fact]
     public void ALookupToolIsOfferedLeanOnlyWhileItIsOn()
     {
-        var page = Draw(Tool("lookup__contracts", Lookup, "Full"));
+        var page = Draw(Tool("lookup", "contracts", Lookup, "Full"));
 
         Assert.True(page.Find(".mud-switch input").HasAttribute("disabled"));
         page.Find(".mud-checkbox input").Change(true);
@@ -92,13 +104,5 @@ public sealed class AgentToolPickerTests : BunitContext
         page.Find(".mud-switch input").Change(true);
 
         Assert.Equal("Lean", _manifests[Lookup]);
-    }
-
-    [Fact]
-    public void TwoToolsOfOneGroupWithTheSameNameSayWhatEachOneIs()
-    {
-        var page = Draw(Tool("lookup__contracts", Lookup, "Full"), Tool("rag__contracts"), Tool("rag__vendors"));
-
-        Assert.Equal(["lookup · contracts", "rag · contracts", "vendors"], page.FindAll(".mud-checkbox").Select(c => c.TextContent.Trim()).Order().ToArray());
     }
 }

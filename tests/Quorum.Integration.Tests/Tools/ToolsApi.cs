@@ -120,7 +120,7 @@ internal static class ToolsApi
 
     public sealed record AgentBody(Guid Id, string Slug);
 
-    public sealed record PoolToolBody(Guid ToolId, string Name, bool Active);
+    public sealed record PoolToolBody(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "", string? Server = null);
 
     public sealed record WarningBody(string Code, string Message);
 

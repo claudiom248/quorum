@@ -14,7 +14,7 @@ namespace Quorum.Integration.Tests.WebSearch;
 public sealed class WebSearchToolCallTests(PostgresFixture postgres)
 {
     private static FakeToolCall Call(string query, string id = "call_1") =>
-        new("web_search__research", JsonSerializer.Serialize(new { query }), id);
+        new("research", JsonSerializer.Serialize(new { query }), id);
 
     private static string ResultOf(IEnumerable<SseEvent> events, int index = 0) =>
         events.Where(e => e.Type == "tool_result").ElementAt(index).Data.GetProperty("content").GetString()!;
@@ -29,7 +29,7 @@ public sealed class WebSearchToolCallTests(PostgresFixture postgres)
         var admin = await app.SetUpAsync();
         await WebSearchApi.ConfigureAsync(admin, "http://searxng.test");
         await WebSearchApi.CreateOkAsync(admin, body ?? WebSearchApi.Body(name: "research"));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "research");
         script?.Invoke(app.Searxng);
         return (app, admin, await ChatApi.CreateConversationAsync(admin));
     }

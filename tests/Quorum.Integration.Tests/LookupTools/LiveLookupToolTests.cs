@@ -102,7 +102,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, SharedQuorumAp
                 // A field a single value fixes is not offered to the model (spec 012 D-7): the fixed filters of these tests fix department.
                 exposedFields: fixedFilters is null ? [new { fieldId = fields["audience"] }, new { fieldId = fields["department"] }] : [new { fieldId = fields["audience"] }],
                 fixedFilters: fixedFilters));
-        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lists");
         return new Live(setup, knowledgeBase, tool.Id);
     }
 
@@ -112,7 +112,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, SharedQuorumAp
         var node = JsonSerializer.SerializeToNode(arguments)!.AsObject();
         var operation = node["operation"]?.GetValue<string>() ?? "entries";
         node.Remove("operation");
-        return new($"lookup_{operation}__lists", node.ToJsonString(), id);
+        return new($"lists_{operation}", node.ToJsonString(), id);
     }
 
     private static Task<IReadOnlyList<SseEvent>> AskAsync(RagApi.Setup setup, params FakeToolCall[] calls)
@@ -156,7 +156,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, SharedQuorumAp
         var detail = await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool);
 
         // One function for each thing the tool does, each with only its own arguments.
-        Assert.Equal(["lookup_entries__lists", "lookup_documents__lists", "lookup_count__lists"], detail.Definitions.Select(d => d.Name));
+        Assert.Equal(["lists_entries", "lists_documents", "lists_count"], detail.Definitions.Select(d => d.Name));
         Assert.Equal(["audience", "cursor", "department", "limit", "lookup", "search", "sort"], detail.Function("entries").Parameters.Order().ToArray());
         Assert.Equal(["audience", "cursor", "department", "limit"], detail.Function("documents").Parameters.Order().ToArray());
         Assert.Equal(["audience", "department"], detail.Function("count").Parameters.Order().ToArray());
@@ -173,11 +173,11 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, SharedQuorumAp
 
         var detail = await LookupToolApi.GetAsync(live.Setup.Admin, live.Tool);
 
-        Assert.Equal("lookup_entries__lists", Assert.Single(detail.Definitions).Name);
+        Assert.Equal("lists_entries", Assert.Single(detail.Definitions).Name);
         var events = await AskAsync(live.Setup, Call(new { operation = "count" }));
         Assert.Equal("failed", StatusOf(events));
         // A function that was not offered is not found: the model never had it.
-        Assert.Contains("lookup_count__lists", ResultOf(events), StringComparison.Ordinal);
+        Assert.Contains("lists_count", ResultOf(events), StringComparison.Ordinal);
     }
 
     [Theory] // AC-29
@@ -283,7 +283,7 @@ public sealed class LiveLookupToolTests(PostgresFixture postgres, SharedQuorumAp
                 lookups: [LookupToolApi.Bind(manual)],
                 knowledgeBaseIds: [contracts, policies],
                 exposedFields: [new { fieldId = fields["audience"] }]));
-        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lookup__lists");
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "lists");
 
         var unnamed = await AskAsync(setup, Call(new { operation = "documents", audience = Managers }));
 

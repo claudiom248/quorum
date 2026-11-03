@@ -37,7 +37,7 @@ public sealed partial class RagToolDocumentIdsTests(PostgresFixture postgres, Qd
 
     private static async Task<IReadOnlyList<SseEvent>> AskAsync(RagApi.Setup setup, object arguments)
     {
-        setup.App.ModelServer.EnqueueRounds(ChatScript.CallTools(new FakeToolCall("rag__company", JsonSerializer.Serialize(arguments), "call_1")), ChatScript.Reply("Done."));
+        setup.App.ModelServer.EnqueueRounds(ChatScript.CallTools(new FakeToolCall("company", JsonSerializer.Serialize(arguments), "call_1")), ChatScript.Reply("Done."));
         return await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Question");
     }
 
@@ -49,7 +49,7 @@ public sealed partial class RagToolDocumentIdsTests(PostgresFixture postgres, Qd
         var created = await RagApi.CreateOkAsync(
             setup.Admin,
             RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: fields.Values, fixedFilters: fixedFilters, topK: 20, allowDocumentIds: allowDocumentIds));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         return (setup, created.Id);
     }
 
@@ -179,7 +179,7 @@ public sealed partial class RagToolDocumentIdsTests(PostgresFixture postgres, Qd
         var complete = await setup.RegisterAsync("complete");
         var bare = await setup.RegisterAsync("bare", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [bare, complete], topK: 20));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         var events = await AskAsync(setup, new { query = "policy", document_ids = Travel });
 

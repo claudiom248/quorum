@@ -24,12 +24,25 @@ public sealed class AssistantToolsTests(PostgresFixture postgres, SharedQuorumAp
         Assert.Equal("Assistant", assistant.Name);
     }
 
+    [Fact] // spec 015 AC-9
+    public async Task EveryToolOfThePoolSaysWhereItComesFromBecauseItsNameDoesNot()
+    {
+        var client = host.Admin;
+        var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
+
+        var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
+
+        Assert.All(pool, tool => Assert.Equal("builtin", tool.Origin));
+        Assert.Contains(pool, tool => tool.Name == "calculator");
+        Assert.All(pool, tool => Assert.Null(tool.Server));
+    }
+
     [Fact]
     public async Task TheActiveSetIsReplacedByWhatTheAdminSends()
     {
         var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "calculator");
 
         using var only = await client.PutAsJsonAsync(ToolsApi.AssistantTools(assistantId), new { toolIds = new[] { calculator.ToolId } }, Ct);
         var afterOnly = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
@@ -37,7 +50,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres, SharedQuorumAp
         var afterNone = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
 
         Assert.Equal(HttpStatusCode.NoContent, only.StatusCode);
-        Assert.Equal(["builtin__calculator"], afterOnly.Where(t => t.Active).Select(t => t.Name).ToArray());
+        Assert.Equal(["calculator"], afterOnly.Where(t => t.Active).Select(t => t.Name).ToArray());
         Assert.Equal(HttpStatusCode.NoContent, none.StatusCode);
         Assert.All(afterNone, tool => Assert.False(tool.Active));
     }
@@ -47,7 +60,7 @@ public sealed class AssistantToolsTests(PostgresFixture postgres, SharedQuorumAp
     {
         var client = host.Admin;
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
-        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "builtin__calculator");
+        var calculator = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool.Single(t => t.Name == "calculator");
 
         using var response = await client.PutAsJsonAsync(ToolsApi.AssistantTools(assistantId), new { toolIds = new[] { calculator.ToolId, calculator.ToolId } }, Ct);
 

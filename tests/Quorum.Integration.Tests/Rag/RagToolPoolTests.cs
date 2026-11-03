@@ -32,11 +32,11 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-default", knowledgeBaseIds: [kb], scope: new { kind = "Agent", agentIds = new[] { defaultAgent } }));
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "for-tenant", knowledgeBaseIds: [kb]));
 
-        var defaultPool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Select(t => t.Name).Where(n => n.StartsWith("rag__", StringComparison.Ordinal)).Order().ToArray();
-        var otherPool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, other)).Pool.Select(t => t.Name).Where(n => n.StartsWith("rag__", StringComparison.Ordinal)).Order().ToArray();
+        var defaultPool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Where(t => t.Origin == "rag").Select(t => t.Name).Order().ToArray();
+        var otherPool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, other)).Pool.Where(t => t.Origin == "rag").Select(t => t.Name).Order().ToArray();
 
-        Assert.Equal(["rag__for-default", "rag__for-tenant"], defaultPool);
-        Assert.Equal(["rag__for-other", "rag__for-tenant"], otherPool);
+        Assert.Equal(["for-default", "for-tenant"], defaultPool);
+        Assert.Equal(["for-other", "for-tenant"], otherPool);
     }
 
     [Fact] // AC-23
@@ -47,16 +47,16 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         var chat = await ChatApi.CreateConversationAsync(setup.Admin);
         setup.App.ModelServer.EnqueueRounds(FakeModelServer.ChatScript.Reply("one."), FakeModelServer.ChatScript.Reply("two."));
-        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "builtin__calculator");
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "calculator");
 
         await ChatApi.SendAsync(setup.Admin, chat, "Hi");
-        await RagApi.ActivateAsync(setup.Admin, "builtin__calculator", "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "calculator", "company");
         await ChatApi.SendAsync(setup.Admin, chat, "Again");
 
         string[] Offered(int request) =>
             [.. setup.App.ModelServer.ChatRequests[request].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()!)];
-        Assert.Equal(["builtin__calculator"], Offered(0));
-        Assert.Equal(["builtin__calculator", "rag__company"], Offered(1));
+        Assert.Equal(["calculator"], Offered(0));
+        Assert.Equal(["calculator", "company"], Offered(1));
     }
 
     [Fact] // AC-23, AC-48
@@ -71,7 +71,7 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool;
         using var activate = await setup.Admin.PutAsJsonAsync(ToolsApi.AssistantTools(setup.AssistantId), new { toolIds = new[] { created.Id } }, Ct);
 
-        Assert.DoesNotContain(pool, t => t.Name == "rag__company");
+        Assert.DoesNotContain(pool, t => t.Name == "company");
         Assert.Equal(HttpStatusCode.BadRequest, activate.StatusCode);
         Assert.Equal("tool.not_in_pool", await ToolsApi.ProblemCodeAsync(activate));
         // The tool itself is still there for the administrator to fix, with the knowledge base gone from it.
@@ -86,7 +86,7 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         var narrower = await AssistantFixtures.AddAsync(setup.App);
 
         // The knowledge base is now only for another assistant: this one no longer sees it, so the tool has nothing to search here.
@@ -101,7 +101,7 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         setup.App.ModelServer.EnqueueRounds(FakeModelServer.ChatScript.Reply("No tool."));
         await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Hello");
 
-        Assert.DoesNotContain(pool, t => t.Name == "rag__company");
+        Assert.DoesNotContain(pool, t => t.Name == "company");
         Assert.False(setup.App.ModelServer.ChatRequests[0].TryGetProperty("tools", out _));
         // For the administrator the knowledge base is still part of the configuration.
         Assert.Equal([kb], (await RagApi.GetAsync(setup.Admin, created.Id)).KnowledgeBaseIds);
@@ -124,7 +124,7 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
 
         var listed = await RagApi.ListAsync(setup.Admin);
         var tools = (await ToolsApi.ListToolsAsync(setup.Admin)).Where(t => t.Origin == "Rag").Select(t => t.Name).Order().ToArray();
-        var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Select(t => t.Name).Where(n => n.StartsWith("rag__", StringComparison.Ordinal)).Order().ToArray();
+        var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Where(t => t.Origin == "rag").Select(t => t.Name).Order().ToArray();
         using var read = await setup.Admin.GetAsync(RagApi.One(global), Ct);
         using var edit = await setup.Admin.PutAsJsonAsync(RagApi.One(global), RagApi.Body(name: "mine-now", knowledgeBaseIds: [sharedKb]), Ct);
         using var delete = await setup.Admin.DeleteAsync(RagApi.One(global), Ct);
@@ -136,7 +136,7 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         Assert.All(listed, t => Assert.Empty(t.KnowledgeBases));
         Assert.All(listed, t => Assert.Empty(t.Scope.TenantIds));
         Assert.Equal(["blind", "shared-global", "shared-us"], tools);
-        Assert.Equal(["rag__shared-global", "rag__shared-us"], pool);
+        Assert.Equal(["shared-global", "shared-us"], pool);
         Assert.All([read, edit, delete, change], response => Assert.Equal(HttpStatusCode.NotFound, response.StatusCode));
     }
 
@@ -149,9 +149,9 @@ public sealed class RagToolPoolTests(SharedQuorumApp host, QdrantFixture qdrant)
         await AddForeignRagToolAsync(setup.App, stranger, "off", [sharedKb], ToolScopeKind.Global, state: ToolState.Disabled);
         await AddForeignRagToolAsync(setup.App, stranger, "review", [sharedKb], ToolScopeKind.Global, state: ToolState.PendingReview);
 
-        var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Select(t => t.Name);
+        var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool.Where(t => t.Origin == "rag").Select(t => t.Name);
 
-        Assert.DoesNotContain(pool, name => name.StartsWith("rag__", StringComparison.Ordinal));
+        Assert.Empty(pool);
         Assert.Empty(await RagApi.ListAsync(setup.Admin));
     }
 

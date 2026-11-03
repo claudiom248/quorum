@@ -149,17 +149,17 @@ public sealed class ModelEndpointTests(PostgresFixture postgres, SharedQuorumApp
     [Fact]
     public async Task TestingAnEndpointWithoutAKeyUsesTheKeyStoredForIt()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var client = await app.SetUpAsync();
+        var client = host.Admin;
         using var created = await client.PostAsJsonAsync(Endpoints, Body("cloud", apiKey: "sk-stored"), Ct);
         var id = (await created.Content.ReadFromJsonAsync<EndpointBody>(Ct))!.Id;
+        var modelServer = host.App.ModelServer;
 
         using var stored = await client.PostAsJsonAsync(TestConnection, new { baseUrl = QuorumApp.ModelBaseUrl, endpointId = id }, Ct);
-        var storedAuthorization = app.ModelServer.LastAuthorization;
+        var storedAuthorization = modelServer.LastAuthorization;
         using var typed = await client.PostAsJsonAsync(TestConnection, new { baseUrl = QuorumApp.ModelBaseUrl, apiKey = "sk-typed", endpointId = id }, Ct);
-        var typedAuthorization = app.ModelServer.LastAuthorization;
+        var typedAuthorization = modelServer.LastAuthorization;
         using var removed = await client.PostAsJsonAsync(TestConnection, new { baseUrl = QuorumApp.ModelBaseUrl, apiKey = string.Empty, endpointId = id }, Ct);
-        var removedAuthorization = app.ModelServer.LastAuthorization;
+        var removedAuthorization = modelServer.LastAuthorization;
 
         Assert.Equal(HttpStatusCode.OK, stored.StatusCode);
         Assert.Equal("Bearer sk-stored", storedAuthorization);
@@ -167,7 +167,6 @@ public sealed class ModelEndpointTests(PostgresFixture postgres, SharedQuorumApp
         Assert.NotEqual("Bearer sk-stored", removedAuthorization);
         Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
     }
-
     [Fact] // AC-24 (endpoint writes)
     public async Task WithoutTheAgentsManagePermissionEveryCallIsForbidden()
     {

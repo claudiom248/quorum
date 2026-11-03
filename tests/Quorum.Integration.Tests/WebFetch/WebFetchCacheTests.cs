@@ -43,7 +43,7 @@ public sealed class WebFetchCacheTests(PostgresFixture postgres)
         }
 
         await WebFetchApi.CreateOkAsync(admin, WebFetchApi.Body(name: "read"));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_fetch__read");
+        await ToolFixtures.ActivateOnlyAsync(admin, "read");
         script?.Invoke(app.WebFetch);
         return (app, admin, await ChatApi.CreateConversationAsync(admin));
     }

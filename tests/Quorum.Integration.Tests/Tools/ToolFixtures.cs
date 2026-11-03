@@ -30,7 +30,7 @@ internal static class ToolFixtures
         return tool.Id;
     }
 
-    /// <summary>Activates exactly the named tools (exposed names such as <c>builtin__calculator</c>) on the default assistant.</summary>
+    /// <summary>Activates exactly the named tools (exposed names such as <c>calculator</c>) on the default assistant.</summary>
     public static async Task ActivateOnlyAsync(HttpClient client, params string[] exposedNames)
     {
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);

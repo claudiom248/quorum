@@ -169,7 +169,7 @@ public sealed class ToolContextBudgetTests(PostgresFixture postgres)
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = (_, _) => Task.FromResult(new string('r', 4000));
         app.ModelServer.EnqueueRounds(
-            ChatScript.Reply("Looking it up. ") with { ToolCalls = [new FakeToolCall("builtin__probe", """{"text":"x"}""")] },
+            ChatScript.Reply("Looking it up. ") with { ToolCalls = [new FakeToolCall("probe", """{"text":"x"}""")] },
             ChatScript.Reply("Should not be asked."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -191,7 +191,7 @@ public sealed class ToolContextBudgetTests(PostgresFixture postgres)
         await ToolFixtures.AddProbeAsync(app);
         app.Probe.Handler = (_, _) => Task.FromResult(new string('r', 2000));
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__probe", """{"text":"x"}""")),
+            ChatScript.CallTools(new FakeToolCall("probe", """{"text":"x"}""")),
             ChatScript.Reply("Done."));
         var id = await ChatApi.CreateConversationAsync(client);
 

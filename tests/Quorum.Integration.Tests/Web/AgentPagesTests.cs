@@ -339,9 +339,9 @@ public sealed class AgentPagesTests : ListPageTestContext
             others: 0,
             pool:
             [
-                new { toolId = Calculator, name = "builtin__calculator", active = true },
-                new { toolId = Clock, name = "builtin__current_datetime", active = false },
-                new { toolId = LookupTool, name = "lookup__contracts", active = true, manifest = "Full" },
+                new { toolId = Calculator, name = "calculator", active = true, origin = "builtin" },
+                new { toolId = Clock, name = "current_datetime", active = false, origin = "builtin" },
+                new { toolId = LookupTool, name = "contracts", active = true, manifest = "Full", origin = "lookup" },
             ]);
         var page = OpenAgent(Root.ToString());
 
@@ -363,7 +363,7 @@ public sealed class AgentPagesTests : ListPageTestContext
     {
         RespondWithAgents(
             others: 0,
-            pool: [new { toolId = Calculator, name = "builtin__calculator", active = true }],
+            pool: [new { toolId = Calculator, name = "calculator", active = true, origin = "builtin" }],
             warnings: [new { code = "tool.too_many", message = "More than 15 tools are active: small models choose worse among many." }]);
 
         var page = OpenAgent(Root.ToString());

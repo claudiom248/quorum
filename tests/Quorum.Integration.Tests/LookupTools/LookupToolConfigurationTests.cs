@@ -28,10 +28,10 @@ public sealed class LookupToolConfigurationTests(SharedQuorumApp host, QdrantFix
             LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality), LookupToolApi.Bind(languages)], knowledgeBaseIds: [knowledgeBase]));
 
         var definition = created.Definition!;
-        Assert.Equal("lookup_entries__lists", definition.Name);
+        Assert.Equal("lists_entries", definition.Name);
         Assert.Equal(["cursor", "limit", "lookup", "search", "sort"], definition.Parameters.Order().ToArray());
         // The tool queries a knowledge base, so the live operations are offered next to the stored lists.
-        Assert.Equal(["lookup_entries__lists", "lookup_documents__lists", "lookup_count__lists"], created.Definitions.Select(d => d.Name));
+        Assert.Equal(["lists_entries", "lists_documents", "lists_count"], created.Definitions.Select(d => d.Name));
         Assert.Equal(["language", "nationality"], definition.Parameter("lookup").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Order().ToArray());
         Assert.Contains("Reads the lists of values.", definition.Description, StringComparison.Ordinal);
         Assert.True(definition.EstimatedTokens > 0);
@@ -312,7 +312,7 @@ public sealed class LookupToolConfigurationTests(SharedQuorumApp host, QdrantFix
         Assert.False(item.Shared);
         Assert.Equal("Enabled", item.State);
         Assert.Equal([knowledgeBase], detail.KnowledgeBaseIds);
-        Assert.Equal("lookup_entries__lists", detail.Definition!.Name);
+        Assert.Equal("lists_entries", detail.Definition!.Name);
     }
 
     [Fact] // AC-40 (the /tools/lookup half)
