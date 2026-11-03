@@ -1,40 +1,82 @@
-<div class="tool-group">
-    <div class="tool-group-bar" aria-hidden="true">
-        @foreach (var call in Calls)
-        {
-            <span class="tool-group-segment @Tone(call)"></span>
-        }
+@if (Style == LedgerStyle.Classic)
+{
+    <div class="tool-group">
+        <div class="tool-group-bar" aria-hidden="true">
+            @foreach (var call in Calls)
+            {
+                <span class="tool-group-segment @Tone(call)"></span>
+            }
+        </div>
+
+        <div class="tool-group-head">
+            <span class="tool-group-title">@Calls.Count @(Calls.Count == 1 ? "operation" : "operations")</span>
+            <span class="tool-group-summary">@Summary</span>
+        </div>
+
+        <ol class="tool-ledger">
+            @{
+                var roots = Roots;
+            }
+            @for (var i = 0; i < roots.Count; i++)
+            {
+                @Row(roots[i], (i + 1).ToString("00"))
+            }
+        </ol>
+
+        @Waiting
     </div>
+}
+else
+{
+    <div class="tool-group lg @LedgerStyles.CssClass(Style)">
+        <div class="tool-group-head">
+            <span class="tool-group-title">@Calls.Count @(Calls.Count == 1 ? "operation" : "operations")</span>
+            <span class="tool-group-summary">@Summary</span>
+        </div>
 
-    <div class="tool-group-head">
-        <span class="tool-group-title">@Calls.Count @(Calls.Count == 1 ? "operation" : "operations")</span>
-        <span class="tool-group-summary">@Summary</span>
-    </div>
-
-    <ol class="tool-ledger">
-        @{
-            var roots = Roots;
-        }
-        @for (var i = 0; i < roots.Count; i++)
+        @foreach (var segment in Segments())
         {
-            @Row(roots[i], (i + 1).ToString("00"))
+            @if (segment.Delegation is { } delegation)
+            {
+                @Delegation(delegation)
+            }
+            else if (Style == LedgerStyle.Cards)
+            {
+                <div class="lg-item lg-tools">
+                    <div class="lg-tools-head">
+                        <span class="lg-avatar lg-avatar-plain"><MudIcon Icon="@Icons.Material.Outlined.Build" Size="Size.Small" /></span>
+                        <span class="lg-name">Tools</span>
+                        <span class="lg-meta">@segment.Plain.Count @(segment.Plain.Count == 1 ? "call" : "calls")</span>
+                    </div>
+                    <div class="lg-children">
+                        @foreach (var call in segment.Plain)
+                        {
+                            @Plain(call)
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                @foreach (var call in segment.Plain)
+                {
+                    @Plain(call)
+                }
+            }
         }
-    </ol>
 
-    @foreach (var call in Calls.Where(waiting => waiting.IsWaiting))
-    {
-        var current = call;
-        <ToolCallCard @key="current.CallId" Call="current"
-                      OnDecide="approved => OnDecide(current, approved)"
-                      OnAnswer="answer => OnAnswer(current, answer)" />
-    }
-</div>
+        @Waiting
+    </div>
+}
 
 @code {
     private const int PreviewLength = 64;
 
     [Parameter, EditorRequired]
     public IReadOnlyList<ToolCallView> Calls { get; set; } = [];
+
+    [Parameter]
+    public LedgerStyle Style { get; set; } = LedgerStyle.Classic;
 
     [Parameter, EditorRequired]
     public Func<ToolCallView, bool, Task> OnDecide { get; set; } = (_, _) => Task.CompletedTask;
@@ -51,6 +93,130 @@
     private IReadOnlyList<ToolCallView> ChildrenOf(ToolCallView call) =>
         [.. Calls.Where(other => other.ParentCallId == call.CallId)];
 
+    private RenderFragment Waiting => @<text>
+        @foreach (var call in Calls.Where(waiting => waiting.IsWaiting))
+        {
+            var current = call;
+            <ToolCallCard @key="current.CallId" Call="current"
+                          OnDecide="approved => OnDecide(current, approved)"
+                          OnAnswer="answer => OnAnswer(current, answer)" />
+        }
+    </text>;
+
+    // Consecutive plain calls share one card (style A); a delegation is a segment of its own.
+    private IEnumerable<(ToolCallView? Delegation, IReadOnlyList<ToolCallView> Plain)> Segments()
+    {
+        var plain = new List<ToolCallView>();
+        foreach (var call in Roots)
+        {
+            if (call.IsDelegation)
+            {
+                if (plain.Count > 0)
+                {
+                    yield return (null, [.. plain]);
+                    plain.Clear();
+                }
+
+                yield return (call, []);
+            }
+            else
+            {
+                plain.Add(call);
+            }
+        }
+
+        if (plain.Count > 0)
+        {
+            yield return (null, [.. plain]);
+        }
+    }
+
+    // An agent keeps its own tint, unless another agent of this answer already has it: two sub-agents must never look alike.
+    private int TintFor(string slug)
+    {
+        var taken = new HashSet<int>();
+        foreach (var other in Roots.Where(call => call.IsDelegation).Select(call => call.ToolName).Distinct())
+        {
+            var tint = LedgerStyles.TintOf(other);
+            while (taken.Contains(tint) && taken.Count < LedgerStyles.Tints)
+            {
+                tint = (tint + 1) % LedgerStyles.Tints;
+            }
+
+            taken.Add(tint);
+            if (other == slug)
+            {
+                return tint;
+            }
+        }
+
+        return LedgerStyles.TintOf(slug);
+    }
+
+    private static bool IsRunning(ToolCallView call) => call.State is ToolCallState.Running or ToolCallState.Replied;
+
+    private bool InParallel(ToolCallView call) =>
+        IsRunning(call) && Roots.Count(other => other.IsDelegation && IsRunning(other)) > 1;
+
+    private RenderFragment Delegation(ToolCallView call)
+    {
+        var children = ChildrenOf(call);
+        var name = LedgerStyles.NameOf(call.ToolName);
+        return @<details class="lg-item lg-agent lg-tint-@TintFor(call.ToolName) @Tone(call)" open="@(IsRunning(call) || call.State == ToolCallState.WaitingForConfirmation)">
+            <summary>
+                <span class="lg-avatar">@Initials(name)</span>
+                <span class="lg-title">
+                    <span class="lg-name">@name</span>
+                    <span class="lg-slug">@call.ToolName</span>
+                </span>
+                @if (InParallel(call))
+                {
+                    <span class="lg-chip">in parallel</span>
+                }
+                <span class="lg-meta">@Meta(call, children.Count)</span>
+                <span class="lg-state">@call.StatusLabel</span>
+            </summary>
+            <div class="lg-task">@Preview(call, 140)</div>
+            @if (call.HasArguments)
+            {
+                <details class="lg-more"><summary>Task</summary><pre class="tool-pre">@call.ArgumentsText</pre></details>
+            }
+            @* The text of a sub-agent is not shown to the user (spec 013 D-32). A failure keeps its message. *@
+            @if (call.Result is not null && call.State != ToolCallState.Succeeded)
+            {
+                <pre class="tool-pre">@call.Result</pre>
+            }
+            @if (children.Count > 0)
+            {
+                <div class="lg-children">
+                    @foreach (var child in children)
+                    {
+                        @Plain(child)
+                    }
+                </div>
+            }
+        </details>;
+    }
+
+    private RenderFragment Plain(ToolCallView call) =>
+        @<details class="lg-item lg-plain @Tone(call)">
+            <summary>
+                <span class="lg-avatar lg-avatar-plain"><MudIcon Icon="@Icons.Material.Outlined.Build" Size="Size.Small" /></span>
+                <span class="lg-title"><span class="lg-name">@call.DisplayName</span></span>
+                <span class="lg-args">@Preview(call, PreviewLength)</span>
+                <span class="lg-meta">@Seconds(call.Duration)</span>
+                <span class="lg-state">@call.StatusLabel</span>
+            </summary>
+            @if (call.HasArguments)
+            {
+                <pre class="tool-pre">@call.ArgumentsText</pre>
+            }
+            @if (call.Result is not null)
+            {
+                <pre class="tool-pre">@call.Result</pre>
+            }
+        </details>;
+
     private RenderFragment Row(ToolCallView call, string index)
     {
         var children = ChildrenOf(call);
@@ -63,7 +229,7 @@
                     {
                         <span class="tool-ledger-agent">@slug</span>
                     }
-                    <span class="tool-ledger-args">@Preview(call)</span>
+                    <span class="tool-ledger-args">@Preview(call, PreviewLength)</span>
                     <span class="tool-ledger-state">@call.StatusLabel</span>
                     <MudIcon Icon="@Icons.Material.Outlined.ExpandMore" Size="Size.Small" Class="tool-ledger-chevron" />
                 </summary>
@@ -98,7 +264,7 @@
                 return "Waiting for you";
             }
 
-            if (Calls.Any(call => call.State is ToolCallState.Running or ToolCallState.Replied))
+            if (Calls.Any(IsRunning))
             {
                 return "Running…";
             }
@@ -120,9 +286,39 @@
     };
 
     // Arguments are shown as one line: the full JSON sits one click away in the row.
-    private static string Preview(ToolCallView call)
+    private static string Preview(ToolCallView call, int length)
     {
-        var flat = string.Join(' ', call.ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim()));
-        return flat.Length <= PreviewLength ? flat : string.Concat(flat.AsSpan(0, PreviewLength), "…");
+        // A delegation reads as its task, not as {"task": ...}.
+        var text = call.IsDelegation && TaskOf(call) is { } task ? task : call.ArgumentsText;
+        var flat = string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim()));
+        return flat.Length <= length ? flat : string.Concat(flat.AsSpan(0, length), "…");
+    }
+
+    private static string? TaskOf(ToolCallView call)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(call.ArgumentsText);
+            return document.RootElement.TryGetProperty("task", out var task) && task.ValueKind == System.Text.Json.JsonValueKind.String ? task.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Initials(string name)
+    {
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length >= 2 ? string.Concat(char.ToUpperInvariant(words[0][0]), char.ToUpperInvariant(words[1][0])) : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+
+    private static string Seconds(TimeSpan? duration) =>
+        duration is { } span ? (span.TotalSeconds < 1 ? "<1 s" : $"{(int)Math.Round(span.TotalSeconds)} s") : string.Empty;
+
+    private static string Meta(ToolCallView call, int children)
+    {
+        var calls = $"{children} {(children == 1 ? "call" : "calls")}";
+        return call.Duration is null ? calls : $"{calls} · {Seconds(call.Duration)}";
     }
 }

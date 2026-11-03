@@ -108,7 +108,19 @@ public sealed class ToolCallView
         _ => throw new InvalidOperationException($"Unknown state {State}."),
     };
 
-    public static ToolCallView From(ToolCallEvent call)
+    /// <summary>When the call reached the page; <see langword="null"/> when the caller gave no clock.</summary>
+    public DateTimeOffset? StartedAt { get; private init; }
+
+    /// <summary>When the result reached the page.</summary>
+    public DateTimeOffset? CompletedAt { get; private set; }
+
+    /// <summary>How long the call took, once both ends are known.</summary>
+    public TimeSpan? Duration => StartedAt is { } start && CompletedAt is { } end ? end - start : null;
+
+    /// <summary>The sub-agent as a name people read, or <see langword="null"/> for a plain tool call.</summary>
+    public string? AgentName => AgentSlug is { } slug ? LedgerStyles.NameOf(slug) : null;
+
+    public static ToolCallView From(ToolCallEvent call, DateTimeOffset? now = null)
     {
         ArgumentNullException.ThrowIfNull(call);
 
@@ -126,6 +138,7 @@ public sealed class ToolCallView
             ToolName = call.Tool,
             ParentCallId = call.ParentCallId,
             AgentSlug = call.AgentSlug,
+            StartedAt = now,
             ArgumentsText = text,
             HasArguments = text.Length > 0 && !(arguments.ValueKind == JsonValueKind.Object && !arguments.EnumerateObject().Any()),
             State = call.RequiresConfirmation ? ToolCallState.WaitingForConfirmation : ToolCallState.Running,
@@ -141,9 +154,10 @@ public sealed class ToolCallView
         State = ToolCallState.WaitingForAnswer;
     }
 
-    public void Apply(ToolResultEvent result)
+    public void Apply(ToolResultEvent result, DateTimeOffset? now = null)
     {
         ArgumentNullException.ThrowIfNull(result);
+        CompletedAt = now;
         Result = result.Content;
         ExpiresAt = null;
         Busy = false;
