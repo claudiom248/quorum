@@ -97,9 +97,14 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
             new RouteValueDictionary { ["id"] = endpoint.Id });
     }
 
-    /// <summary>Without an API key in the request the probe is anonymous; the stored keys are never read back to the client.</summary>
+    /// <summary>
+    /// Without an API key in the request the probe uses the key stored for <c>endpointId</c>, and is anonymous when there is none; an
+    /// empty key tests without one. The stored keys are never read back to the client.
+    /// </summary>
     private static async Task<Results<Ok<ModelConnectionResult>, ValidationProblem, ProblemHttpResult>> TestAsync(
         TestModelEndpointRequest request,
+        AgentsDbContext db,
+        ApiKeyProtector apiKeyProtector,
         IModelEndpointProbe probe,
         CancellationToken cancellationToken)
     {
@@ -108,7 +113,18 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
             return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["baseUrl"] = [ModelEndpointRules.InvalidBaseUrl] });
         }
 
-        var result = await probe.ProbeAsync(baseUrl, request.ApiKey, request.ModelName, cancellationToken);
+        var apiKey = request.ApiKey;
+        if (apiKey is null && request.EndpointId is { } endpointId)
+        {
+            var stored = await db.ModelEndpoints
+                .AsNoTracking()
+                .Where(e => e.Id == endpointId)
+                .Select(e => e.ProtectedApiKey)
+                .SingleOrDefaultAsync(cancellationToken);
+            apiKey = apiKeyProtector.Unprotect(stored);
+        }
+
+        var result = await probe.ProbeAsync(baseUrl, apiKey, request.ModelName, cancellationToken);
 
         return result.IsSuccess
             ? TypedResults.Ok(new ModelConnectionResult(Reachable: true, result.Value.Models, result.Value.SupportsTools))
@@ -240,7 +256,7 @@ internal sealed record ModelEndpointRequest(
     int ContextTokenBudget,
     bool? SupportsTools);
 
-internal sealed record TestModelEndpointRequest(string? BaseUrl, string? ApiKey, string? ModelName);
+internal sealed record TestModelEndpointRequest(string? BaseUrl, string? ApiKey, string? ModelName, Guid? EndpointId = null);
 
 internal sealed record ModelEndpointResponse(
     Guid Id,

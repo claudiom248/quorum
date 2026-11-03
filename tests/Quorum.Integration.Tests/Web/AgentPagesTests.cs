@@ -11,6 +11,8 @@ public sealed class AgentPagesTests : ListPageTestContext
     private static readonly Guid Root = Guid.Parse("01a14120-0000-7208-890d-b78925ebb291");
     private static readonly Guid Endpoint = Guid.Parse("01a14121-0000-7208-890d-b78925ebb291");
 
+    private static readonly string[] Models = ["m"];
+
     private static object AgentItem(Guid id, string slug) =>
         new { id, slug, displayName = slug, description = "d", scope = "Tenant", modelEndpointId = (Guid?)null, subAgentCount = 0, toolCount = 0 };
 
@@ -188,6 +190,31 @@ public sealed class AgentPagesTests : ListPageTestContext
 
         var option = page.FindAll("[data-form=agent] select[aria-label='Model endpoint'] option").Single(o => o.GetAttribute("value") == Endpoint.ToString());
         Assert.Equal("qwen-flash", option.TextContent);
+    }
+
+    [Fact]
+    public void TestingAnEndpointBeingEditedNamesItSoItsStoredKeyIsUsed()
+    {
+        Api.Respond = (method, path) =>
+        {
+            if (method == HttpMethod.Get && path == "/api/model-endpoints")
+            {
+                return FakeApiHandler.Json(new[] { new { id = Endpoint, name = "e", baseUrl = "http://x/v1", modelName = "m", hasApiKey = true, contextTokenBudget = 4096, supportsTools = true } });
+            }
+
+            return method == HttpMethod.Post && path == "/api/model-endpoints/test"
+                ? FakeApiHandler.Json(new { reachable = true, models = Models, supportsTools = true })
+                : new HttpResponseMessage(HttpStatusCode.NoContent);
+        };
+        var page = Visit<Quorum.Web.Client.Pages.ModelEndpoints>("/agents/endpoints");
+        ClickButton(page, "Edit");
+
+        ClickButton(page, "Test connection");
+
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Post, "/api/model-endpoints/test")));
+        var body = Body(Api, HttpMethod.Post, "/api/model-endpoints/test");
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("apiKey").ValueKind);
+        Assert.Equal(Endpoint, body.GetProperty("endpointId").GetGuid());
     }
 
     [Fact]

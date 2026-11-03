@@ -16,8 +16,9 @@ public sealed partial class QuorumApi
         SendAsync(HttpMethod.Delete, $"api/model-endpoints/{id}", body: null, setupToken: null, cancellationToken);
 
     /// <param name="modelName">When given, the server also reports whether that model supports tools.</param>
-    public Task<ApiResult<ModelConnection>> TestModelEndpointAsync(string baseUrl, string? apiKey, string? modelName = null, CancellationToken cancellationToken = default) =>
-        SendAsync<ModelConnection>(HttpMethod.Post, "api/model-endpoints/test", new { baseUrl, apiKey, modelName }, setupToken: null, cancellationToken);
+    /// <param name="endpointId">The endpoint being edited: when <paramref name="apiKey"/> is <see langword="null"/>, its stored key is used.</param>
+    public Task<ApiResult<ModelConnection>> TestModelEndpointAsync(string baseUrl, string? apiKey, string? modelName = null, Guid? endpointId = null, CancellationToken cancellationToken = default) =>
+        SendAsync<ModelConnection>(HttpMethod.Post, "api/model-endpoints/test", new { baseUrl, apiKey, modelName, endpointId }, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<AgentListItem>>> ListAgentItemsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<AgentListItem>>("api/agents", cancellationToken);

@@ -176,7 +176,7 @@
         }
 
         _busy = true;
-        var result = await Api.TestModelEndpointAsync(_form.BaseUrl.Trim(), KeyToSend, _form.ModelName.Trim());
+        var result = await Api.TestModelEndpointAsync(_form.BaseUrl.Trim(), KeyToSend, _form.ModelName.Trim(), _editing?.Id);
         _busy = false;
         _formProblem = result.Problem;
         _test = result.IsSuccess ? result.Value : null;
