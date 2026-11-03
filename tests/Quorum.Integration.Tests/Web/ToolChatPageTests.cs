@@ -276,15 +276,41 @@ public sealed class ToolChatPageTests : BunitContext
 
         // The script is called after the render that shows the dialog, so no further render announces it: poll.
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!JSInterop.Invocations.Any(i => i.Identifier == "quorumChat.focusDialog") && DateTime.UtcNow < deadline)
+        string[] focusCalls;
+        do
         {
-            await Task.Delay(25, Xunit.TestContext.Current.CancellationToken);
-        }
+            focusCalls = await RecordedFocusCallsAsync();
+            if (focusCalls.Length == 1)
+            {
+                break;
+            }
 
-        Assert.Single(JSInterop.Invocations, i => i.Identifier == "quorumChat.focusDialog");
+            await Task.Delay(25, Xunit.TestContext.Current.CancellationToken);
+        } while (DateTime.UtcNow < deadline);
+
+        Assert.Single(focusCalls);
         await FinishAnswerAsync();
         _stream.Writer.Complete();
         await sending;
+
+        // bUnit keeps the recorded calls in a dictionary the renderer writes to while the test reads it, so the copy is retried:
+        // reading again is what a changed collection means here, not that the call arrived.
+        async Task<string[]> RecordedFocusCallsAsync()
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    return [.. JSInterop.Invocations.Select(i => i.Identifier).Where(id => id == "quorumChat.focusDialog")];
+                }
+                catch (InvalidOperationException)
+                {
+                    await Task.Delay(2, Xunit.TestContext.Current.CancellationToken);
+                }
+            }
+
+            return [.. JSInterop.Invocations.Select(i => i.Identifier).Where(id => id == "quorumChat.focusDialog")];
+        }
     }
 
     [Fact]
