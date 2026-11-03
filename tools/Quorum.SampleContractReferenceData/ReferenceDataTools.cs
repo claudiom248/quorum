@@ -79,7 +79,7 @@ internal sealed class ReferenceDataTools
         [Description("Country of the index, like IT or JP: one of the nine codes of the company")] string country,
         [Description("The year the value belongs to (2015 to 2025)")] int from_year,
         [Description("The year to state it in (2015 to 2025)")] int to_year,
-        [Description("Optional: an amount to revalue with the index")] double? amount = null,
+        [Description("Optional: an amount to revalue with the index; leave it out, or send 0, for the index alone")] double amount = 0,
         [Description("The currency of the amount, for the label; defaults to EUR")] string? currency = null)
     {
         var where = ParseCountry(country, "country");
@@ -93,13 +93,14 @@ internal sealed class ReferenceDataTools
         var percent = (factor - 1) * 100;
         var line = $"price_index {where} {then}→{now}: {PriceIndex.Format((double)first)} → {PriceIndex.Format((double)second)} · ×{factor.ToString("0.000", CultureInfo.InvariantCulture)} ({Signed(percent)}%), the index of {local} prices (invented, fixed)";
 
-        if (amount is null)
+        // A plain number with a default keeps the schema free of a null union, which small models fill in badly.
+        if (amount == 0)
         {
             return line;
         }
 
-        var what = amount.Value;
-        if (what <= 0)
+        var what = amount;
+        if (what < 0)
         {
             throw new McpException("The amount to revalue must be a positive number.");
         }
