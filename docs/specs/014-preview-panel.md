@@ -1,6 +1,6 @@
 # Spec 014: Preview Panel for Rendered Content in the Chat
 
-**Status:** In Review
+**Status:** Approved (2026-11-03)
 **Date:** 2026-11-03
 
 Phase 1 of three. Phase 2 (named, versioned artifacts the model emits) and phase 3 (MCP Apps, `ui://` resources returned by MCP tools) are recorded as deferred decisions; the design here is meant to be reused by both.
