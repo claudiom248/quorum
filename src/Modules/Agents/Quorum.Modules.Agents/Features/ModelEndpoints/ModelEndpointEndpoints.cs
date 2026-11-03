@@ -28,6 +28,7 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
             .RequireAuthorization(QuorumPolicies.AgentsManage);
 
         endpoints.MapGet("/", ListAsync).WithName("ListModelEndpoints");
+        endpoints.MapGet("/{id:guid}", GetAsync).WithName("GetModelEndpoint");
         endpoints.MapPost("/", CreateAsync).WithName("CreateModelEndpoint");
         endpoints.MapPost("/test", TestAsync).WithName("TestModelEndpoint");
         endpoints.MapPut("/{id:guid}", UpdateAsync).WithName("UpdateModelEndpoint");
@@ -44,6 +45,11 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
 
         return TypedResults.Ok(endpoints);
     }
+
+    private static async Task<Results<Ok<ModelEndpointResponse>, ProblemHttpResult>> GetAsync(Guid id, AgentsDbContext db, CancellationToken cancellationToken) =>
+        await db.ModelEndpoints.AsNoTracking().SingleOrDefaultAsync(e => e.Id == id, cancellationToken) is { } endpoint
+            ? TypedResults.Ok(ModelEndpointResponse.From(endpoint))
+            : NotFound.ToProblem();
 
     private static async Task<Results<CreatedAtRoute<ModelEndpointResponse>, ValidationProblem, ProblemHttpResult>> CreateAsync(
         ModelEndpointRequest request,
@@ -87,8 +93,8 @@ internal sealed class ModelEndpointEndpoints : IEndpointGroup
 
         return TypedResults.CreatedAtRoute(
             ModelEndpointResponse.From(endpoint),
-            "ListModelEndpoints",
-            new RouteValueDictionary());
+            "GetModelEndpoint",
+            new RouteValueDictionary { ["id"] = endpoint.Id });
     }
 
     /// <summary>Without an API key in the request the probe is anonymous; the stored keys are never read back to the client.</summary>

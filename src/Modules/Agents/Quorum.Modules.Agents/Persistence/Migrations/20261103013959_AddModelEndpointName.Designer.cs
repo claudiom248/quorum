@@ -643,7 +643,7 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.HasOne("Quorum.Modules.Agents.Domain.ModelEndpoint", null)
                         .WithMany()
                         .HasForeignKey("ModelEndpointId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

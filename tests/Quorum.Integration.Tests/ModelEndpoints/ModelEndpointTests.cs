@@ -39,6 +39,9 @@ public sealed class ModelEndpointTests(PostgresFixture postgres)
         var raw = await client.GetStringAsync(Endpoints, Ct);
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var location = created.Headers.Location!;
+        var fetched = await client.GetFromJsonAsync<EndpointBody>(location, Ct);
+        Assert.Equal("cloud", fetched!.Name);
         Assert.DoesNotContain("sk-secret", raw, StringComparison.Ordinal);
         var list = JsonSerializer.Deserialize<List<EndpointBody>>(raw, JsonSerializerOptions.Web)!;
         Assert.True(list.Single(e => e.Name == "cloud").HasApiKey);

@@ -61,7 +61,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             assistant.ToTable("assistants");
             assistant.Property(a => a.Name).HasMaxLength(200);
             assistant.HasIndex(a => a.TenantId);
-            assistant.HasOne<ModelEndpoint>().WithMany().HasForeignKey(a => a.ModelEndpointId);
+            assistant.HasOne<ModelEndpoint>().WithMany().HasForeignKey(a => a.ModelEndpointId).OnDelete(DeleteBehavior.Restrict);
             assistant.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });
 
