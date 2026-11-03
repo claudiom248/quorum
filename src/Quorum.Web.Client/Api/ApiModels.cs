@@ -58,7 +58,9 @@ public sealed record AnswerDone(Guid MessageId, string Status, string? Error) : 
 /// <summary>The model asked for a tool. <c>Arguments</c> is a JSON object, or the text the model sent when it was not valid JSON.</summary>
 /// <param name="Tool">The name the model used, e.g. <c>builtin__calculator</c>.</param>
 /// <param name="ExpiresAt">When a call that needs confirmation counts as denied.</param>
-public sealed record ToolCallEvent(Guid CallId, string Tool, JsonElement Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt) : AnswerEvent;
+/// <param name="ParentCallId">The delegation call a sub-agent made this call under; <see langword="null"/> for the root agent's calls.</param>
+/// <param name="AgentSlug">The slug of the sub-agent that made the call; <see langword="null"/> for the root agent's calls.</param>
+public sealed record ToolCallEvent(Guid CallId, string Tool, JsonElement Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt, Guid? ParentCallId = null, string? AgentSlug = null) : AnswerEvent;
 
 /// <summary>A tool call ended. <c>Status</c>: <c>succeeded</c>, <c>failed</c>, <c>denied</c>, <c>cancelled</c> or <c>timed_out</c>.</summary>
 public sealed record ToolResultEvent(Guid CallId, string Status, string Content, int SizeCharacters) : AnswerEvent;

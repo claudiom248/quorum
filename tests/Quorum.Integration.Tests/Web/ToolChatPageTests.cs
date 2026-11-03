@@ -367,4 +367,100 @@ public sealed class ToolChatPageTests : BunitContext
         _stream.Writer.Complete();
         await sending;
     }
+
+    private static readonly Guid Delegation = Guid.Parse("01a14119-0000-7208-890d-b78925ebb291");
+    private static readonly Guid Nested = Guid.Parse("01a1411a-0000-7208-890d-b78925ebb291");
+
+    private Task PushDelegationAsync() =>
+        PushAsync("tool_call", new
+        {
+            callId = Delegation,
+            tool = "web-researcher",
+            arguments = JsonDocument.Parse("""{"task":"find the price"}""").RootElement,
+            requiresConfirmation = false,
+        });
+
+    private Task PushNestedCallAsync(bool requiresConfirmation) =>
+        PushAsync("tool_call", new
+        {
+            callId = Nested,
+            tool = "builtin__calculator",
+            arguments = JsonDocument.Parse("""{"expression":"2+2"}""").RootElement,
+            requiresConfirmation,
+            expiresAt = requiresConfirmation ? DateTimeOffset.UtcNow.AddMinutes(5) : (DateTimeOffset?)null,
+            parentCallId = Delegation,
+            agentSlug = "web-researcher",
+        });
+
+    [Fact]
+    public async Task ADelegationIsOneEntryWithItsStateAndTheCallsOfTheSubAgentNestedWithoutItsText()
+    {
+        var (page, sending) = await StartAnswerAsync();
+
+        await PushDelegationAsync();
+        await PushNestedCallAsync(requiresConfirmation: false);
+        await PushAsync("tool_result", new { callId = Nested, status = "succeeded", content = "4", sizeCharacters = 1 });
+        await PushAsync("tool_result", new { callId = Delegation, status = "succeeded", content = "The sub-agent text", sizeCharacters = 18 });
+
+        page.WaitForAssertion(() =>
+        {
+            var top = Assert.Single(page.FindAll(".tool-ledger:not(.tool-ledger-nested) > .tool-ledger-row"));
+            Assert.Contains("web-researcher", top.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Done", top.TextContent, StringComparison.Ordinal);
+
+            var nested = Assert.Single(top.QuerySelectorAll(".tool-ledger-nested > .tool-ledger-row"));
+            Assert.Contains("calculator", nested.TextContent, StringComparison.Ordinal);
+            Assert.Contains("web-researcher", nested.QuerySelector(".tool-ledger-agent")!.TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("The sub-agent text", page.Markup, StringComparison.Ordinal);
+        });
+
+        await FinishAnswerAsync();
+        _stream.Writer.Complete();
+        await sending;
+    }
+
+    [Fact]
+    public async Task AConfirmationInsideADelegationNamesTheSubAgentAndTheDecisionIsSentForThatCall()
+    {
+        var (page, sending) = await StartAnswerAsync();
+
+        await PushDelegationAsync();
+        await PushNestedCallAsync(requiresConfirmation: true);
+
+        page.WaitForAssertion(() =>
+        {
+            var dialog = page.Find("[role=dialog]");
+            Assert.Contains("web-researcher", dialog.TextContent, StringComparison.Ordinal);
+            Assert.Contains("\"expression\": \"2+2\"", dialog.TextContent, StringComparison.Ordinal);
+        });
+
+        Click(page, "Approve");
+
+        page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, $"/tool-calls/{Nested}/decision")));
+
+        await FinishAnswerAsync();
+        _stream.Writer.Complete();
+        await sending;
+    }
+
+    [Theory]
+    [InlineData("succeeded", false)]
+    [InlineData("failed", true)]
+    public async Task ADelegationWithoutToolCallsHidesItsTextUnlessItFailed(string status, bool shown)
+    {
+        var (page, sending) = await StartAnswerAsync();
+
+        await PushDelegationAsync();
+        await PushAsync("tool_result", new { callId = Delegation, status, content = "The sub-agent text", sizeCharacters = 18 });
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains(status == "failed" ? "Failed" : "Done", page.Find(".tool-ledger-row").TextContent, StringComparison.Ordinal);
+            Assert.Equal(shown, page.Markup.Contains("The sub-agent text", StringComparison.Ordinal));
+        });
+
+        await FinishAnswerAsync();
+        _stream.Writer.Complete();
+        await sending;
+    }
 }

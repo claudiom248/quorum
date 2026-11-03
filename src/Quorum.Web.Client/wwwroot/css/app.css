@@ -84,6 +84,8 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .tool-ledger-row details[open] > summary .tool-ledger-chevron { transform: rotate(180deg); }
 .tool-ledger-row.tone-waiting .tool-ledger-state { color: var(--mud-palette-warning); }
 .tool-ledger-row.tone-error .tool-ledger-state { color: var(--mud-palette-error); }
+.tool-ledger-agent { padding: 0 .4rem; border: 1px solid var(--mud-palette-lines-default); border-radius: 999px; font-size: .72rem; white-space: nowrap; color: var(--mud-palette-text-secondary); }
+.tool-ledger-nested { margin: 0 0 .25rem 1.5rem; padding-left: .75rem; border-left: 2px solid var(--mud-palette-lines-default); }
 .tool-ledger-row details > .tool-pre { margin: .1rem 0 .4rem 2.1rem; }
 .tool-question { margin-top: .5rem; }
 .tool-question-text { font-weight: 600; margin-bottom: .35rem; white-space: pre-wrap; }

@@ -47,7 +47,9 @@
         <div class="tool-dialog" role="dialog" aria-modal="true" aria-label="Confirm tool call" tabindex="-1"
              @ref="_dialog" @onkeydown="OnKeyDownAsync" @onkeydown:stopPropagation="true">
             <h2>Allow this tool to run?</h2>
-            <p>The assistant wants to call <strong>@Call.DisplayName</strong>@(Call.HasArguments ? " with these arguments:" : " without arguments.")</p>
+            <p>
+                @(Call.AgentSlug is { } slug ? $"The sub-agent {slug}" : "The assistant") wants to call <strong>@Call.DisplayName</strong>@(Call.HasArguments ? " with these arguments:" : " without arguments.")
+            </p>
             @if (Call.HasArguments)
             {
                 <pre class="tool-pre">@Call.ArgumentsText</pre>

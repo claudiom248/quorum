@@ -49,6 +49,12 @@ public sealed class ToolCallView
 
     public bool HasArguments { get; private init; }
 
+    /// <summary>The delegation call this call was made under, when a sub-agent made it.</summary>
+    public Guid? ParentCallId { get; private init; }
+
+    /// <summary>The sub-agent that made the call; <see langword="null"/> for the root agent.</summary>
+    public string? AgentSlug { get; private init; }
+
     public ToolCallState State { get; private set; }
 
     /// <summary>When a call waiting for the user counts as unanswered.</summary>
@@ -60,6 +66,12 @@ public sealed class ToolCallView
 
     /// <summary>A reply is being sent.</summary>
     public bool Busy { get; set; }
+
+    /// <summary>
+    /// A delegation to a sub-agent: every other tool name has an origin prefix (<c>builtin__x</c>) except <c>ask_user</c>, and a slug cannot hold
+    /// underscores.
+    /// </summary>
+    public bool IsDelegation => !ToolName.Contains("__", StringComparison.Ordinal) && ToolName != "ask_user";
 
     public bool IsWaiting => State is ToolCallState.WaitingForConfirmation or ToolCallState.WaitingForAnswer;
 
@@ -112,6 +124,8 @@ public sealed class ToolCallView
         {
             CallId = call.CallId,
             ToolName = call.Tool,
+            ParentCallId = call.ParentCallId,
+            AgentSlug = call.AgentSlug,
             ArgumentsText = text,
             HasArguments = text.Length > 0 && !(arguments.ValueKind == JsonValueKind.Object && !arguments.EnumerateObject().Any()),
             State = call.RequiresConfirmation ? ToolCallState.WaitingForConfirmation : ToolCallState.Running,
