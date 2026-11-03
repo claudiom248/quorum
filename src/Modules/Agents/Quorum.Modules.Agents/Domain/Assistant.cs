@@ -27,4 +27,19 @@ internal sealed class Assistant
         Name = name,
         RootAgentId = rootAgentId,
     };
+
+    public void Revise(string name, Guid rootAgentId, int maxParallelSubAgents)
+    {
+        Name = name;
+        RootAgentId = rootAgentId;
+        MaxParallelSubAgents = maxParallelSubAgents;
+    }
+
+    /// <summary>Same as <see cref="Create"/> with a parallelism limit chosen by the administrator.</summary>
+    public static Assistant Create(Guid tenantId, string name, Guid rootAgentId, int maxParallelSubAgents, DateTimeOffset now)
+    {
+        var assistant = Create(tenantId, name, rootAgentId, now);
+        assistant.MaxParallelSubAgents = maxParallelSubAgents;
+        return assistant;
+    }
 }
