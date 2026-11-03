@@ -4,123 +4,63 @@ using System.Text.Json.Nodes;
 namespace Quorum.SampleKnowledgeBase;
 
 /// <summary>
-/// A larger company for trying the lookups and the lookup tool with questions that have more than one answer (spec 007): a few dozen
-/// contracts of many kinds, in different departments, years, states and for different audiences, and the vendors they are with. The
-/// small collections of <see cref="SampleCollections"/> stay as they are, since tests assert their exact numbers.
+/// The company of the samples: <c>sample_company</c>, six hundred and twenty agreements of thirty-six kinds across twenty-two sites, and
+/// <c>sample_vendors</c>, the forty-two vendors they are with. Every agreement is written from the facts <see cref="CompanyContractGraph"/>
+/// decided for it, so no two chunks read alike, and the references it makes are true: the vendor fits the kind, the owner is one of the
+/// people of <see cref="PeopleSampleData"/> who really deal with that vendor, the rules it quotes are the policies of the handbook, and the
+/// agreements it names exist in the same collection.
 /// </summary>
 public static class CompanySampleData
 {
-    private sealed record Vendor(string Name, string Country, string Category, string Since, double Rating, bool Preferred);
-
-    private sealed record Contract(
-        string Id,
-        string Title,
-        Vendor Vendor,
-        string Department,
-        string[] Audience,
-        int Year,
-        string Status,
-        bool Confidential,
-        int ValueEuros,
-        string SignedOn,
-        string[] Sections);
-
-    // Different countries, categories and ratings, some preferred and some not, with a first year of supply from 2015 to 2024.
-    private static readonly Vendor[] Vendors =
-    [
-        new("Acme", "IT", "facilities", "2019-03-01", 4.4, true),
-        new("Globex", "US", "technology", "2021-06-15", 4.1, true),
-        new("Initech", "DE", "legal", "2023-01-10", 4.7, true),
-        new("Hooli", "US", "technology", "2020-09-01", 3.6, false),
-        new("Umbrella", "UK", "security", "2018-05-20", 4.0, true),
-        new("Stark", "US", "hardware", "2022-02-14", 4.8, true),
-        new("Wayne", "US", "consulting", "2017-11-03", 3.9, false),
-        new("Wonka", "CH", "catering", "2020-01-27", 4.2, true),
-        new("Soylent", "FR", "catering", "2022-09-09", 3.2, false),
-        new("Tyrell", "JP", "hardware", "2019-08-19", 4.6, true),
-        new("Cyberdyne", "JP", "security", "2021-03-30", 3.8, false),
-        new("Gringotts", "UK", "finance", "2016-04-12", 4.9, true),
-        new("Oscorp", "US", "research", "2023-05-05", 3.4, false),
-        new("Vandelay", "ES", "logistics", "2020-10-10", 3.7, false),
-        new("Pied Piper", "US", "software", "2024-01-22", 4.3, true),
-        new("Massive Dynamic", "DE", "research", "2018-12-01", 4.5, true),
-        new("Aperture", "NL", "laboratory", "2022-07-07", 3.5, false),
-        new("Dunder Mifflin", "US", "office supplies", "2015-06-06", 3.3, false),
-
-        // A second wave of vendors, with contracts of their own (see MoreContracts).
-        new("Nakatomi", "JP", "finance", "2019-02-11", 4.5, true),
-        new("Weyland", "UK", "research", "2017-06-19", 4.2, true),
-        new("Dharma", "US", "logistics", "2018-09-24", 3.4, false),
-        new("Buy n Large", "US", "office supplies", "2021-01-18", 3.1, false),
-        new("Prestige Worldwide", "NL", "logistics", "2022-03-21", 3.9, false),
-        new("Sterling Cooper", "US", "marketing", "2016-10-03", 4.0, true),
-        new("Bluth Company", "US", "facilities", "2020-05-25", 2.9, false),
-        new("Los Pollos", "ES", "catering", "2019-11-04", 4.4, true),
-        new("Paper Street", "IT", "cleaning", "2023-04-03", 3.6, false),
-        new("Sirius Cybernetics", "UK", "software", "2018-02-12", 3.3, false),
-        new("Zorg Industries", "DE", "security", "2020-08-17", 4.1, true),
-        new("Spacely Sprockets", "US", "hardware", "2021-09-27", 3.8, false),
-        new("Cogswell Cogs", "US", "hardware", "2022-12-05", 3.5, false),
-        new("Planet Express", "US", "logistics", "2019-07-15", 4.3, true),
-        new("Hanso Foundation", "CH", "research", "2017-03-06", 4.6, true),
-        new("Rekall", "FR", "training", "2022-06-13", 3.7, false),
-        new("Virtucon", "DE", "legal", "2018-12-03", 4.2, true),
-        new("Praxis", "IT", "recruitment", "2021-11-22", 3.9, false),
-        new("Genco", "IT", "insurance", "2016-01-25", 4.7, true),
-        new("Wernham Hogg", "UK", "recruitment", "2019-10-14", 3.2, false),
-        new("Bubba Gump", "US", "catering", "2023-08-28", 3.6, false),
-        new("Vehement Capital", "UK", "audit", "2020-02-24", 4.1, true),
-        new("Duff", "NL", "catering", "2020-07-06", 3.8, false),
-        new("Pearson Hardman", "US", "legal", "2017-09-11", 4.4, true),
-    ];
-
-    private static readonly string[] All = ["all"];
-    private static readonly string[] It = ["it"];
-    private static readonly string[] Managers = ["managers"];
-    private static readonly string[] ItManagers = ["it", "managers"];
-    private static readonly string[] HrManagers = ["hr", "managers"];
-    private static readonly string[] FinanceExecutives = ["finance", "executives"];
-    private static readonly string[] LegalExecutives = ["legal", "executives"];
-    private static readonly string[] SecurityFacilities = ["security", "facilities"];
-    private static readonly string[] NewHires = ["new_hires", "hr"];
-    private static readonly string[] Executives = ["executives"];
-    private static readonly string[] Procurement = ["procurement", "managers"];
-    private static readonly string[] Marketing = ["marketing"];
-    private static readonly string[] Operations = ["operations", "managers"];
-
+    private static readonly Lazy<IReadOnlyList<CompanyContractGraph.Contract>> Contracts = new(CompanyContractGraph.Build);
 
     /// <summary>
-    /// About six hundred and twenty contracts of sixteen kinds with forty-two vendors (forty-two contracts written by hand, the rest generated), several chunks each: <c>supplier</c>, <c>department</c>, <c>nationality</c> (the vendor's
-    /// country), <c>audience</c> (a list), <c>year</c>, <c>status</c>, <c>confidential</c>, <c>value_eur</c>, <c>signed_on</c>,
-    /// <c>is_first_chunk</c> and <c>chunk_index</c>, all indexed.
+    /// The contracts, one point for every article of every agreement: <c>section_heading</c> (the name the article carries inside the
+    /// document, read by the page and not indexed), <c>supplier</c>, <c>department</c>, <c>nationality</c>,
+    /// <c>audience</c> (a list), <c>kind</c>, <c>contract_role</c>, <c>family_id</c>, <c>sites</c>, <c>contract_manager</c>,
+    /// <c>requester</c>, <c>governed_by</c>, <c>cost_center</c>, <c>related_document_ids</c>, <c>year</c>, <c>status</c>,
+    /// <c>confidential</c>, <c>value_eur</c>, <c>term_months</c>, <c>signed_on</c>, <c>ends_on</c>, <c>is_first_chunk</c> and
+    /// <c>chunk_index</c>, all indexed.
     /// </summary>
     public static SampleDataset CreateContracts(string name) => new(
         name,
-        "About six hundred and twenty contracts of sixteen kinds with forty-two vendors (forty-two contracts written by hand, the rest generated), in ten departments, from 2018 to 2025, in four states, for many audiences, with indexes on every filter field.",
+        "Six hundred and twenty agreements of thirty-six kinds in twenty-two sites with forty-two vendors, from 2018 to 2025, in five states, for many audiences (a list), each one a family of framework, statements of work, amendments, extensions and renewals that quote the agreements, the sites, the people and the handbook rules it really refers to.",
         [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
         [
             new("document_id", "keyword"),
+            new("related_document_ids", "keyword"),
+            new("family_id", "keyword"),
             new("supplier", "keyword"),
+            new("kind", "keyword"),
+            new("contract_role", "keyword"),
             new("department", "keyword"),
             new("nationality", "keyword"),
             new("audience", "keyword"),
+            new("sites", "keyword"),
+            new("contract_manager", "keyword"),
+            new("requester", "keyword"),
+            new("governed_by", "keyword"),
+            new("cost_center", "keyword"),
             new("status", "keyword"),
             new("year", "integer"),
+            new("term_months", "integer"),
             new("value_eur", "integer"),
             new("confidential", "bool"),
             new("signed_on", "datetime"),
+            new("ends_on", "datetime"),
             new("is_first_chunk", "bool"),
             new("chunk_index", "integer"),
         ],
         ContractPoints());
 
     /// <summary>
-    /// The vendors of those contracts as entities: country, category, how many contracts they have in <see cref="CreateContracts"/>, the
-    /// date they became a vendor, a rating and whether they are preferred.
+    /// The vendors of those agreements as entities: country, category, how many agreements they hold, the kinds and the sites they work
+    /// in, the date they started, a rating, whether they are preferred, the value the company has spent with them and the people who deal
+    /// with them — the counts and the names come from the same data the contracts are made of.
     /// </summary>
     public static SampleDataset CreateVendors(string name) => new(
         name,
-        "One point per vendor (name, country, category, contract_count, supplier_since, rating, preferred), with the contract counts of the contracts collection.",
+        "One point per vendor (name, country, category, contract_count, supplier_since, rating, preferred, kinds, sites, departments, total_value_eur, largest_contract, contacts) with the figures and the relationships of the contracts collection.",
         [new SampleVector(null, DeterministicEmbedding.DefaultDimensions)],
         [
             new("country", "keyword"),
@@ -129,17 +69,94 @@ public static class CompanySampleData
             new("supplier_since", "datetime"),
             new("rating", "float"),
             new("preferred", "bool"),
+            new("kinds", "keyword"),
+            new("sites", "keyword"),
+            new("departments", "keyword"),
+            new("total_value_eur", "integer"),
         ],
         VendorPoints());
+
+    private static List<SamplePoint> ContractPoints()
+    {
+        var points = new List<SamplePoint>();
+        ulong id = 1;
+        foreach (var contract in Contracts.Value)
+        {
+            var title = TitleOf(contract);
+            for (var chunk = 0; chunk < contract.Sections.Count; chunk++)
+            {
+                var (heading, text) = contract.Sections[chunk];
+                points.Add(new SamplePoint(
+                    id++,
+                    text,
+                    new JsonObject
+                    {
+                        ["text"] = text,
+                        ["section_heading"] = heading,
+                        ["document_id"] = contract.Id,
+                        ["title"] = title,
+                        ["source_url"] = SampleDocuments.Url("contracts", contract.Id),
+                        ["supplier"] = contract.Vendor.Name,
+                        ["nationality"] = contract.Vendor.Country,
+                        ["kind"] = contract.Kind.Id,
+                        ["contract_role"] = contract.Role,
+                        ["family_id"] = contract.FamilyId,
+                        ["department"] = contract.Kind.Department,
+                        ["sites"] = List(contract.SiteNameList),
+                        ["contract_manager"] = contract.Owner.Name,
+                        ["requester"] = contract.Requester.Name,
+                        ["governed_by"] = List(contract.Policies.Select(policy => policy.Id)),
+                        ["cost_center"] = contract.CostCenter,
+                        ["related_document_ids"] = List(contract.RelatedIds),
+                        ["audience"] = List(contract.Audience),
+                        ["year"] = contract.Year,
+                        ["status"] = contract.Status,
+                        ["confidential"] = contract.Confidential,
+                        ["term_months"] = contract.TermMonths,
+                        ["value_eur"] = contract.ValueEur,
+                        ["signed_on"] = Iso(contract.Signed),
+                        ["ends_on"] = Iso(contract.Ends),
+                        ["is_first_chunk"] = chunk == 0,
+                        ["chunk_index"] = chunk,
+                    }));
+            }
+        }
+
+        return points;
+    }
 
     private static List<SamplePoint> VendorPoints()
     {
         var points = new List<SamplePoint>();
         ulong id = 1;
-        foreach (var vendor in Vendors)
+        foreach (var vendor in CompanyFacts.Vendors)
         {
+            var held = Contracts.Value.Where(contract => contract.Vendor == vendor).OrderBy(contract => contract.Signed).ToArray();
+            var largest = held.MaxBy(contract => contract.ValueEur)!;
+            var contacts = PeopleSampleData.Employees
+                .Where(employee => employee.VendorContacts.Contains(vendor.Name, StringComparer.Ordinal))
+                .Select(employee => employee.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var kinds = held.Select(contract => contract.Kind.Title).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            var sites = held.Select(contract => contract.Site.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            var departments = held.GroupBy(contract => contract.Kind.Department)
+                .OrderByDescending(group => group.Count())
+                .Select(group => group.Key)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var busiest = held.GroupBy(contract => contract.Kind.Department).OrderByDescending(group => group.Count()).First();
+            var total = held.Sum(contract => contract.ValueEur);
+
             var text = $"{vendor.Name} is a {vendor.Category} vendor from {vendor.Country}, rated {vendor.Rating.ToString("0.0", CultureInfo.InvariantCulture)} out of 5"
-                + (vendor.Preferred ? " and preferred by the company." : ".");
+                + (vendor.Preferred ? " and on the preferred list of the group" : " and not on the preferred list")
+                + $", supplying the company since {vendor.Since}. It holds {held.Length} agreements of the company, {CompanyContractGraph.Euros(total)} euros in all, across {kinds.Length} kinds of contract and {sites.Length} sites: {string.Join(", ", kinds)}. "
+                + $"The work is done at {string.Join(", ", sites)}. The biggest paper is the {largest.Kind.Title.ToLowerInvariant()} at {largest.Site.Name} ({CompanyContractGraph.Euros(largest.ValueEur)} euros, {largest.Year}). "
+                + $"{busiest.Key} is the department that buys most from it, and the file is carried by {busiest.First().Owner.Name} ({busiest.First().Owner.Role}). "
+                + (contacts.Length > 0
+                    ? $"The people of the company who deal with {vendor.Name} are {string.Join(", ", contacts)}."
+                    : $"Nobody in the directory deals with {vendor.Name} day to day: the relationships go through procurement.");
+
             points.Add(new SamplePoint(
                 id++,
                 text,
@@ -150,312 +167,37 @@ public static class CompanySampleData
                     ["source_url"] = SampleDocuments.Url("vendors", vendor.Name),
                     ["country"] = vendor.Country,
                     ["category"] = vendor.Category,
-                    ["contract_count"] = Contracts.Count(c => c.Vendor == vendor),
+                    ["contract_count"] = held.Length,
                     ["supplier_since"] = vendor.Since,
                     ["rating"] = vendor.Rating,
                     ["preferred"] = vendor.Preferred,
+                    ["kinds"] = List(kinds),
+                    ["sites"] = List(sites),
+                    ["departments"] = List(departments),
+                    ["total_value_eur"] = total,
+                    ["largest_contract"] = largest.Id,
+                    ["contacts"] = List(contacts),
                 }));
         }
 
         return points;
     }
 
-    private static List<SamplePoint> ContractPoints()
+    private static string TitleOf(CompanyContractGraph.Contract contract)
     {
-        var points = new List<SamplePoint>();
-        ulong id = 1;
-        foreach (var contract in Contracts)
+        var role = contract.Role switch
         {
-            for (var chunk = 0; chunk < contract.Sections.Length; chunk++)
-            {
-                var text = contract.Sections[chunk];
-                points.Add(new SamplePoint(
-                    id++,
-                    text,
-                    new JsonObject
-                    {
-                        ["text"] = text,
-                        ["document_id"] = contract.Id,
-                        ["title"] = contract.Title,
-                        ["source_url"] = SampleDocuments.Url("contracts", contract.Id),
-                        ["supplier"] = contract.Vendor.Name,
-                        ["department"] = contract.Department,
-                        ["nationality"] = contract.Vendor.Country,
-                        ["audience"] = new JsonArray(contract.Audience.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray()),
-                        ["year"] = contract.Year,
-                        ["status"] = contract.Status,
-                        ["confidential"] = contract.Confidential,
-                        ["value_eur"] = contract.ValueEuros,
-                        ["signed_on"] = contract.SignedOn,
-                        ["is_first_chunk"] = chunk == 0,
-                        ["chunk_index"] = chunk,
-                    }));
-            }
-        }
-
-        return points;
-    }
-
-    private static Vendor V(string name) => Vendors.Single(v => v.Name == name);
-
-    private static Contract[] BuildContracts()
-    {
-        // Kind, vendor, audience, year, status, confidential, months, euros per month (or per year for the audit), days of notice.
-        (string Kind, string Vendor, string[] Audience, int Year, string Status, bool Confidential, int Months, int Price, int Notice)[] specs =
-        [
-            ("cleaning", "Acme", All, 2025, "active", false, 24, 4800, 90),
-            ("cleaning", "Acme", All, 2022, "expired", false, 24, 4100, 60),
-            ("cleaning", "Aperture", All, 2024, "active", false, 12, 3900, 60),
-            ("catering", "Acme", All, 2024, "active", false, 24, 12500, 90),
-            ("catering", "Wonka", All, 2021, "expired", false, 36, 11200, 120),
-            ("catering", "Wonka", NewHires, 2025, "draft", false, 24, 13400, 90),
-            ("catering", "Soylent", All, 2023, "active", false, 24, 9800, 60),
-            ("laptops", "Acme", It, 2023, "active", false, 24, 18000, 60),
-            ("laptops", "Stark", ItManagers, 2022, "active", false, 36, 26000, 90),
-            ("laptops", "Tyrell", It, 2021, "expired", false, 24, 21000, 60),
-            ("cloud", "Globex", ItManagers, 2024, "active", true, 36, 9500, 90),
-            ("cloud", "Globex", It, 2022, "expired", true, 24, 7800, 60),
-            ("cloud", "Pied Piper", ItManagers, 2025, "under_review", true, 36, 11800, 90),
-            ("legal", "Initech", Managers, 2023, "active", true, 24, 6000, 60),
-            ("legal", "Initech", LegalExecutives, 2020, "expired", true, 36, 5200, 90),
-            ("travel", "Globex", Managers, 2023, "active", false, 24, 2100, 60),
-            ("security", "Umbrella", SecurityFacilities, 2021, "expired", false, 36, 15800, 90),
-            ("security", "Umbrella", SecurityFacilities, 2024, "active", false, 36, 17200, 90),
-            ("security", "Cyberdyne", It, 2022, "active", true, 24, 6400, 60),
-            ("recruitment", "Wayne", HrManagers, 2023, "active", false, 24, 2500, 30),
-            ("recruitment", "Vandelay", NewHires, 2024, "draft", false, 12, 1900, 30),
-            ("software", "Hooli", It, 2022, "active", false, 36, 8400, 90),
-            ("software", "Hooli", ItManagers, 2024, "under_review", false, 24, 9100, 60),
-            ("software", "Tyrell", It, 2023, "active", false, 24, 6700, 60),
-            ("software", "Cyberdyne", It, 2025, "under_review", true, 24, 7300, 60),
-            ("software", "Pied Piper", It, 2024, "active", false, 24, 5600, 60),
-            ("marketing", "Wayne", Marketing, 2020, "expired", false, 24, 14500, 60),
-            ("marketing", "Dunder Mifflin", Marketing, 2022, "active", false, 12, 9800, 30),
-            ("training", "Wayne", HrManagers, 2023, "active", false, 12, 3600, 30),
-            ("training", "Oscorp", NewHires, 2025, "active", false, 12, 4200, 30),
-            ("training", "Massive Dynamic", HrManagers, 2024, "active", false, 12, 3900, 30),
-            ("logistics", "Vandelay", Operations, 2021, "expired", false, 24, 8800, 60),
-            ("logistics", "Vandelay", Operations, 2024, "active", false, 24, 9400, 60),
-            ("audit", "Gringotts", FinanceExecutives, 2024, "active", true, 36, 84000, 120),
-            ("insurance", "Gringotts", FinanceExecutives, 2022, "active", false, 36, 5400, 90),
-            ("insurance", "Gringotts", Executives, 2025, "draft", false, 36, 5900, 90),
-            ("office", "Dunder Mifflin", Procurement, 2018, "expired", false, 24, 3000, 30),
-            ("office", "Dunder Mifflin", Procurement, 2023, "active", false, 24, 3600, 30),
-            ("research", "Oscorp", Executives, 2023, "active", true, 24, 22000, 90),
-            ("research", "Massive Dynamic", Executives, 2022, "active", true, 36, 31000, 90),
-            ("research", "Stark", Executives, 2024, "draft", true, 24, 27500, 90),
-            ("research", "Aperture", Executives, 2023, "under_review", true, 24, 18500, 90),
-        ];
-
-        return [.. specs.Concat(Generated(GeneratedContracts, 0, kind => Offer[kind].Vendors)).Concat(Generated(MoreContracts, 1000, kind => NewOffer[kind])).Select((spec, index) =>
-        {
-            var vendor = V(spec.Vendor);
-            var (title, department, sections) = Describe(spec.Kind, vendor.Name, spec.Months, spec.Price, spec.Notice);
-            var month = (index * 5 % 12) + 1;
-            var day = (index * 7 % 27) + 1;
-            return new Contract(
-                $"ct-{index + 1:000}",
-                $"{title} ({vendor.Name}, {spec.Year})",
-                vendor,
-                department,
-                spec.Audience,
-                spec.Year,
-                spec.Status,
-                spec.Confidential,
-                spec.Months * spec.Price,
-                $"{spec.Year}-{month:00}-{day:00}",
-                sections);
-        })];
-    }
-
-    private const int GeneratedContracts = 280;
-
-    private const int MoreContracts = 300;
-
-    // The vendors that can supply each kind, and the audiences a contract of that kind is for: the generated contracts pick among them, so
-    // a vendor has contracts of the kinds that fit it.
-    private static readonly Dictionary<string, (string[] Vendors, string[][] Audiences)> Offer = new()
-    {
-        ["cleaning"] = (["Acme", "Aperture", "Vandelay"], [All]),
-        ["catering"] = (["Acme", "Wonka", "Soylent"], [All, NewHires]),
-        ["laptops"] = (["Acme", "Stark", "Tyrell", "Dunder Mifflin"], [It, ItManagers]),
-        ["cloud"] = (["Globex", "Pied Piper", "Hooli", "Stark"], [It, ItManagers]),
-        ["legal"] = (["Initech", "Gringotts", "Massive Dynamic"], [Managers, LegalExecutives]),
-        ["travel"] = (["Globex", "Vandelay", "Wayne"], [Managers, All]),
-        ["security"] = (["Umbrella", "Cyberdyne", "Stark"], [SecurityFacilities, It]),
-        ["recruitment"] = (["Wayne", "Vandelay", "Massive Dynamic"], [HrManagers, NewHires]),
-        ["software"] = (["Hooli", "Tyrell", "Cyberdyne", "Pied Piper", "Globex"], [It, ItManagers]),
-        ["marketing"] = (["Wayne", "Dunder Mifflin", "Soylent"], [Marketing, Managers]),
-        ["training"] = (["Wayne", "Oscorp", "Massive Dynamic", "Aperture"], [HrManagers, NewHires, All]),
-        ["logistics"] = (["Vandelay", "Dunder Mifflin", "Acme"], [Operations]),
-        ["audit"] = (["Gringotts", "Initech"], [FinanceExecutives, Executives]),
-        ["insurance"] = (["Gringotts", "Umbrella"], [FinanceExecutives, Executives]),
-        ["office"] = (["Dunder Mifflin", "Acme"], [Procurement]),
-        ["research"] = (["Oscorp", "Massive Dynamic", "Stark", "Aperture", "Tyrell"], [Executives, Operations]),
-    };
-
-    // The second wave of vendors, by the kind of contract they can supply: 300 more contracts are theirs.
-    private static readonly Dictionary<string, string[]> NewOffer = new()
-    {
-        ["cleaning"] = ["Paper Street", "Bluth Company", "Prestige Worldwide"],
-        ["catering"] = ["Los Pollos", "Bubba Gump", "Duff"],
-        ["laptops"] = ["Spacely Sprockets", "Cogswell Cogs"],
-        ["cloud"] = ["Sirius Cybernetics", "Dharma", "Spacely Sprockets"],
-        ["legal"] = ["Virtucon", "Pearson Hardman", "Nakatomi"],
-        ["travel"] = ["Planet Express", "Prestige Worldwide"],
-        ["security"] = ["Zorg Industries", "Weyland"],
-        ["recruitment"] = ["Praxis", "Wernham Hogg"],
-        ["software"] = ["Sirius Cybernetics", "Cogswell Cogs", "Dharma", "Virtucon"],
-        ["marketing"] = ["Sterling Cooper", "Duff"],
-        ["training"] = ["Rekall", "Duff", "Hanso Foundation"],
-        ["logistics"] = ["Planet Express", "Dharma", "Prestige Worldwide"],
-        ["audit"] = ["Vehement Capital", "Nakatomi"],
-        ["insurance"] = ["Genco", "Vehement Capital"],
-        ["office"] = ["Buy n Large", "Paper Street"],
-        ["research"] = ["Weyland", "Hanso Foundation", "Dharma"],
-    };
-
-    private static readonly Dictionary<string, (int Price, bool Confidential)> Pricing = new()
-    {
-        ["cleaning"] = (4200, false),
-        ["catering"] = (11000, false),
-        ["laptops"] = (19000, false),
-        ["cloud"] = (9000, true),
-        ["legal"] = (5600, true),
-        ["travel"] = (2200, false),
-        ["security"] = (14000, false),
-        ["recruitment"] = (2300, false),
-        ["software"] = (7500, false),
-        ["marketing"] = (12000, false),
-        ["training"] = (3800, false),
-        ["logistics"] = (8800, false),
-        ["audit"] = (80000, true),
-        ["insurance"] = (5600, false),
-        ["office"] = (3300, false),
-        ["research"] = (24000, true),
-    };
-
-    // After the tables above: static fields are initialized in the order they are written.
-    private static readonly Contract[] Contracts = BuildContracts();
-
-    // 280 more contracts, from 2018 to 2025, a deterministic mix of kinds, vendors, years, states and terms (the year decides the state:
-    // the old ones are mostly expired, the newest mostly drafts and reviews), so the lists and the counts have many values to show.
-    private static IEnumerable<(string Kind, string Vendor, string[] Audience, int Year, string Status, bool Confidential, int Months, int Price, int Notice)> Generated(int count, int offset, Func<string, string[]> vendorsOf)
-    {
-        var kinds = Offer.Keys.ToArray();
-        int[] terms = [12, 24, 36, 24];
-        int[] notices = [30, 60, 90, 60, 120];
-        for (var n = 0; n < count; n++)
-        {
-            var i = n + offset;
-            var kind = kinds[i % kinds.Length];
-            var vendors = vendorsOf(kind);
-            var audiences = Offer[kind].Audiences;
-            var year = 2018 + (((i * 5) + (i / 16)) % 8);
-            var status = year switch
-            {
-                <= 2020 => "expired",
-                2021 or 2022 => (i % 3) == 0 ? "active" : "expired",
-                2023 => (i % 5) == 0 ? "expired" : "active",
-                2024 => (i % 7) == 0 ? "under_review" : "active",
-                _ => (i % 3) switch { 0 => "draft", 1 => "under_review", _ => "active" },
-            };
-            var (basePrice, confidential) = Pricing[kind];
-            var price = basePrice + (basePrice * ((i * 3) % 9) / 40);
-            yield return (kind, vendors[(i / kinds.Length + i) % vendors.Length], audiences[(i / 3) % audiences.Length], year, status, confidential || (i % 11) == 0, terms[i % terms.Length], price, notices[(i / 2) % notices.Length]);
-        }
-    }
-
-    // Each kind of contract reads like one: what is supplied, then what it costs and how long it lasts, then the clauses that matter.
-    private static (string Title, string Department, string[] Sections) Describe(string kind, string vendor, int months, int price, int notice)
-    {
-        var term = $"The contract runs for {months} months and can be ended with {notice} days' written notice.";
-        var euros = price.ToString("N0", CultureInfo.InvariantCulture);
-        return kind switch
-        {
-            "cleaning" => ("Cleaning services contract", "facilities",
-            [
-                $"{vendor} provides daily cleaning of all office floors, meeting rooms and restrooms, Monday to Friday before opening hours, and a monthly deep clean of the kitchens and the windows. Consumables are supplied by {vendor}.",
-                $"{term} The fee is {euros} euros per month, invoiced monthly and payable within 30 days.",
-                "A missed cleaning must be redone within 24 hours at no cost, and the company may deduct 2% of the monthly fee for each missed service beyond three in a month.",
-            ]),
-            "catering" => ("Catering contract", "facilities",
-            [
-                $"{vendor} provides lunch for up to 150 employees on every working day from a weekly menu that always includes vegetarian, vegan and gluten-free dishes, served in the company canteen between 12:00 and 14:30.",
-                $"The fee is {euros} euros per month for the agreed volume, with extra meals billed at 8.50 euros. {term}",
-                $"{vendor} must follow the food-safety rules in force, allow audits of the kitchen with 48 hours' notice and replace any dish that does not meet the agreed quality.",
-            ]),
-            "laptops" => ("Laptop supply agreement", "it",
-            [
-                $"{vendor} supplies business laptops in the models chosen by the IT department, each with a three-year on-site warranty and replacement by the next business day, delivered to the IT warehouse within 15 working days of an order.",
-                $"Prices are fixed for the whole term: 1,250 euros for a standard laptop and 1,900 euros for a high-performance one, with an expected spending of {euros} euros per month. Returned devices are wiped by {vendor} under the company's data-erasure procedure, with a certificate for each device. {term}",
-            ]),
-            "cloud" => ("Cloud hosting agreement", "it",
-            [
-                $"{vendor} hosts the internal applications of the company on dedicated cloud infrastructure in two European regions, guarantees an availability of 99.9% per month, monitors the systems around the clock and keeps encrypted daily backups for 30 days.",
-                $"The fee is {euros} euros per month plus any usage above the agreed quota. Security incidents must be reported within four hours. The data remains the property of the company and is returned in an open format within 30 days of the end of the contract. {term}",
-            ]),
-            "legal" => ("Legal retainer", "legal",
-            [
-                $"{vendor} gives legal advice on commercial contracts, employment matters and data protection for a fixed monthly retainer of {euros} euros that covers up to 25 hours. Further hours are billed at 220 euros.",
-                $"All advice is confidential and is delivered within three working days of a request. {term}",
-            ]),
-            "travel" => ("Travel agency agreement", "finance",
-            [
-                $"{vendor} books flights, hotels and rail tickets for business trips at the negotiated corporate rates, with an emergency line for travellers open around the clock.",
-                $"Bookings above 1,500 euros need the approval of the traveller's manager, and {vendor} charges a service fee of 25 euros per booking, plus {euros} euros per month for the emergency line. {term}",
-            ]),
-            "security" => ("Security guarding contract", "security",
-            [
-                $"{vendor} provides security guards at the main entrance and the car park twenty-four hours a day, with a patrol of all floors every two hours at night and a written report of any incident within 24 hours.",
-                $"The fee is {euros} euros per month. Guards must hold the licence required by law and complete the company's safety induction. {term}",
-            ]),
-            "recruitment" => ("Recruitment agreement", "hr",
-            [
-                $"{vendor} presents candidates for the positions the HR department opens, with a shortlist within ten working days and a screening interview already done for each candidate.",
-                $"The fee is 18% of the first year's gross salary of the person hired, with a replacement at no cost if the person leaves within six months. A retainer of {euros} euros per year covers priority handling. {term}",
-            ]),
-            "software" => ("Software licence agreement", "it",
-            [
-                $"{vendor} grants the company a non-exclusive licence for its software for up to 500 users, including updates, a support line on working days and a response within four hours for critical defects.",
-                $"The licence costs {euros} euros per month for the agreed number of users, adjusted once a year with the consumer price index. {term} The company keeps the right to export its data at any time.",
-            ]),
-            "marketing" => ("Marketing services agreement", "marketing",
-            [
-                $"{vendor} designs and runs the marketing campaigns agreed each quarter, including the creative material, the media plan and a monthly report on the results.",
-                $"The fee is {euros} euros per month plus the media costs, which the company approves in advance. All the material produced is owned by the company. {term}",
-            ]),
-            "training" => ("Training agreement", "hr",
-            [
-                $"{vendor} delivers training courses for employees on safety, leadership and software tools, in person or online, in groups of up to 20 people, with a certificate of attendance.",
-                $"The price is {euros} euros per month for the agreed programme, with extra sessions on request. {term}",
-            ]),
-            "logistics" => ("Logistics agreement", "operations",
-            [
-                $"{vendor} collects and delivers parcels and pallets between the sites of the company and its customers, with delivery within two working days in Europe and tracking of every shipment.",
-                $"The fee is {euros} euros per month plus a rate per shipment, and goods that are damaged or lost are refunded at their declared value. {term}",
-            ]),
-            "audit" => ("Audit engagement", "finance",
-            [
-                $"{vendor} audits the annual accounts of the company and reports its findings to the management and the board, with an interim review each half year.",
-                $"The fee is {euros} euros per year, paid in four instalments. The auditor must stay independent and cannot supply other consulting services to the company. {term}",
-            ]),
-            "insurance" => ("Insurance policy", "finance",
-            [
-                $"{vendor} insures the offices and their contents against fire, flood and theft, and covers the liability of the company towards third parties up to 5 million euros.",
-                $"The premium is {euros} euros per month. Claims must be reported within five days and are settled within 30 days of the documents being complete. {term}",
-            ]),
-            "office" => ("Office supplies agreement", "procurement",
-            [
-                $"{vendor} supplies paper, stationery and small office equipment from a catalogue, with delivery within three working days and free return of unused goods within 14 days.",
-                $"Prices follow the catalogue with a 12% discount for the company, and the minimum order is 150 euros. The expected spending is {euros} euros per month. {term}",
-            ]),
-            "research" => ("Research partnership", "operations",
-            [
-                $"{vendor} carries out joint research projects with the engineers of the company on new products, sharing its laboratories and a team of up to six researchers.",
-                $"The company funds the projects with {euros} euros per month. Results and patents belong to both parties in equal parts, and either party can use them freely inside its own business. {term}",
-            ]),
-            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown kind of contract."),
+            "work_order" => "Statement of work — ",
+            "amendment" => "Amendment — ",
+            "extension" => "Extension — ",
+            "renewal" => "Renewal — ",
+            _ => string.Empty,
         };
+
+        return $"{role}{contract.Kind.Title}: {contract.Site.Name} ({contract.Vendor.Name}, {contract.Year})";
     }
+
+    private static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static JsonArray List(IEnumerable<string> items) => [.. items.Select(item => (JsonNode?)JsonValue.Create(item))];
 }

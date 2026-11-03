@@ -19,7 +19,8 @@ dotnet run --project tools/Quorum.SampleKnowledgeBase
 ```
 
 Options: `--url <qdrant REST address>` (default `http://localhost:6333`), `--api-key <key>`, `--prefix <text>` (prepended to the
-collection names). Seeding again recreates the collections.
+collection names), `--only <names>` (comma-separated collection names, so one collection can be reseeded without touching the others).
+Seeding again recreates the collections.
 
 To query the collections from a running Quorum, embed them with a real model instead of the deterministic fake, on any
 OpenAI-compatible endpoint (`--embedding-url`, `--embedding-model`, `--embedding-key`, `--document-prefix`):
@@ -45,8 +46,8 @@ the `summary` vector) stay deterministic. The walk-through is in [docs/knowledge
 | `sample_lookups` | Contracts with `supplier`, `department`, `nationality`, `audience` (list), `is_first_chunk` and `chunk_index`, all indexed: computed lookups (spec 007) |
 | `sample_lookups_unindexed` | The same contracts with no payload index: a lookup fails and names the field that needs one |
 | `sample_suppliers` | One point per supplier (`name`, `country`, `contract_count`, `supplier_since`): entity lookups, with `name` as the entity name (spec 007) |
-| `sample_company` | About six hundred and twenty contracts of sixteen kinds across ten departments, from 2018 to 2025, in four states, for many audiences (a list), with `year`, `status`, `confidential`, `value_eur` and `signed_on`, all indexed: questions with more than one answer for the lookups and the lookup tool |
-| `sample_vendors` | The 18 vendors of `sample_company` as entities (`name`, `country`, `category`, `contract_count`, `supplier_since`, `rating`, `preferred`), with contract counts that match the contracts |
+| `sample_company` | Six hundred and twenty agreements of thirty-six kinds in twenty-two sites, from 2018 to 2025, in five states (`active`, `expired`, `draft`, `under_review`, `terminated`), for many audiences (a list): every agreement is a family of framework, statements of work, amendments, extensions and renewals, and **every point is one article of it** (about 7,700 points of ~300 characters), whose name the point also carries in `section_heading`. The text names the site, the owner (one of the employees), the handbook rules and the other agreements it really refers to. Filter fields: `supplier`, `department`, `nationality`, `audience`, `kind`, `contract_role`, `family_id`, `sites`, `contract_manager`, `requester`, `governed_by`, `cost_center`, `related_document_ids`, `year`, `status`, `confidential`, `term_months`, `value_eur`, `signed_on`, `ends_on`, all indexed; `section_heading` is in the payload and is not indexed |
+| `sample_vendors` | The 42 vendors of `sample_company` as entities (`name`, `country`, `category`, `contract_count`, `supplier_since`, `rating`, `preferred`, `kinds`, `sites`, `departments`, `total_value_eur`, `largest_contract`, `contacts`): counts, sites and the people who deal with each vendor all computed from the contracts |
 
 ## Seed a PostgreSQL with pgvector (spec 008)
 
@@ -99,10 +100,18 @@ The handbook and the employees are not contracts but belong to the same company:
 
 Seed with a real model (see above), then register the collections and create the tools in the admin:
 
-1. Register `sample_company` (qdrant `http://qdrant:6334`). In the lookups step mark `supplier`, `department`, `nationality` and `audience` as **listable** and `is_first_chunk` as the **counted point** (the draft proposes it). The lists are computed in the background; open *Lookups* to see them become *Ready*.
-2. Register `sample_vendors` with `name` as the **entity name** and `contract_count`, `country`, `category` and `rating` as attributes: the entity lookup lists the 18 vendors with the contracts each one has.
-3. Create a lookup tool that binds the lists and both knowledge bases, exposing `department`, `nationality`, `audience` and `year` as filters, and a rag tool over `sample_company` with the `document_ids` switch on. Activate both for an assistant.
-4. Ask: "list the suppliers", "which suppliers have the most contracts", "which policies are for managers", "which teams are Italian", and "which contracts mention termination, and what does the notice period say in them" (a `documents` call followed by a `rag` call with `document_ids`).
+1. Register `sample_company` (qdrant `http://qdrant:6334`). In the lookups step mark `supplier`, `department`, `nationality`, `audience`,
+   `kind`, `contract_role` and `status` as **listable** and `is_first_chunk` as the **counted point** (the draft proposes it). The lists are
+   computed in the background; open *Lookups* to see them become *Ready*.
+2. Register `sample_vendors` with `name` as the **entity name** and `contract_count`, `country`, `category`, `rating`, `preferred` and
+   `total_value_eur` as attributes: the entity lookup lists the 42 vendors with the contracts each one has.
+3. Create a lookup tool that binds the lists and both knowledge bases, exposing `department`, `nationality`, `audience`, `year`, `kind`,
+   `contract_role`, `contract_manager` and `sites` as filters, and a rag tool over `sample_company` with the `document_ids` switch on.
+   Activate both for an assistant.
+4. Ask: "list the suppliers", "which suppliers have the most contracts", "which policies are for managers", "which teams are Italian",
+   "which contracts mention termination, and what does the notice period say in them" (a `documents` call followed by a `rag` call with
+   `document_ids`), "what went wrong on the agreements with Hooli, and who owns them", "which cleaning agreements cover the Milan
+   headquarters and what do they say about the service credits", "which agreements does Silvia Moretti own and what do they cost".
 
 `sample_lookups_unindexed` is the failure case: marking its fields listable ends in *Failed* naming the field that needs a payload index. What a real model got right and wrong with these questions is recorded in the plan of the spec (`docs/plans/007-metadata-lookups.md`, "As built (PR 10)").
 
@@ -111,7 +120,7 @@ payload, to paste in the registration.
 
 ## The documents behind the citations
 
-Every chunk the samples embed points to a document with a `source_url`, in Qdrant and in PostgreSQL alike: the contracts (`/contracts/{id}`), the policies of the small collections (`/policies/{id}`), the handbook (`/handbook/{id}`), and the pages of the entities (`/vendors/{name}`, `/suppliers/{name}`, `/people/{id}`). A small web server serves them all, as an HTML page with the text that was embedded and what the data say about the document, as plain text (`.txt` after the address), and as an index at `/`:
+Every chunk the samples embed points to a document with a `source_url`, in Qdrant and in PostgreSQL alike: the contracts (`/contracts/{id}`), the policies of the small collections (`/policies/{id}`), the handbook (`/handbook/{id}`), and the pages of the entities (`/vendors/{name}`, `/suppliers/{name}`, `/people/{id}`). A small web server serves them all, as an HTML page with the text that was embedded and what the data say about the document, as plain text (`.txt` after the address), and as an index at `/`. Each part of a document is shown under the name the data give it — the contracts carry one in `section_heading`, so the page reads `3. Availability, downtime credits and recovery` — and where the data name nothing the heading is the position, `Section 2`:
 
 ```bash
 dotnet run --project tools/Quorum.SampleKnowledgeBase -- --serve          # http://127.0.0.1:5290/, --port <n> to change it

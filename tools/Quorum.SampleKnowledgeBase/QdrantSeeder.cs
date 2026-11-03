@@ -10,6 +10,12 @@ namespace Quorum.SampleKnowledgeBase;
 /// </summary>
 public sealed class QdrantSeeder(HttpClient client, ModelEmbedder? model = null)
 {
+    /// <summary>Points per write request: a whole collection in one call goes over the payload limit of Qdrant.</summary>
+    private const int WriteBatch = 120;
+
+    /// <summary>Texts per embedding request.</summary>
+    private const int EmbeddingBatch = 32;
+
     /// <summary>Drops the collection if it exists, then creates it with its vectors, payload indexes and points.</summary>
     public async Task SeedAsync(SampleDataset collection, CancellationToken cancellationToken)
     {
@@ -29,7 +35,7 @@ public sealed class QdrantSeeder(HttpClient client, ModelEmbedder? model = null)
 
         if (collection.Points.Count > 0)
         {
-            await UpsertAsync(collection, collection.Points, cancellationToken);
+            await WriteAsync(collection, collection.Points, cancellationToken);
         }
     }
 
@@ -49,17 +55,73 @@ public sealed class QdrantSeeder(HttpClient client, ModelEmbedder? model = null)
         ArgumentNullException.ThrowIfNull(shape);
         ArgumentNullException.ThrowIfNull(points);
 
-        var bodies = new List<JsonNode?>();
-        foreach (var point in points)
+        await WriteAsync(shape, points.ToList(), cancellationToken);
+    }
+
+    /// <summary>Writes the points in batches, with the vectors of the whole collection asked to the model in batches too.</summary>
+    private async Task WriteAsync(SampleDataset shape, IReadOnlyList<SamplePoint> points, CancellationToken cancellationToken)
+    {
+        // Every vector of the collection is asked in one pass, so a collection of three thousand chunks is a hundred requests and not three thousand.
+        var embedded = new Dictionary<int, IReadOnlyList<float[]>>();
+        for (var slot = 0; slot < shape.Vectors.Count; slot++)
         {
-            bodies.Add(await PointBodyAsync(shape, point, cancellationToken));
+            if (!shape.Vectors[slot].FromModel)
+            {
+                continue;
+            }
+
+            var embedder = model ?? throw new InvalidOperationException("A vector made by a model needs an embedder.");
+            embedded[slot] = await embedder.EmbedAllAsync([.. points.Select(point => point.EmbeddingText)], EmbeddingBatch, cancellationToken);
         }
 
-        await SendAsync(
-            HttpMethod.Put,
-            $"collections/{Uri.EscapeDataString(shape.Name)}/points?wait=true",
-            new JsonObject { ["points"] = new JsonArray(bodies.ToArray()) },
-            cancellationToken);
+        for (var from = 0; from < points.Count; from += WriteBatch)
+        {
+            var bodies = new List<JsonNode?>();
+            for (var index = from; index < Math.Min(from + WriteBatch, points.Count); index++)
+            {
+                bodies.Add(PointBody(shape, points[index], embedded, index));
+            }
+
+            await SendAsync(
+                HttpMethod.Put,
+                $"collections/{Uri.EscapeDataString(shape.Name)}/points?wait=true",
+                new JsonObject { ["points"] = new JsonArray(bodies.ToArray()) },
+                cancellationToken);
+        }
+    }
+
+    private static JsonObject PointBody(SampleDataset shape, SamplePoint point, IReadOnlyDictionary<int, IReadOnlyList<float[]>> embedded, int index)
+    {
+        JsonNode vector = shape.Vectors is [{ Name: null }]
+            ? ToArray(VectorOf(shape, embedded, 0, point, index))
+            : ToNamed(shape, point, embedded, index);
+
+        return new JsonObject { ["id"] = point.Id, ["vector"] = vector, ["payload"] = point.Payload.DeepClone() };
+    }
+
+    private static JsonObject ToNamed(SampleDataset shape, SamplePoint point, IReadOnlyDictionary<int, IReadOnlyList<float[]>> embedded, int index)
+    {
+        var named = new JsonObject();
+        for (var slot = 0; slot < shape.Vectors.Count; slot++)
+        {
+            named[shape.Vectors[slot].Name!] = ToArray(VectorOf(shape, embedded, slot, point, index));
+        }
+
+        return named;
+    }
+
+    private static float[] VectorOf(SampleDataset shape, IReadOnlyDictionary<int, IReadOnlyList<float[]>> embedded, int slot, SamplePoint point, int index)
+    {
+        var vector = shape.Vectors[slot];
+        if (!vector.FromModel)
+        {
+            return DeterministicEmbedding.Embed(point.EmbeddingText, vector.Size);
+        }
+
+        var values = embedded[slot][index];
+        return values.Length == vector.Size
+            ? values
+            : throw new InvalidOperationException($"The model answered {values.Length} dimensions, the collection has {vector.Size}.");
     }
 
     public async Task DeleteAsync(string collection, CancellationToken cancellationToken)
@@ -89,41 +151,6 @@ public sealed class QdrantSeeder(HttpClient client, ModelEmbedder? model = null)
     }
 
     private static JsonObject Config(SampleVector vector) => new() { ["size"] = vector.Size, ["distance"] = vector.Distance };
-
-    private async Task<JsonObject> PointBodyAsync(SampleDataset collection, SamplePoint point, CancellationToken cancellationToken)
-    {
-        JsonNode vector;
-        if (collection.Vectors is [{ Name: null } single])
-        {
-            vector = ToArray(await EmbedAsync(single, point, cancellationToken));
-        }
-        else
-        {
-            var named = new JsonObject();
-            foreach (var item in collection.Vectors)
-            {
-                named[item.Name!] = ToArray(await EmbedAsync(item, point, cancellationToken));
-            }
-
-            vector = named;
-        }
-
-        return new JsonObject { ["id"] = point.Id, ["vector"] = vector, ["payload"] = point.Payload.DeepClone() };
-    }
-
-    private async Task<float[]> EmbedAsync(SampleVector vector, SamplePoint point, CancellationToken cancellationToken)
-    {
-        if (!vector.FromModel)
-        {
-            return DeterministicEmbedding.Embed(point.EmbeddingText, vector.Size);
-        }
-
-        var embedder = model ?? throw new InvalidOperationException("A vector made by a model needs an embedder.");
-        var values = await embedder.EmbedAsync(point.EmbeddingText, cancellationToken);
-        return values.Length == vector.Size
-            ? values
-            : throw new InvalidOperationException($"The model answered {values.Length} dimensions, the collection has {vector.Size}.");
-    }
 
     private static JsonArray ToArray(float[] values) => new(values.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray());
 
