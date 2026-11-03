@@ -25,6 +25,7 @@
     <Project Path="src/Modules/Tenancy/Quorum.Modules.Tenancy/Quorum.Modules.Tenancy.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Quorum.SampleContractReferenceData/Quorum.SampleContractReferenceData.csproj" />
     <Project Path="tools/Quorum.SampleKnowledgeBase/Quorum.SampleKnowledgeBase.csproj" />
   </Folder>
   <Folder Name="/tests/">

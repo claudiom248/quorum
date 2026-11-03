@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The service speaks the company of the samples: the same countries, the same sites, the same cities. -->
+    <ProjectReference Include="../Quorum.SampleKnowledgeBase/Quorum.SampleKnowledgeBase.csproj" />
+  </ItemGroup>
+
+</Project>
