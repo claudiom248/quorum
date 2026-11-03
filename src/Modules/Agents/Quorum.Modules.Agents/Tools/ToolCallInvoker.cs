@@ -348,7 +348,9 @@ internal sealed partial class ToolCallInvoker(
             // WaitAsync makes the timeout hold even for a tool that never looks at its token.
             var produced = delegation is null
                 ? await tool.RunWithSourcesAsync(arguments.RootElement, linked.Token).WaitAsync(linked.Token)
-                : new ToolOutput(await DelegateAsync(run, delegation, info.CallId, rawArguments, linked.Token).WaitAsync(linked.Token));
+                // Not abandoned on cancellation: the sub-agent honours the token, and the answer must not end (and the request's database
+                // context go) while its tool calls are still being recorded as cancelled.
+                : new ToolOutput(await DelegateAsync(run, delegation, info.CallId, rawArguments, linked.Token));
             var output = produced.Text;
             if (output.Length > context.Limits.MaxResultCharacters)
             {
