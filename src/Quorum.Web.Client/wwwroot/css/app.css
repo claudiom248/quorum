@@ -110,7 +110,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .composer { border-top: 1px solid var(--mud-palette-lines-default); padding: .75rem 1rem; background: var(--mud-palette-background); }
 .composer-inner { max-width: 52rem; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
 
-.settings { max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem; width: 100%; overflow-y: auto; }
+.settings { max-width: 80rem; margin: 0 auto; padding: 1.5rem 1rem; width: 100%; overflow-y: auto; }
 .editor-lab { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 1rem; gap: .75rem; }
 .editor-frame { flex: 1; min-height: 0; border: 1px solid var(--mud-palette-lines-default); border-radius: 8px; overflow: hidden; }
 .editor-frame .monaco-editor-container { height: 100%; width: 100%; }
@@ -307,3 +307,8 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 /* Settings: one choice of how tool calls are drawn, with its description under it. */
 .ledger-choice { display: flex; flex-direction: column; margin-bottom: .6rem; }
 .ledger-choice .tool-hint { margin-left: 2rem; }
+
+/* Wide forms: the model connection splits in two columns when its container has the room, and the tools of the settings flow in columns. */
+.model-connection { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1.5rem 2rem; align-items: start; }
+.settings-columns { column-width: 20rem; column-gap: 2rem; }
+.settings-columns > .settings-group { break-inside: avoid; margin-bottom: 1rem; }

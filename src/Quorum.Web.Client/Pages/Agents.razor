@@ -1,24 +1,25 @@
 @page "/agents"
+@page "/agents/{Id}"
+@implements IDisposable
 @inject QuorumApi Api
+@inject NavigationManager Navigation
 @inject IDialogService Dialogs
 
 <PageTitle>Agents · Quorum</PageTitle>
 
-<MudStack Spacing="3" Class="list-page">
-    <div>
-        <MudText Typo="Typo.h5">Agents</MudText>
-        <MudText Typo="Typo.body2" Class="tool-hint">An agent is a prompt, a model endpoint and tools. It can call other agents as tools, and be offered as an assistant that people chat with.</MudText>
-    </div>
-
-    <ProblemMessage Problem="_problem" />
-
-    @if (_agents is null)
-    {
-        <MudProgressLinear Indeterminate="true" />
-    }
-    else
-    {
-        <MudTable T="AgentListItem" Items="_agents" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="agents">
+<ListPage Title="Agents"
+          Description="An agent is a prompt, a model endpoint and tools. It can call other agents as tools, and be offered as an assistant that people chat with."
+          AddLabel="Add agent" OnAdd="() => _screen.OpenDrawer(ListScreen<AgentListItem>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No agent yet" EmptyText="Add an agent to give an assistant something to answer through.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" ScopeOptions="ScopeOptions" Assistants="_assistantSummaries"
+                   TypeLabel="Endpoint" TypeOptions="EndpointOptions" SearchPlaceholder="Search by name or slug" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        <MudTable T="AgentListItem" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="agents">
             <HeaderContent>
                 <MudTh>Agent</MudTh>
                 <MudTh>Scope</MudTh>
@@ -26,11 +27,10 @@
                 <MudTh>Assistant</MudTh>
                 <MudTh>Sub-agents</MudTh>
                 <MudTh>Tools</MudTh>
-                <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate Context="agent">
                 <MudTd DataLabel="Agent">
-                    <span class="tool-name">@agent.DisplayName</span>
+                    <MudLink Href="@_screen.DrawerUri(agent.Id.ToString())" Class="tool-name" data-agent="@agent.Slug">@agent.DisplayName</MudLink>
                     <span class="tool-hint">@agent.Slug</span>
                 </MudTd>
                 <MudTd DataLabel="Scope">@agent.Scope</MudTd>
@@ -38,131 +38,142 @@
                 <MudTd DataLabel="Assistant">@AssistantNames(agent.Slug)</MudTd>
                 <MudTd DataLabel="Sub-agents">@agent.SubAgentCount</MudTd>
                 <MudTd DataLabel="Tools">@agent.ToolCount</MudTd>
-                <MudTd>
-                    <MudButton Size="Size.Small" OnClick="() => EditAsync(agent.Id)">Edit</MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(agent)">Delete</MudButton>
-                </MudTd>
             </RowTemplate>
         </MudTable>
+    </ChildContent>
+</ListPage>
 
-        @if (_form is null)
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="IsDirty" OnClose="_screen.CloseDrawer">
+    @if (_form is null)
+    {
+        @if (_drawerProblem is not null)
         {
-            <div><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="New">Add agent</MudButton></div>
+            <ProblemMessage Problem="_drawerProblem" />
         }
         else
         {
-            <MudPaper Outlined="true" Class="pa-4">
-                <form @onsubmit="SaveAsync" data-form="agent">
-                    <MudStack Spacing="3">
-                        <MudText Typo="Typo.h6">@(_editing is null ? "New agent" : "Edit agent")</MudText>
-                        <MudTextField @bind-Value="_form.DisplayName" Label="Name" Variant="Variant.Outlined" Required="true" />
-                        <MudTextField @bind-Value="_form.Slug" Label="Slug" Variant="Variant.Outlined" Required="true"
-                                      HelperText="The name the calling model sees when it delegates to this agent: lowercase letters, digits and dashes." />
-                        <MudTextField @bind-Value="_form.Description" Label="Description" Variant="Variant.Outlined" Lines="2"
-                                      HelperText="Written for the calling model: what this agent does and how to brief it." />
-                        <MudTextField @bind-Value="_form.SystemPrompt" Label="System prompt" Variant="Variant.Outlined" Lines="6" />
-
-                        <label class="tool-policy">Model endpoint
-                            <select aria-label="Model endpoint" @bind="_form.ModelEndpointId">
-                                <option value="">Same as the caller</option>
-                                @foreach (var endpoint in _endpoints)
-                                {
-                                    <option value="@endpoint.Id">@endpoint.Name</option>
-                                }
-                            </select>
-                        </label>
-
-                        <label class="tool-policy">Who can use it
-                            <select aria-label="Scope" @bind="_form.Scope">
-                                <option value="Tenant">This tenant</option>
-                                <option value="Global">Every tenant</option>
-                            </select>
-                        </label>
-
-                        <div>
-                            <MudText Typo="Typo.subtitle2">Sub-agents</MudText>
-                            <MudText Typo="Typo.body2" Class="tool-hint">The agents this one may call as tools. Say what should happen when one of them fails: its error goes back to this agent, which decides how to go on, or the whole answer stops.</MudText>
-                            @foreach (var other in _agents.Where(a => a.Id != _editing?.Id))
-                            {
-                                var slug = other.Slug;
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                    <MudCheckBox T="bool" Value="_form.SubAgents.ContainsKey(slug)" ValueChanged="on => ToggleSub(slug, on)"
-                                                 Label="@other.DisplayName" Dense="true" />
-                                    @if (_form.SubAgents.TryGetValue(slug, out var policy))
-                                    {
-                                        <label class="tool-policy">If it fails
-                                            <select aria-label="@($"If {slug} fails")" value="@policy" @onchange="e => _form.SubAgents[slug] = e.Value?.ToString() ?? FailurePolicies.ReturnError">
-                                                <option value="@FailurePolicies.ReturnError">Report it to this agent</option>
-                                                <option value="@FailurePolicies.AbortTurn">Stop the whole answer</option>
-                                            </select>
-                                        </label>
-                                    }
-                                </MudStack>
-                            }
-                        </div>
-
-                        @if (_editing is not null)
-                        {
-                            <div>
-                                <MudText Typo="Typo.subtitle2">Tools</MudText>
-                                @if (_tools is null)
-                                {
-                                    <MudProgressLinear Indeterminate="true" />
-                                }
-                                else if (_tools.Pool.Count == 0)
-                                {
-                                    <MudText Typo="Typo.body2" Class="tool-hint">No tool is available to this agent yet.</MudText>
-                                }
-                                else
-                                {
-                                    @foreach (var tool in _tools.Pool)
-                                    {
-                                        var id = tool.ToolId;
-                                        <MudCheckBox T="bool" Value="_activeTools.Contains(id)" ValueChanged="on => ToggleTool(id, on)" Label="@tool.Name" Dense="true" />
-                                    }
-                                }
-                            </div>
-                        }
-
-                        <div data-section="assistant">
-                            <MudSwitch T="bool" @bind-Value="_form.OfferAsAssistant" Label="Offer as an assistant" Color="Color.Primary" />
-                            <MudText Typo="Typo.body2" Class="tool-hint">People start a chat with an assistant, which answers through this agent.</MudText>
-                            @if (_form.OfferAsAssistant)
-                            {
-                                <MudStack Spacing="2" Class="mt-2">
-                                    <MudTextField @bind-Value="_form.AssistantName" Label="Assistant name" Variant="Variant.Outlined"
-                                                  HelperText="Shown in the chat. Empty uses the agent's name." />
-                                    @if (_form.SubAgents.Count > 0)
-                                    {
-                                        <MudNumericField T="int" @bind-Value="_form.MaxParallelSubAgents" Label="Sub-agents at the same time" Variant="Variant.Outlined" Min="1"
-                                                         HelperText="1 runs them one after the other." />
-                                    }
-                                </MudStack>
-                            }
-                        </div>
-
-                        @if (_form.SubAgents.Count + _activeTools.Count > WarnAbove)
-                        {
-                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" data-warning="size">
-                                @(_form.SubAgents.Count + _activeTools.Count) sub-agents and tools: small models choose worse among many. This is only a warning.
-                            </MudAlert>
-                        }
-
-                        <ProblemMessage Problem="_formProblem" />
-                        <MudStack Row="true" Spacing="2">
-                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save</MudButton>
-                            <MudButton Variant="Variant.Text" Disabled="_busy" OnClick="Cancel">Cancel</MudButton>
-                        </MudStack>
-                    </MudStack>
-                </form>
-            </MudPaper>
+            <MudProgressLinear Indeterminate="true" />
         }
     }
-</MudStack>
+    else
+    {
+        <form @onsubmit="SaveAsync" data-form="agent">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_form.DisplayName" Label="Name" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="_form.Slug" Label="Slug" Variant="Variant.Outlined" Required="true"
+                              HelperText="The name the calling model sees when it delegates to this agent: lowercase letters, digits and dashes." />
+                <MudTextField @bind-Value="_form.Description" Label="Description" Variant="Variant.Outlined" Lines="2"
+                              HelperText="Written for the calling model: what this agent does and how to brief it." />
+                <MudTextField @bind-Value="_form.SystemPrompt" Label="System prompt" Variant="Variant.Outlined" Lines="6" />
+
+                <label class="tool-policy">Model endpoint
+                    <select aria-label="Model endpoint" @bind="_form.ModelEndpointId">
+                        <option value="">Same as the caller</option>
+                        @foreach (var endpoint in _endpoints)
+                        {
+                            <option value="@endpoint.Id">@endpoint.Name</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="tool-policy">Who can use it
+                    <select aria-label="Scope" @bind="_form.Scope">
+                        <option value="Tenant">This tenant</option>
+                        <option value="Global">Every tenant</option>
+                    </select>
+                </label>
+
+                <div>
+                    <MudText Typo="Typo.subtitle2">Sub-agents</MudText>
+                    <MudText Typo="Typo.body2" Class="tool-hint">The agents this one may call as tools. Say what should happen when one of them fails: its error goes back to this agent, which decides how to go on, or the whole answer stops.</MudText>
+                    @foreach (var other in _allAgents.Where(a => a.Id != _editing?.Id))
+                    {
+                        var slug = other.Slug;
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudCheckBox T="bool" Value="_form.SubAgents.ContainsKey(slug)" ValueChanged="on => ToggleSub(slug, on)"
+                                         Label="@other.DisplayName" Dense="true" />
+                            @if (_form.SubAgents.TryGetValue(slug, out var policy))
+                            {
+                                <label class="tool-policy">If it fails
+                                    <select aria-label="@($"If {slug} fails")" value="@policy" @onchange="e => _form.SubAgents[slug] = e.Value?.ToString() ?? FailurePolicies.ReturnError">
+                                        <option value="@FailurePolicies.ReturnError">Report it to this agent</option>
+                                        <option value="@FailurePolicies.AbortTurn">Stop the whole answer</option>
+                                    </select>
+                                </label>
+                            }
+                        </MudStack>
+                    }
+                </div>
+
+                @if (_editing is not null)
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2">Tools</MudText>
+                        @if (_tools is null)
+                        {
+                            <MudProgressLinear Indeterminate="true" />
+                        }
+                        else if (_tools.Pool.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="tool-hint">No tool is available to this agent yet.</MudText>
+                        }
+                        else
+                        {
+                            @foreach (var tool in _tools.Pool)
+                            {
+                                var id = tool.ToolId;
+                                <MudCheckBox T="bool" Value="_activeTools.Contains(id)" ValueChanged="on => ToggleTool(id, on)" Label="@tool.Name" Dense="true" />
+                            }
+                        }
+                    </div>
+                }
+
+                <div data-section="assistant">
+                    <MudSwitch T="bool" @bind-Value="_form.OfferAsAssistant" Label="Offer as an assistant" Color="Color.Primary" />
+                    <MudText Typo="Typo.body2" Class="tool-hint">People start a chat with an assistant, which answers through this agent.</MudText>
+                    @if (_form.OfferAsAssistant)
+                    {
+                        <MudStack Spacing="2" Class="mt-2">
+                            <MudTextField @bind-Value="_form.AssistantName" Label="Assistant name" Variant="Variant.Outlined"
+                                          HelperText="Shown in the chat. Empty uses the agent's name." />
+                            @if (_form.SubAgents.Count > 0)
+                            {
+                                <MudNumericField T="int" @bind-Value="_form.MaxParallelSubAgents" Label="Sub-agents at the same time" Variant="Variant.Outlined" Min="1"
+                                                 HelperText="1 runs them one after the other." />
+                            }
+                        </MudStack>
+                    }
+                </div>
+
+                @if (_form.SubAgents.Count + _activeTools.Count > WarnAbove)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" data-warning="size">
+                        @(_form.SubAgents.Count + _activeTools.Count) sub-agents and tools: small models choose worse among many. This is only a warning.
+                    </MudAlert>
+                }
+
+                <ProblemMessage Problem="_formProblem" />
+                <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">@(_editing is null ? "Create" : "Save changes")</MudButton>
+                    @if (_editing is not null)
+                    {
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy"
+                                   StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                    }
+                </MudStack>
+            </MudStack>
+        </form>
+    }
+</ListDrawer>
 
 @code {
     // Spec 013 D-30: informational, not a limit.
     internal const int WarnAbove = 10;
+
+    private const string InheritedEndpoint = "inherit";
+
+    private static readonly IReadOnlyList<FilterOption> ScopeOptions = [new("global", "Global"), new("tenant", "Tenant")];
 
     private sealed class AgentForm
     {
@@ -189,34 +200,129 @@
         public int MaxParallelSubAgents { get; set; } = 1;
     }
 
-    private List<AgentListItem>? _agents;
+    private ListDrawer? _drawer;
+    private ListScreen<AgentListItem> _screen = null!;
+    private List<AgentListItem> _allAgents = [];
+    private List<ModelEndpointInfo> _endpoints = [];
     private List<AssistantInfo> _assistants = [];
+    private IReadOnlyList<AssistantSummary> _assistantSummaries = [];
+    private IReadOnlyList<FilterOption> EndpointOptions => [new(InheritedEndpoint, "Same as the caller"), .. _endpoints.Select(e => new FilterOption(e.Id.ToString(), e.Name))];
+
     // The assistant this form manages: the first one that answers through the agent being edited.
     private AssistantInfo? _assistant;
-    private List<ModelEndpointInfo> _endpoints = [];
     private AgentDocument? _editing;
     private AgentForm? _form;
     private AgentTools? _tools;
     private readonly HashSet<Guid> _activeTools = [];
-    private ApiProblem? _problem;
+    private ApiProblem? _drawerProblem;
     private ApiProblem? _formProblem;
+    private ApiProblem? _carriedProblem;
+    private string? _openedId;
+    private string _opened = string.Empty;
+    private string? _notice;
     private bool _busy;
+
+    /// <summary>The drawer: <c>new</c> or the id of the agent. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _form is null ? "Agent" : _editing is null ? "New agent" : $"Edit {_editing.DisplayName}";
+
+    private bool IsDirty => _form is not null && Snapshot() != _opened;
 
     protected override async Task OnInitializedAsync()
     {
+        _screen = new ListScreen<AgentListItem>(Navigation, "/agents", LoadAsync, () => InvokeAsync(StateHasChanged));
+
         var endpoints = await Api.ListModelEndpointsAsync();
         _endpoints = endpoints.IsSuccess ? endpoints.Value : [];
-        await LoadAsync();
+        await LoadAssistantsAsync();
+        await _screen.ReloadAsync();
     }
 
-    private async Task LoadAsync()
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_openedId == Id)
+        {
+            return;
+        }
+
+        _openedId = Id;
+        _editing = null;
+        _assistant = null;
+        _form = null;
+        _tools = null;
+        _activeTools.Clear();
+        _drawerProblem = null;
+        _formProblem = _carriedProblem;
+        _carriedProblem = null;
+
+        if (Id is null)
+        {
+            return;
+        }
+
+        if (Id == ListScreen<AgentListItem>.NewId)
+        {
+            _form = new AgentForm();
+            _opened = Snapshot();
+            return;
+        }
+
+        if (!Guid.TryParse(Id, out var id))
+        {
+            _drawerProblem = NotFound;
+            return;
+        }
+
+        await OpenAsync(id);
+    }
+
+    private static readonly ApiProblem NotFound = new(404, "agent.not_found", "There is no such agent.", new Dictionary<string, string[]>());
+
+    // The list is filtered here: the server returns every agent of the tenant, and there are few.
+    private async Task<ApiResult<Page<AgentListItem>>> LoadAsync(ListQuery query, string? cursor)
     {
         var result = await Api.ListAgentItemsAsync();
-        _problem = result.Problem;
-        _agents = result.IsSuccess ? result.Value : [];
+        if (!result.IsSuccess)
+        {
+            return ApiResult.Fail<Page<AgentListItem>>(result.Problem!);
+        }
 
+        _allAgents = result.Value;
+        var answering = _assistants.Where(a => query.Assistant.Contains(a.Id)).Select(a => a.RootAgentSlug).ToHashSet(StringComparer.Ordinal);
+        var items = result.Value.Where(agent => Matches(agent, query, answering)).ToList();
+        return ApiResult.Ok(new Page<AgentListItem>(items, null));
+    }
+
+    private static bool Matches(AgentListItem agent, ListQuery query, HashSet<string> answering)
+    {
+        if (!string.IsNullOrWhiteSpace(query.Q)
+            && !agent.DisplayName.Contains(query.Q, StringComparison.OrdinalIgnoreCase)
+            && !agent.Slug.Contains(query.Q, StringComparison.OrdinalIgnoreCase)
+            && !agent.Description.Contains(query.Q, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (query.Scope.Count > 0 && !query.Scope.Contains(agent.Scope, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (query.Type.Count > 0 && !query.Type.Contains(agent.ModelEndpointId?.ToString() ?? InheritedEndpoint, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return query.Assistant.Count == 0 || answering.Contains(agent.Slug);
+    }
+
+    private async Task LoadAssistantsAsync()
+    {
         var assistants = await Api.ListAssistantInfosAsync();
         _assistants = assistants.IsSuccess ? assistants.Value : [];
+        _assistantSummaries = [.. _assistants.Select(a => new AssistantSummary(a.Id, a.Name, a.RootAgentSlug))];
     }
 
     private string EndpointName(Guid? id) =>
@@ -228,22 +334,12 @@
         return names.Count == 0 ? "—" : string.Join(", ", names);
     }
 
-    private void New()
-    {
-        _editing = null;
-        _assistant = null;
-        _form = new AgentForm();
-        _tools = null;
-        _activeTools.Clear();
-        _formProblem = null;
-    }
-
-    private async Task EditAsync(Guid id)
+    private async Task OpenAsync(Guid id)
     {
         var result = await Api.GetAgentAsync(id);
         if (!result.IsSuccess)
         {
-            _problem = result.Problem;
+            _drawerProblem = result.Problem;
             return;
         }
 
@@ -272,9 +368,6 @@
             _form.MaxParallelSubAgents = _assistant.MaxParallelSubAgents;
         }
 
-        _formProblem = null;
-        _tools = null;
-        _activeTools.Clear();
         var tools = await Api.GetAgentToolsAsync(id);
         if (tools.IsSuccess)
         {
@@ -285,9 +378,26 @@
         {
             _formProblem = tools.Problem;
         }
+
+        _opened = Snapshot();
     }
 
-    private void Cancel() => _form = null;
+    // What the form holds, as one text: the drawer asks before closing only when it differs from what was opened.
+    private string Snapshot() => _form is null
+        ? string.Empty
+        : string.Join(
+            '|',
+            _form.Slug,
+            _form.DisplayName,
+            _form.Description,
+            _form.SystemPrompt,
+            _form.ModelEndpointId,
+            _form.Scope,
+            _form.OfferAsAssistant,
+            _form.AssistantName,
+            _form.MaxParallelSubAgents,
+            string.Join(',', _form.SubAgents.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}:{pair.Value}")),
+            string.Join(',', _activeTools.Order()));
 
     private void ToggleSub(string slug, bool on)
     {
@@ -359,22 +469,26 @@
         }
 
         _busy = false;
-        _formProblem = result.Problem;
         if (result.IsSuccess)
         {
-            _form = null;
+            _notice = $"{request.DisplayName} was saved.";
+            await CloseAfterAsync();
+            return;
         }
+
+        _formProblem = result.Problem;
 
         // The agent is saved even when its tools or assistant were refused: the list must show it, and the form stays open for them.
         if (agentSaved)
         {
-            await LoadAsync();
-            if (!result.IsSuccess && _editing is null && savedId is { } created)
+            await LoadAssistantsAsync();
+            await _screen.ReloadAsync();
+            if (_editing is null && savedId is { } created)
             {
                 // A second save must update the agent just created, not add another.
-                var problem = result.Problem;
-                await EditAsync(created);
-                _formProblem = problem;
+                _carriedProblem = result.Problem;
+                _drawer?.SkipNextGuard();
+                _screen.OpenDrawer(created.ToString());
             }
         }
     }
@@ -399,34 +513,58 @@
         return await Api.UpdateAssistantAsync(_assistant.Id, request);
     }
 
-    private async Task DeleteAsync(AgentListItem agent)
+    private async Task DeleteAsync()
     {
+        var agent = _editing!;
         var assistants = _assistants.Where(a => a.RootAgentSlug == agent.Slug).ToList();
-        var message = assistants.Count == 0
-            ? $"Delete {agent.DisplayName}?"
-            : $"Delete {agent.DisplayName} and its assistant {string.Join(", ", assistants.Select(a => a.Name))}? Their conversations stay readable.";
-        var confirmed = await Dialogs.ShowMessageBoxAsync("Delete agent", message, yesText: "Delete", cancelText: "Cancel");
-        if (confirmed != true)
+        var consequence = assistants.Count == 0
+            ? "Agents that call it as a sub-agent must drop it first."
+            : $"Its assistant {string.Join(", ", assistants.Select(a => a.Name))} goes with it; their conversations stay readable.";
+        if (!await Confirmations.ConfirmDeleteAsync(Dialogs, $"Delete {agent.DisplayName}?", consequence, "Delete agent"))
         {
             return;
         }
 
-        // An assistant cannot outlive its root agent; 409 lists the other assistants and agents that still reference the agent.
-        foreach (var assistant in assistants)
+        _busy = true;
+        _formProblem = null;
+        try
         {
-            var removed = await Api.DeleteAssistantAsync(assistant.Id);
-            if (!removed.IsSuccess)
+            // An assistant cannot outlive its root agent; 409 lists the other assistants and agents that still reference the agent.
+            foreach (var assistant in assistants)
             {
-                _problem = removed.Problem;
+                var removed = await Api.DeleteAssistantAsync(assistant.Id);
+                if (!removed.IsSuccess)
+                {
+                    _formProblem = removed.Problem;
+                    return;
+                }
+            }
+
+            var result = await Api.DeleteAgentAsync(agent.Id);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
                 return;
             }
-        }
 
-        var result = await Api.DeleteAgentAsync(agent.Id);
-        _problem = result.Problem;
-        if (result.IsSuccess)
+            _notice = $"{agent.DisplayName} was deleted.";
+            await CloseAfterAsync();
+        }
+        finally
         {
-            await LoadAsync();
+            _busy = false;
         }
     }
+
+    // Saved or deleted: nothing is left to lose, so the drawer closes without asking.
+    private async Task CloseAfterAsync()
+    {
+        _form = null;
+        _drawer?.SkipNextGuard();
+        _screen.CloseDrawer();
+        await LoadAssistantsAsync();
+        await _screen.ReloadAsync();
+    }
+
+    public void Dispose() => _screen.Dispose();
 }

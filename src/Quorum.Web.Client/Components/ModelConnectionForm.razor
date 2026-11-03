@@ -1,44 +1,53 @@
 @* How to reach the model: address, key, model, tool support and context budget. It takes the test as a delegate, so the
    settings page (which tests with the stored key) and the setup (which tests with the setup token) share it. *@
 
-<MudStack Spacing="3" data-form="model">
-    <MudTextField @bind-Value="Value.BaseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true"
-                  HelperText="Include the version segment, e.g. http://ollama:11434/v1" />
-    <MudTextField @bind-Value="Value.ApiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
-                  HelperText="@(HasApiKey ? "A key is stored. Leave empty to keep it." : "Optional. Stored encrypted and never shown again.")" />
-    @if (HasApiKey)
-    {
-        <MudCheckBox T="bool" @bind-Value="Value.RemoveKey" Label="Remove the stored key" />
-    }
+@* Two columns when there is room (the settings page, a wide drawer), one when there is not (the setup, a phone): the first holds how to reach
+   the server, the second what to run on it. *@
+<div class="model-connection" data-form="model">
+    <MudStack Spacing="3">
+        <MudTextField @bind-Value="Value.BaseUrl" Label="Base URL" Variant="Variant.Outlined" Required="true"
+                      HelperText="Include the version segment, e.g. http://ollama:11434/v1" />
+        <MudTextField @bind-Value="Value.ApiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" autocomplete="off"
+                      HelperText="@(HasApiKey ? "A key is stored. Leave empty to keep it." : "Optional. Stored encrypted and never shown again.")" />
+        @if (HasApiKey)
+        {
+            <MudCheckBox T="bool" @bind-Value="Value.RemoveKey" Label="Remove the stored key" />
+        }
 
-    <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="Busy || _testing" StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
-    @if (_models is not null)
-    {
-        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Connected. @_models.Count model(s) available.</MudAlert>
-    }
+        <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="Busy || _testing" StartIcon="@Icons.Material.Filled.NetworkCheck">Test connection</MudButton>
+        @if (_models is not null)
+        {
+            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Connected. @_models.Count model(s) available.</MudAlert>
+        }
 
-    <ProblemMessage Problem="_problem" />
+        <ProblemMessage Problem="_problem" />
+    </MudStack>
 
-    @if (_models is { Count: > 0 })
-    {
-        <MudSelect T="string" @bind-Value="Value.ModelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
-            @foreach (var model in _models)
-            {
-                <MudSelectItem Value="@model">@model</MudSelectItem>
-            }
-        </MudSelect>
-    }
-    else
-    {
-        <MudTextField @bind-Value="Value.ModelName" Label="Model" Variant="Variant.Outlined" Required="true" />
-    }
+    <MudStack Spacing="3">
+        @if (_models is { Count: > 0 })
+        {
+            <MudSelect T="string" @bind-Value="Value.ModelName" @bind-Value:after="DetectToolSupportAsync" Label="Model" Variant="Variant.Outlined" Required="true">
+                @foreach (var model in _models)
+                {
+                    <MudSelectItem Value="@model">@model</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else
+        {
+            <MudTextField @bind-Value="Value.ModelName" Label="Model" Variant="Variant.Outlined" Required="true"
+                          HelperText="Test the connection to choose from the models the server offers." />
+        }
 
-    <MudSwitch T="bool" @bind-Value="Value.SupportsTools" Color="Color.Primary" Label="The model supports tools" aria-describedby="tools-support-hint" />
-    <MudText id="tools-support-hint" Typo="Typo.caption" Class="tools-support-hint">@ToolSupportHint</MudText>
+        <div>
+            <MudSwitch T="bool" @bind-Value="Value.SupportsTools" Color="Color.Primary" Label="The model supports tools" aria-describedby="tools-support-hint" />
+            <MudText id="tools-support-hint" Typo="Typo.caption" Class="tools-support-hint">@ToolSupportHint</MudText>
+        </div>
 
-    <MudNumericField T="int" @bind-Value="Value.ContextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined" Min="256" Max="1000000"
-                     HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
-</MudStack>
+        <MudNumericField T="int" @bind-Value="Value.ContextTokenBudget" Label="Context budget (tokens)" Variant="Variant.Outlined" Min="256" Max="1000000"
+                         HelperText="The model server must offer at least this much context (Ollama: OLLAMA_CONTEXT_LENGTH or num_ctx), or long documents are cut off without an error." />
+    </MudStack>
+</div>
 
 @code {
     private IReadOnlyList<string>? _models;

@@ -77,19 +77,23 @@
                             <MudTextField T="string" @bind-Value="_toolSearch" Label="Search the tools" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
                                           Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
 
-                            @foreach (var group in Groups())
-                            {
-                                <MudText Typo="Typo.subtitle2" Class="mt-2" data-source="@group.Source">@group.Source</MudText>
-                                @foreach (var tool in group.Tools)
+                            <div class="settings-columns">
+                                @foreach (var group in Groups())
                                 {
-                                    <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
-                                    @if (tool.Manifest is not null)
-                                    {
-                                        // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
-                                        <MudSwitch T="bool" @bind-Value="tool.Lean" Label="Lean manifest" Color="Color.Secondary" Disabled="!tool.Active" />
-                                    }
+                                    <div class="settings-group">
+                                        <MudText Typo="Typo.subtitle2" Class="mt-2" data-source="@group.Source">@group.Source</MudText>
+                                        @foreach (var tool in group.Tools)
+                                        {
+                                            <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
+                                            @if (tool.Manifest is not null)
+                                            {
+                                                // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
+                                                <MudSwitch T="bool" @bind-Value="tool.Lean" Label="Lean manifest" Color="Color.Secondary" Disabled="!tool.Active" />
+                                            }
+                                        }
+                                    </div>
                                 }
-                            }
+                            </div>
 
                             @foreach (var warning in _warnings)
                             {
