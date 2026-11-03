@@ -284,7 +284,7 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
 
         // AC-A1-7: describe lists the attributes of a list of entities with their type and operators, and no field of its knowledge base.
         var described = JsonDocument.Parse(ResultOf(await AskAsync(setup, new FakeToolCall("lookup_describe__lists", """{"targets":["suppliers"]}""", "call_lean_d"))));
-        var supplierFilters = described.RootElement.GetProperty("targets")[0].GetProperty("operations").GetProperty("values").GetProperty("filters").EnumerateArray().ToList();
+        var supplierFilters = described.RootElement.GetProperty("targets")[0].GetProperty("operations").GetProperty("entries").GetProperty("filters").EnumerateArray().ToList();
         Assert.Equal(["contract_count", "country", "supplier_since"], supplierFilters.Select(f => f.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
         var contractCount = supplierFilters.Single(f => f.GetProperty("name").GetString() == "contract_count");
         Assert.Equal("Number", contractCount.GetProperty("type").GetString());
@@ -292,38 +292,38 @@ public sealed partial class LookupToolCallTests(PostgresFixture postgres, Qdrant
         Assert.Equal(["eq", "in"], supplierFilters.Single(f => f.GetProperty("name").GetString() == "country").GetProperty("operators").EnumerateArray().Select(e => e.GetString()));
 
         // An attribute filter narrows the entries of the list, read from its rows.
-        var american = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"country":["US"]},"sort":"-contract_count"}""", "call_lean_1")));
+        var american = ResultOf(await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"entries","filters":{"country":["US"]},"sort":"-contract_count"}""", "call_lean_1")));
         Assert.Contains("Ordered by contract_count, the largest first.", american, StringComparison.Ordinal);
         Assert.Equal(["Hooli", "Globex"], Rows(american).Select(r => r.Split(' ')[0]));
 
         // A name that is not an attribute is refused, with the attributes that are.
-        var unknown = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"nothing":["x"]}}""", "call_lean_u"));
+        var unknown = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"entries","filters":{"nothing":["x"]}}""", "call_lean_u"));
         Assert.Equal("failed", StatusOf(unknown));
         Assert.Contains("cannot be filtered by nothing. It can be filtered by", ResultOf(unknown), StringComparison.Ordinal);
         Assert.Contains("contract_count", ResultOf(unknown), StringComparison.Ordinal);
 
         // A range written as a parameter of its own is refused with the form it takes (spec 012 A1-5).
-        var suffixed = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","filters":{"contract_count_min":3}}""", "call_lean_s"));
+        var suffixed = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"entries","filters":{"contract_count_min":3}}""", "call_lean_s"));
         Assert.Equal("failed", StatusOf(suffixed));
         Assert.Contains("write contract_count as {\"min\": value} inside filters", ResultOf(suffixed), StringComparison.Ordinal);
 
         // An operation the list does not take is refused with the ones it does.
         var wrongOperation = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"documents"}""", "call_lean_o"));
         Assert.Equal("failed", StatusOf(wrongOperation));
-        Assert.Contains("takes the operations values and count", ResultOf(wrongOperation), StringComparison.Ordinal);
+        Assert.Contains("takes the operations entries and count", ResultOf(wrongOperation), StringComparison.Ordinal);
 
         // A filter written beside the filters object is refused, not dropped: the answer would otherwise be the unfiltered list.
-        var stray = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","country":["US"]}""", "call_lean_2"));
+        var stray = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"entries","country":["US"]}""", "call_lean_2"));
         Assert.Equal("failed", StatusOf(stray));
         Assert.Contains("Put the filters in the filters object", ResultOf(stray), StringComparison.Ordinal);
 
         // Only the form describe declares is accepted: "attribute desc" is refused, and the error names the forms that are.
-        var spaced = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"values","sort":"contract_count desc"}""", "call_lean_desc"));
+        var spaced = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"suppliers","operation":"entries","sort":"contract_count desc"}""", "call_lean_desc"));
         Assert.Equal("failed", StatusOf(spaced));
         Assert.Contains("cannot be ordered by 'contract_count desc'", ResultOf(spaced), StringComparison.Ordinal);
 
         // A filter inside the filters object on a manual list it does not apply to is refused, not answered unfiltered.
-        var notApplied = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"language","operation":"values","filters":{"country":["US"]}}""", "call_lean_3"));
+        var notApplied = await AskAsync(setup, new FakeToolCall("lookup_query__lists", """{"target":"language","operation":"entries","filters":{"country":["US"]}}""", "call_lean_3"));
         Assert.Equal("failed", StatusOf(notApplied));
         Assert.Contains("The list 'language' cannot be filtered by country", ResultOf(notApplied), StringComparison.Ordinal);
     }

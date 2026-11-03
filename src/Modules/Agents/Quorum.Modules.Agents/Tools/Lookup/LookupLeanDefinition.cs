@@ -23,8 +23,14 @@ internal static class LookupLeanDefinition
     /// <summary>The parameters <c>query</c> takes: anything else beside them is refused, so a filter written outside <c>filters</c> is never dropped silently.</summary>
     public static readonly string[] QueryParameters = [TargetParameter, OperationParameter, FiltersParameter, "search", "sort", "limit", "cursor"];
 
-    /// <summary>The operations <c>query</c> takes on a list: its values, and the count of the values that match the search.</summary>
-    public static readonly string[] LookupOperations = [LookupToolDefinition.ValuesOperation, LookupToolDefinition.CountOperation];
+    /// <summary>
+    /// The operation <c>query</c> takes to read the entries of a list, one per value or entity with its attributes: named for what it returns, so
+    /// that it is not mistaken for <c>documents</c> (spec 012 D-8). It reads the same values as <see cref="LookupToolDefinition.ValuesOperation"/>.
+    /// </summary>
+    public const string EntriesOperation = "entries";
+
+    /// <summary>The operations <c>query</c> takes on a list: its entries, and the count of the entries that match the search.</summary>
+    public static readonly string[] LookupOperations = [EntriesOperation, LookupToolDefinition.CountOperation];
 
     /// <summary>The count of the values of a list that match the search: what <c>count</c> on a list runs inside the tool.</summary>
     public const string ListCountOperation = "listCount";
@@ -42,7 +48,7 @@ internal static class LookupLeanDefinition
             .Concat(bases.Select(name => $"{name} (knowledge base)")));
 
         var describe = $"Describe the lists and knowledge bases of the lookup tool \"{toolName}\" before reading one: the operations each takes, the fields it can be filtered by, the order it can be sorted in and its limits. {toolDescription} Targets: {listed}.";
-        var query = $"Read one list or knowledge base of \"{toolName}\". A list takes the operations values and count only; documents is for a knowledge base only, and count is for both. Call {DescribeOperation} first: it names, for each target, the operations and the filters it takes. Targets: {listed}.";
+        var query = $"Read one list or knowledge base of \"{toolName}\". A list takes the operations entries and count only; documents is for a knowledge base only, and count is for both. Call {DescribeOperation} first: it names, for each target, the operations and the filters it takes. Targets: {listed}.";
 
         return new GeneratedLookupDefinition(
         [
@@ -69,7 +75,7 @@ internal static class LookupLeanDefinition
         ["required"] = Names([TargetsParameter]),
     };
 
-    // The operations of a target depend on what it is: a list takes values and count, a knowledge base documents and count. The rule is
+    // The operations of a target depend on what it is: a list takes entries and count, a knowledge base documents and count. The rule is
     // written per target so the model sees which operation fits the target it chose (spec 012 A1-6); the read still refuses the others.
     private static JsonObject QuerySchema(List<string> lookups, List<string> bases)
     {
@@ -114,7 +120,7 @@ internal static class LookupLeanDefinition
         {
             ["type"] = "string",
             ["enum"] = Names([.. LookupOperations, .. KnowledgeBaseOperations.Where(o => !LookupOperations.Contains(o))]),
-            ["description"] = "The operation describe names for the target: values and count for a list, documents and count for a knowledge base.",
+            ["description"] = "The operation describe names for the target: entries and count for a list, documents and count for a knowledge base.",
         },
         [FiltersParameter] = new JsonObject { ["type"] = "object", ["description"] = "Filters by field or attribute, as describe lists them." },
         ["search"] = new JsonObject { ["type"] = "string" },

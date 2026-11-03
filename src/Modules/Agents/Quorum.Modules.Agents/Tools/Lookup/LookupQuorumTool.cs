@@ -107,7 +107,7 @@ internal sealed class LookupQuorumTool(ActiveTool descriptor, LookupRuntime runt
                 ["description"] = list.Description,
                 ["operations"] = new JsonObject
                 {
-                    [LookupToolDefinition.ValuesOperation] = new JsonObject
+                    [LookupLeanDefinition.EntriesOperation] = new JsonObject
                     {
                         ["description"] = computed
                             ? "The values that exist, with the number of documents of each, most common first or by name. With filters, the values that occur among the documents that match them."
