@@ -7,4 +7,7 @@ public static class PostgresErrors
 {
     public static bool IsUniqueViolation(this DbUpdateException exception) =>
         exception?.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
+
+    public static bool IsForeignKeyViolation(this DbUpdateException exception) =>
+        exception?.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation };
 }
