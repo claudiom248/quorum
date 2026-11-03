@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.15.0](https://github.com/claudiom248/quorum/compare/v0.14.0...v0.15.0) (2026-11-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* admin UI polish, ledger styles, tools called by their own name (spec 013, spec 015) ([#171](https://github.com/claudiom248/quorum/issues/171))
+
+### Features
+
+* admin UI for agents, assistants and model endpoints, nested delegation ledger (spec 013) ([#165](https://github.com/claudiom248/quorum/issues/165)) ([43061b9](https://github.com/claudiom248/quorum/commit/43061b975bc223b6343098584b744e071c611ed2))
+* admin UI polish, ledger styles, tools called by their own name (spec 013, spec 015) ([#171](https://github.com/claudiom248/quorum/issues/171)) ([934519d](https://github.com/claudiom248/quorum/commit/934519dc3f2137f6f20b9f2032e8e8ae559b727f))
+* agents API with sub-agent edges and tools on agents (spec 013) ([#156](https://github.com/claudiom248/quorum/issues/156)) ([20b73d2](https://github.com/claudiom248/quorum/commit/20b73d27c9002e72298369d5b8f11f53da136b65))
+* agents foundation, assistant behaviour preserved (spec 013) ([#155](https://github.com/claudiom248/quorum/issues/155)) ([ab6321d](https://github.com/claudiom248/quorum/commit/ab6321d2882183576e26d2c4a63ef27e6871c991))
+* assistants CRUD (spec 013) ([#161](https://github.com/claudiom248/quorum/issues/161)) ([1dbdad9](https://github.com/claudiom248/quorum/commit/1dbdad9d83a43302de5dfca3235d1bcb6bad55e7))
+* contracts sample with real relations and one article per chunk ([#158](https://github.com/claudiom248/quorum/issues/158)) ([4a60379](https://github.com/claudiom248/quorum/commit/4a60379a5a132b8ed131bc963f40736284b43129))
+* delegation runtime, agents call their sub-agents as tools (spec 013) ([#163](https://github.com/claudiom248/quorum/issues/163)) ([35c42cc](https://github.com/claudiom248/quorum/commit/35c42cc17c31b33b2961147cee448e2138d2664d))
+* describe per operation and filters that match each target (spec 012 A1) ([#141](https://github.com/claudiom248/quorum/issues/141)) ([c39e1e7](https://github.com/claudiom248/quorum/commit/c39e1e7fca42963e3bd1882f11602d64dd42be83))
+* entity-only knowledge bases without a text role (spec 003 Amendment 3) ([#140](https://github.com/claudiom248/quorum/issues/140)) ([70f2bc9](https://github.com/claudiom248/quorum/commit/70f2bc9863ebcc8b12dc98ce93038dc419511d66))
+* group the tool calls of an answer in one ledger ([#146](https://github.com/claudiom248/quorum/issues/146)) ([d406c27](https://github.com/claudiom248/quorum/commit/d406c274194695c48ee30ea128f62e701a8ef08e))
+* lean describe and query take the attribute filters of entity and manual lists (spec 012 A1-5, A1-7) ([#151](https://github.com/claudiom248/quorum/issues/151)) ([2863b34](https://github.com/claudiom248/quorum/commit/2863b341385252bd0f3a8a6e26ed0db1ed4193aa))
+* lean describe states filter types, operators and sort values (spec 012 D-5, D-8) ([#144](https://github.com/claudiom248/quorum/issues/144)) ([e266f0b](https://github.com/claudiom248/quorum/commit/e266f0b669eba406445e7376fe59042b11d9192e))
+* lookup consolidation and lean manifest (spec 012) ([#135](https://github.com/claudiom248/quorum/issues/135)) ([0b737a6](https://github.com/claudiom248/quorum/commit/0b737a615dbaa0d32b753741e0bb92dbf7cc821b))
+* model endpoints as a resource (spec 013) ([#154](https://github.com/claudiom248/quorum/issues/154)) ([5d43b97](https://github.com/claudiom248/quorum/commit/5d43b979197c9db61d39695bcb7ece425c194870))
+* one knowledge base per documents or count call (spec 012 A1-2) ([#143](https://github.com/claudiom248/quorum/issues/143)) ([f12e338](https://github.com/claudiom248/quorum/commit/f12e338e749da8335e0e17294035993d13feaa80))
+* one selector of targets in the lookup tool editor (spec 012 A1-10) ([#142](https://github.com/claudiom248/quorum/issues/142)) ([67c7d0d](https://github.com/claudiom248/quorum/commit/67c7d0d7e945f75e31e479e97ad765c169162576))
+* read-only sample reference-data MCP server ([#164](https://github.com/claudiom248/quorum/issues/164)) ([10c2576](https://github.com/claudiom248/quorum/commit/10c25769b703ebf24d74aaeba1708fa3dcd01e1f))
+* rules of a knowledge base and a target name in a lookup tool (spec 012) ([#139](https://github.com/claudiom248/quorum/issues/139)) ([c76c157](https://github.com/claudiom248/quorum/commit/c76c157202e9fa7bb58146d3523923f485f88384))
+* web fetch tool reading pages for the agent (spec 006) ([#132](https://github.com/claudiom248/quorum/issues/132)) ([c1d9863](https://github.com/claudiom248/quorum/commit/c1d986350a5ed770b49466e389caaf8c587e9b8a))
+
+
+### Bug Fixes
+
+* answer 409 or 400 when a foreign key races agent delete or save (spec 013) ([#157](https://github.com/claudiom248/quorum/issues/157)) ([2077c1b](https://github.com/claudiom248/quorum/commit/2077c1b017b10a86b489d202e3877fe95bd89a19))
+* default the revalue amount to 0, not null ([#170](https://github.com/claudiom248/quorum/issues/170)) ([ece1904](https://github.com/claudiom248/quorum/commit/ece1904bec9f933f6d5754a897fdbc07d072d31b))
+* framework docs cite themselves as the family framework ([#167](https://github.com/claudiom248/quorum/issues/167)) ([5b0bdeb](https://github.com/claudiom248/quorum/commit/5b0bdebf70caa5ccbbff138075a0bd3dea7a148b))
+* knowledge base filters take min and max on a date (spec 012) ([#166](https://github.com/claudiom248/quorum/issues/166)) ([9814a6f](https://github.com/claudiom248/quorum/commit/9814a6f2645cbe17a371186da56e8aa57e17d633))
+
 ## [0.14.0](https://github.com/claudiom248/quorum/compare/v0.13.0...v0.14.0) (2026-10-29)
 
 
