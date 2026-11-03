@@ -81,7 +81,7 @@
         <form @onsubmit="SaveAsync">
             <MudStack Spacing="3">
                 <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@LookupToolLimits.MaxNameLength"
-                              HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as lookup__name." />
+                              HelperText="Letters, digits, '-' and '_', never two underscores in a row. People and the model read the same name." />
                 <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="@LookupToolLimits.MaxDescriptionLength"
                               HelperText="For the model: when to read these lists. Each list's own description is added to it." />
 

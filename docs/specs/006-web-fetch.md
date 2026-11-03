@@ -2,6 +2,7 @@
 
 **Status:** Implemented (PR #132)
 **Date:** 2026-10-29
+**Amended by spec 015 (2026-11-03):** a web fetch tool is called by its own name, not `web_fetch__<name>`, and its name may use capital letters (spec 015 D-1, D-3).
 
 ## Problem
 

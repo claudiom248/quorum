@@ -45,7 +45,7 @@ public abstract partial class FilteredToolForm
 
     public bool IsNew => Id is null;
 
-    /// <summary>The prefix of the name the model sees: <c>rag</c> for <c>rag__name</c>.</summary>
+    /// <summary>What kind of tool this is, for the messages: <c>rag</c> or <c>lookup</c>.</summary>
     protected abstract string Prefix { get; }
 
     protected abstract int MaxExposedFields { get; }
@@ -193,9 +193,9 @@ public abstract partial class FilteredToolForm
         Aliases.TryGetValue(id, out var alias) && alias.Trim() is { Length: > 0 } clean && dictionary.FirstOrDefault(f => f.Id == id)?.Name != clean ? clean : null;
 
     protected string? NameProblem(int maxLength) =>
-        ValidName().IsMatch(Name.Trim())
+        ValidName().IsMatch(Name.Trim()) && !Name.Contains("__", StringComparison.Ordinal)
             ? null
-            : $"The name is 1 to {maxLength} characters: lower-case letters, digits, \"-\" and \"_\", starting with a letter or digit. The model sees it as {Prefix}__name.";
+            : $"The name is 1 to {maxLength} characters: letters, digits, \"-\" and \"_\", starting with a letter or digit, and never two underscores in a row. People and the model read the same name.";
 
     protected string? DescriptionProblem(int maxLength, string purpose) =>
         Description.Trim().Length == 0 || Description.Length > maxLength
@@ -273,6 +273,6 @@ public abstract partial class FilteredToolForm
     [GeneratedRegex(@"^[a-z][a-z0-9_]{0,39}\z", RegexOptions.CultureInvariant)]
     private static partial Regex AliasPattern();
 
-    [GeneratedRegex(@"^[a-z0-9][a-z0-9_-]{0,39}\z", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}\z", RegexOptions.CultureInvariant)]
     private static partial Regex ValidName();
 }

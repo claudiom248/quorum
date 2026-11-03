@@ -2,6 +2,7 @@
 
 **Status:** In progress (approved 2026-10-29); Amendment 1 Approved (2026-10-29)
 **Date:** 2026-10-29
+**Amended by spec 015 (2026-11-03):** the lean functions are `<name>_describe` and `<name>_query`, not `lookup_describe__<name>` and `lookup_query__<name>` (spec 015 D-4).
 
 ## Problem
 Spec 007 gave the model lists, counts and document lists from metadata. Used with real models, it shows three problems:

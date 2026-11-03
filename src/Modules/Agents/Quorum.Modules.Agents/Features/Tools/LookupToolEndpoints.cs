@@ -231,6 +231,12 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
             return NameTaken.ToProblem();
         }
 
+        // The name is the one the model calls the tool by: no other tool, lookup operation or agent may answer to it.
+        if (await ToolNameRules.ClashAsync(db, ToolOrigin.Lookup, input.Name, null, cancellationToken) is { } clash)
+        {
+            return clash.ToProblem();
+        }
+
         var tool = Tool.CreateLookup(
             tenantId,
             input.Name,
@@ -307,6 +313,12 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         if (await db.Tools.AnyAsync(t => t.Origin == ToolOrigin.Lookup && t.Name == input.Name && t.Id != id, cancellationToken))
         {
             return NameTaken.ToProblem();
+        }
+
+        // The name is the one the model calls the tool by: no other tool, lookup operation or agent may answer to it.
+        if (await ToolNameRules.ClashAsync(db, ToolOrigin.Lookup, input.Name, id, cancellationToken) is { } clash)
+        {
+            return clash.ToProblem();
         }
 
         await using (var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken))

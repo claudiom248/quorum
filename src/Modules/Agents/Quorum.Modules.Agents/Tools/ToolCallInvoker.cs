@@ -131,7 +131,7 @@ internal sealed partial class ToolCallInvoker(
                 new AnswerChunk(
                     AnswerChunkKind.ToolCall,
                     string.Empty,
-                    new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null, run.ParentCallId, run.AgentSlug)),
+                    new ToolCallEvent(callId, call.Name, raw, needsConfirmation, needsConfirmation ? expiresAt : null, run.ParentCallId, run.AgentSlug, tool is AgentQuorumTool)),
                 cancellationToken);
 
             if (asksUser)

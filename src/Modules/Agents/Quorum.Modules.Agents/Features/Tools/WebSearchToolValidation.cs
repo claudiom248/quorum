@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Shared.Results;
 
@@ -22,7 +23,7 @@ internal sealed partial class WebSearchToolValidation(AgentsDbContext db)
 
     private static readonly Error InvalidName = Error.Validation(
         "web_search.invalid_name",
-        $"The name must be 1 to {MaxNameLength} characters: lower-case letters, digits, '-' and '_', starting with a letter or digit.");
+        ToolNameRules.Description);
 
     private static readonly Error InvalidDescription = Error.Validation(
         "web_search.invalid_description",
@@ -63,7 +64,7 @@ internal sealed partial class WebSearchToolValidation(AgentsDbContext db)
         ArgumentNullException.ThrowIfNull(request);
 
         var name = request.Name?.Trim();
-        if (name is null || !ValidNamePattern().IsMatch(name))
+        if (name is null || !ToolNameRules.IsValid(name))
         {
             return InvalidName;
         }
@@ -186,9 +187,6 @@ internal sealed partial class WebSearchToolValidation(AgentsDbContext db)
     }
 
     private static string? Trimmed(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,39}$")]
-    private static partial Regex ValidNamePattern();
 
     [GeneratedRegex("^[a-z]{2}(-[a-z]{2})?$")]
     private static partial Regex ValidLanguagePattern();

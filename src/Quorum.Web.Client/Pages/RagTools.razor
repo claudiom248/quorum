@@ -76,7 +76,7 @@
         <form @onsubmit="SaveAsync">
             <MudStack Spacing="3">
                 <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="40"
-                              HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as rag__name." />
+                              HelperText="Letters, digits, '-' and '_', never two underscores in a row. People and the model read the same name." />
                 <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="1000"
                               HelperText="For the model: when to search these knowledge bases. The knowledge bases' own descriptions are added to it." />
 

@@ -129,6 +129,12 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
             return NameTaken.ToProblem();
         }
 
+        // The name is the one the model calls the tool by: no other tool, lookup operation or agent may answer to it.
+        if (await ToolNameRules.ClashAsync(db, ToolOrigin.WebFetch, input.Name, null, cancellationToken) is { } clash)
+        {
+            return clash.ToProblem();
+        }
+
         var tool = Tool.CreateWebFetch(
             tenantId,
             input.Name,
@@ -186,6 +192,12 @@ internal sealed partial class WebFetchToolEndpoints : IEndpointGroup
         if (await db.Tools.AnyAsync(t => t.Origin == ToolOrigin.WebFetch && t.Name == input.Name && t.Id != id, cancellationToken))
         {
             return NameTaken.ToProblem();
+        }
+
+        // The name is the one the model calls the tool by: no other tool, lookup operation or agent may answer to it.
+        if (await ToolNameRules.ClashAsync(db, ToolOrigin.WebFetch, input.Name, id, cancellationToken) is { } clash)
+        {
+            return clash.ToProblem();
         }
 
         // The hash changes with the binding: a call that was waiting on the old one is refused when the user answers.

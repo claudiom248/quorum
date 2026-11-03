@@ -13,7 +13,7 @@
                 @foreach (var tool in group.Tools)
                 {
                     var id = tool.ToolId;
-                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@LabelOf(tool, group.Tools)" Color="Color.Primary" Dense="true" />
+                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@ToolCallView.DisplayNameOf(tool.Name)" Color="Color.Primary" Dense="true" />
                     @if (tool.Manifest is not null)
                     {
                         // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
@@ -45,10 +45,6 @@
     [Parameter]
     public EventCallback Changed { get; set; }
 
-    // A lookup and a rag tool may share a name: then each says what it is.
-    private static string LabelOf(PoolTool tool, List<PoolTool> group) =>
-        group.Count(other => ToolCallView.DisplayNameOf(other.Name) == ToolCallView.DisplayNameOf(tool.Name)) > 1 ? ToolCallView.QualifiedNameOf(tool.Name) : ToolCallView.DisplayNameOf(tool.Name);
-
     private bool IsLean(Guid id) => Manifests.TryGetValue(id, out var manifest) && manifest == "Lean";
 
     private Task ToggleAsync(Guid id, bool on)
@@ -71,20 +67,15 @@
         return Changed.InvokeAsync();
     }
 
-    // "files__read" comes from the server files, "builtin__calculator" is built in: the part before the double underscore.
-    // The tools made in Quorum are grouped as the menu does, so the ones that search and the ones that read the web sit together.
-    internal static string SourceOf(string exposedName)
+    // The tools made in Quorum are grouped as the menu does, so the ones that search and the ones that read the web sit together; an MCP tool
+    // goes with its server. The name does not say where a tool comes from, so the server tells.
+    internal static string SourceOf(PoolTool tool) => tool.Origin switch
     {
-        var split = exposedName.IndexOf("__", StringComparison.Ordinal);
-        var origin = split > 0 ? exposedName[..split] : "other";
-        return origin switch
-        {
-            "rag" or "lookup" => SearchGroup,
-            "web_fetch" or "web_search" => WebGroup,
-            _ => origin,
-        };
-    }
-
+        "builtin" => "builtin",
+        "rag" or "lookup" => SearchGroup,
+        "web_search" or "web_fetch" => WebGroup,
+        _ => tool.Server ?? "other",
+    };
     // The built-in tools first, then the ones made in Quorum, then one group per MCP server.
     private static int GroupRank(string source) => source switch
     {
@@ -97,7 +88,7 @@
     private IEnumerable<(string Source, List<PoolTool> Tools)> Groups() =>
         Pool
             .Where(t => string.IsNullOrWhiteSpace(_search) || ToolCallView.DisplayNameOf(t.Name).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
-            .GroupBy(t => SourceOf(t.Name))
+            .GroupBy(SourceOf)
             .OrderBy(g => GroupRank(g.Key))
             .ThenBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => (g.Key, g.ToList()));

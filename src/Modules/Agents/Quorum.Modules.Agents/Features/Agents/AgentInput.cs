@@ -49,6 +49,11 @@ internal sealed record AgentInput(
         {
             errors["slug"] = ["Another agent already has this slug."];
         }
+        else if (await ToolNameRules.ClashWithToolsAsync(db, slug, cancellationToken) is { } clash)
+        {
+            // The slug is the name of the tool that calls the agent, and the model reads the same name for every tool.
+            errors["slug"] = [clash.Description];
+        }
 
         var displayName = request.DisplayName?.Trim() ?? string.Empty;
         if (displayName.Length is 0 or > AgentRules.MaxDisplayNameLength)

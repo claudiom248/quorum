@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Quorum.Modules.Agents.Domain;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -14,25 +15,15 @@ internal sealed record ToolDefinition(string Name, string Description, string In
     }
 }
 
+/// <summary>
+/// The names the model calls tools by. A tool made in Quorum (built-in, rag, lookup, web search, web fetch) is called by its own name,
+/// the one people read in the lists and in the ledger; the model and the person see the same thing. Only an MCP tool carries its server
+/// (<c>server__tool</c>), because it comes from outside and two servers may offer a tool of one name. The names of a tenant's tools,
+/// agents and lookup operations share one space (<see cref="ToolNameRules"/>), so no two collapse into one.
+/// </summary>
 internal static class ToolNaming
 {
-    public const string BuiltinPrefix = "builtin__";
-
-    public const string RagPrefix = "rag__";
-
-    public const string LookupPrefix = "lookup__";
-
-    public const string WebSearchPrefix = "web_search__";
-
-    public const string WebFetchPrefix = "web_fetch__";
-
-    public const string LookupEntriesPrefix = "lookup_entries__";
-
-    public const string LookupDocumentsPrefix = "lookup_documents__";
-
-    public const string LookupCountPrefix = "lookup_count__";
-
-    /// <summary>What the audit log records as the server of a rag tool: the origin prefix, so that <c>rag__name</c> finds its calls like <c>server__tool</c> does.</summary>
+    /// <summary>What the audit log records as the server of a rag tool: the kind of tool, since the name the model sees no longer says it. A call is found by it like a call of an MCP server's tool.</summary>
     public const string RagAuditServer = "rag";
 
     /// <summary>What the audit log records as the server of a lookup tool, as <see cref="RagAuditServer"/> does for rag tools.</summary>
@@ -52,22 +43,33 @@ internal static class ToolNaming
 
     private const int HashLength = 8;
 
-    public static string Builtin(string toolName) => BuiltinPrefix + toolName;
+    /// <summary>The operations of a lookup tool, each its own function: the name the model sees is the tool's name and the operation.</summary>
+    public const string EntriesOperation = "entries";
 
-    public static string Rag(string toolName) => RagPrefix + toolName;
+    public const string DocumentsOperation = "documents";
 
-    public static string Lookup(string toolName) => LookupPrefix + toolName;
+    public const string CountOperation = "count";
 
-    public static string WebSearch(string toolName) => WebSearchPrefix + toolName;
+    public const string DescribeOperation = "describe";
 
-    public static string WebFetch(string toolName) => WebFetchPrefix + toolName;
+    public const string QueryOperation = "query";
+
+    public static string Builtin(string toolName) => toolName;
+
+    public static string Rag(string toolName) => toolName;
+
+    public static string Lookup(string toolName) => toolName;
+
+    public static string WebSearch(string toolName) => toolName;
+
+    public static string WebFetch(string toolName) => toolName;
 
     /// <summary>The function that reads the lists of a lookup tool; its sisters ask the knowledge bases (spec 007 A1).</summary>
-    public static string LookupEntries(string toolName) => LookupEntriesPrefix + toolName;
+    public static string LookupEntries(string toolName) => $"{toolName}_{EntriesOperation}";
 
-    public static string LookupDocuments(string toolName) => LookupDocumentsPrefix + toolName;
+    public static string LookupDocuments(string toolName) => $"{toolName}_{DocumentsOperation}";
 
-    public static string LookupCount(string toolName) => LookupCountPrefix + toolName;
+    public static string LookupCount(string toolName) => $"{toolName}_{CountOperation}";
 
     /// <summary>The name the model sees for one operation of a lookup tool.</summary>
     public static string LookupFunction(string toolName, string operation) => operation switch
@@ -80,11 +82,15 @@ internal static class ToolNaming
     };
 
     /// <summary>The lean manifest's function that describes the lists and knowledge bases of a lookup tool (spec 012 D-8).</summary>
-    public static string LookupDescribe(string toolName) => "lookup_describe__" + toolName;
+    public static string LookupDescribe(string toolName) => $"{toolName}_{DescribeOperation}";
 
     /// <summary>The lean manifest's function that reads one of them (spec 012 D-8).</summary>
-    public static string LookupQuery(string toolName) => "lookup_query__" + toolName;
+    public static string LookupQuery(string toolName) => $"{toolName}_{QueryOperation}";
 
+    /// <summary>Every name the model may be offered for a tool: the lookup tools take one for each operation, the others their own.</summary>
+    public static IReadOnlyList<string> FunctionsOf(ToolOrigin origin, string toolName) => origin == ToolOrigin.Lookup
+        ? [LookupEntries(toolName), LookupDocuments(toolName), LookupCount(toolName), LookupDescribe(toolName), LookupQuery(toolName)]
+        : [toolName];
     /// <summary>
     /// <c>&lt;server&gt;__&lt;tool&gt;</c>. A tool name the model APIs would not accept (characters outside <c>[a-zA-Z0-9_-]</c>, or too
     /// long) is sanitized and gets a short hash of the original name, so two different names never collapse into one. The

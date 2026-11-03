@@ -93,7 +93,7 @@ internal static class AnswerStream
                             {
                                 ToolCallEvent call => new SseItem<object>(
                                     new ToolCallEventData(
-                                        call.CallId, call.Tool, ArgumentsOf(call.Arguments), call.RequiresConfirmation, call.ExpiresAt, call.ParentCallId, call.AgentSlug),
+                                        call.CallId, call.Tool, ArgumentsOf(call.Arguments), call.RequiresConfirmation, call.ExpiresAt, call.ParentCallId, call.AgentSlug, call.IsDelegation),
                                     "tool_call"),
                                 ToolResultEvent result => new SseItem<object>(
                                     new ToolResultEventData(
@@ -211,7 +211,8 @@ internal sealed record ToolCallEventData(
     bool RequiresConfirmation,
     DateTimeOffset? ExpiresAt,
     Guid? ParentCallId = null,
-    string? AgentSlug = null);
+    string? AgentSlug = null,
+    bool IsDelegation = false);
 
 internal sealed record ToolResultEventData(
     Guid CallId,

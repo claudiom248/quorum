@@ -163,6 +163,9 @@ internal static class ActiveToolsQuery
                     webSearch,
                     webFetch);
             })
+            // Names are checked when a tool or an agent is saved, but older data may hold two that the model would take for one: the oldest keeps the name.
+            .GroupBy(tool => tool.ExposedName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderBy(tool => tool.ToolId).First())
             .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
             .ToList();
     }

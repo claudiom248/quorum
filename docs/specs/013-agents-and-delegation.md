@@ -2,6 +2,7 @@
 
 **Status:** Approved (2026-11-03), amended 2026-11-03 while planning (D-11, D-15, D-31, D-39 to D-42, AgentTool, AC-20)
 **Date:** 2026-11-02
+**Amended by spec 015 (2026-11-03):** the slug of an agent is also a name the model reads, so it may not equal the name of a tool, whatever the case (spec 015 D-5); a delegation is told apart from a tool by `isDelegation` on the `tool_call` event (spec 015 D-7).
 
 Replaces the "005 - Declarative config and topology" entry of `docs/deferred.md`. The declarative file format for assistants and agents is a separate, later spec; this one covers the entities, the API, the admin UI and the multi-agent execution.
 

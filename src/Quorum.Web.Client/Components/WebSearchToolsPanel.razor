@@ -67,7 +67,7 @@
                     }
 
                     <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@WebSearchToolLimits.MaxNameLength"
-                                  HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as web_search__name." />
+                                  HelperText="Letters, digits, '-' and '_', never two underscores in a row. People and the model read the same name." />
                     <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3"
                                   MaxLength="@WebSearchToolLimits.MaxDescriptionLength"
                                   HelperText="For the model: when to search the web instead of answering from what it knows or from a knowledge base." />
