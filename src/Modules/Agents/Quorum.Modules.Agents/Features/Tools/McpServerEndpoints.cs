@@ -113,7 +113,7 @@ internal sealed partial class McpServerEndpoints : IEndpointGroup
             return query.Error.ToProblem();
         }
 
-        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Agent.Count + query.Value.Type.Count > 0)
+        if (query.Value.Scope.Count + query.Value.Tenant.Count + query.Value.Assistant.Count + query.Value.Agent.Count + query.Value.Type.Count > 0)
         {
             return ScopeFilter.NotForTools.ToProblem();
         }

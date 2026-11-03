@@ -56,6 +56,11 @@ internal static class ScopeFilter
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(query);
 
+        if (query.Assistant.Count > 0)
+        {
+            return Error.Validation("list.invalid_filter", "Servers and tools are scoped to agents: filter by agent, not by assistant.");
+        }
+
         if (query.Type.Count > 0)
         {
             return Error.Validation("list.invalid_filter", "Servers and tools have no type to filter by.");

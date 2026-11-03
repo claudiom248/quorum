@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -175,29 +175,30 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
             migrationBuilder.Sql("""
                 UPDATE agents.assistants SET "RootAgentId" = gen_random_uuid();
 
-                INSERT INTO agents.agents ("Id", "TenantId", "Slug", "DisplayName", "Description", "SystemPrompt", "ModelEndpointId", "Scope", "ScopeTenantIds", "UpdatedAt")
-                SELECT
-                    ranked."RootAgentId",
-                    ranked."TenantId",
-                    CASE WHEN ranked.rn = 1 THEN ranked.base_slug ELSE left(ranked.base_slug, 32 - length(ranked.rn::text) - 1) || '-' || ranked.rn END,
-                    ranked."Name",
-                    'The general-purpose assistant of the organization.',
-                    ranked."SystemPrompt",
-                    ranked."ModelEndpointId",
-                    'Tenant',
-                    '{}',
-                    now()
-                FROM (
-                    SELECT
-                        a."RootAgentId", a."TenantId", a."Name", a."SystemPrompt", a."ModelEndpointId", s.base_slug,
-                        row_number() OVER (PARTITION BY a."TenantId", s.base_slug ORDER BY a."Id") AS rn
-                    FROM agents.assistants AS a
-                    CROSS JOIN LATERAL (
-                        SELECT COALESCE(
-                            NULLIF(trim(both '-' from left(trim(both '-' from regexp_replace(lower(a."Name"), '[^a-z0-9]+', '-', 'g')), 32)), ''),
-                            'agent') AS base_slug
-                    ) AS s
-                ) AS ranked;
+                DO $$
+                DECLARE
+                    r record;
+                    base text;
+                    candidate text;
+                    n int;
+                BEGIN
+                    FOR r IN SELECT "RootAgentId", "TenantId", "Name", "SystemPrompt", "ModelEndpointId" FROM agents.assistants ORDER BY "Id" LOOP
+                        base := COALESCE(
+                            NULLIF(trim(both '-' from left(trim(both '-' from regexp_replace(lower(r."Name"), '[^a-z0-9]+', '-', 'g')), 32)), ''),
+                            'agent');
+                        candidate := base;
+                        n := 1;
+                        -- Checked against the agents already written, so a suffix never lands on another assistant's own slug.
+                        WHILE EXISTS (SELECT 1 FROM agents.agents WHERE "TenantId" = r."TenantId" AND "Slug" = candidate) LOOP
+                            n := n + 1;
+                            candidate := left(base, 32 - length(n::text) - 1) || '-' || n;
+                        END LOOP;
+
+                        INSERT INTO agents.agents ("Id", "TenantId", "Slug", "DisplayName", "Description", "SystemPrompt", "ModelEndpointId", "Scope", "ScopeTenantIds", "UpdatedAt")
+                        VALUES (r."RootAgentId", r."TenantId", candidate, r."Name", 'The general-purpose assistant of the organization.', r."SystemPrompt", r."ModelEndpointId", 'Tenant', '{}', now());
+                    END LOOP;
+                END
+                $$;
 
                 INSERT INTO agents.agent_tools ("AgentId", "ToolId", "TenantId", "Manifest")
                 SELECT a."RootAgentId", t."ToolId", t."TenantId", t."Manifest"
