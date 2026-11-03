@@ -105,7 +105,7 @@ internal sealed class AssistantSettingsEndpoints : IEndpointGroup
             var stored = await (
                 from assistant in db.Assistants
                 join agent in db.Agents on assistant.RootAgentId equals agent.Id
-            join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
+                join endpoint in db.ModelEndpoints on agent.ModelEndpointId equals endpoint.Id
                 orderby assistant.Id
                 select endpoint.ProtectedApiKey)
                 .FirstOrDefaultAsync(cancellationToken);
