@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Shared.Persistence;
@@ -48,9 +49,10 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
         modelBuilder.Entity<ModelEndpoint>(endpoint =>
         {
             endpoint.ToTable("model_endpoints");
+            endpoint.Property(e => e.Name).HasMaxLength(ModelEndpointRules.MaxNameLength);
             endpoint.Property(e => e.BaseUrl).HasMaxLength(2048);
             endpoint.Property(e => e.ModelName).HasMaxLength(200);
-            endpoint.HasIndex(e => e.TenantId);
+            endpoint.HasIndex(e => new { e.TenantId, e.Name }).IsUnique();
             endpoint.HasQueryFilter(e => e.TenantId == CurrentTenantId);
         });
 
@@ -59,7 +61,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             assistant.ToTable("assistants");
             assistant.Property(a => a.Name).HasMaxLength(200);
             assistant.HasIndex(a => a.TenantId);
-            assistant.HasOne<ModelEndpoint>().WithMany().HasForeignKey(a => a.ModelEndpointId);
+            assistant.HasOne<ModelEndpoint>().WithMany().HasForeignKey(a => a.ModelEndpointId).OnDelete(DeleteBehavior.Restrict);
             assistant.HasQueryFilter(a => a.TenantId == CurrentTenantId);
         });
 

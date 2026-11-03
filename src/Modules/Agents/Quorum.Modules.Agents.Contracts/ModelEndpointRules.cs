@@ -7,9 +7,13 @@ public static class ModelEndpointRules
 {
     public const int MaxModelNameLength = 200;
 
+    public const int MaxNameLength = 100;
+
     public const string InvalidBaseUrl = "Enter the endpoint's http(s) base URL, e.g. http://ollama:11434/v1.";
 
     public const string InvalidModelName = "Enter the model name, as listed by the endpoint.";
+
+    public static string InvalidName { get; } = $"Enter a name of at most {MaxNameLength} characters.";
 
     public static string InvalidContextTokenBudget { get; } =
         $"The context budget must be between {AssistantDefaults.MinContextTokenBudget} and {AssistantDefaults.MaxContextTokenBudget} tokens.";
@@ -20,6 +24,16 @@ public static class ModelEndpointRules
     public static bool TryParseBaseUrl(string? value, [NotNullWhen(true)] out Uri? baseUrl) =>
         Uri.TryCreate(value?.Trim(), UriKind.Absolute, out baseUrl)
         && (baseUrl.Scheme == Uri.UriSchemeHttp || baseUrl.Scheme == Uri.UriSchemeHttps);
+
+    public static bool IsValidName(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= MaxNameLength;
+
+    /// <summary>The name of an endpoint created without one (the wizard): the model it serves.</summary>
+    public static string DefaultName(string modelName)
+    {
+        var trimmed = modelName.Trim();
+        return trimmed.Length > MaxNameLength ? trimmed[..MaxNameLength] : trimmed;
+    }
 
     public static bool IsValidModelName(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= MaxModelNameLength;

@@ -83,6 +83,7 @@ public static class TenancyModule
             .AddPolicy(AdminPolicy, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.ToolsManage, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.ToolsAttach, policy => policy.RequireRole(Roles.Admin))
+            .AddPolicy(QuorumPolicies.AgentsManage, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.ToolsUse, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.KnowledgeBaseManage, policy => policy.RequireRole(Roles.Admin))
             .AddPolicy(QuorumPolicies.KnowledgeBaseRefresh, policy => policy.RequireAssertion(context =>

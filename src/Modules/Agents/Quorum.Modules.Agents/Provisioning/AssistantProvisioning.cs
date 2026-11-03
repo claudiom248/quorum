@@ -15,6 +15,7 @@ internal sealed class AssistantProvisioning(AgentsDbContext db, ApiKeyProtector 
         var now = clock.GetUtcNow();
         var endpoint = ModelEndpoint.Create(
             tenantId,
+            ModelEndpointRules.DefaultName(request.ModelName),
             request.BaseUrl,
             request.ModelName,
             apiKeyProtector.Protect(request.ApiKey),
