@@ -7,8 +7,12 @@ using Quorum.SampleKnowledgeBase;
 
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
-public sealed class KnowledgeBaseMappingTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class KnowledgeBaseMappingTests(PostgresFixture postgres, SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static SampleDataset Custom(string name, string payload) => new(
@@ -71,8 +75,8 @@ public sealed class KnowledgeBaseMappingTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-12
     public async Task ADateFieldWhoseValuesAreNotIso8601IsRefused()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var good = QdrantFixture.NewPrefix() + "good";
         var bad = QdrantFixture.NewPrefix() + "bad";
@@ -102,8 +106,8 @@ public sealed class KnowledgeBaseMappingTests(PostgresFixture postgres, QdrantFi
     [InlineData("TextList", "[1, 2]")]
     public async Task AFieldWhoseValuesDoNotFitItsTypeIsRefused(string type, string value)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var collection = QdrantFixture.NewPrefix() + "misfit";
         await qdrant.SeedAsync([Custom(collection, $$"""{"text":"t","extra":{{value}}}""")]);

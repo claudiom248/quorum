@@ -7,14 +7,18 @@ using Quorum.Integration.Tests.Rag;
 namespace Quorum.Integration.Tests.LookupTools;
 
 /// <summary>What an administrator can save as a lookup tool, the definition it generates and the slices it asks for (spec 007, AC-12, AC-21, AC-24, AC-25, AC-27, AC-40).</summary>
-public sealed class LookupToolConfigurationTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class LookupToolConfigurationTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-27
     public async Task TheDefinitionHasTheOperationsTheListsAndThePagingParametersAndNothingToFilterByWhenNoFieldIsExposed()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
         var languages = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "language"));
         var (knowledgeBase, _) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
@@ -36,7 +40,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-A1-10
     public async Task EveryFilterOfTheFullManifestSaysWhichTargetsItAppliesTo()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (knowledgeBase, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         await LookupToolApi.PublishAsync(setup.App, lookup, [("legal", 4), ("hr", 9)]);
         var fields = await setup.FieldsAsync();
@@ -69,7 +73,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-27
     public async Task ALookupTakesTheNameOfItsAliasInTheDefinition()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
 
         var created = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality, "countries")]));
@@ -82,7 +86,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-12
     public async Task AManualLookupUsedByAToolCannotBeDeletedAndTheAnswerNamesTheTool()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
         var tool = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(name: "countries-list", lookups: [LookupToolApi.Bind(nationality)]));
 
@@ -101,7 +105,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-21
     public async Task TwoToolsWithTheSameFixedFiltersInAnyOrderShareOneSlice()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
 
         var first = await LookupToolApi.CreateOkAsync(
@@ -120,7 +124,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-24
     public async Task ASliceGoesWhenTheLastToolThatUsesItIsChangedOrDeleted()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         var filtered = new Dictionary<string, object> { ["year_min"] = 2020 };
         var tool = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup)], fixedFilters: filtered));
@@ -143,7 +147,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-25
     public async Task AToolThatWouldGiveAKnowledgeBaseMoreThanFiftySlicesIsRefused()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
 
         // The slice of the whole knowledge base counts, so 49 different filters fill it.
@@ -167,7 +171,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-25
     public async Task TwoToolsWithTheSameFiltersNeverCountTwice()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         for (var year = 1; year <= 49; year++)
         {
@@ -188,7 +192,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [InlineData("", "lookup_tool.invalid_name")]
     public async Task ANameThatIsNotAllowedIsRefused(string name, string code)
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
 
         using var response = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(name: name, lookups: [LookupToolApi.Bind(nationality)]));
@@ -200,7 +204,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task ANameTakenByAnotherLookupToolIsAConflict()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
         await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality)]));
 
@@ -213,7 +217,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task AToolBindsAtLeastOneAndAtMostTenLookups()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var many = new List<object>();
         for (var i = 0; i < 11; i++)
         {
@@ -230,7 +234,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task ALookupThatDoesNotExistIsNotVisible()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
 
         using var response = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(Guid.NewGuid())]));
 
@@ -241,7 +245,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task TwoListsOfOneNameNeedAnAliasOnOneOfThem()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (_, computed) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         var manual = await LookupApi.CreateManualOkAsync(setup.Admin, LookupApi.ManualBody(name: "department"));
 
@@ -258,7 +262,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [InlineData("1st")]
     public async Task AnAliasThatIsNotAllowedIsRefused(string alias)
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
 
         using var response = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality, alias)]));
@@ -269,7 +273,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task AFixedFilterOnAFieldNoKnowledgeBaseOfTheToolMapsIsInvalid()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var (_, lookup) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
 
         using var response = await LookupToolApi.CreateAsync(
@@ -283,7 +287,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task AGlobalToolCannotBindAManualLookupThatOnlyItsOwnerSees()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var tenantOnly = await LookupApi.CreateManualOkAsync(setup.Admin);
 
         using var response = await LookupToolApi.CreateAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(tenantOnly)], scope: new { kind = "Global" }));
@@ -295,7 +299,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task TheListAndTheDetailNameTheLookupsAndTheKnowledgeBases()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
         var (knowledgeBase, _) = await LookupToolApi.RegisterWithLookupAsync(setup, "policies");
         var created = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality)], knowledgeBaseIds: [knowledgeBase]));
@@ -314,7 +318,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact] // AC-40 (the /tools/lookup half)
     public async Task ManagingLookupToolsNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
         var existing = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(name: "existing", lookups: [LookupToolApi.Bind(nationality)]));
         using var member = await setup.App.CreateMemberClientAsync();
@@ -345,7 +349,7 @@ public sealed class LookupToolConfigurationTests(PostgresFixture postgres, Qdran
     [Fact]
     public async Task ALookupToolAppearsInTheGeneralListOfToolsWithItsOrigin()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var nationality = await LookupApi.CreateManualOkAsync(setup.Admin);
         var created = await LookupToolApi.CreateOkAsync(setup.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(nationality)]));
 

@@ -11,8 +11,12 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>The sources of an answer: streamed as they are found, stored with the message and returned when the conversation is reopened (spec 003, AC-37 to AC-41).</summary>
-public sealed class RagCitationTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagCitationTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static string Text(ulong chunk) => SampleCollections.CreateFlat().Points.Single(p => p.Id == chunk).EmbeddingText;
@@ -23,7 +27,7 @@ public sealed class RagCitationTests(PostgresFixture postgres, QdrantFixture qdr
     /// <summary>One knowledge base called <c>policies</c> and a rag tool over it, activated on the assistant.</summary>
     private async Task<RagApi.Setup> StartAsync(int topK = 2, double? scoreThreshold = null)
     {
-        var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], topK: topK, scoreThreshold: scoreThreshold));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");

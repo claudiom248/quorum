@@ -5,15 +5,18 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
 /// <summary>Spec 008 D-5: the relations of a database that the administrator picks from.</summary>
-public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFixture pgvector)
+public sealed class PgVectorRelationsTests(SharedQuorumApp host, PgVectorFixture pgvector) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact] // AC-7
     public async Task EveryRelationWithAVectorColumnTheUserCanReadIsListed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = await pgvector.NewSchemaAsync();
         await pgvector.ExecuteAsync($"CREATE MATERIALIZED VIEW {schema}.sample_materialized AS SELECT id, embedding FROM {schema}.{SampleRelations.Flat}");
         await pgvector.ExecuteAsync($"CREATE TABLE {schema}.no_vector (id int PRIMARY KEY, text text)");
@@ -49,8 +52,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-7
     public async Task ARelationTheUserCannotReadIsNotListed()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = await pgvector.NewSchemaAsync();
         var role = $"reader_{Guid.NewGuid():N}"[..16];
         await pgvector.ExecuteAsync($"CREATE ROLE {role} LOGIN PASSWORD 'reader-pw'");
@@ -66,8 +68,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-7
     public async Task TheListIsFilteredByName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = await pgvector.NewSchemaAsync();
 
         var report = await PgVectorApi.RelationsOkAsync(admin, PgVectorApi.Fields(await pgvector.GetEndpointAsync()), filter: $"{schema}.sample_FLAT");
@@ -78,8 +79,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-7
     public async Task AFilterWithWildcardsIsTakenAsText()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = await pgvector.NewSchemaAsync();
 
         var percent = await PgVectorApi.RelationsOkAsync(admin, PgVectorApi.Fields(await pgvector.GetEndpointAsync()), filter: $"{schema}.%");
@@ -92,8 +92,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-7
     public async Task AtMostTwoHundredRelationsAreReturnedAndTheRestIsSaidToBeCut()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = $"many_{Guid.NewGuid():N}"[..12];
         await pgvector.ExecuteAsync(
             $"""
@@ -111,8 +110,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-3
     public async Task AConnectionStringReachesTheDatabaseToo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var schema = await pgvector.NewSchemaAsync();
 
         var report = await PgVectorApi.RelationsOkAsync(admin, PgVectorApi.ConnectionString(await pgvector.GetEndpointAsync()), filter: schema);
@@ -128,8 +126,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [InlineData("sslmode")]
     public async Task ABadConnectionIsRefusedBeforeAnythingIsSent(string problem)
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var endpoint = await pgvector.GetEndpointAsync();
         object connection = problem switch
         {
@@ -150,8 +147,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-7
     public async Task AKindThatCannotListItsSourcesIsToldSo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await PgVectorApi.PostRelationsAsync(admin, new { url = "http://qdrant:6334", collection = "x" }, kind: "Qdrant");
 
@@ -162,8 +158,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-2
     public async Task AnUnknownKindIsRefusedNamingTheSupportedOnes()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         using var response = await PgVectorApi.PostRelationsAsync(admin, new { }, kind: "Pinecone");
         var body = await response.Content.ReadAsStringAsync(Ct);
@@ -177,8 +172,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-17
     public async Task WrongCredentialsGiveAWarningWithoutTheirDetails()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var endpoint = await pgvector.GetEndpointAsync();
 
         var report = await PgVectorApi.RelationsOkAsync(admin, PgVectorApi.Fields(endpoint, password: "not-the-password"));
@@ -194,8 +188,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-17
     public async Task ADatabaseThatIsNotThereIsReportedWithoutItsName()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
 
         var report = await PgVectorApi.RelationsOkAsync(admin, PgVectorApi.Fields(await pgvector.GetEndpointAsync(), database: "no_such_database"));
 
@@ -206,8 +199,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-17
     public async Task AServerThatDoesNotAnswerIsUnreachable()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var endpoint = await pgvector.GetEndpointAsync() with { Port = 1 };
 
         var report = await PgVectorApi.RelationsOkAsync(admin, PgVectorApi.Fields(endpoint));
@@ -219,8 +211,7 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-17
     public async Task ADatabaseWithoutTheExtensionSaysSo()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var admin = host.Admin;
         var database = $"noext_{Guid.NewGuid():N}"[..14];
         await pgvector.ExecuteAsync($"CREATE DATABASE {database}");
 
@@ -234,8 +225,8 @@ public sealed class PgVectorRelationsTests(PostgresFixture postgres, PgVectorFix
     [Fact] // AC-31
     public async Task ListingRelationsNeedsThePermissionAndAnonymousCallersAreRejected()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
         var connection = PgVectorApi.Fields(await pgvector.GetEndpointAsync());

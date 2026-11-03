@@ -9,8 +9,12 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases.Lookups;
 
 /// <summary>A knowledge base of entities only, with no text role (spec 003 Amendment 3, AC-A3-1 to AC-A3-4).</summary>
-public sealed class EntityOnlyKnowledgeBaseTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class EntityOnlyKnowledgeBaseTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>The entities are named by <c>title</c>, and nothing is mapped as their text.</summary>
@@ -24,7 +28,7 @@ public sealed class EntityOnlyKnowledgeBaseTests(PostgresFixture postgres, Qdran
     [Fact] // AC-A3-1
     public async Task AMappingWithAnEntityNameAndNoTextIsAccepted()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
 
         var knowledgeBase = await setup.RegisterAsync("vendors", mapping: Mapping);
 
@@ -36,7 +40,7 @@ public sealed class EntityOnlyKnowledgeBaseTests(PostgresFixture postgres, Qdran
     [Fact] // AC-A3-2
     public async Task AMappingWithNeitherTextNorAnEntityNameIsRefused()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
 
         using var response = await KnowledgeBaseApi.RegisterAsync(setup.Admin, setup.Url, collection, "nothing", mapping: new { roles = new { title = "title" }, fields = Array.Empty<object>() });
@@ -48,7 +52,7 @@ public sealed class EntityOnlyKnowledgeBaseTests(PostgresFixture postgres, Qdran
     [Fact] // AC-A3-3
     public async Task ARagToolRefusesAKnowledgeBaseWithNoTextToSearch()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var knowledgeBase = await setup.RegisterAsync("vendors", mapping: Mapping);
 
         using var response = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [knowledgeBase]));
@@ -60,7 +64,7 @@ public sealed class EntityOnlyKnowledgeBaseTests(PostgresFixture postgres, Qdran
     [Fact] // AC-A3-4
     public async Task VerifyingAnEntityKnowledgeBaseReportsNoMissingText()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var knowledgeBase = await setup.RegisterAsync("vendors", mapping: Mapping);
 
         using var response = await setup.Admin.PostAsync(new Uri($"/api/knowledge-bases/{knowledgeBase}/verify", UriKind.Relative), null, Ct);

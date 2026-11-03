@@ -7,8 +7,12 @@ using Quorum.SampleKnowledgeBase;
 namespace Quorum.Integration.Tests.KnowledgeBases;
 
 /// <summary>Mapping payload fields to dictionary fields identified by cluster and name (spec 003, Amendment 1, AC-53).</summary>
-public sealed class FieldClusterMappingTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class FieldClusterMappingTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static object Roles { get; } = new { text = "text" };
@@ -16,7 +20,7 @@ public sealed class FieldClusterMappingTests(PostgresFixture postgres, QdrantFix
     [Fact] // AC-53
     public async Task APayloadNameThatSeveralClustersHavePreselectsNoneAndListsTheCandidates()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var hr = await DictionaryApi.CreateOkAsync(setup.Admin, "department", cluster: "hr");
         var legal = await DictionaryApi.CreateOkAsync(setup.Admin, "department", cluster: "legal");
         var finance = await DictionaryApi.CreateOkAsync(setup.Admin, "year", "Number", cluster: "finance");
@@ -41,7 +45,7 @@ public sealed class FieldClusterMappingTests(PostgresFixture postgres, QdrantFix
     [Fact] // AC-53
     public async Task ChoosingACandidateByIdOrByClusterAndNameSavesWithoutATypeConflict()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var hr = await DictionaryApi.CreateOkAsync(setup.Admin, "department", cluster: "hr");
         await DictionaryApi.CreateOkAsync(setup.Admin, "department", cluster: "legal");
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
@@ -70,7 +74,7 @@ public sealed class FieldClusterMappingTests(PostgresFixture postgres, QdrantFix
     [Fact] // AC-52
     public async Task AFieldToCreateCarriesItsClusterAndAMissingClusterIsNotMatchedByName()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         await DictionaryApi.CreateOkAsync(setup.Admin, "year", "Number", cluster: "finance");
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
         var fields = new[] { new { path = "year", cluster = "hr", name = "year" } };
@@ -95,7 +99,7 @@ public sealed class FieldClusterMappingTests(PostgresFixture postgres, QdrantFix
     [Fact]
     public async Task AClusterThatIsNotAValidNameIsRefusedInAFieldToCreate()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var collection = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
 
         using var response = await KnowledgeBaseApi.RegisterAsync(

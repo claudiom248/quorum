@@ -12,14 +12,18 @@ namespace Quorum.Integration.Tests.Web;
 /// The typed client and the view classes of the knowledge admin pages against the real server and a real Qdrant: the whole
 /// registration flow and the rag tool editor, with no mock of the API (spec 003, AC-49).
 /// </summary>
-public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class KnowledgeAdminClientTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task AnAdminManagesTheDictionaryThroughTheClient()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var api = new QuorumApi(setup.Admin);
 
         var created = await api.CreateDictionaryFieldAsync(new DictionaryFieldRequest("region", DictionaryFieldTypes.Text, "Sales region", ScopeKinds.Tenant), Ct);
@@ -41,7 +45,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AnAdminRegistersVerifiesSearchesEditsAndDeletesAKnowledgeBaseThroughTheClient()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var api = new QuorumApi(setup.Admin);
         var collection = QdrantFixture.NewPrefix() + SampleCollections.Flat;
         await qdrant.SeedAsync([SampleCollections.CreateFlat(collection)]);
@@ -109,7 +113,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AMissingCollectionIsReportedByTheInspectionAsAnError()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var api = new QuorumApi(setup.Admin);
         var draft = new KnowledgeBaseDraft
         {
@@ -129,7 +133,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task AnAdminConfiguresAnEditsAndDeletesARagToolThroughTheClient()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var api = new QuorumApi(setup.Admin);
         var knowledgeBaseId = await setup.RegisterAsync("policies");
         var dictionary = (await api.ListDictionaryAsync(Ct)).Value;
@@ -208,7 +212,7 @@ public sealed class KnowledgeAdminClientTests(PostgresFixture postgres, QdrantFi
     [Fact] // AC-52 to AC-58
     public async Task TwoCollectionsThatShareAFieldNameWithDifferentTypesAreRegisteredAndExposedUnderAliases()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var api = new QuorumApi(setup.Admin);
         var numeric = await qdrant.SeedSharedAsync(SampleCollections.CreateFlat);
         var textual = await qdrant.SeedSharedAsync(TextYear);

@@ -14,8 +14,12 @@ namespace Quorum.Integration.Tests.KnowledgeBases.Golden;
 /// expectations were written before Qdrant moved behind the per-kind contract and must not change with it: a change here is a
 /// change of what a client sees.
 /// </summary>
-public sealed class QdrantContractGoldenTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class QdrantContractGoldenTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private const string Secret = "s3cret-qdrant-key-golden";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -47,8 +51,8 @@ public sealed class QdrantContractGoldenTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task InspectingACollectionAnswersAsItAlwaysDid()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         InspectApi.ServeEmbeddings(app);
         var prefix = QdrantFixture.NewPrefix();
         await qdrant.SeedAsync(
@@ -128,8 +132,8 @@ public sealed class QdrantContractGoldenTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task RegisteringAndReadingAKnowledgeBaseAnswersAsItAlwaysDid()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var prefix = QdrantFixture.NewPrefix();
         await qdrant.SeedAsync(
@@ -231,8 +235,8 @@ public sealed class QdrantContractGoldenTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task VerifyingAKnowledgeBaseAnswersAsItAlwaysDid()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var prefix = QdrantFixture.NewPrefix();
         await qdrant.SeedAsync(
@@ -316,8 +320,8 @@ public sealed class QdrantContractGoldenTests(PostgresFixture postgres, QdrantFi
     [Fact]
     public async Task SearchingAKnowledgeBaseAnswersAsItAlwaysDid()
     {
-        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres);
-        using var admin = await app.SetUpAsync();
+        var app = host.App;
+        var admin = host.Admin;
         KnowledgeBaseApi.ServeEmbeddings(app);
         var tenantId = await TenantScope.TenantIdAsync(app);
         var assistantId = await SearchApi.AssistantIdAsync(app);

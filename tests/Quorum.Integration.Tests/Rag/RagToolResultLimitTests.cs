@@ -14,14 +14,18 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Rag;
 
 /// <summary>The size of a rag result against the tenant's limit on tool results, and what is told when the definition of a tool names a field that is gone.</summary>
-public sealed class RagToolResultLimitTests(PostgresFixture postgres, QdrantFixture qdrant)
+public sealed class RagToolResultLimitTests(SharedQuorumApp host, QdrantFixture qdrant) : IClassFixture<SharedQuorumApp>, IAsyncLifetime
 {
+    public ValueTask InitializeAsync() => new(host.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task AResultSizeThatCannotFitTheTenantsLimitOnToolResultsIsRejectedAtSaveAndAcceptedOnceTheLimitIsRaised()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
 
         using var tooBig = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], maxResultCharacters: 30_000));
@@ -36,7 +40,7 @@ public sealed class RagToolResultLimitTests(PostgresFixture postgres, QdrantFixt
     [Fact]
     public async Task AToolSavedBeforeTheLimitWasLoweredAsksForLessAndStillAnswers()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], topK: 20, maxResultCharacters: 12_000));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");
@@ -56,7 +60,7 @@ public sealed class RagToolResultLimitTests(PostgresFixture postgres, QdrantFixt
     [Fact]
     public async Task ADefinitionMadeMomentsAgoIsReusedForTheContextGaugeButNeverForAnAnswer()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         await RagApi.ActivateAsync(setup.Admin, "rag__company");
@@ -83,7 +87,7 @@ public sealed class RagToolResultLimitTests(PostgresFixture postgres, QdrantFixt
     [Fact]
     public async Task AFieldDeletedBehindTheToolsBackIsLoggedByIdsAndCountsAndTheToolKeepsWorking()
     {
-        await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: [fields["year"], fields["department"]]));
