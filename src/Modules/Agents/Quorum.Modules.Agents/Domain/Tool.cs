@@ -48,8 +48,20 @@ internal sealed class Tool
 
     public ToolOrigin Origin { get; private set; }
 
-    /// <summary>The tool's own name, without the origin prefix the model sees.</summary>
+    /// <summary>
+    /// The tool's own name. For a built-in tool it is the name of the catalog: what ties the row to the code that runs it and to the provisioning,
+    /// and what the audit log records. The administrator may call the tool otherwise (<see cref="CustomName"/>).
+    /// </summary>
     public string Name { get; private set; } = null!;
+
+    /// <summary>
+    /// The name an administrator gave a built-in tool in place of the default one (spec 015 D-10), or <see langword="null"/> to keep the default.
+    /// Only built-in tools have one: the others are named by the administrator already.
+    /// </summary>
+    public string? CustomName { get; private set; }
+
+    /// <summary>What the model calls the tool and what people read: the name the administrator gave it, or else its own.</summary>
+    public string ExposedName => CustomName ?? Name;
 
     public string Description { get; private set; } = null!;
 
@@ -194,6 +206,9 @@ internal sealed class Tool
         Description = description;
         InputSchema = inputSchema;
     }
+
+    /// <summary>Gives a built-in tool another name, or back its default one with <see langword="null"/>.</summary>
+    public void Rename(string? name) => CustomName = name;
 
     public void Review(ToolState state, ToolPolicy policy)
     {

@@ -10,13 +10,13 @@ public sealed class ToolDefinitionTests
     [Fact]
     public void RendersTheToolsInTheOpenAiFunctionFormat()
     {
-        var json = ToolDefinitionRenderer.Render([new ToolDefinition("builtin__calculator", "Adds numbers.", Schema)]);
+        var json = ToolDefinitionRenderer.Render([new ToolDefinition("calculator", "Adds numbers.", Schema)]);
 
         using var document = JsonDocument.Parse(json);
         var tool = Assert.Single(document.RootElement.EnumerateArray());
         Assert.Equal("function", tool.GetProperty("type").GetString());
         var function = tool.GetProperty("function");
-        Assert.Equal("builtin__calculator", function.GetProperty("name").GetString());
+        Assert.Equal("calculator", function.GetProperty("name").GetString());
         Assert.Equal("Adds numbers.", function.GetProperty("description").GetString());
         Assert.Equal("object", function.GetProperty("parameters").GetProperty("type").GetString());
     }
@@ -24,8 +24,8 @@ public sealed class ToolDefinitionTests
     [Fact]
     public void RendersInAStableOrderWhateverTheInputOrder()
     {
-        var a = new ToolDefinition("builtin__a", "A.", Schema);
-        var b = new ToolDefinition("builtin__b", "B.", Schema);
+        var a = new ToolDefinition("a", "A.", Schema);
+        var b = new ToolDefinition("b", "B.", Schema);
 
         Assert.Equal(ToolDefinitionRenderer.Render([a, b]), ToolDefinitionRenderer.Render([b, a]));
     }
@@ -33,15 +33,15 @@ public sealed class ToolDefinitionTests
     [Fact]
     public void LengthIsTheLengthOfWhatTheModelReceivesAndZeroWithoutTools()
     {
-        var tools = new[] { new ToolDefinition("builtin__a", "A.", Schema) };
+        var tools = new[] { new ToolDefinition("a", "A.", Schema) };
 
         Assert.Equal(ToolDefinitionRenderer.Render(tools).Length, ToolDefinitionRenderer.Length(tools));
         Assert.Equal(0, ToolDefinitionRenderer.Length([]));
     }
 
     [Fact]
-    public void BuiltinToolsAreExposedWithTheirPrefix() =>
-        Assert.Equal("builtin__calculator", ToolNaming.Builtin("calculator"));
+    public void BuiltinToolsAreExposedByTheirOwnName() =>
+        Assert.Equal("calculator", ToolNaming.Builtin("calculator"));
 
     [Theory]
     [InlineData(1, 0, 1000)]

@@ -114,13 +114,13 @@ internal static class ToolsApi
         return document.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
-    public sealed record ToolBody(Guid Id, string Origin, string? ServerName, string Name, string Description, string State, string Policy, JsonElement? Annotations = null);
+    public sealed record ToolBody(Guid Id, string Origin, string? ServerName, string Name, string Description, string State, string Policy, JsonElement? Annotations = null, Guid? ServerId = null, JsonElement? ServerScope = null, bool Shared = false, string? DefaultName = null);
 
     public sealed record AssistantBody(Guid Id, string Name, string RootAgentSlug);
 
     public sealed record AgentBody(Guid Id, string Slug);
 
-    public sealed record PoolToolBody(Guid ToolId, string Name, bool Active);
+    public sealed record PoolToolBody(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "", string? Server = null);
 
     public sealed record WarningBody(string Code, string Message);
 

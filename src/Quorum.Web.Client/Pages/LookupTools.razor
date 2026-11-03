@@ -9,7 +9,7 @@
 <PageTitle>Lookup tools · Quorum</PageTitle>
 
 <ListPage Title="Lookup tools"
-          Description="A lookup tool lets an assistant read lists of values (the suppliers, the departments, the audiences) so it knows what exists before it searches. Choose the lists here, and the knowledge bases it may also ask about live. Create the lists in Knowledge; activate a tool on an assistant in Settings."
+          Description="A lookup tool lets an assistant read lists of values (the suppliers, the departments, the audiences) so it knows what exists before it searches. Choose the lists here, and the knowledge bases it may also ask about live. Create the lists in Knowledge; activate a tool on an agent in Agents."
           AddLabel="Add lookup tool" OnAdd="() => _screen.OpenDrawer(ListScreen<LookupToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
@@ -29,7 +29,7 @@
             </HeaderContent>
             <RowTemplate Context="tool">
                 <MudTd DataLabel="Name">
-                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-lookup-tool="@tool.Name">lookup__@tool.Name</MudLink>
+                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-lookup-tool="@tool.Name">@tool.Name</MudLink>
                     @foreach (var warning in tool.Warnings)
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" data-warning="@warning.Code">@warning.Code</MudChip>
@@ -81,7 +81,7 @@
         <form @onsubmit="SaveAsync">
             <MudStack Spacing="3">
                 <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@LookupToolLimits.MaxNameLength"
-                              HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as lookup__name." />
+                              HelperText="Letters, digits, '-' and '_', never two underscores in a row. People and the model read the same name." />
                 <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3" MaxLength="@LookupToolLimits.MaxDescriptionLength"
                               HelperText="For the model: when to read these lists. Each list's own description is added to it." />
 
@@ -345,7 +345,7 @@
     [Parameter]
     public string? Id { get; set; }
 
-    private string DrawerTitle => _form is null ? "Lookup tool" : _form.IsNew ? "Add lookup tool" : $"Edit lookup__{_form.OriginalName}";
+    private string DrawerTitle => _form is null ? "Lookup tool" : _form.IsNew ? "Add lookup tool" : $"Edit {_form.OriginalName}";
 
     private bool IsDirty => _form is not null && !string.Equals(_initial, Snapshot(), StringComparison.Ordinal);
 
@@ -644,7 +644,7 @@
             if (saved.IsSuccess)
             {
                 await OpenAsync(saved.Value);
-                _notice = $"lookup__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();
@@ -666,7 +666,7 @@
         var form = _form!;
         if (!await Confirmations.ConfirmDeleteAsync(
                 Dialogs,
-                $"Delete lookup__{form.OriginalName}?",
+                $"Delete {form.OriginalName}?",
                 "It is removed from every assistant. The audit log keeps its name.",
                 "Delete tool"))
         {
@@ -682,7 +682,7 @@
                 return;
             }
 
-            _notice = $"lookup__{form.OriginalName} was deleted.";
+            _notice = $"{form.OriginalName} was deleted.";
             _form = null;
             _drawer?.SkipNextGuard();
             _screen.CloseDrawer();

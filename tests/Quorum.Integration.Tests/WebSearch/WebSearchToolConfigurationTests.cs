@@ -88,13 +88,13 @@ public sealed class WebSearchToolConfigurationTests(SharedQuorumApp host) : ICla
         var created = await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
 
         var definition = created.Definition!;
-        Assert.Equal("web_search__research", definition.Name);
+        Assert.Equal("research", definition.Name);
         Assert.Equal(["query"], definition.Parameters);
         Assert.Equal("string", definition.Parameter("query").GetProperty("type").GetString());
         Assert.True(definition.EstimatedTokens > 0);
 
         var tool = await WebSearchApi.GetAsync(admin, created.Id);
-        Assert.Equal("web_search__research", tool.Definition!.Name);
+        Assert.Equal("research", tool.Definition!.Name);
     }
 
     [Fact] // AC-10

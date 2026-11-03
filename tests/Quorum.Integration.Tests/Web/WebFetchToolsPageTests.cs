@@ -95,7 +95,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
 
     private static object Definition(string name) => new
     {
-        name = $"web_fetch__{name}",
+        name,
         description = $"Reads the pages {name} is asked for.",
         inputSchema = Schema("""{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"maxItems":5}},"required":["urls"]}"""),
         estimatedTokens = 70,
@@ -136,7 +136,7 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
         var page = Visit<WebTools>("/tools/web/fetch", p => p.Add(c => c.Section, "fetch"));
 
         var row = page.Find("[data-web-fetch-tool=reader]").ParentElement!.ParentElement!;
-        Assert.Contains("web_fetch__reader", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("reader", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Reads the pages the model names.", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Tenant", row.TextContent, StringComparison.Ordinal);
     }
@@ -226,8 +226,8 @@ public sealed class WebFetchToolsPageTests : ListPageTestContext
         });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-fetch]")));
 
-        Assert.NotNull(page.Find("[data-definition=web_fetch__reader]"));
-        Assert.Contains("web_fetch__reader", page.Find("[data-definition=web_fetch__reader]").TextContent, StringComparison.Ordinal);
+        Assert.NotNull(page.Find("[data-definition=reader]"));
+        Assert.Contains("reader", page.Find("[data-definition=reader]").TextContent, StringComparison.Ordinal);
     }
 
     [Fact] // AC-15

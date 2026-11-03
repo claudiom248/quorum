@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.KnowledgeBases.Contracts;
 using Quorum.Shared.Results;
@@ -20,7 +21,7 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
 
     private static readonly Error InvalidName = Error.Validation(
         "lookup_tool.invalid_name",
-        $"The name must be 1 to {MaxNameLength} characters: lower-case letters, digits, '-' and '_', starting with a letter or digit.");
+        ToolNameRules.Description);
 
     private static readonly Error InvalidDescription = Error.Validation(
         "lookup_tool.invalid_description",
@@ -55,7 +56,7 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
         ArgumentNullException.ThrowIfNull(request);
 
         var name = request.Name?.Trim();
-        if (name is null || !ValidNamePattern().IsMatch(name))
+        if (name is null || !ToolNameRules.IsValid(name))
         {
             return InvalidName;
         }
@@ -323,8 +324,6 @@ internal sealed partial class LookupToolValidation(AgentsDbContext db, IKnowledg
     [GeneratedRegex(@"^[a-z][a-z0-9_]{0,39}$")]
     private static partial Regex ValidAliasPattern();
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,39}$")]
-    private static partial Regex ValidNamePattern();
 }
 
 /// <param name="FixedFilters">The filters the model never sees, in the shape of the tool's parameters: <c>{"department": ["hr"], "year_min": 2024}</c>.</param>

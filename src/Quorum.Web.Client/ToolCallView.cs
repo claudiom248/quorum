@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Quorum.Web.Client.Api;
 
 namespace Quorum.Web.Client;
@@ -67,33 +67,25 @@ public sealed class ToolCallView
     /// <summary>A reply is being sent.</summary>
     public bool Busy { get; set; }
 
-    /// <summary>
-    /// A delegation to a sub-agent: every other tool name has an origin prefix (<c>builtin__x</c>) except <c>ask_user</c>, and a slug cannot hold
-    /// underscores.
-    /// </summary>
-    public bool IsDelegation => !ToolName.Contains("__", StringComparison.Ordinal) && ToolName != "ask_user";
+    /// <summary>A delegation to a sub-agent: the server says so, because a tool is called by its own name and so is a sub-agent by its slug.</summary>
+    public bool IsDelegation { get; private init; }
 
     public bool IsWaiting => State is ToolCallState.WaitingForConfirmation or ToolCallState.WaitingForAnswer;
 
-    /// <summary><c>calculator</c> for <c>builtin__calculator</c>, <c>files · read</c> for <c>files__read</c>.</summary>
+    /// <summary><c>calculator</c> or <c>search_contracts</c> as they are; <c>files · read</c> for the MCP tool <c>files__read</c>.</summary>
     public string DisplayName => DisplayNameOf(ToolName);
 
-    /// <summary>The name of a tool as people read it, from the name the model uses.</summary>
+    /// <summary>
+    /// The name of a tool as people read it: the name the model uses, so that both see the same thing. Only an MCP tool, which the model
+    /// calls <c>server__tool</c>, is shown with its server apart from its name, because two servers may offer a tool of one name.
+    /// </summary>
     public static string DisplayNameOf(string toolName)
     {
         ArgumentNullException.ThrowIfNull(toolName);
 
         var split = toolName.IndexOf("__", StringComparison.Ordinal);
-        if (split < 0)
-        {
-            return toolName;
-        }
-
-        var origin = toolName[..split];
-        var name = toolName[(split + 2)..];
-        return origin == "builtin" ? name : $"{origin} · {name}";
+        return split < 0 ? toolName : $"{toolName[..split]} · {toolName[(split + 2)..]}";
     }
-
     public string StatusLabel => State switch
     {
         ToolCallState.Running => "Running…",
@@ -108,7 +100,19 @@ public sealed class ToolCallView
         _ => throw new InvalidOperationException($"Unknown state {State}."),
     };
 
-    public static ToolCallView From(ToolCallEvent call)
+    /// <summary>When the call reached the page; <see langword="null"/> when the caller gave no clock.</summary>
+    public DateTimeOffset? StartedAt { get; private init; }
+
+    /// <summary>When the result reached the page.</summary>
+    public DateTimeOffset? CompletedAt { get; private set; }
+
+    /// <summary>How long the call took, once both ends are known.</summary>
+    public TimeSpan? Duration => StartedAt is { } start && CompletedAt is { } end ? end - start : null;
+
+    /// <summary>The sub-agent as a name people read, or <see langword="null"/> for a plain tool call.</summary>
+    public string? AgentName => AgentSlug is { } slug ? LedgerStyles.NameOf(slug) : null;
+
+    public static ToolCallView From(ToolCallEvent call, DateTimeOffset? now = null)
     {
         ArgumentNullException.ThrowIfNull(call);
 
@@ -126,6 +130,8 @@ public sealed class ToolCallView
             ToolName = call.Tool,
             ParentCallId = call.ParentCallId,
             AgentSlug = call.AgentSlug,
+            IsDelegation = call.IsDelegation,
+            StartedAt = now,
             ArgumentsText = text,
             HasArguments = text.Length > 0 && !(arguments.ValueKind == JsonValueKind.Object && !arguments.EnumerateObject().Any()),
             State = call.RequiresConfirmation ? ToolCallState.WaitingForConfirmation : ToolCallState.Running,
@@ -141,9 +147,10 @@ public sealed class ToolCallView
         State = ToolCallState.WaitingForAnswer;
     }
 
-    public void Apply(ToolResultEvent result)
+    public void Apply(ToolResultEvent result, DateTimeOffset? now = null)
     {
         ArgumentNullException.ThrowIfNull(result);
+        CompletedAt = now;
         Result = result.Content;
         ExpiresAt = null;
         Busy = false;

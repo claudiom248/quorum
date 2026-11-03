@@ -43,11 +43,11 @@ public sealed class RagToolResultLimitTests(SharedQuorumApp host, QdrantFixture 
         await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], topK: 20, maxResultCharacters: 12_000));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         // Lowered afterwards: twenty sources no longer fit with their formatting, so the search asks for less.
         await ToolFixtures.SetLimitsAsync(setup.Admin, maxResult: 6_700);
         setup.App.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("rag__company", JsonSerializer.Serialize(new { query = "policy" }), "call_1")),
+            ChatScript.CallTools(new FakeToolCall("company", JsonSerializer.Serialize(new { query = "policy" }), "call_1")),
             ChatScript.Reply("Done."));
 
         var events = await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Question");
@@ -63,7 +63,7 @@ public sealed class RagToolResultLimitTests(SharedQuorumApp host, QdrantFixture 
         await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         async Task<int> OfferedAsync(bool allowRecent)
         {
@@ -91,17 +91,17 @@ public sealed class RagToolResultLimitTests(SharedQuorumApp host, QdrantFixture 
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: [fields["year"], fields["department"]]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         // What a deletion that raced with the save leaves behind.
         await ToolFixtures.ExecuteAsync(setup.App, "DELETE FROM knowledge_base.dictionary_fields WHERE \"Name\" = 'year'");
         setup.App.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("rag__company", JsonSerializer.Serialize(new { query = "leave" }), "call_1")),
+            ChatScript.CallTools(new FakeToolCall("company", JsonSerializer.Serialize(new { query = "leave" }), "call_1")),
             ChatScript.Reply("Done."));
 
         var events = await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Question");
 
         var offered = setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray()
-            .Single(t => t.GetProperty("function").GetProperty("name").GetString() == "rag__company")
+            .Single(t => t.GetProperty("function").GetProperty("name").GetString() == "company")
             .GetProperty("function").GetProperty("parameters").GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray();
         Assert.Contains("department", offered);
         Assert.DoesNotContain("year_min", offered);

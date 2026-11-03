@@ -111,10 +111,11 @@ public sealed record AnswerChunk(AnswerChunkKind Kind, string Text, ToolEvent? T
 /// <summary>What happened to a tool call, for the user to watch.</summary>
 public abstract record ToolEvent(Guid CallId);
 
-/// <param name="Tool">The name the model called the tool by, e.g. <c>builtin__calculator</c>.</param>
+/// <param name="Tool">The name the model called the tool by: the tool's own name (<c>calculator</c>), or <c>server__tool</c> for an MCP tool.</param>
 /// <param name="Arguments">The arguments as the model sent them: JSON text when they are valid JSON.</param>
 /// <param name="ParentCallId">The delegation call a sub-agent made this call under (spec 013 D-11); <see langword="null"/> for the root agent's calls.</param>
 /// <param name="AgentSlug">The slug of the sub-agent that made the call; <see langword="null"/> for the root agent's calls.</param>
+/// <param name="IsDelegation">The call is a delegation to a sub-agent, named by the sub-agent's slug: the name alone no longer says it.</param>
 public sealed record ToolCallEvent(
     Guid CallId,
     string Tool,
@@ -122,7 +123,8 @@ public sealed record ToolCallEvent(
     bool RequiresConfirmation,
     DateTimeOffset? ExpiresAt,
     Guid? ParentCallId = null,
-    string? AgentSlug = null) : ToolEvent(CallId);
+    string? AgentSlug = null,
+    bool IsDelegation = false) : ToolEvent(CallId);
 
 /// <param name="Question">What the model wants to know, as it wrote it.</param>
 /// <param name="ExpiresAt">When the question counts as unanswered.</param>

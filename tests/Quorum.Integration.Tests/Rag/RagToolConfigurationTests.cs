@@ -33,7 +33,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: [fields["department"], fields["year"]]));
 
         var definition = created.Definition!;
-        Assert.Equal("rag__company", definition.Name);
+        Assert.Equal("company", definition.Name);
         Assert.Equal(["department", "document_ids", "query", "year_max", "year_min"], Sorted(definition.Parameters));
         Assert.Equal(["query"], definition.InputSchema.GetProperty("required").EnumerateArray().Select(r => r.GetString()));
         Assert.False(definition.InputSchema.GetProperty("additionalProperties").GetBoolean());
@@ -107,7 +107,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         Assert.Equal((created.Id, "company", "Enabled", "Auto"), (tool.Id, tool.Name, tool.State, tool.Policy));
         Assert.Equal("Searches the company policies.", tool.Description);
         // In the pool, but off until an administrator activates it on the assistant.
-        Assert.False(Assert.Single(pool, t => t.Name == "rag__company").Active);
+        Assert.False(Assert.Single(pool, t => t.Name == "company").Active);
         Assert.Equal((created.Id, "company", "Tenant", false), (listed.Id, listed.Name, listed.Scope.Kind, listed.Shared));
         Assert.Equal(["policies"], listed.KnowledgeBases.Select(k => k.Name));
     }
@@ -157,8 +157,8 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
     }
 
     [Theory] // AC-21
-    [InlineData("Upper")]
     [InlineData("has space")]
+    [InlineData("two__underscores")]
     [InlineData("")]
     [InlineData("-leading")]
     [InlineData("this-name-is-longer-than-forty-characters-for-sure")]
@@ -346,21 +346,37 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
     }
 
     [Fact]
-    public async Task TheNameOfARagToolIsUniqueButMayBeThatOfABuiltinTool()
+    public async Task TheNameOfARagToolIsUniqueAmongTheNamesTheModelSees()
     {
         await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
 
         using var again = await RagApi.CreateAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
-        // Their model-facing names differ (rag__ and builtin__), and so do their audit entries.
+        // The model reads a tool by its own name (spec 015 D-1): another tool's name, whatever its case, would be taken for it.
         using var sameAsBuiltin = await RagApi.CreateAsync(setup.Admin, RagApi.Body(name: "calculator", knowledgeBaseIds: [kb]));
+        using var otherCase = await RagApi.CreateAsync(setup.Admin, RagApi.Body(name: "Company", knowledgeBaseIds: [kb]));
 
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         Assert.Equal("rag.name_taken", await ToolsApi.ProblemCodeAsync(again));
-        Assert.Equal(HttpStatusCode.Created, sameAsBuiltin.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, sameAsBuiltin.StatusCode);
+        Assert.Equal("tool.name_taken", await ToolsApi.ProblemCodeAsync(sameAsBuiltin));
+        Assert.Equal(HttpStatusCode.Conflict, otherCase.StatusCode);
+        Assert.Equal("tool.name_taken", await ToolsApi.ProblemCodeAsync(otherCase));
     }
 
+    [Fact] // spec 015 AC-4
+    public async Task TheNameOfARagToolMayHaveCapitalLettersAndIsOfferedAsItIs()
+    {
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
+        var kb = await setup.RegisterAsync("policies");
+
+        await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(name: "SearchPolicies", knowledgeBaseIds: [kb]));
+
+        var pool = (await ToolsApi.GetAssistantToolsAsync(setup.Admin, setup.AssistantId)).Pool;
+        var tool = Assert.Single(pool, t => t.Origin == "rag");
+        Assert.Equal("SearchPolicies", tool.Name);
+    }
     [Fact]
     public async Task UpdatingARagToolChangesItsDefinitionAndKeepsItsActivation()
     {
@@ -368,7 +384,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         var kb = await setup.RegisterAsync("policies");
         var fields = await setup.FieldsAsync();
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb], exposedFieldIds: [fields["year"]]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         using var update = await setup.Admin.PutAsJsonAsync(
             RagApi.One(created.Id),
@@ -380,7 +396,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
         Assert.Equal(["department", "document_ids", "query"], Sorted(detail.Definition!.Parameters));
         Assert.Equal(("Searches policies by department.", 3), (detail.Description, detail.TopK));
-        Assert.True(Assert.Single(pool, t => t.Name == "rag__company").Active);
+        Assert.True(Assert.Single(pool, t => t.Name == "company").Active);
     }
 
     [Fact]
@@ -398,7 +414,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         Assert.Equal(HttpStatusCode.NoContent, rename.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, disable.StatusCode);
         Assert.Equal(("handbook", "Disabled", "Confirm"), (listed.Name, listed.State, listed.Policy));
-        Assert.DoesNotContain(pool, t => t.Name.StartsWith("rag__", StringComparison.Ordinal));
+        Assert.DoesNotContain(pool, t => t.Origin == "rag");
     }
 
     [Fact]
@@ -421,7 +437,7 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         var created = await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company", "builtin__calculator");
+        await RagApi.ActivateAsync(setup.Admin, "company", "calculator");
 
         using var delete = await setup.Admin.DeleteAsync(RagApi.One(created.Id), Ct);
         using var read = await setup.Admin.GetAsync(RagApi.One(created.Id), Ct);
@@ -430,8 +446,8 @@ public sealed class RagToolConfigurationTests(PostgresFixture postgres, SharedQu
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
         Assert.Empty(await RagApi.ListAsync(setup.Admin));
-        Assert.DoesNotContain(pool, t => t.Name == "rag__company");
-        Assert.True(Assert.Single(pool, t => t.Name == "builtin__calculator").Active);
+        Assert.DoesNotContain(pool, t => t.Name == "company");
+        Assert.True(Assert.Single(pool, t => t.Name == "calculator").Active);
         Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(setup.App, "SELECT count(*) FROM agents.rag_tools"));
         Assert.Equal(0L, await ToolFixtures.ScalarAsync<long>(setup.App, "SELECT count(*) FROM agents.agent_tools a JOIN agents.tools t ON t.\"Id\" = a.\"ToolId\" WHERE t.\"Origin\" = 'Rag'"));
         // The knowledge base is only referenced.

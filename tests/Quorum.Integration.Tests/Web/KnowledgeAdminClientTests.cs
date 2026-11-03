@@ -156,7 +156,7 @@ public sealed class KnowledgeAdminClientTests(SharedQuorumApp host, QdrantFixtur
         Assert.Empty(form.Problems(dictionary));
 
         var created = (await api.CreateRagToolAsync(form.ToRequest(dictionary), Ct)).Value;
-        Assert.Equal("rag__company", created.Definition!.Name);
+        Assert.Equal("company", created.Definition!.Name);
         Assert.True(created.Definition.EstimatedTokens > 0);
 
         // The editor reads the saved tool back into the same form, with the definition preview.

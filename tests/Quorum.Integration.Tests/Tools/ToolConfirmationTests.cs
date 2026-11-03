@@ -19,10 +19,10 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres, SharedQuorum
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static FakeToolCall Probe(string text, string id = "call_1") =>
-        new("builtin__probe", JsonSerializer.Serialize(new { text }), id);
+        new("probe", JsonSerializer.Serialize(new { text }), id);
 
     private static FakeToolCall Ask(string question, string id = "call_1") =>
-        new("builtin__ask_user", JsonSerializer.Serialize(new { question }), id);
+        new("ask_user", JsonSerializer.Serialize(new { question }), id);
 
     private static List<JsonElement> Messages(QuorumApp app, int request) =>
         app.ModelServer.ChatRequests[request].GetProperty("messages").EnumerateArray().ToList();
@@ -54,7 +54,7 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres, SharedQuorum
         var call = await answer.UntilAsync("tool_call");
 
         Assert.True(call.Data.GetProperty("requiresConfirmation").GetBoolean());
-        Assert.Equal("builtin__probe", call.Data.GetProperty("tool").GetString());
+        Assert.Equal("probe", call.Data.GetProperty("tool").GetString());
         Assert.Equal("danger", call.Data.GetProperty("arguments").GetProperty("text").GetString());
         Assert.True(call.Data.GetProperty("expiresAt").GetDateTimeOffset() > DateTimeOffset.UtcNow);
         Assert.Null(await answer.NextAsync(TimeSpan.FromMilliseconds(300)));
@@ -525,7 +525,7 @@ public sealed class ToolConfirmationTests(PostgresFixture postgres, SharedQuorum
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__ask_user", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
+            ChatScript.CallTools(new FakeToolCall("ask_user", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
             ChatScript.Reply("Sorry."));
         var id = await ChatApi.CreateConversationAsync(client);
 

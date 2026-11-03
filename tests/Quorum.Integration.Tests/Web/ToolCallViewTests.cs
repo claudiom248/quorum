@@ -6,12 +6,13 @@ namespace Quorum.Integration.Tests.Web;
 
 public sealed class ToolCallViewTests
 {
-    private static ToolCallEvent Event(string arguments, bool confirm = false, string tool = "builtin__calculator") =>
+    private static ToolCallEvent Event(string arguments, bool confirm = false, string tool = "calculator") =>
         new(Guid.NewGuid(), tool, JsonDocument.Parse(arguments).RootElement.Clone(), confirm, confirm ? DateTimeOffset.UtcNow.AddMinutes(5) : null);
 
     [Theory]
-    [InlineData("builtin__calculator", "calculator")]
+    [InlineData("calculator", "calculator")]
     [InlineData("files__read_file", "files · read_file")]
+    [InlineData("search_contracts", "search_contracts")]
     [InlineData("plain", "plain")]
     public void TheNameIsShownWithoutThePrefixOfBuiltinTools(string exposed, string shown) =>
         Assert.Equal(shown, ToolCallView.DisplayNameOf(exposed));
@@ -68,7 +69,7 @@ public sealed class ToolCallViewTests
     [Fact]
     public void AQuestionPutsTheCallInWaitingForAnswerAndARepliedWaitIsNotWaiting()
     {
-        var call = ToolCallView.From(Event("""{"question":"Which?"}""", tool: "builtin__ask_user"));
+        var call = ToolCallView.From(Event("""{"question":"Which?"}""", tool: "ask_user"));
 
         call.Apply(new AskUserEvent(call.CallId, "Which?", DateTimeOffset.UtcNow.AddMinutes(5)));
         Assert.Equal(ToolCallState.WaitingForAnswer, call.State);

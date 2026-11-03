@@ -85,11 +85,23 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
                     t.Tool.Id,
                     t.ExposedName,
                     active.Contains(t.Tool.Id),
-                    t.Tool.Origin == ToolOrigin.Lookup ? activations.GetValueOrDefault(t.Tool.Id, LookupManifest.Full) : null))
+                    t.Tool.Origin == ToolOrigin.Lookup ? activations.GetValueOrDefault(t.Tool.Id, LookupManifest.Full) : null,
+                    OriginName(t.Tool.Origin),
+                    t.ServerName))
                 .OrderBy(t => t.Name, StringComparer.Ordinal)
                 .ToList(),
             warnings));
     }
+
+    private static string OriginName(ToolOrigin origin) => origin switch
+    {
+        ToolOrigin.Builtin => "builtin",
+        ToolOrigin.Rag => "rag",
+        ToolOrigin.Lookup => "lookup",
+        ToolOrigin.WebSearch => "web_search",
+        ToolOrigin.WebFetch => "web_fetch",
+        _ => "mcp",
+    };
 
     /// <summary>The functions a lookup tool is offered as on one agent: its full ones, or the lean pair of spec 012 D-8.</summary>
     private static IReadOnlyList<GeneratedLookupFunction> FunctionsOn(Tool tool, ResolvedLookupTool lookup, string? manifest) =>
@@ -231,8 +243,11 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
     }
 }
 
+/// <param name="Name">What the model calls the tool: its own name, or <c>server__tool</c> for an MCP tool.</param>
 /// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this agent; <see langword="null"/> for the other tools.</param>
-internal sealed record PoolToolResponse(Guid ToolId, string Name, bool Active, string? Manifest = null);
+/// <param name="Origin">Where the tool comes from (<c>builtin</c>, <c>rag</c>, <c>lookup</c>, <c>web_search</c>, <c>web_fetch</c> or <c>mcp</c>), which the name no longer says.</param>
+/// <param name="Server">The MCP server of an MCP tool; <see langword="null"/> for the others.</param>
+internal sealed record PoolToolResponse(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "mcp", string? Server = null);
 
 internal sealed record AgentToolsResponse(List<PoolToolResponse> Pool, IReadOnlyList<ToolWarning> Warnings);
 

@@ -34,8 +34,8 @@ public sealed class WebSearchToolPoolTests(SharedQuorumApp host) : IClassFixture
         var defaultPool = await PoolNamesAsync(admin, assistant);
         var otherPool = await PoolNamesAsync(admin, other);
 
-        Assert.Equal(["web_search__for-default", "web_search__for-tenant"], defaultPool);
-        Assert.Equal(["web_search__for-other", "web_search__for-tenant"], otherPool);
+        Assert.Equal(["for-default", "for-tenant"], defaultPool);
+        Assert.Equal(["for-other", "for-tenant"], otherPool);
     }
 
     [Fact] // AC-2
@@ -48,20 +48,20 @@ public sealed class WebSearchToolPoolTests(SharedQuorumApp host) : IClassFixture
         var assistant = await ToolsApi.DefaultAssistantIdAsync(admin);
         var chat = await ChatApi.CreateConversationAsync(admin);
         app.ModelServer.EnqueueRounds(FakeModelServer.ChatScript.Reply("one."), FakeModelServer.ChatScript.Reply("two."));
-        await ToolFixtures.ActivateOnlyAsync(admin, "builtin__calculator");
+        await ToolFixtures.ActivateOnlyAsync(admin, "calculator");
 
         await ChatApi.SendAsync(admin, chat, "Hi");
-        await ToolFixtures.ActivateOnlyAsync(admin, "builtin__calculator", "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "calculator", "research");
         await ChatApi.SendAsync(admin, chat, "Again");
 
         string[] Offered(int request) =>
             [.. app.ModelServer.ChatRequests[request].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()!)];
-        Assert.Equal(["builtin__calculator"], Offered(0));
-        Assert.Equal(["builtin__calculator", "web_search__research"], Offered(1));
+        Assert.Equal(["calculator"], Offered(0));
+        Assert.Equal(["calculator", "research"], Offered(1));
 
         // What the model is offered is the generated definition: one argument, the query.
         var offered = app.ModelServer.ChatRequests[1].GetProperty("tools").EnumerateArray()
-            .Single(t => t.GetProperty("function").GetProperty("name").GetString() == "web_search__research")
+            .Single(t => t.GetProperty("function").GetProperty("name").GetString() == "research")
             .GetProperty("function").GetProperty("parameters");
         Assert.Equal(["query"], [.. offered.GetProperty("properties").EnumerateObject().Select(p => p.Name)]);
     }
@@ -77,7 +77,7 @@ public sealed class WebSearchToolPoolTests(SharedQuorumApp host) : IClassFixture
         using var disable = await admin.PutAsJsonAsync(ToolsApi.Tool(created.Id), new { state = "Disabled", policy = "Auto" }, Ct);
         disable.EnsureSuccessStatusCode();
 
-        Assert.DoesNotContain(await PoolNamesAsync(admin, assistant), name => name == "web_search__research");
+        Assert.DoesNotContain(await PoolNamesAsync(admin, assistant), name => name == "research");
     }
 
     [Fact] // AC-10
@@ -99,7 +99,7 @@ public sealed class WebSearchToolPoolTests(SharedQuorumApp host) : IClassFixture
 
         var sharedTool = Assert.Single(listed, t => t.Id == shared);
         Assert.True(sharedTool.Shared);
-        Assert.Equal(["web_search__shared-global"], pool);
+        Assert.Equal(["shared-global"], pool);
         Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, edit.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, remove.StatusCode);
@@ -111,8 +111,8 @@ public sealed class WebSearchToolPoolTests(SharedQuorumApp host) : IClassFixture
     /// <summary>The web search names in the assistant's pool, in order.</summary>
     private static async Task<string[]> PoolNamesAsync(HttpClient admin, Guid assistantId) =>
         [.. (await ToolsApi.GetAssistantToolsAsync(admin, assistantId)).Pool
+            .Where(t => t.Origin == "web_search")
             .Select(t => t.Name)
-            .Where(n => n.StartsWith("web_search__", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)];
 
     /// <summary>A web search tool of another tenant, written straight to the database: the API has no way to create a second tenant yet.</summary>

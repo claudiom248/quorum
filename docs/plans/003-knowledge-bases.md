@@ -4,6 +4,7 @@
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
 **Status:** Implemented (approved 2026-10-17)
+**Amended by spec 015 (2026-11-03):** the names the model reads and the name rule of the tools changed; `ToolNaming` has no origin prefix except for MCP tools, and the shared name rules are in `ToolNameRules` (`docs/specs/015-tool-names.md`). The prefixes and the lower-case pattern below describe the plan as it was implemented then.
 **Amended by spec 003 A2 (2026-10-22), pending approval:** the URL guard (`OutboundUrlGuard`, `IHostResolver`) and every use of it were removed; the rows below describe what was built first.
 
 ## Decisions

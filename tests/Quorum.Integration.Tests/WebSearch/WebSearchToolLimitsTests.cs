@@ -15,7 +15,7 @@ public sealed class WebSearchToolLimitsTests(SharedQuorumApp host) : IClassFixtu
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static FakeToolCall Call(string query, string id) =>
-        new("web_search__research", JsonSerializer.Serialize(new { query }), id);
+        new("research", JsonSerializer.Serialize(new { query }), id);
 
     private static string ResultOf(IEnumerable<SseEvent> events, int index = 0) =>
         events.Where(e => e.Type == "tool_result").ElementAt(index).Data.GetProperty("content").GetString()!;
@@ -30,7 +30,7 @@ public sealed class WebSearchToolLimitsTests(SharedQuorumApp host) : IClassFixtu
         var admin = host.Admin;
         await WebSearchApi.UpdateConfigurationAsync(admin, WebSearchApi.DefaultConfiguration with { SearchUrl = "http://searxng.test", SearchTimeoutSeconds = 1 });
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research"));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "research");
         app.Searxng.NeverAnswers();
         var chat = await ChatApi.CreateConversationAsync(admin);
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Call("anything", "call_1")), ChatScript.Reply("Done."));
@@ -49,7 +49,7 @@ public sealed class WebSearchToolLimitsTests(SharedQuorumApp host) : IClassFixtu
         var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 2));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "research");
         app.Searxng.Answers(("One", "https://a.test/1", "first"));
         var chat = await ChatApi.CreateConversationAsync(admin);
 
@@ -74,7 +74,7 @@ public sealed class WebSearchToolLimitsTests(SharedQuorumApp host) : IClassFixtu
         var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 2));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "research");
         app.Searxng.Answers(("One", "https://a.test/1", "first"));
         var chat = await ChatApi.CreateConversationAsync(admin);
         var other = await ChatApi.CreateConversationAsync(admin);
@@ -101,7 +101,7 @@ public sealed class WebSearchToolLimitsTests(SharedQuorumApp host) : IClassFixtu
         var admin = host.Admin;
         await WebSearchApi.ConfigureAsync(admin);
         await WebSearchApi.CreateOkAsync(admin, WebSearchApi.Body(name: "research", maxInvocationsPerConversation: 1));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_search__research");
+        await ToolFixtures.ActivateOnlyAsync(admin, "research");
         app.Searxng.Answers(("One", "https://a.test/1", "first"));
         var chat = await ChatApi.CreateConversationAsync(admin);
 

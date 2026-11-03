@@ -8,6 +8,9 @@ public sealed record SetupStatus(bool IsSetupMode, string? DefaultSystemPrompt, 
 
 public sealed record CurrentUser(string Email, string DisplayName, string Role);
 
+/// <param name="LedgerStyle"><c>classic</c>, <c>cards</c>, <c>timeline</c> or <c>bars</c>: how the tool calls of an answer are drawn.</param>
+public sealed record UserPreferences(string LedgerStyle);
+
 /// <param name="SupportsTools">Whether the model accepts tools, when the server reports it; <see langword="null"/> when it does not say.</param>
 public sealed record ModelConnection(bool Reachable, IReadOnlyList<string> Models, bool? SupportsTools = null);
 
@@ -56,11 +59,12 @@ public sealed record AnswerReasoning(string Text) : AnswerEvent;
 public sealed record AnswerDone(Guid MessageId, string Status, string? Error) : AnswerEvent;
 
 /// <summary>The model asked for a tool. <c>Arguments</c> is a JSON object, or the text the model sent when it was not valid JSON.</summary>
-/// <param name="Tool">The name the model used, e.g. <c>builtin__calculator</c>.</param>
+/// <param name="Tool">The name the model used: the tool's own name (<c>calculator</c>), or <c>server__tool</c> for an MCP tool.</param>
 /// <param name="ExpiresAt">When a call that needs confirmation counts as denied.</param>
 /// <param name="ParentCallId">The delegation call a sub-agent made this call under; <see langword="null"/> for the root agent's calls.</param>
 /// <param name="AgentSlug">The slug of the sub-agent that made the call; <see langword="null"/> for the root agent's calls.</param>
-public sealed record ToolCallEvent(Guid CallId, string Tool, JsonElement Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt, Guid? ParentCallId = null, string? AgentSlug = null) : AnswerEvent;
+/// <param name="IsDelegation">The call is a delegation to a sub-agent, named by its slug: the name alone no longer says it.</param>
+public sealed record ToolCallEvent(Guid CallId, string Tool, JsonElement Arguments, bool RequiresConfirmation, DateTimeOffset? ExpiresAt, Guid? ParentCallId = null, string? AgentSlug = null, bool IsDelegation = false) : AnswerEvent;
 
 /// <summary>A tool call ended. <c>Status</c>: <c>succeeded</c>, <c>failed</c>, <c>denied</c>, <c>cancelled</c> or <c>timed_out</c>.</summary>
 public sealed record ToolResultEvent(Guid CallId, string Status, string Content, int SizeCharacters) : AnswerEvent;
@@ -108,7 +112,10 @@ public sealed record CreatedServiceToken(Guid Id, string Token, DateTimeOffset C
 
 /// <summary>A tool an agent may use, and whether it is activated on it.</summary>
 /// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this agent; <see langword="null"/> for the other tools.</param>
-public sealed record PoolTool(Guid ToolId, string Name, bool Active, string? Manifest = null);
+/// <param name="Name">What the model calls the tool: its own name, or <c>server__tool</c> for an MCP tool.</param>
+/// <param name="Origin">Where it comes from: <c>builtin</c>, <c>rag</c>, <c>lookup</c>, <c>web_search</c>, <c>web_fetch</c> or <c>mcp</c>.</param>
+/// <param name="Server">The MCP server of an MCP tool.</param>
+public sealed record PoolTool(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "mcp", string? Server = null);
 
 public sealed record ToolWarning(string Code, string Message);
 
@@ -145,6 +152,8 @@ public static class ScopeKinds
 }
 
 /// <param name="Annotations">What the server claims about the tool (<c>readOnlyHint</c>...): information only, it never changes the policy.</param>
+/// <param name="Name">What the model and people read: for a built-in tool, the name the administrator gave it or else its default.</param>
+/// <param name="DefaultName">The name a built-in tool comes with, which it can be given back; <see langword="null"/> for the other tools.</param>
 public sealed record ToolInfo(
     Guid Id,
     string Origin,
@@ -156,7 +165,8 @@ public sealed record ToolInfo(
     JsonElement? Annotations,
     Guid? ServerId = null,
     ToolScope? ServerScope = null,
-    bool Shared = false);
+    bool Shared = false,
+    string? DefaultName = null);
 
 /// <param name="TenantIds">Tenants besides the owner that see the server (scope <c>Tenant</c>).</param>
 /// <param name="AssistantIds">Assistants that may use a knowledge base or lookup (scope <c>Assistant</c>); empty for tools and servers.</param>

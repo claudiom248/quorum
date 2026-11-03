@@ -4,6 +4,7 @@
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** one implementation PR (`feat/012-lookup-consolidation`) built in the phases below, in order. Tests are kept to the minimum that covers each acceptance criterion once and are run only at the end, when the implementation is complete (see Verification). Development starts only after this plan is approved.
 **Status:** In progress: implemented in #135, lean describe (D-5, D-8) still on feat/012-lean-describe-operators
+**Amended by spec 015 (2026-11-03):** the names the model reads and the name rule of the tools changed; `ToolNaming` has no origin prefix except for MCP tools, and the shared name rules are in `ToolNameRules` (`docs/specs/015-tool-names.md`). The prefixes and the lower-case pattern below describe the plan as it was implemented then.
 **Affected:** KnowledgeBases (Domain, Persistence, Features/Lookups, Storage adapters, Contracts), Agents (Domain, Features/Tools, Tools/Lookup, Chat, Contracts), `Quorum.Web.Client` (lookups, search tools, assistant tools), `tools/Quorum.SampleKnowledgeBase`, `tests/Quorum.Integration.Tests`, docs.
 
 ## Decisions

@@ -2,6 +2,7 @@
 
 **Status:** Implemented (approved 2026-10-29), PR #129
 **Date:** 2026-10-29
+**Amended by spec 015 (2026-11-03):** a web search tool is called by its own name, not `web_search__<name>`, and its name may use capital letters (spec 015 D-1, D-3).
 
 > **Amendment 1 (2026-10-29, folded into spec 006)** — The platform's global web configuration (SearXNG instance URL and search timeout) is no longer stored in its own `web_search_configuration` table nor exposed as `/api/settings/web-search`. It lives in the single `web_configuration` row that spec 006 introduces, and is read/written through `/api/settings/web` as one of its fields (`searchUrl`, `searchTimeoutSeconds`). Every other aspect of this spec — the `WebSearchTool` binding, endpoints, invocation flow, sources, UI — is unchanged.
 

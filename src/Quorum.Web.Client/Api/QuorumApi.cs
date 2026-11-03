@@ -68,6 +68,13 @@ public sealed partial class QuorumApi(HttpClient http)
             setupToken: null,
             cancellationToken);
 
+    /// <summary>What the person chose for themselves: kept with the account, so it follows them from one browser to another.</summary>
+    public Task<ApiResult<UserPreferences>> GetPreferencesAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<UserPreferences>("api/me/preferences", cancellationToken);
+
+    public Task<ApiResult> SetLedgerStyleAsync(string ledgerStyle, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, "api/me/preferences", new { ledgerStyle }, setupToken: null, cancellationToken);
+
     public Task<ApiResult<Checklist>> GetChecklistAsync(CancellationToken cancellationToken = default) =>
         GetAsync<Checklist>("api/onboarding/checklist", cancellationToken);
 
@@ -91,7 +98,12 @@ public sealed partial class QuorumApi(HttpClient http)
 
     /// <summary>Enables or disables a tool and sets its policy. Enabling a tool pending review is how the admin approves it.</summary>
     public Task<ApiResult> UpdateToolAsync(Guid toolId, string state, string policy, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Put, $"api/tools/{toolId}", new { state, policy }, setupToken: null, cancellationToken);
+        UpdateToolAsync(toolId, state, policy, name: null, cancellationToken);
+
+    /// <summary>As above, and renames a built-in tool.</summary>
+    /// <param name="name">The new name. <see langword="null"/> keeps it, an empty string gives the default back.</param>
+    public Task<ApiResult> UpdateToolAsync(Guid toolId, string state, string policy, string? name, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, $"api/tools/{toolId}", new { state, policy, name }, setupToken: null, cancellationToken);
 
     /// <summary>One page of the audit log of tool calls, newest first.</summary>
     public Task<ApiResult<ToolAuditPage>> ListToolAuditAsync(AuditQuery query, CancellationToken cancellationToken = default) =>

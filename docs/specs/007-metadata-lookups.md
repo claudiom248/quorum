@@ -2,6 +2,7 @@
 
 **Status:** Implemented (approved 2026-10-22)
 **Date:** 2026-10-22
+**Amended by spec 015 (2026-11-03):** the lookup tool is named `<name>`, not `lookup__<name>`, and its functions are `<name>_entries`, `<name>_documents` and `<name>_count` (spec 015 D-1, D-4); the tool pool lists it as `<name>`.
 
 ## Problem
 The `rag` tool of spec 003 does one thing: a semantic search that returns at most 20 chunks (003 D-13). Questions that ask for a **list** or a **count** cannot be answered with it: "list the suppliers", "list the departments", "which suppliers have the most contracts", "which policies are for managers", "which teams are Italian". The model sees a sample of chunks and presents it as if it were the whole list.

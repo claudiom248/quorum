@@ -7,12 +7,13 @@
     <div class="list-page-head">
         <div>
             <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">Built-in tools</MudText>
-            <MudText Typo="Typo.body2" Class="tools-support-hint">The tools that come with Quorum. Decide which ones may run and whether they ask first.</MudText>
+            <MudText Typo="Typo.body2" Class="tools-support-hint">The tools that come with Quorum. Decide which ones may run, whether they ask first and what they are called: the model and people read the same name.</MudText>
         </div>
     </div>
 
     <ProblemMessage Problem="_problem" />
-    <ToolTable Source="BuiltinSource" Generation="_generation" Load="LoadAsync" Busy="_busy" OnChange="ChangeAsync" EmptyText="No built-in tools." />
+    <ToolTable Source="BuiltinSource" Generation="_generation" Load="LoadAsync" Busy="_busy" OnChange="ChangeAsync" ShowBar="false"
+               NameEditable="true" OnRename="RenameAsync" EmptyText="No built-in tools." />
 </div>
 
 @code {
@@ -29,6 +30,27 @@
         return result.IsSuccess
             ? ApiResult.Ok(new Page<ToolInfo>([.. result.Value.Where(t => t.Origin == "Builtin")], null))
             : ApiResult.Fail<Page<ToolInfo>>(result.Problem!);
+    }
+
+    // A new name, or an empty one for the default: the state and the policy stay as they are.
+    private async Task RenameAsync((ToolInfo Tool, string Name) change)
+    {
+        _busy = true;
+        _problem = null;
+        try
+        {
+            var result = await Api.UpdateToolAsync(change.Tool.Id, change.Tool.State, change.Tool.Policy, change.Name);
+            if (!result.IsSuccess)
+            {
+                _problem = result.Problem;
+            }
+
+            _generation++;
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task ChangeAsync((ToolInfo Tool, string State, string Policy) change)

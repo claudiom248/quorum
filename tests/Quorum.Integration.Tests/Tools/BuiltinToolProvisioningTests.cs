@@ -34,7 +34,7 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, Share
             Assert.Equal("Auto", tool.Policy);
             Assert.False(string.IsNullOrWhiteSpace(tool.Description));
         });
-        Assert.Equal(["builtin__ask_user", "builtin__calculator", "builtin__current_datetime"], pool.Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["ask_user", "calculator", "current_datetime"], pool.Select(t => t.Name).Order().ToArray());
         Assert.All(pool, tool => Assert.True(tool.Active));
     }
 

@@ -90,7 +90,7 @@ public sealed class ToolChatPageTests : BunitContext
         PushAsync("tool_call", new
         {
             callId = Call,
-            tool = "builtin__calculator",
+            tool = "calculator",
             arguments = JsonDocument.Parse(arguments).RootElement,
             requiresConfirmation,
             expiresAt = requiresConfirmation ? DateTimeOffset.UtcNow.AddMinutes(5) : (DateTimeOffset?)null,
@@ -236,7 +236,7 @@ public sealed class ToolChatPageTests : BunitContext
     public async Task AQuestionStillOpenWhenTheStreamEndsIsClosedToo()
     {
         var (page, sending) = await StartAnswerAsync();
-        await PushAsync("tool_call", new { callId = Call, tool = "builtin__ask_user", arguments = new { question = "Which?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
+        await PushAsync("tool_call", new { callId = Call, tool = "ask_user", arguments = new { question = "Which?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
         await PushAsync("ask_user", new { callId = Call, question = "Which?", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
         page.WaitForAssertion(() => page.Find(".tool-question"));
 
@@ -334,7 +334,7 @@ public sealed class ToolChatPageTests : BunitContext
     public async Task AQuestionOfTheModelIsShownAndTheAnswerIsSentForThatCall()
     {
         var (page, sending) = await StartAnswerAsync();
-        await PushAsync("tool_call", new { callId = Call, tool = "builtin__ask_user", arguments = new { question = "Which city?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
+        await PushAsync("tool_call", new { callId = Call, tool = "ask_user", arguments = new { question = "Which city?" }, requiresConfirmation = false, expiresAt = (DateTimeOffset?)null });
         await PushAsync("ask_user", new { callId = Call, question = "Which city?", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
 
         page.WaitForAssertion(() => Assert.Contains("Which city?", page.Find(".tool-question").TextContent, StringComparison.Ordinal));
@@ -376,6 +376,7 @@ public sealed class ToolChatPageTests : BunitContext
         {
             callId = Delegation,
             tool = "web-researcher",
+            isDelegation = true,
             arguments = JsonDocument.Parse("""{"task":"find the price"}""").RootElement,
             requiresConfirmation = false,
         });
@@ -384,7 +385,7 @@ public sealed class ToolChatPageTests : BunitContext
         PushAsync("tool_call", new
         {
             callId = Nested,
-            tool = "builtin__calculator",
+            tool = "calculator",
             arguments = JsonDocument.Parse("""{"expression":"2+2"}""").RootElement,
             requiresConfirmation,
             expiresAt = requiresConfirmation ? DateTimeOffset.UtcNow.AddMinutes(5) : (DateTimeOffset?)null,

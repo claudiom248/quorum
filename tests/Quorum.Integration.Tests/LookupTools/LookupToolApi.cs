@@ -133,7 +133,7 @@ internal static class LookupToolApi
     public sealed record CreatedBody(Guid Id, PreviewBody? Definition, List<PreviewBody> Definitions, List<WarningBody> Warnings)
     {
         /// <summary>The function the model is offered for one operation: <c>values</c>, <c>documents</c> or <c>count</c>.</summary>
-        public PreviewBody Function(string operation) => Definitions.Single(d => d.Name.StartsWith($"lookup_{operation}__", StringComparison.Ordinal));
+        public PreviewBody Function(string operation) => Definitions.Single(d => d.Name.EndsWith($"_{operation}", StringComparison.Ordinal));
     }
 
     public sealed record NamedBody(Guid Id, string Name);
@@ -160,6 +160,6 @@ internal static class LookupToolApi
         List<PreviewBody> Definitions,
         List<WarningBody> Warnings)
     {
-        public PreviewBody Function(string operation) => Definitions.Single(d => d.Name.StartsWith($"lookup_{operation}__", StringComparison.Ordinal));
+        public PreviewBody Function(string operation) => Definitions.Single(d => d.Name.EndsWith($"_{operation}", StringComparison.Ordinal));
     }
 }

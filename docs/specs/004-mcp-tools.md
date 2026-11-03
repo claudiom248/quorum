@@ -5,6 +5,7 @@
 **Amended by spec 003 (2026-10-17):** the tool origin `Native` is renamed `Builtin` and the exposed prefix `native__` becomes `builtin__`; "native tools" in this document are the built-in tools. Rows, API values and names in the code follow the new vocabulary.
 
 **Date:** 2026-10-17
+**Amended by spec 015 (2026-11-03):** D-16 and AC-20 now hold for MCP tools only (`<server>__<tool>`). Built-in, rag, lookup, web search and web fetch tools are called by their own name, the same name people read (spec 015 D-1, D-2).
 
 ## Problem
 Today an assistant can only produce text from its prompt, the conversation and the attached documents. It cannot look anything up, compute anything exactly or act on the customer's systems. Small local models (the first customer's reality) are especially weak at arithmetic, dates and anything outside their training, so they need tools. At the same time a tool is the first thing in Quorum that **does something**: it runs code or calls systems on the customer's infrastructure, driven by a model that can be wrong or manipulated by a document it reads. This spec gives assistants tools through the **Model Context Protocol (MCP)** and puts the safety rules of the product principles around them from day one: visibility scopes, human confirmation, an audit log.

@@ -51,7 +51,7 @@ public sealed class WebFetchToolCallTests(PostgresFixture postgres)
         }
 
         await WebFetchApi.CreateOkAsync(admin, tool ?? WebFetchApi.Body(name: "read"));
-        await ToolFixtures.ActivateOnlyAsync(admin, "web_fetch__read");
+        await ToolFixtures.ActivateOnlyAsync(admin, "read");
         script?.Invoke(app.WebFetch);
         return (app, admin, await ChatApi.CreateConversationAsync(admin));
     }
@@ -355,7 +355,7 @@ public sealed class WebFetchToolCallTests(PostgresFixture postgres)
     {
         var (app, admin, chat) = await StartAsync(script: s => s.OnUnknown = _ => null);
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("web_fetch__read", """{"urls":[]}""", "call_1")),
+            ChatScript.CallTools(new FakeToolCall("read", """{"urls":[]}""", "call_1")),
             ChatScript.Reply("Done."));
 
         var events = await ChatApi.SendAsync(admin, chat, "Read nothing");

@@ -134,6 +134,10 @@ namespace Quorum.Modules.Tenancy.Persistence.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("LedgerStyle")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
 

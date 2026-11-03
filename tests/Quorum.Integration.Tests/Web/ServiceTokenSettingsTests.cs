@@ -72,7 +72,7 @@ public sealed class ServiceTokenSettingsTests : BunitContext
     private IRenderedComponent<Quorum.Web.Client.Pages.Settings> RenderPage()
     {
         var page = Render<Quorum.Web.Client.Pages.Settings>();
-        page.WaitForAssertion(() => page.Find("form"));
+        page.WaitForAssertion(() => page.Find(".mud-tab"));
         return page;
     }
 

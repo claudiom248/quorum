@@ -106,8 +106,8 @@ public sealed class LookupAndBuiltinToolsPageTests : ListPageTestContext
         };
     }
 
-    private static object Builtin(Guid id, string name, string state, string policy) =>
-        new { id, origin = "Builtin", serverName = (string?)null, name, description = $"{name} does things.", state, policy, annotations = (object?)null };
+    private static object Builtin(Guid id, string name, string state, string policy, string? defaultName = null) =>
+        new { id, origin = "Builtin", serverName = (string?)null, name, description = $"{name} does things.", state, policy, annotations = (object?)null, defaultName = defaultName ?? name };
 
     [Fact] // AC-3
     public void TheLookupToolsAreListedWithTheirListsAndScope()
@@ -115,7 +115,7 @@ public sealed class LookupAndBuiltinToolsPageTests : ListPageTestContext
         var page = Visit<Quorum.Web.Client.Pages.LookupTools>("/tools/lookup");
 
         var row = page.Find("[data-lookup-tool=countries]").ParentElement!.ParentElement!;
-        Assert.Contains("lookup__countries", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("countries", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("nationality", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("also asks live: policies", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Approve and enable", row.TextContent, StringComparison.Ordinal);
@@ -167,13 +167,42 @@ public sealed class LookupAndBuiltinToolsPageTests : ListPageTestContext
     }
 
     [Fact] // AC-9
-    public void TheBuiltInPageAsksTheServerForThePendingToolsOnly()
+    public void TheBuiltInPageHasNeitherASearchNorAFilterOfTheToolsToReview()
     {
         var page = Visit<BuiltinTools>("/tools/builtin");
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".tool-row")));
 
-        page.Find("[data-filter=to-review]").Click();
+        Assert.Empty(page.FindAll(".tool-table-bar"));
+        Assert.Empty(page.FindAll("[data-filter=to-review]"));
+    }
 
-        page.WaitForAssertion(() => Assert.Contains(Api.Queries, q => q.Contains("status=PendingReview", StringComparison.Ordinal)));
+    [Fact] // spec 015 AC-11
+    public void ABuiltInToolIsRenamedLikeAnyOtherAndKeepsItsStateAndPolicy()
+    {
+        var page = Visit<BuiltinTools>("/tools/builtin");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-tool=calculator] .tool-row-rename")));
+        Assert.Contains("Default: calculator", page.Find("[data-tool=calculator] .tool-row-rename").TextContent, StringComparison.Ordinal);
+
+        page.Find("[data-tool=calculator] .tool-row-rename input").Input("Calc");
+        ClickButton(page, "Rename");
+
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, $"/api/tools/{Calculator}")));
+        var body = Body(Api, HttpMethod.Put, $"/api/tools/{Calculator}");
+        Assert.Equal(("Calc", "Enabled", "Auto"), (body.GetProperty("name").GetString(), body.GetProperty("state").GetString(), body.GetProperty("policy").GetString()));
+    }
+
+    [Fact] // spec 015 AC-11
+    public void ARenamedBuiltInToolOffersToGoBackToItsDefaultName()
+    {
+        Api.Respond = (method, path) => method == HttpMethod.Get && path == "/api/tools"
+            ? FakeApiHandler.Json(new object[] { Builtin(Calculator, "Calc", "Enabled", "Auto", defaultName: "calculator") })
+            : method == HttpMethod.Get && path == "/api/tenants" ? new HttpResponseMessage(HttpStatusCode.Forbidden) : new HttpResponseMessage(HttpStatusCode.NoContent);
+        var page = Visit<BuiltinTools>("/tools/builtin");
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".tool-row-rename")));
+
+        ClickButton(page, "Back to calculator");
+
+        page.WaitForAssertion(() => Assert.Equal(1, Api.Count(HttpMethod.Put, $"/api/tools/{Calculator}")));
+        Assert.Equal(string.Empty, Body(Api, HttpMethod.Put, $"/api/tools/{Calculator}").GetProperty("name").GetString());
     }
 }

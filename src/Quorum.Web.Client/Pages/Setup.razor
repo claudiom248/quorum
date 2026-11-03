@@ -35,7 +35,7 @@ else if (_status is not null)
     }
     else
     {
-        <MudText Class="mb-3">Connect Quorum to an OpenAI-compatible model endpoint, such as Ollama. The default system prompt applies; you can change it later in the settings.</MudText>
+        <MudText Class="mb-3">Connect Quorum to an OpenAI-compatible model endpoint, such as Ollama. The default system prompt applies; you can change it later on the agent.</MudText>
         <form @onsubmit="CompleteAsync">
             <MudStack Spacing="3">
                 <ModelConnectionForm Value="_model" Busy="_busy" Test="TestModelAsync" />
@@ -177,8 +177,8 @@ else
 
         Session.Reset();
 
-        // An unreachable model does not block the setup (it may still be starting): the settings page warns about it.
-        Navigation.NavigateTo(ModelReached ? string.Empty : "settings?unverified=1", forceLoad: true);
+        // An unreachable model does not block the setup (it may still be starting): the model endpoints page warns about it.
+        Navigation.NavigateTo(ModelReached ? string.Empty : "agents/endpoints?unverified=1", forceLoad: true);
     }
 
     private static string? EmptyToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

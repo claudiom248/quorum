@@ -13,7 +13,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp hos
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private static FakeToolCall Probe(string arguments, string id = "call_1") => new("builtin__probe", arguments, id);
+    private static FakeToolCall Probe(string arguments, string id = "call_1") => new("probe", arguments, id);
 
     [Fact] // AC-41, AC-42
     public async Task EveryCallLeavesAnEntryWithWhoWhenWhatAndTheOutcomeButNotTheResult()
@@ -21,7 +21,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp hos
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"2+2*3"}""")),
+            ChatScript.CallTools(new FakeToolCall("calculator", """{"expression":"2+2*3"}""")),
             ChatScript.Reply("Eight."));
         var conversationId = await ChatApi.CreateConversationAsync(client);
         var assistantId = await ToolsApi.DefaultAssistantIdAsync(client);
@@ -90,7 +90,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp hos
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"where":"home"}""")),
+            ChatScript.CallTools(new FakeToolCall("calculator", """{"where":"home"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -109,14 +109,14 @@ public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp hos
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__teleport", """{"where":"home"}""")),
+            ChatScript.CallTools(new FakeToolCall("teleport", """{"where":"home"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
         await ChatApi.SendAsync(client, id, "Go");
 
         Assert.Empty(await ToolFixtures.AuditRowsAsync(app));
-        Assert.Contains(app.Logs.Messages, message => message.Contains("builtin__teleport", StringComparison.Ordinal));
+        Assert.Contains(app.Logs.Messages, message => message.Contains("teleport", StringComparison.Ordinal));
     }
 
     [Fact] // AC-41
@@ -125,7 +125,7 @@ public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp hos
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"1/0"}""")),
+            ChatScript.CallTools(new FakeToolCall("calculator", """{"expression":"1/0"}""")),
             ChatScript.Reply("No."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -253,8 +253,8 @@ public sealed class ToolAuditTests(PostgresFixture postgres, SharedQuorumApp hos
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
             ChatScript.CallTools(
-                new FakeToolCall("builtin__calculator", """{"expression":"1+1"}""", "call_1"),
-                new FakeToolCall("builtin__calculator", """{"expression":"2+2"}""", "call_2")),
+                new FakeToolCall("calculator", """{"expression":"1+1"}""", "call_1"),
+                new FakeToolCall("calculator", """{"expression":"2+2"}""", "call_2")),
             ChatScript.Reply("Done."));
         var id = await ChatApi.CreateConversationAsync(client);
 

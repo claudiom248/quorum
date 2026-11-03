@@ -1,166 +1,92 @@
 @page "/settings"
 @inject QuorumApi Api
-@inject OnboardingProgress Onboarding
-@inject NavigationManager Navigation
+@inject Session Session
 
 <PageTitle>Settings · Quorum</PageTitle>
 
 <div class="settings">
-    <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-4">Assistant settings</MudText>
-
-    @if (Unverified is not null)
-    {
-        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
-            The model could not be reached during setup. Check the endpoint below and use "Test connection".
-        </MudAlert>
-    }
+    <MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-4">Settings</MudText>
 
     @if (_loading)
     {
         <MudProgressLinear Indeterminate="true" />
     }
-    else if (_model is not null)
+    else
     {
-        @* Each tab saves on its own and says so; the others keep what was last saved. *@
-        <MudTabs @bind-ActivePanelIndex="_tab" @bind-ActivePanelIndex:after="TabChangedAsync" Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
-            <MudTabPanel Text="Model" data-tab="model">
-                <form @onsubmit="SaveModelAsync">
-                    <MudStack Spacing="3">
-                        <ModelConnectionForm Value="_model" HasApiKey="_hasApiKey" Busy="_busy" Test="TestModelAsync" />
-                        <ProblemMessage Problem="_modelProblem" />
-                        @if (_modelSaved)
+        @* The assistant itself (model, prompt, tools) is set on its agent; what is left here is the browser's own display and the platform's settings. *@
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
+            <MudTabPanel Text="Display" data-tab="display">
+                <MudStack Spacing="2" Class="settings-display">
+                    <MudText Typo="Typo.subtitle1">Tool calls in a chat</MudText>
+                    <MudText Typo="Typo.body2" Class="tool-hint">How the calls an assistant makes, and the sub-agents it delegates to, are drawn while it answers. Saved with your account, so it follows you to any browser.</MudText>
+                    <ProblemMessage Problem="_ledgerProblem" />
+                    <MudRadioGroup T="LedgerStyle" Value="_ledger" ValueChanged="ChooseLedgerAsync" Class="ledger-choices" data-ledger-style>
+                        @foreach (var style in LedgerStyles.All)
                         {
-                            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Model settings saved.</MudAlert>
+                            <div class="ledger-choice">
+                                <MudRadio T="LedgerStyle" Value="style" Color="Color.Primary" Dense="true">@LedgerStyles.Label(style)</MudRadio>
+                                <MudText Typo="Typo.caption" Class="tool-hint">@LedgerStyles.Description(style)</MudText>
+                            </div>
                         }
-
-                        <MudStack Row="true" Justify="Justify.FlexEnd">
-                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save model</MudButton>
-                        </MudStack>
-                    </MudStack>
-                </form>
-            </MudTabPanel>
-
-            <MudTabPanel Text="Behaviour" data-tab="behaviour">
-                <form @onsubmit="SaveBehaviourAsync">
-                    <MudStack Spacing="3">
-                        <MudTextField @bind-Value="_prompt" Label="System prompt" Variant="Variant.Outlined" Lines="10" />
-                        <ProblemMessage Problem="_behaviourProblem" />
-                        @if (_behaviourSaved)
-                        {
-                            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Behaviour saved.</MudAlert>
-                        }
-
-                        <MudStack Row="true" Justify="Justify.FlexEnd">
-                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save behaviour</MudButton>
-                        </MudStack>
-                    </MudStack>
-                </form>
-            </MudTabPanel>
-
-            @if (_pool is { Count: > 0 })
-            {
-                <MudTabPanel Text="Tools" data-tab="tools">
-                    <form @onsubmit="SaveToolsAsync">
-                        <MudStack Spacing="2">
-                            <MudText Typo="Typo.body2" Class="tools-support-hint">
-                                The tools the assistant may call. Each one runs under its own policy; those that need confirmation ask the person chatting before they run.
-                            </MudText>
-
-                            @if (!_model.SupportsTools)
-                            {
-                                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                                    The model is marked as not supporting tools, so none of these are offered to it.
-                                </MudAlert>
-                            }
-
-                            <MudTextField T="string" @bind-Value="_toolSearch" Label="Search the tools" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
-                                          Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
-
-                            @foreach (var group in Groups())
-                            {
-                                <MudText Typo="Typo.subtitle2" Class="mt-2" data-source="@group.Source">@group.Source</MudText>
-                                @foreach (var tool in group.Tools)
-                                {
-                                    <MudCheckBox T="bool" @bind-Value="tool.Active" Label="@tool.Label" Color="Color.Primary" Dense="true" />
-                                    @if (tool.Manifest is not null)
-                                    {
-                                        // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
-                                        <MudSwitch T="bool" @bind-Value="tool.Lean" Label="Lean manifest" Color="Color.Secondary" Disabled="!tool.Active" />
-                                    }
-                                }
-                            }
-
-                            @foreach (var warning in _warnings)
-                            {
-                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@warning.Message</MudAlert>
-                            }
-
-                            <ProblemMessage Problem="_toolsProblem" />
-                            @if (_toolsSaved)
-                            {
-                                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" role="status">Tools saved.</MudAlert>
-                            }
-
-                            <MudStack Row="true" Justify="Justify.FlexEnd">
-                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">Save tools</MudButton>
-                            </MudStack>
-                        </MudStack>
-                    </form>
-                </MudTabPanel>
-            }
-
-            <MudTabPanel Text="Integrations" data-tab="integrations">
-                <MudStack Spacing="3">
-                    <MudText Typo="Typo.body2">
-                        Service tokens let an external process (an ETL, a scheduled job) trigger the refresh of a knowledge base's lookups
-                        as soon as it finishes writing. A token reaches the refresh and its status only, and only for the knowledge bases
-                        of this tenant.
-                    </MudText>
-
-                    @if (_tokensProblem is not null)
-                    {
-                        <ProblemMessage Problem="_tokensProblem" />
-                    }
-
-                    @if (_newToken is not null)
-                    {
-                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="py-3">
-                            <MudStack Spacing="2">
-                                <MudText>Copied this token into your ETL configuration now: it <strong>will not be shown again</strong>.</MudText>
-                                <MudTextField Value="@_newToken.Token" Variant="Variant.Outlined" ReadOnly="true" Margin="Margin.Dense"
-                                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ContentCopy"
-                                              data-token-plaintext />
-                            </MudStack>
-                        </MudAlert>
-                    }
-
-                    @if (_tokens.Count > 0)
-                    {
-                        <MudTable T="ServiceTokenInfo" Items="_tokens" Dense="true" Hover="true" Elevation="0" Outlined="true">
-                            <HeaderContent>
-                                <MudTh>Created</MudTh>
-                                <MudTh></MudTh>
-                            </HeaderContent>
-                            <RowTemplate Context="token">
-                                <MudTd DataLabel="Created">@token.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
-                                <MudTd DataLabel="Actions">
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
-                                               data-revoke-token="@token.Id"
-                                               OnClick="() => RevokeTokenAsync(token.Id)">Revoke</MudButton>
-                                </MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.body2" Class="mud-text-secondary">No service token yet.</MudText>
-                    }
-
-                    <MudStack Row="true" Justify="Justify.FlexEnd">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="GenerateTokenAsync">Generate</MudButton>
-                    </MudStack>
+                    </MudRadioGroup>
                 </MudStack>
             </MudTabPanel>
+
+            @if (_tokensAvailable)
+            {
+                <MudTabPanel Text="Integrations" data-tab="integrations">
+                    <MudStack Spacing="3" Class="settings-narrow">
+                        <MudText Typo="Typo.body2">
+                            Service tokens let an external process (an ETL, a scheduled job) trigger the refresh of a knowledge base's lookups
+                            as soon as it finishes writing. A token reaches the refresh and its status only, and only for the knowledge bases
+                            of this tenant.
+                        </MudText>
+
+                        @if (_tokensProblem is not null)
+                        {
+                            <ProblemMessage Problem="_tokensProblem" />
+                        }
+
+                        @if (_newToken is not null)
+                        {
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="py-3">
+                                <MudStack Spacing="2">
+                                    <MudText>Copied this token into your ETL configuration now: it <strong>will not be shown again</strong>.</MudText>
+                                    <MudTextField Value="@_newToken.Token" Variant="Variant.Outlined" ReadOnly="true" Margin="Margin.Dense"
+                                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                                                  data-token-plaintext />
+                                </MudStack>
+                            </MudAlert>
+                        }
+
+                        @if (_tokens.Count > 0)
+                        {
+                            <MudTable T="ServiceTokenInfo" Items="_tokens" Dense="true" Hover="true" Elevation="0" Outlined="true">
+                                <HeaderContent>
+                                    <MudTh>Created</MudTh>
+                                    <MudTh></MudTh>
+                                </HeaderContent>
+                                <RowTemplate Context="token">
+                                    <MudTd DataLabel="Created">@token.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                                    <MudTd DataLabel="Actions">
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                                   data-revoke-token="@token.Id"
+                                                   OnClick="() => RevokeTokenAsync(token.Id)">Revoke</MudButton>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">No service token yet.</MudText>
+                        }
+
+                        <MudStack Row="true" Justify="Justify.FlexEnd">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="GenerateTokenAsync">Generate</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </MudTabPanel>
+            }
 
             @if (_webSearch)
             {
@@ -267,32 +193,15 @@
             }
         </MudTabs>
     }
-    else
-    {
-        <ProblemMessage Problem="_loadProblem" />
-    }
 </div>
 
 @code {
-    private ModelConnectionFields? _model;
-    private ModelConnectionFields _savedModel = new();
-    private string _prompt = string.Empty;
-    private string _savedPrompt = string.Empty;
-    private bool _hasApiKey;
+    private LedgerStyle _ledger;
+    private ApiProblem? _ledgerProblem;
     private bool _loading = true;
     private bool _busy;
-    private ApiProblem? _loadProblem;
-    private ApiProblem? _modelProblem;
-    private bool _modelSaved;
-    private ApiProblem? _behaviourProblem;
-    private bool _behaviourSaved;
-    private Guid? _agentId;
-    private List<PoolEntry>? _pool;
-    private IReadOnlyList<ToolWarning> _warnings = [];
-    private ApiProblem? _toolsProblem;
-    private bool _toolsSaved;
-    private string? _toolSearch;
     private List<ServiceTokenInfo> _tokens = [];
+    private bool _tokensAvailable;
     private ApiProblem? _tokensProblem;
     private CreatedServiceToken? _newToken;
     private bool _webSearch;
@@ -310,39 +219,22 @@
     private bool _respectRobotsTxt = true;
     private bool _cacheEnabled = true;
     private int _cacheTtlMinutes = WebConfigurationLimits.DefaultCacheTtlMinutes;
-    private int _tab;
-
-    private const int BehaviourTab = 1;
-
-    [SupplyParameterFromQuery]
-    public string? Unverified { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        var result = await Api.GetAssistantSettingsAsync();
-        _loading = false;
+        _ledger = await Session.GetLedgerStyleAsync();
 
-        if (!result.IsSuccess)
-        {
-            _loadProblem = result.Problem;
-            return;
-        }
-
-        var s = result.Value;
-        _hasApiKey = s.HasApiKey;
-        _model = new ModelConnectionFields
-        {
-            BaseUrl = s.BaseUrl,
-            ModelName = s.ModelName,
-            ContextTokenBudget = s.ContextTokenBudget,
-            SupportsTools = s.SupportsTools,
-        };
-        _savedModel = _model.Copy();
-        _prompt = _savedPrompt = s.SystemPrompt;
-
-        await LoadToolsAsync();
+        // Only an administrator reads the tokens and the web row: for anyone else a refusal simply leaves the tab out.
         await LoadTokensAsync();
         await LoadWebSearchAsync();
+        _loading = false;
+    }
+
+    private async Task ChooseLedgerAsync(LedgerStyle style)
+    {
+        var saved = await Session.SetLedgerStyleAsync(style);
+        _ledgerProblem = saved.Problem;
+        _ledger = saved.IsSuccess ? style : _ledger;
     }
 
     private async Task LoadWebSearchAsync()
@@ -350,7 +242,6 @@
         var configuration = await Api.GetWebConfigurationAsync();
         if (!configuration.IsSuccess)
         {
-            // Only an administrator sees the instance: as with the tools tab, a refusal simply leaves the tab out.
             return;
         }
 
@@ -410,10 +301,10 @@
         var tokens = await Api.ListServiceTokensAsync();
         if (!tokens.IsSuccess)
         {
-            _tokensProblem = tokens.Problem;
             return;
         }
 
+        _tokensAvailable = true;
         _tokens = [.. tokens.Value.OrderByDescending(t => t.CreatedAt)];
     }
 
@@ -449,169 +340,6 @@
         if (_newToken?.Id == id)
         {
             _newToken = null;
-        }
-    }
-
-    private async Task LoadToolsAsync()
-    {
-        var assistants = await Api.ListAssistantsAsync();
-        if (!assistants.IsSuccess || assistants.Value.Count == 0)
-        {
-            return;
-        }
-
-        // The tools belong to the agent the assistant answers through (spec 013 D-17), named by its slug.
-        var agents = await Api.ListAgentsAsync();
-        var root = agents.IsSuccess ? agents.Value.FirstOrDefault(a => a.Slug == assistants.Value[0].RootAgentSlug) : null;
-        if (root is null)
-        {
-            return;
-        }
-
-        _agentId = root.Id;
-        var tools = await Api.GetAgentToolsAsync(root.Id);
-        if (!tools.IsSuccess)
-        {
-            // Not everyone who may change the model may manage tools: the tab is simply absent.
-            return;
-        }
-
-        _pool = tools.Value.Pool.Select(t => new PoolEntry(t.ToolId, ToolCallView.DisplayNameOf(t.Name), SourceOf(t.Name)) { Active = t.Active, Manifest = t.Manifest }).ToList();
-        _warnings = tools.Value.Warnings;
-    }
-
-    // "files__read" comes from the server files, "builtin__calculator" is built in: the part before the double underscore.
-    private static string SourceOf(string exposedName)
-    {
-        var split = exposedName.IndexOf("__", StringComparison.Ordinal);
-        return split > 0 ? exposedName[..split] : "other";
-    }
-
-    private IEnumerable<(string Source, List<PoolEntry> Tools)> Groups() =>
-        _pool!
-            .Where(t => string.IsNullOrWhiteSpace(_toolSearch) || t.Label.Contains(_toolSearch.Trim(), StringComparison.OrdinalIgnoreCase))
-            .GroupBy(t => t.Source)
-            .OrderBy(g => g.Key, StringComparer.Ordinal)
-            .Select(g => (g.Key, g.ToList()));
-
-    private Task<ApiResult<ModelConnection>> TestModelAsync(string baseUrl, string? key, string? model) => Api.TestAssistantModelAsync(baseUrl, key, model);
-
-    // Opening the Behaviour tab once is what completes its step of the getting-started checklist; failing to record it is not the page's problem.
-    private async Task TabChangedAsync()
-    {
-        if (_tab == BehaviourTab)
-        {
-            await Onboarding.MarkAsync("prompt");
-        }
-    }
-
-    private Task SaveModelAsync() => SaveAsync(model: true);
-
-    private Task SaveBehaviourAsync() => SaveAsync(model: false);
-
-    // The tab that saves sends its own part and the other part as last saved, so an unsaved edit elsewhere is not saved by accident.
-    private async Task SaveAsync(bool model)
-    {
-        _busy = true;
-        _modelProblem = null;
-        _behaviourProblem = null;
-        _modelSaved = false;
-        _behaviourSaved = false;
-
-        var connection = model ? _model! : _savedModel;
-        var prompt = model ? _savedPrompt : _prompt;
-        var request = new UpdateAssistantSettingsRequest(
-            connection.BaseUrl.Trim(),
-            connection.ModelName.Trim(),
-            model ? _model!.KeyToSend() : null,
-            connection.ContextTokenBudget,
-            prompt,
-            connection.SupportsTools);
-        var result = await Api.UpdateAssistantSettingsAsync(request);
-        _busy = false;
-
-        if (!result.IsSuccess)
-        {
-            if (model)
-            {
-                _modelProblem = result.Problem;
-            }
-            else
-            {
-                _behaviourProblem = result.Problem;
-            }
-
-            return;
-        }
-
-        if (model)
-        {
-            if (!string.IsNullOrWhiteSpace(_model!.ApiKey))
-            {
-                _hasApiKey = true;
-            }
-
-            if (_model.RemoveKey && string.IsNullOrWhiteSpace(_model.ApiKey))
-            {
-                _hasApiKey = false;
-            }
-
-            _model.ApiKey = null;
-            _model.RemoveKey = false;
-            _savedModel = _model.Copy();
-            _modelSaved = true;
-        }
-        else
-        {
-            _savedPrompt = _prompt;
-            _behaviourSaved = true;
-        }
-
-        if (Unverified is not null && model)
-        {
-            Navigation.NavigateTo("settings", replace: true);
-        }
-    }
-
-    private async Task SaveToolsAsync()
-    {
-        if (_agentId is not { } agentId || _pool is null)
-        {
-            return;
-        }
-
-        _busy = true;
-        _toolsProblem = null;
-        _toolsSaved = false;
-        var manifests = _pool.Where(t => t.Active && t.Manifest is not null).ToDictionary(t => t.ToolId, t => t.Manifest!);
-        var result = await Api.SetAgentToolsAsync(agentId, _pool.Where(t => t.Active).Select(t => t.ToolId).ToList(), manifests);
-        _busy = false;
-
-        if (!result.IsSuccess)
-        {
-            _toolsProblem = result.Problem;
-            return;
-        }
-
-        _toolsSaved = true;
-        var tools = await Api.GetAgentToolsAsync(agentId);
-        if (tools.IsSuccess)
-        {
-            _warnings = tools.Value.Warnings;
-        }
-    }
-
-    private sealed record PoolEntry(Guid ToolId, string Label, string Source)
-    {
-        public bool Active { get; set; }
-
-        /// <summary>For a lookup tool: <c>Full</c> or <c>Lean</c>; <see langword="null"/> for the other tools.</summary>
-        public string? Manifest { get; set; }
-
-        public bool Lean
-        {
-            get => Manifest == "Lean";
-            set => Manifest = value ? "Lean" : "Full";
         }
     }
 }

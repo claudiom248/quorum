@@ -2,6 +2,7 @@
 
 **Status:** Implemented (approved 2026-10-17). Amendment 1 (dictionary clusters and aliases) proposed 2026-10-21, pending approval. Amendment 2 (no address blocking) proposed 2026-10-22, pending approval. Amendment 3 (entity-only knowledge bases, spec 012) approved 2026-11-02.
 **Date:** 2026-10-17
+**Amended by spec 015 (2026-11-03):** a rag tool is called by its own name, not `rag__<name>` (D-4 here, D-1 of spec 015); the name may use capital letters (spec 015 D-3) and shares one name space with the other tools and the agent slugs (spec 015 D-5).
 
 ## Problem
 Spec 002 lets a user attach a file to **one conversation**: the extracted text goes into the model context and a document longer than the context budget is rejected. Companies have far more material than that (contracts, procedures, manuals) and want every assistant, for every user, to answer from it and to say where the answer comes from. That material is already prepared by the people who own the data, often through their own ETL, and sits in a vector store.

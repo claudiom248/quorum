@@ -2,6 +2,8 @@
    built-in page. Read-only for a server another tenant shares: its review belongs to the owner. *@
 
 <div class="tool-table" data-tool-table>
+    @if (ShowBar)
+    {
     <div class="tool-table-bar">
         <MudTextField T="string" Value="_query.Q" ValueChanged="SearchChangedAsync" Label="Search the tools" Variant="Variant.Outlined"
                       Margin="Margin.Dense" Immediate="true" DebounceInterval="SearchDebounce" Clearable="true"
@@ -9,6 +11,7 @@
         <MudChip T="string" Size="Size.Small" Variant="@(_onlyToReview ? Variant.Filled : Variant.Outlined)" Color="Color.Warning"
                  OnClick="ToggleToReviewAsync" data-filter="to-review">To review</MudChip>
     </div>
+    }
 
     <ProblemMessage Problem="_problem" />
 
@@ -25,7 +28,8 @@
         <div class="tool-rows">
             @foreach (var tool in _tools)
             {
-                <ToolRow @key="(tool.Id, Generation)" Tool="tool" ReadOnly="ReadOnly || tool.Shared" Busy="Busy" OnChange="OnChange" />
+                <ToolRow @key="(tool.Id, Generation)" Tool="tool" ReadOnly="ReadOnly || tool.Shared" Busy="Busy" OnChange="OnChange"
+                         NameEditable="NameEditable" OnRename="OnRename" />
             }
         </div>
     }
@@ -69,6 +73,17 @@
 
     [Parameter]
     public int SearchDebounce { get; set; } = 300;
+
+    /// <summary>The search and the filter of the tools to review: a table of a few tools, like the built-in ones, leaves them out.</summary>
+    [Parameter]
+    public bool ShowBar { get; set; } = true;
+
+    /// <summary>The name of each tool can be changed (the built-in tools).</summary>
+    [Parameter]
+    public bool NameEditable { get; set; }
+
+    [Parameter]
+    public EventCallback<(ToolInfo Tool, string Name)> OnRename { get; set; }
 
     [Parameter]
     public EventCallback<(ToolInfo Tool, string State, string Policy)> OnChange { get; set; }

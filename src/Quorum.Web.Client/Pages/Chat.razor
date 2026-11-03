@@ -182,6 +182,9 @@
     [Parameter]
     public Guid? Id { get; set; }
 
+    // How tool calls are drawn: the person's choice in the settings, kept in their account.
+    private LedgerStyle _ledger;
+
     private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(60);
 
     /// <summary>The state of one answer on its way. The page outlives navigation, so each conversation streams on its own.</summary>
@@ -209,7 +212,7 @@
 
     // The tool calls of the answer being watched, or of the last one: the server does not store them, so they stay until the next answer.
     private RenderFragment Calls => @<div class="tool-calls">
-        <ToolCallGroup Calls="CurrentCalls" OnDecide="DecideAsync" OnAnswer="AnswerAsync" />
+        <ToolCallGroup Calls="CurrentCalls" Style="_ledger" OnDecide="DecideAsync" OnAnswer="AnswerAsync" />
     </div>;
 
     protected override async Task OnParametersSetAsync()
@@ -239,7 +242,14 @@
         {
             _self = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("quorumChat.bindComposer", _composerElement, _self);
+            await ReadLedgerStyleAsync();
         }
+    }
+
+    private async Task ReadLedgerStyleAsync()
+    {
+        _ledger = await Session.GetLedgerStyleAsync();
+        StateHasChanged();
     }
 
     /// <summary>Called by the composer's Enter key handler.</summary>
@@ -416,7 +426,7 @@
                         run.Partial += delta.Text;
                         break;
                     case ToolCallEvent call:
-                        run.Calls.Add(ToolCallView.From(call));
+                        run.Calls.Add(ToolCallView.From(call, Clock.GetUtcNow()));
                         urgent = true;
                         break;
                     case AskUserEvent ask:
@@ -424,7 +434,7 @@
                         urgent = true;
                         break;
                     case ToolResultEvent result:
-                        run.Calls.Find(c => c.CallId == result.CallId)?.Apply(result);
+                        run.Calls.Find(c => c.CallId == result.CallId)?.Apply(result, Clock.GetUtcNow());
                         urgent = true;
                         break;
                     case SourcesEvent cited:

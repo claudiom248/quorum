@@ -101,7 +101,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
 
     private static object Definition(string name) => new
     {
-        name = $"web_search__{name}",
+        name,
         description = $"Searches the web for {name}.",
         inputSchema = Schema("""{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}"""),
         estimatedTokens = 60,
@@ -143,7 +143,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
         var page = Visit<WebTools>("/tools/web/search", p => p.Add(c => c.Section, "search"));
 
         var row = page.Find("[data-web-search-tool=research]").ParentElement!.ParentElement!;
-        Assert.Contains("web_search__research", row.TextContent, StringComparison.Ordinal);
+        Assert.Contains("research", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Searches the open web for what is newest.", row.TextContent, StringComparison.Ordinal);
         Assert.Contains("Tenant", row.TextContent, StringComparison.Ordinal);
     }
@@ -168,7 +168,7 @@ public sealed class WebSearchToolsPageTests : ListPageTestContext
         });
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[data-form=web-search]")));
 
-        Assert.Contains("web_search__research", page.Find("[data-definition=web_search__research]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("research", page.Find("[data-definition=research]").TextContent, StringComparison.Ordinal);
         Assert.Equal("7", page.Find("input[data-web-search-top-n]").GetAttribute("value"));
         Assert.Equal("3", page.Find("input[data-web-search-invocations]").GetAttribute("value"));
         Assert.Contains("Delete", page.Find("[data-form=web-search]").TextContent, StringComparison.Ordinal);

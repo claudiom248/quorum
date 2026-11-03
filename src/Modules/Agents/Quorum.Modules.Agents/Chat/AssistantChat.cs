@@ -42,9 +42,9 @@ internal sealed class AssistantChat(
         "Cite only numbers the results contain, and do not make up sources.";
 
     // Added after ToolDataNotice when ask_user is offered: a tool description alone did not stop models from asking in plain text.
-    internal const string AskUserNotice =
+    internal static string AskUserNotice(string toolName) =>
         "\n\nWhen you need something from the user to answer, such as a value you do not have, a missing detail or a choice, " +
-        "call the ask_user tool. Do not write the question in your reply and do not answer without the information.";
+        $"call the {toolName} tool. Do not write the question in your reply and do not answer without the information.";
 
     private static readonly Error AssistantNotFound = Error.NotFound("assistant.not_found", "The assistant does not exist.");
 
@@ -289,7 +289,7 @@ internal sealed class AssistantChat(
         tools.Count == 0
             ? systemPrompt
             : systemPrompt + ToolDataNotice
-                + (tools.Any(tool => tool is AskUserQuorumTool) ? AskUserNotice : string.Empty)
+                + (tools.OfType<AskUserQuorumTool>().FirstOrDefault() is { } askUser ? AskUserNotice(askUser.Name) : string.Empty)
                 + (tools.Any(tool => tool is RagQuorumTool or WebSearchQuorumTool or WebFetchQuorumTool) ? SearchCitationNotice : string.Empty);
 
     /// <summary>

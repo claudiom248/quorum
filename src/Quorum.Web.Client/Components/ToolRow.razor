@@ -21,6 +21,19 @@
         <div class="tool-hint">Hints claimed by the server. They do not change the policy.</div>
     }
 
+    @if (NameEditable && !ReadOnly)
+    {
+        <div class="tool-row-controls tool-row-rename">
+            <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" MaxLength="40"
+                          HelperText="@($"Default: {Tool.DefaultName}. The model and people read this name.")" data-tool-name />
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="Busy || !NameChanged" OnClick="() => OnRename.InvokeAsync((Tool, _name.Trim()))">Rename</MudButton>
+            @if (Tool.DefaultName is { } defaultName && Tool.Name != defaultName)
+            {
+                <MudButton Variant="Variant.Text" Size="Size.Small" Disabled="Busy" OnClick="() => OnRename.InvokeAsync((Tool, string.Empty))">Back to @defaultName</MudButton>
+            }
+        </div>
+    }
+
     <ToolStateCell Tool="Tool" ReadOnly="ReadOnly" Busy="Busy" OnChange="OnChange" />
 </div>
 
@@ -34,6 +47,20 @@
 
     [Parameter]
     public bool Busy { get; set; }
+
+    /// <summary>The name can be changed (the built-in tools): the row asks <see cref="OnRename"/> for it.</summary>
+    [Parameter]
+    public bool NameEditable { get; set; }
+
+    /// <summary>Called with the name the admin typed; an empty one gives the default back.</summary>
+    [Parameter]
+    public EventCallback<(ToolInfo Tool, string Name)> OnRename { get; set; }
+
+    private string _name = string.Empty;
+
+    private bool NameChanged => !string.IsNullOrWhiteSpace(_name) && _name.Trim() != Tool.Name;
+
+    protected override void OnInitialized() => _name = Tool.Name;
 
     /// <summary>Called with the state and the policy the admin chose; the page sends them to the server.</summary>
     [Parameter]

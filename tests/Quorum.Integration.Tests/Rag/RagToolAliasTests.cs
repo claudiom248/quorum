@@ -91,7 +91,7 @@ public sealed class RagToolAliasTests(SharedQuorumApp host, QdrantFixture qdrant
         var f = await StartAsync();
         await using var setup = f.Setup;
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [f.HrBase, f.FinanceBase], exposedFields: Exposed(f, "year_hr", "year_finance"), topK: 20));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         var year = SampleCollections.CreateFlat().Points[0].Payload["year"]!.ToString();
 
         var byText = await AskAsync(setup, new { query = "policy", year_hr = new[] { year } });
@@ -197,7 +197,7 @@ public sealed class RagToolAliasTests(SharedQuorumApp host, QdrantFixture qdrant
         await RagApi.CreateOkAsync(
             setup.Admin,
             RagApi.Body(knowledgeBaseIds: [f.HrBase, f.FinanceBase], exposedFields: [new { fieldId = f.HrYear, alias = "year_hr" }], fixedFilters: new { year_min = 1900 }, topK: 20));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         var all = await AskAsync(setup, new { query = "policy" });
         var narrowed = await AskAsync(setup, new { query = "policy", knowledge_base = "hr_docs" }, "call_2");
@@ -210,7 +210,7 @@ public sealed class RagToolAliasTests(SharedQuorumApp host, QdrantFixture qdrant
 
     private static async Task<IReadOnlyList<SseEvent>> AskAsync(RagApi.Setup setup, object arguments, string id = "call_1")
     {
-        setup.App.ModelServer.EnqueueRounds([ChatScript.CallTools(new FakeToolCall("rag__company", JsonSerializer.Serialize(arguments), id)), ChatScript.Reply("Done.")]);
+        setup.App.ModelServer.EnqueueRounds([ChatScript.CallTools(new FakeToolCall("company", JsonSerializer.Serialize(arguments), id)), ChatScript.Reply("Done.")]);
         var conversation = await ChatApi.CreateConversationAsync(setup.Admin);
         return await ChatApi.SendAsync(setup.Admin, conversation, "Question");
     }

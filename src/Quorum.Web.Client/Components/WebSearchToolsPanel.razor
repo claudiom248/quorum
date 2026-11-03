@@ -4,7 +4,7 @@
 @inject IDialogService Dialogs
 
 <ListPage Title="Web search tools"
-          Description="A web search tool lets an assistant ask the platform's SearXNG instance for what is newest or for what it does not know. The instance itself is set in Settings; here you decide how a search answers: how many results, which engines, in which language, and how often one conversation may ask. Activate a tool on an assistant in its settings."
+          Description="A web search tool lets an assistant ask the platform's SearXNG instance for what is newest or for what it does not know. The instance itself is set in Settings; here you decide how a search answers: how many results, which engines, in which language, and how often one conversation may ask. Activate a tool on an agent in Agents."
           AddLabel="Add web search tool" OnAdd="() => _screen.OpenDrawer(ListScreen<WebSearchToolListItem>.NewId)" Notice="@_notice"
           Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
           IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
@@ -23,7 +23,7 @@
             </HeaderContent>
             <RowTemplate Context="tool">
                 <MudTd DataLabel="Name">
-                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-search-tool="@tool.Name">web_search__@tool.Name</MudLink>
+                    <MudLink Href="@_screen.DrawerUri(tool.Id.ToString())" Class="tool-name" data-web-search-tool="@tool.Name">@tool.Name</MudLink>
                     <div class="tool-row-description">@tool.Description</div>
                 </MudTd>
                 <MudTd DataLabel="Scope"><ScopeBadge Scope="tool.Scope" Agents="_agents" Shared="tool.Shared" /></MudTd>
@@ -67,7 +67,7 @@
                     }
 
                     <MudTextField @bind-Value="form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="@WebSearchToolLimits.MaxNameLength"
-                                  HelperText="Lower-case letters, digits, '-' and '_'. The model sees the tool as web_search__name." />
+                                  HelperText="Letters, digits, '-' and '_', never two underscores in a row. People and the model read the same name." />
                     <MudTextField @bind-Value="form.Description" Label="Description" Variant="Variant.Outlined" Required="true" Lines="3"
                                   MaxLength="@WebSearchToolLimits.MaxDescriptionLength"
                                   HelperText="For the model: when to search the web instead of answering from what it knows or from a knowledge base." />
@@ -184,7 +184,7 @@
     [Parameter]
     public string? Id { get; set; }
 
-    private string DrawerTitle => _form is null ? "Web search tool" : _form.IsNew ? "Add web search tool" : $"Edit web_search__{_form.OriginalName}";
+    private string DrawerTitle => _form is null ? "Web search tool" : _form.IsNew ? "Add web search tool" : $"Edit {_form.OriginalName}";
 
     private bool IsDirty => _form is not null && !string.Equals(_initial, Snapshot(), StringComparison.Ordinal);
 
@@ -329,7 +329,7 @@
             if (saved.IsSuccess)
             {
                 Open(saved.Value);
-                _notice = $"web_search__{request.Name} was saved. Activate it on an assistant in Settings for a model to use it.";
+                _notice = $"{request.Name} was saved. Activate it on an agent in Agents for a model to use it.";
                 if (form.Id is null)
                 {
                     _openedId = id.ToString();
@@ -351,7 +351,7 @@
         var form = _form!;
         if (!await Confirmations.ConfirmDeleteAsync(
                 Dialogs,
-                $"Delete web_search__{form.OriginalName}?",
+                $"Delete {form.OriginalName}?",
                 "It is removed from every assistant. The audit log keeps its name.",
                 "Delete tool"))
         {
@@ -367,7 +367,7 @@
                 return;
             }
 
-            _notice = $"web_search__{form.OriginalName} was deleted.";
+            _notice = $"{form.OriginalName} was deleted.";
             _form = null;
             _definition = null;
             _drawer?.SkipNextGuard();

@@ -21,10 +21,10 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
     private static readonly Uri AssistantSettings = new("/api/settings/assistant", UriKind.Relative);
 
     private static FakeToolCall Calculate(string expression, string id = "call_1") =>
-        new("builtin__calculator", JsonSerializer.Serialize(new { expression }), id);
+        new("calculator", JsonSerializer.Serialize(new { expression }), id);
 
     private static FakeToolCall Probe(string text, string id = "call_1") =>
-        new("builtin__probe", JsonSerializer.Serialize(new { text }), id);
+        new("probe", JsonSerializer.Serialize(new { text }), id);
 
     private static List<JsonElement> Messages(QuorumApp app, int request) =>
         app.ModelServer.ChatRequests[request].GetProperty("messages").EnumerateArray().ToList();
@@ -107,7 +107,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
 
         var tools = app.ModelServer.ChatRequests[^1].GetProperty("tools").EnumerateArray().ToList();
         Assert.Equal(
-            ["builtin__ask_user", "builtin__calculator", "builtin__current_datetime"],
+            ["ask_user", "calculator", "current_datetime"],
             tools.Select(t => t.GetProperty("function").GetProperty("name").GetString()).ToArray());
         Assert.All(tools, tool => Assert.Equal("function", tool.GetProperty("type").GetString()));
     }
@@ -142,7 +142,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
         Assert.Equal(["delta", "tool_call", "tool_result", "delta", "delta", "done"], events.Select(e => e.Type));
         var call = events[1].Data;
         Assert.True(Guid.TryParse(call.GetProperty("callId").GetString(), out var callId));
-        Assert.Equal("builtin__calculator", call.GetProperty("tool").GetString());
+        Assert.Equal("calculator", call.GetProperty("tool").GetString());
         Assert.Equal("2+2*3", call.GetProperty("arguments").GetProperty("expression").GetString());
         Assert.False(call.GetProperty("requiresConfirmation").GetBoolean());
         var result = events[2].Data;
@@ -159,7 +159,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
         var sentCall = Assert.Single(assistant.GetProperty("tool_calls").EnumerateArray());
         Assert.Equal("call_1", sentCall.GetProperty("id").GetString());
         Assert.Equal("function", sentCall.GetProperty("type").GetString());
-        Assert.Equal("builtin__calculator", sentCall.GetProperty("function").GetProperty("name").GetString());
+        Assert.Equal("calculator", sentCall.GetProperty("function").GetProperty("name").GetString());
         Assert.Equal("2+2*3", JsonDocument.Parse(sentCall.GetProperty("function").GetProperty("arguments").GetString()!).RootElement.GetProperty("expression").GetString());
         var tool = second[^1];
         Assert.Equal("tool", tool.GetProperty("role").GetString());
@@ -194,7 +194,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__calculator", """{"expression":"3*3"}""", Id: null)) with { ToolCallShape = ToolCallShape.WholeCallObjectArguments },
+            ChatScript.CallTools(new FakeToolCall("calculator", """{"expression":"3*3"}""", Id: null)) with { ToolCallShape = ToolCallShape.WholeCallObjectArguments },
             ChatScript.Reply("Nine."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -305,7 +305,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__teleport", "{}")),
+            ChatScript.CallTools(new FakeToolCall("teleport", "{}")),
             ChatScript.Reply("I cannot do that."));
         var id = await ChatApi.CreateConversationAsync(client);
 
@@ -313,7 +313,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
 
         var result = Assert.Single(events, e => e.Type == "tool_result").Data;
         Assert.Equal("failed", result.GetProperty("status").GetString());
-        Assert.Contains("builtin__teleport", Messages(app, 1)[^1].GetProperty("content").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("teleport", Messages(app, 1)[^1].GetProperty("content").GetString()!, StringComparison.Ordinal);
         Assert.Equal(2, app.ModelServer.ChatRequests.Count);
         Assert.Equal("Completed", events[^1].Data.GetProperty("status").GetString());
     }
@@ -329,7 +329,7 @@ public sealed class ToolLoopTests(PostgresFixture postgres, SharedQuorumApp host
         var app = host.App;
         var client = host.Admin;
         app.ModelServer.EnqueueRounds(
-            ChatScript.CallTools(new FakeToolCall("builtin__calculator", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
+            ChatScript.CallTools(new FakeToolCall("calculator", arguments)) with { ToolCallShape = ToolCallShape.WholeCallStringArguments },
             ChatScript.Reply("Sorry."));
         var id = await ChatApi.CreateConversationAsync(client);
 

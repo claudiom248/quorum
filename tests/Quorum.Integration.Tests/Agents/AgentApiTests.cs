@@ -94,6 +94,20 @@ public sealed class AgentApiTests(SharedQuorumApp host) : IClassFixture<SharedQu
         Assert.True((await ErrorsAsync(response)).TryGetProperty("slug", out _));
     }
 
+    [Theory] // spec 015 AC-7
+    [InlineData("calculator")]
+    [InlineData("Calculator")]
+    public async Task ASlugThatIsTheNameOfAToolIsRejected(string slug)
+    {
+        var client = host.Admin;
+
+        using var response = await client.PostAsJsonAsync(Agents, Body(slug, await EndpointIdAsync(client)), Ct);
+
+        // The slug is the name of the tool that calls the agent: the model reads one name for every tool.
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.BadRequest, HttpStatusCode.Conflict });
+        Assert.True((await ErrorsAsync(response)).TryGetProperty("slug", out _));
+    }
+
     [Fact] // AC-2
     public async Task ADuplicateSlugIsRejectedOnCreateAndOnUpdate()
     {
@@ -427,10 +441,10 @@ public sealed class AgentApiTests(SharedQuorumApp host) : IClassFixture<SharedQu
     [Fact] // AC-26
     public void ASubAgentSlugEqualToAToolNameClashes()
     {
-        // Every tool is offered as origin__name and a slug has no underscore, so the API cannot be driven into a clash today;
-        // the rule keeps holding if the naming of tools ever changes.
-        Assert.True(AgentRules.ClashesWithTool("ask-user", ["ask-user", "builtin__calculator"]));
-        Assert.False(AgentRules.ClashesWithTool("calculator", ["builtin__calculator"]));
+        // A tool is called by its own name and a sub-agent by its slug (spec 015 D-1): the same name cannot be both.
+        Assert.True(AgentRules.ClashesWithTool("ask-user", ["ask-user", "calculator"]));
+        Assert.True(AgentRules.ClashesWithTool("calculator", ["calculator"]));
+        Assert.False(AgentRules.ClashesWithTool("planner", ["calculator"]));
     }
 
     [Theory]
@@ -450,7 +464,7 @@ public sealed class AgentApiTests(SharedQuorumApp host) : IClassFixture<SharedQu
     }
 
     private static async Task<Guid> CalculatorIdAsync(HttpClient client) =>
-        (await ToolsApi.GetAssistantToolsAsync(client, await ToolsApi.DefaultAssistantIdAsync(client))).Pool.Single(t => t.Name == "builtin__calculator").ToolId;
+        (await ToolsApi.GetAssistantToolsAsync(client, await ToolsApi.DefaultAssistantIdAsync(client))).Pool.Single(t => t.Name == "calculator").ToolId;
 
     private static Uri EndpointUri(Guid id) => new($"/api/model-endpoints/{id}", UriKind.Relative);
 

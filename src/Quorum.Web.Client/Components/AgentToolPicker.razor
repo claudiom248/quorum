@@ -1,0 +1,102 @@
+@* The tools an agent may use, grouped as the menu groups them: the built-in ones, the ones that search, the ones that read the web, then one
+   group per MCP server. The sets belong to the page, which saves them; this only shows and changes them. *@
+
+<div data-tool-picker>
+    <MudTextField T="string" @bind-Value="_search" Label="Search the tools" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                  Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+
+    <div class="settings-columns mt-2">
+        @foreach (var group in Groups())
+        {
+            <div class="settings-group">
+                <MudText Typo="Typo.subtitle2" data-source="@group.Source">@group.Source</MudText>
+                @foreach (var tool in group.Tools)
+                {
+                    var id = tool.ToolId;
+                    <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@LabelOf(tool)" Color="Color.Primary" Dense="true" />
+                    @if (tool.Manifest is not null)
+                    {
+                        // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
+                        <MudSwitch T="bool" Value="IsLean(id)" ValueChanged="on => SetLeanAsync(id, on)" Label="Lean manifest" Color="Color.Secondary" Disabled="!Active.Contains(id)" />
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private const string SearchGroup = "search tools";
+    private const string WebGroup = "web tools";
+
+    private string? _search;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<PoolTool> Pool { get; set; } = [];
+
+    /// <summary>The tools that are on; the picker adds and removes ids.</summary>
+    [Parameter, EditorRequired]
+    public HashSet<Guid> Active { get; set; } = [];
+
+    /// <summary>For a lookup tool: <c>Full</c> or <c>Lean</c> by tool id.</summary>
+    [Parameter, EditorRequired]
+    public Dictionary<Guid, string> Manifests { get; set; } = [];
+
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    // A group is named by its server, so inside it an MCP tool is shown by its own name: the server is not said twice.
+    private static string LabelOf(PoolTool tool)
+    {
+        var split = tool.Name.IndexOf("__", StringComparison.Ordinal);
+        return tool.Origin == "mcp" && split >= 0 ? tool.Name[(split + 2)..] : tool.Name;
+    }
+
+    private bool IsLean(Guid id) => Manifests.TryGetValue(id, out var manifest) && manifest == "Lean";
+
+    private Task ToggleAsync(Guid id, bool on)
+    {
+        if (on)
+        {
+            Active.Add(id);
+        }
+        else
+        {
+            Active.Remove(id);
+        }
+
+        return Changed.InvokeAsync();
+    }
+
+    private Task SetLeanAsync(Guid id, bool lean)
+    {
+        Manifests[id] = lean ? "Lean" : "Full";
+        return Changed.InvokeAsync();
+    }
+
+    // The tools made in Quorum are grouped as the menu does, so the ones that search and the ones that read the web sit together; an MCP tool
+    // goes with its server. The name does not say where a tool comes from, so the server tells.
+    internal static string SourceOf(PoolTool tool) => tool.Origin switch
+    {
+        "builtin" => "builtin",
+        "rag" or "lookup" => SearchGroup,
+        "web_search" or "web_fetch" => WebGroup,
+        _ => tool.Server ?? "other",
+    };
+    // The built-in tools first, then the ones made in Quorum, then one group per MCP server.
+    private static int GroupRank(string source) => source switch
+    {
+        "builtin" => 0,
+        SearchGroup => 1,
+        WebGroup => 2,
+        _ => 3,
+    };
+
+    private IEnumerable<(string Source, List<PoolTool> Tools)> Groups() =>
+        Pool
+            .Where(t => string.IsNullOrWhiteSpace(_search) || LabelOf(t).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase) || t.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase))
+            .GroupBy(SourceOf)
+            .OrderBy(g => GroupRank(g.Key))
+            .ThenBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => (g.Key, g.ToList()));
+}

@@ -110,7 +110,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .composer { border-top: 1px solid var(--mud-palette-lines-default); padding: .75rem 1rem; background: var(--mud-palette-background); }
 .composer-inner { max-width: 52rem; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
 
-.settings { max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem; width: 100%; overflow-y: auto; }
+.settings { max-width: 80rem; margin: 0 auto; padding: 1.5rem 1rem; width: 100%; overflow-y: auto; }
 .editor-lab { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 1rem; gap: .75rem; }
 .editor-frame { flex: 1; min-height: 0; border: 1px solid var(--mud-palette-lines-default); border-radius: 8px; overflow: hidden; }
 .editor-frame .monaco-editor-container { height: 100%; width: 100%; }
@@ -244,3 +244,75 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
     .list-drawer.mud-drawer { width: 100vw !important; }
     .list-page .mud-table-container { overflow-x: auto; }
 }
+
+
+/* Ledger styles A, B and C (cookie quorum.ledger): one markup, three skins. */
+.lg { display: flex; flex-direction: column; gap: .45rem; }
+.lg summary { list-style: none; display: flex; align-items: center; gap: .6rem; cursor: pointer; user-select: none; }
+.lg summary::-webkit-details-marker { display: none; }
+.lg-item { --lg: var(--mud-palette-text-secondary); }
+.lg-tint-0 { --lg: hsl(262 52% 52%); } .lg-tint-1 { --lg: hsl(174 62% 33%); } .lg-tint-2 { --lg: hsl(18 74% 50%); } .lg-tint-3 { --lg: hsl(214 70% 50%); }
+.lg-tint-4 { --lg: hsl(330 58% 50%); } .lg-tint-5 { --lg: hsl(84 48% 38%); } .lg-tint-6 { --lg: hsl(42 80% 40%); } .lg-tint-7 { --lg: hsl(198 66% 40%); }
+.lg-avatar { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--lg) 16%, transparent); color: var(--lg); font-size: .72rem; font-weight: 600; }
+.lg-avatar .mud-icon-root { font-size: 1rem; }
+.lg-title { display: flex; flex-direction: column; min-width: 0; }
+.lg-name { font-weight: 600; white-space: nowrap; }
+.lg-slug { font-family: ui-monospace, monospace; font-size: .72rem; color: var(--mud-palette-text-secondary); }
+.lg-args { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mud-palette-text-secondary); font-family: ui-monospace, monospace; font-size: .78rem; }
+.lg-agent > summary .lg-title { flex: 1; }
+.lg-meta { margin-left: auto; font-size: .75rem; color: var(--mud-palette-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lg-args + .lg-meta { margin-left: 0; }
+.lg-state { font-size: .72rem; padding: .05rem .55rem; border-radius: 999px; white-space: nowrap; background: color-mix(in srgb, var(--mud-palette-warning) 18%, transparent); color: var(--mud-palette-warning-darken, var(--mud-palette-warning)); }
+.tone-ok > summary .lg-state { background: color-mix(in srgb, var(--mud-palette-success) 16%, transparent); color: var(--mud-palette-success); }
+.tone-error > summary .lg-state { background: color-mix(in srgb, var(--mud-palette-error) 16%, transparent); color: var(--mud-palette-error); }
+.tone-muted > summary .lg-state { background: transparent; color: var(--mud-palette-text-secondary); }
+.lg-chip { font-size: .7rem; padding: .02rem .5rem; border-radius: 999px; border: 1px solid var(--mud-palette-lines-default); color: var(--mud-palette-text-secondary); white-space: nowrap; }
+.lg-task { margin: .3rem 0 .2rem 2.35rem; font-size: .8rem; color: var(--mud-palette-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-more { margin: 0 0 .2rem 2.35rem; font-size: .78rem; }
+.lg-more > summary { color: var(--mud-palette-text-secondary); }
+.lg .tool-pre { margin: .2rem 0 .3rem 2.35rem; }
+.lg-children { margin-top: .3rem; }
+
+.lg-cards .lg-item { border: 1px solid var(--mud-palette-lines-default); border-radius: 12px; padding: .5rem .7rem; background: var(--mud-palette-surface); }
+.lg-cards .lg-children { border-top: 1px solid var(--mud-palette-lines-default); padding-top: .25rem; margin-left: 2.35rem; }
+.lg-cards .lg-children .lg-item { border: 0; border-radius: 0; padding: .1rem 0; background: transparent; }
+.lg-cards .lg-children .lg-avatar { display: none; }
+.lg-cards .lg-children .lg-plain > summary::before { content: ""; width: .4rem; height: .4rem; border-radius: 50%; flex: none; background: var(--mud-palette-warning); }
+.lg-cards .lg-children .lg-plain.tone-ok > summary::before { background: var(--mud-palette-success); }
+.lg-cards .lg-children .lg-plain.tone-error > summary::before { background: var(--mud-palette-error); }
+.lg-cards .lg-children .lg-state { background: transparent; padding: 0; }
+.lg-tools-head { display: flex; align-items: center; gap: .6rem; }
+
+.lg-timeline { position: relative; padding-left: 1.3rem; }
+.lg-timeline::before { content: ""; position: absolute; left: .45rem; top: 1.6rem; bottom: .3rem; width: 1px; background: var(--mud-palette-lines-inputs); }
+.lg-timeline > .lg-item { position: relative; padding: .1rem 0; }
+.lg-timeline > .lg-item::before { content: ""; position: absolute; left: -1.1rem; top: .5rem; width: .7rem; height: .7rem; border-radius: 50%; background: var(--lg); border: 2px solid var(--mud-palette-background); }
+.lg-timeline .lg-avatar { display: none; }
+.lg-timeline .lg-task { margin-left: 0; }
+.lg-timeline .lg-more, .lg-timeline .tool-pre { margin-left: 0; }
+.lg-timeline .lg-children { display: flex; flex-wrap: wrap; gap: .3rem; }
+.lg-timeline .lg-children .lg-plain { border: 1px solid var(--mud-palette-lines-default); border-radius: 6px; padding: .05rem .5rem; background: var(--mud-palette-surface); }
+.lg-timeline .lg-children .lg-plain[open] { flex-basis: 100%; }
+.lg-timeline .lg-children .lg-args, .lg-timeline .lg-children .lg-meta, .lg-timeline .lg-children .lg-state { display: none; }
+.lg-timeline .lg-children .lg-name { font-weight: 400; font-size: .75rem; }
+
+.lg-bars > .lg-item { border-left: 3px solid var(--lg); border-radius: 0 8px 8px 0; background: var(--mud-palette-surface); padding: .35rem .6rem; }
+.lg-bars .lg-avatar { display: none; }
+.lg-bars .lg-plain > summary { flex-wrap: wrap; row-gap: 0; }
+.lg-bars .lg-plain .lg-args { flex-basis: 100%; order: 3; }
+.lg-bars .lg-plain .lg-meta { margin-left: auto; }
+.lg-bars .lg-task, .lg-bars .lg-more, .lg-bars .tool-pre { margin-left: 0; }
+.lg-bars .lg-children .lg-plain { border-left: 2px solid var(--mud-palette-lines-default); padding-left: .5rem; margin-top: .2rem; }
+
+/* Settings: one choice of how tool calls are drawn, with its description under it. */
+.ledger-choice { display: flex; flex-direction: column; margin-bottom: .8rem; }
+.ledger-choice .tool-hint { margin-left: 2rem; }
+
+/* Wide forms: the model connection splits in two columns when its container has the room, and the tools of the settings flow in columns. */
+.model-connection { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1.5rem 2rem; align-items: start; }
+.settings-columns { column-width: 20rem; column-gap: 2rem; }
+.settings-columns > .settings-group { break-inside: avoid; margin-bottom: 1rem; }
+
+/* Settings: the display choices stack in one column, and the token list does not stretch across the whole page. */
+.ledger-choices.mud-radio-group { display: flex; flex-direction: column; gap: .25rem; }
+.settings-display, .settings-narrow { max-width: 44rem; }

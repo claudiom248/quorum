@@ -23,7 +23,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
 
     private static string Text(ulong chunk) => SampleCollections.CreateFlat().Points.Single(p => p.Id == chunk).EmbeddingText;
 
-    private static FakeToolCall Call(object arguments, string id = "call_1", string tool = "rag__company") =>
+    private static FakeToolCall Call(object arguments, string id = "call_1", string tool = "company") =>
         new(tool, JsonSerializer.Serialize(arguments), id);
 
     private static List<JsonElement> Messages(QuorumApp app, int request) =>
@@ -64,7 +64,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
                 scoreThreshold: scoreThreshold,
                 maxResultCharacters: maxResultCharacters,
                 policy: policy));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         return (setup, kb, created.Id);
     }
 
@@ -108,7 +108,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
 
         await AskAsync(setup, Call(new { query = "leave" }));
 
-        var offered = Assert.Single(setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")), t => t.GetProperty("name").GetString() == "rag__company");
+        var offered = Assert.Single(setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")), t => t.GetProperty("name").GetString() == "company");
         Assert.Contains("query", offered.GetProperty("parameters").GetProperty("properties").EnumerateObject().Select(p => p.Name));
         Assert.Contains("year_min", offered.GetProperty("parameters").GetProperty("properties").EnumerateObject().Select(p => p.Name));
         var system = Messages(setup.App, 0)[0];
@@ -121,7 +121,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
     {
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         setup.App.ModelServer.EnqueueRounds(ChatScript.Reply("Hello."));
-        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "builtin__calculator");
+        await ToolFixtures.ActivateOnlyAsync(setup.Admin, "calculator");
 
         await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Hi");
 
@@ -169,7 +169,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         var beta = await setup.RegisterAsync("beta", SampleCollections.CreateNested, SearchApi.NestedMapping);
         var alpha = await setup.RegisterAsync("alpha");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [beta, alpha], topK: 6));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         var both = ResultOf(await AskAsync(setup, Call(new { query = Text(1) })));
         var onlyBeta = ResultOf(await AskAsync(setup, Call(new { query = Text(1), knowledge_base = "beta" })));
@@ -187,7 +187,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         var bare = await setup.RegisterAsync("bare", mapping: KnowledgeBaseApi.TextOnly(), createFields: []);
         var fields = await setup.FieldsAsync();
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [bare, complete], exposedFieldIds: [fields["year"]], topK: 20));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         var partial = await AskAsync(setup, Call(new { query = "policy", year_min = 2024 }));
         var none = await AskAsync(setup, Call(new { query = "policy", year_min = 2024, knowledge_base = "bare" }, "call_2"));
@@ -242,7 +242,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         await using var owner = setup;
         var embeddingsBefore = setup.App.ModelServer.EmbeddingRequests.Count;
 
-        var events = await AskAsync(setup, new FakeToolCall("rag__company", arguments, "call_1"));
+        var events = await AskAsync(setup, new FakeToolCall("company", arguments, "call_1"));
 
         Assert.Equal("failed", StatusOf(events));
         Assert.Contains(mentions, ResultOf(events), StringComparison.Ordinal);
@@ -259,7 +259,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         await using var setup = await RagApi.Setup.StartAsync(postgres, qdrant);
         var down = await setup.RegisterAsync("down", mapping: KnowledgeBaseApi.TextOnly(), createFields: [], url: "http://[::1]:1");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [down]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         var events = await AskAsync(setup, Call(new { query = "leave" }));
 
@@ -293,7 +293,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         var good = await setup.RegisterAsync("good");
         var down = await setup.RegisterAsync("down", mapping: KnowledgeBaseApi.TextOnly(), createFields: [], url: "http://[::1]:1");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [good, down]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
 
         var events = await AskAsync(setup, Call(new { query = Text(1) }));
 
@@ -333,7 +333,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         // The text of the chunks is never kept, only how many sources there were.
         Assert.DoesNotContain("Employees accrue", audit.Arguments, StringComparison.Ordinal);
 
-        var page = await setup.Admin.GetFromJsonAsync<JsonElement>(new Uri("/api/tools/audit?tool=rag__company", UriKind.Relative), Ct);
+        var page = await setup.Admin.GetFromJsonAsync<JsonElement>(new Uri("/api/tools/audit?tool=company", UriKind.Relative), Ct);
         var item = Assert.Single(page.GetProperty("items").EnumerateArray());
         Assert.Equal((3, "company", "rag"), (item.GetProperty("sourceCount").GetInt32(), item.GetProperty("toolName").GetString(), item.GetProperty("serverName").GetString()));
     }
@@ -418,13 +418,13 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         var kept = await setup.RegisterAsync("kept");
         var gone = await setup.RegisterAsync("gone");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kept, gone]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         using var delete = await setup.Admin.DeleteAsync(KnowledgeBaseApi.One(gone), Ct);
         delete.EnsureSuccessStatusCode();
 
         var events = await AskAsync(setup, Call(new { query = Text(1) }));
 
-        var offered = Assert.Single(setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")), t => t.GetProperty("name").GetString() == "rag__company");
+        var offered = Assert.Single(setup.App.ModelServer.ChatRequests[0].GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")), t => t.GetProperty("name").GetString() == "company");
         // One knowledge base left: nothing to choose from.
         Assert.DoesNotContain("knowledge_base", offered.GetProperty("parameters").GetProperty("properties").EnumerateObject().Select(p => p.Name));
         Assert.DoesNotContain("gone", offered.GetProperty("description").GetString()!, StringComparison.Ordinal);
@@ -438,7 +438,7 @@ public sealed partial class RagToolSearchTests(PostgresFixture postgres, QdrantF
         var one = await setup.RegisterAsync("one");
         var two = await setup.RegisterAsync("two");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [one, two]));
-        await RagApi.ActivateAsync(setup.Admin, "rag__company");
+        await RagApi.ActivateAsync(setup.Admin, "company");
         var embeddingsBefore = setup.App.ModelServer.EmbeddingRequests.Count;
 
         var events = await AskAsync(setup, Call(new { query = "leave", knowledge_base = "three" }));
