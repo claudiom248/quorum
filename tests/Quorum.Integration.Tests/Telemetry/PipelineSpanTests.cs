@@ -5,6 +5,7 @@ using Quorum.Integration.Tests.Attachments;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Modules.Conversations.Telemetry;
+using Quorum.Modules.KnowledgeBases.Telemetry;
 
 namespace Quorum.Integration.Tests.Telemetry;
 
@@ -31,6 +32,17 @@ public sealed class PipelineSpanTests(PostgresFixture postgres)
         Assert.Equal<object?>(Encoding.UTF8.GetByteCount(text), span.GetTagItem(ConversationsTelemetry.AttachmentSizeTag));
         Assert.DoesNotContain(span.TagObjects, tag => (tag.Value?.ToString() ?? string.Empty).Contains("Confidential", StringComparison.Ordinal));
         Assert.DoesNotContain(span.TagObjects, tag => (tag.Value?.ToString() ?? string.Empty).Contains("notes.txt", StringComparison.Ordinal));
+    }
+
+    [Fact] // spec 016 D-7: background work is a trace of its own
+    public async Task TheLookupWarmupAtStartupIsATraceOfItsOwn()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: true);
+        _ = app.Server;
+
+        var warmup = await WaitForSpanAsync(app, s => s.OperationName == KnowledgeBasesTelemetry.LookupWarmupActivityName);
+        Assert.Null(warmup.Parent);
+        Assert.Equal<object?>(0, warmup.GetTagItem(KnowledgeBasesTelemetry.LookupListsTag));
     }
 
     private static async Task<Activity> WaitForSpanAsync(QuorumApp app, Func<Activity, bool> match)

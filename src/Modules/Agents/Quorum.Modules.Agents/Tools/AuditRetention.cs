@@ -1,10 +1,12 @@
 using System.Data.Common;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Telemetry;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -107,7 +109,10 @@ internal sealed class AuditRetentionService(IServiceScopeFactory scopeFactory, T
 
     private async Task PurgeAsync(CancellationToken cancellationToken)
     {
+        // A trace of its own per purge: it runs outside any request (spec 016 D-7).
+        using var span = AgentsTelemetry.Source.StartActivity(AgentsTelemetry.AuditRetentionActivityName, ActivityKind.Internal);
         await using var scope = scopeFactory.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<AuditRetention>().TryPurgeAsync(cancellationToken);
+        var purged = await scope.ServiceProvider.GetRequiredService<AuditRetention>().TryPurgeAsync(cancellationToken);
+        span?.SetTag(AgentsTelemetry.AuditPurgedTag, purged);
     }
 }
