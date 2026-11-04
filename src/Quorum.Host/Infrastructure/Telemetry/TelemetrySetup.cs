@@ -63,14 +63,16 @@ public static class TelemetrySetup
                     tracing.AddProcessor(new ContentGuardProcessor(ContentGuardProcessor.LimitFrom(Environment.GetEnvironmentVariable("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT"))));
                 }
 
-                // Batched and exported off the request path; a slow or dead collector only fills the bounded queue (spec 016 D-19).
-                tracing.AddProcessor(serviceProvider => new BatchActivityExportProcessor(new OtlpExportFailureReporter(
-                    new OtlpTraceExporter(new OtlpExporterOptions()),
-                    serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Quorum.Telemetry"))));
+                // The official exporter takes the endpoint, protocol and headers from the standard variables, and the resource (service.name)
+                // from the provider. Batched and exported off the request path: a slow or dead collector only fills the bounded queue (D-19).
+                tracing.AddOtlpExporter();
             });
 
         // A template that breaks a rule is ignored and named once at startup; only with export on, since there are no traces to link otherwise (D-21, AC-23, AC-24).
         builder.Services.AddHostedService<TraceUrlTemplateCheck>();
+
+        // The one warning when the collector cannot be reached (D-19), from the exporter's own diagnostics.
+        builder.Services.AddHostedService<CollectorOutageWatch>();
 
         return builder;
     }
