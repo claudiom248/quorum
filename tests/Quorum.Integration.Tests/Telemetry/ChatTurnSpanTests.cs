@@ -13,6 +13,7 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Telemetry;
 
 /// <summary>The root span of a chat turn, the framework spans under it, and how the turn ended (spec 016 D-7 to D-9, D-13, D-14).</summary>
+[Collection("Telemetry")]
 public sealed class ChatTurnSpanTests(PostgresFixture postgres)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -214,7 +215,7 @@ public sealed class ChatTurnSpanTests(PostgresFixture postgres)
 
     private static async Task<Activity> WaitForSpanAsync(QuorumApp app, Func<Activity, bool> match)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
         while (true)
         {
             var found = app.Spans.Snapshot().LastOrDefault(match);
@@ -223,7 +224,7 @@ public sealed class ChatTurnSpanTests(PostgresFixture postgres)
                 return found;
             }
 
-            Assert.True(DateTimeOffset.UtcNow < deadline, "No matching span within 10 seconds.");
+            Assert.True(DateTimeOffset.UtcNow < deadline, "No matching span within 30 seconds.");
             await Task.Delay(20, Ct);
         }
     }

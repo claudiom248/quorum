@@ -16,4 +16,10 @@ public sealed class TelemetryOptions
 
     /// <summary>An absolute http(s) URL with the placeholder <c>{traceId}</c>, used for the link on the audit page (D-21).</summary>
     public string? TraceUrlTemplate { get; set; }
+
+    /// <summary>
+    /// Whether an OTLP endpoint is configured, so that traces leave the installation. Set by the host at startup from the endpoint
+    /// variable, never from the section: a trace id exists only when there is a trace to link (D-1, D-20).
+    /// </summary>
+    public bool Exporting { get; set; }
 }

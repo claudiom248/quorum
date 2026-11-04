@@ -4,9 +4,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Shared.Endpoints;
+using Quorum.Shared.Telemetry;
 
 namespace Quorum.Modules.Agents.Features.Tools;
 
@@ -31,6 +33,7 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
     private static async Task<Results<Ok<ToolAuditPage>, ValidationProblem>> ListAsync(
         [AsParameters] ToolAuditQuery query,
         AgentsDbContext db,
+        IOptions<TelemetryOptions> telemetry,
         CancellationToken cancellationToken)
     {
         var errors = Validate(query, out var outcome, out var from, out var to);
@@ -91,7 +94,8 @@ internal sealed class ToolAuditEndpoints : IEndpointGroup
                 .Take(query.PageSize)
                 .ToListAsync(cancellationToken);
 
-        return TypedResults.Ok(new ToolAuditPage(page.Select(ToolAuditItem.From).ToList(), total));
+        var template = telemetry.Value.TraceUrlTemplate;
+        return TypedResults.Ok(new ToolAuditPage(page.Select(entry => ToolAuditItem.From(entry, template)).ToList(), total));
     }
 
     private static Dictionary<string, string[]> Validate(ToolAuditQuery query, out ToolOutcome? outcome, out DateTimeOffset? from, out DateTimeOffset? to)
@@ -207,9 +211,11 @@ internal sealed record ToolAuditItem(
     int? ResultCharacters,
     int? SourceCount,
     int? DurationMs,
-    string? ErrorCode)
+    string? ErrorCode,
+    string? TraceId,
+    string? TraceUrl)
 {
-    public static ToolAuditItem From(ToolAuditEntry entry) => new(
+    public static ToolAuditItem From(ToolAuditEntry entry, string? traceUrlTemplate) => new(
         entry.Id,
         entry.StartedAt,
         entry.CompletedAt,
@@ -226,5 +232,7 @@ internal sealed record ToolAuditItem(
         entry.ResultCharacters,
         entry.SourceCount,
         entry.DurationMs,
-        entry.ErrorCode);
+        entry.ErrorCode,
+        entry.TraceId,
+        TraceLinks.LinkFor(traceUrlTemplate, entry.TraceId));
 }

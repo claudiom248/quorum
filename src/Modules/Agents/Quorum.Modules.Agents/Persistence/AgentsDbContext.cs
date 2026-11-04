@@ -212,6 +212,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             entry.Property(e => e.Decision).HasConversion<string>().HasMaxLength(20);
             entry.Property(e => e.Outcome).HasConversion<string>().HasMaxLength(20);
             entry.Property(e => e.ErrorCode).HasMaxLength(100);
+            entry.Property(e => e.TraceId).HasMaxLength(32);
             entry.HasIndex(e => new { e.TenantId, e.StartedAt });
             entry.HasIndex(e => new { e.TenantId, e.ToolName });
             entry.HasQueryFilter(e => e.TenantId == CurrentTenantId);

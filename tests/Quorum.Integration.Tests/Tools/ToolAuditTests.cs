@@ -2,6 +2,7 @@ using System.Text.Json;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Shared.Telemetry;
 using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 
 namespace Quorum.Integration.Tests.Tools;

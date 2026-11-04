@@ -230,7 +230,9 @@ public sealed record ToolAuditItem(
     int? ResultCharacters,
     int? SourceCount,
     int? DurationMs,
-    string? ErrorCode);
+    string? ErrorCode,
+    string? TraceId,
+    string? TraceUrl);
 
 /// <param name="Total">The entries that match the filters, across all pages.</param>
 public sealed record ToolAuditPage(IReadOnlyList<ToolAuditItem> Items, int Total);
