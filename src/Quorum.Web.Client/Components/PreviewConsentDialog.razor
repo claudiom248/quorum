@@ -1,0 +1,30 @@
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@Title</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">@Body</MudText>
+        <MudCheckBox T="bool" @bind-Value="DontAskAgain" Label="Don't ask me again" Color="Color.Default" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="Confirm" data-initial-focus>Turn on</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>The question asked before an HTML preview may run scripts or load remote images (spec 014, D-17, D-18).</summary>
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Body { get; set; } = string.Empty;
+
+    /// <summary>Checked: the choice is stored and the switch turns on without a dialog from now on (AC-29).</summary>
+    public bool DontAskAgain { get; private set; }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(DontAskAgain));
+}

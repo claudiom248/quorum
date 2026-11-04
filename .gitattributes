@@ -1,2 +1,6 @@
 # Shell scripts run on Linux and in Git Bash: a CRLF line ending would break them after a checkout with autocrlf.
 *.sh text eol=lf
+
+# Vendored third-party files are byte-pinned (their SHA-256 is in wwwroot/preview/lib/VENDORED.md): no line-ending
+# conversion, or the hashes stop matching after a checkout with autocrlf.
+src/Quorum.Web.Client/wwwroot/preview/lib/** -text

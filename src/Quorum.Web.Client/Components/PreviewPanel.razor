@@ -1,0 +1,342 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject ThemeState Theme
+
+@* The panel is the host side of the preview (spec 014): it owns the state, the consent switches and the messages to
+   the sandboxed viewer, which renders the content. It knows nothing of fenced blocks, messages or conversations (D-5). *@
+<section class="chat-preview" role="complementary" aria-label="Content preview" tabindex="-1"
+         @ref="_panelElement" @onkeydown="OnKeyDownAsync">
+    <div class="preview-resizer" @ref="_resizerElement" title="Drag to resize the preview"></div>
+
+    <header class="preview-bar">
+        <span class="preview-title">@PreviewRules.Title(Content)</span>
+        <span class="preview-hint">Preview of model output</span>
+        <MudSpacer />
+
+        @if (Content.Kind == PreviewKind.Html)
+        {
+            <MudSwitch T="bool" Value="_runScripts" ValueChanged="RunScriptsChangedAsync" Color="Color.Warning"
+                       Label="Run scripts" aria-label="Run the scripts of this HTML block" />
+            <MudSwitch T="bool" Value="_loadRemoteImages" ValueChanged="RemoteImagesChangedAsync" Color="Color.Warning"
+                       Label="Load remote images" aria-label="Load the remote images of this HTML block" />
+
+            @if (_storedRunScripts || _storedRemoteImages)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" aria-label="Preview consent options">
+                    @if (_storedRunScripts)
+                    {
+                        <MudMenuItem OnClick="@(() => AskAgainAsync(PreviewConsentSwitch.RunScripts))">Ask before running scripts</MudMenuItem>
+                    }
+                    @if (_storedRemoteImages)
+                    {
+                        <MudMenuItem OnClick="@(() => AskAgainAsync(PreviewConsentSwitch.RemoteImages))">Ask before loading remote images</MudMenuItem>
+                    }
+                </MudMenu>
+            }
+        }
+
+        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" aria-label="Copy the raw text"
+                       title="Copy" OnClick="CopyAsync" />
+        <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" aria-label="Download the raw text"
+                       title="Download" OnClick="DownloadAsync" />
+        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" aria-label="Close the preview"
+                       title="Close" OnClick="CloseAsync" />
+    </header>
+
+    <div class="preview-body">
+        @if (_limit is { } limit)
+        {
+            @* D-16: the panel opens with the notice; nothing is rendered and no viewer is created. *@
+            <div class="preview-notice" role="status">
+                <MudIcon Icon="@Icons.Material.Outlined.Info" />
+                <MudText Typo="Typo.body2">@limit</MudText>
+            </div>
+        }
+        else if (_failed)
+        {
+            @* D-19: the viewer did not load, did not answer in time or a library failed. *@
+            <div class="preview-notice" role="alert">
+                <MudText Typo="Typo.body2">The preview could not start.</MudText>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="Retry">Retry</MudButton>
+            </div>
+        }
+        else if (_error is { } error)
+        {
+            @* D-11, D-12, D-13: a renderer error is shown inside the panel, never as an exception in the app. *@
+            <div class="preview-notice" role="alert">
+                <MudIcon Icon="@Icons.Material.Outlined.Warning" />
+                <MudText Typo="Typo.body2">@error</MudText>
+            </div>
+        }
+
+        @if (_limit is null)
+        {
+            <iframe @key="_frameKey" @ref="_frameElement" class="preview-frame@((_failed || _error is not null) ? " hidden" : null)"
+                    src="preview/viewer.html" sandbox="allow-scripts"
+                    title="The rendered preview of the @PreviewKinds.Label(Content.Kind) content"></iframe>
+        }
+    </div>
+</section>
+
+@code {
+    private ElementReference _panelElement;
+    private ElementReference _resizerElement;
+    private ElementReference _frameElement;
+    private DotNetObjectReference<PreviewPanel>? _self;
+    private PreviewContent? _rendered;
+    private string? _limit;
+    private string? _error;
+    private bool _failed;
+    private bool _runScripts;
+    private bool _loadRemoteImages;
+    private bool _storedRunScripts;
+    private bool _storedRemoteImages;
+    private bool _focused;
+    private int _frameKey;
+    private int _attachedKey = -1;
+
+    /// <summary>The content to render (D-5). Replacing it replaces the preview and turns both switches off again (D-17, D-18).</summary>
+    [Parameter, EditorRequired]
+    public PreviewContent Content { get; set; } = default!;
+
+    /// <summary>Scopes the stored consent choices and the panel width: the person signed in (D-17, D-20).</summary>
+    [Parameter]
+    public string UserKey { get; set; } = "anonymous";
+
+    /// <summary>X, Esc, a conversation change: the page closes the panel and returns the focus to the opener (D-3).</summary>
+    [Parameter]
+    public EventCallback OnClosed { get; set; }
+
+    private PreviewConsent Consent => new(JS);
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(Content, _rendered))
+        {
+            return;
+        }
+
+        _rendered = Content;
+        _limit = PreviewRules.LimitNotice(Content);
+        _error = null;
+        _failed = false;
+        _focused = false;
+        _frameKey++;
+
+        // A new preview starts with both switches off, whatever a previous one had (D-17, D-18, AC-28).
+        _runScripts = false;
+        _loadRemoteImages = false;
+        _storedRunScripts = await Consent.DontAskAsync(UserKey, PreviewConsentSwitch.RunScripts);
+        _storedRemoteImages = await Consent.DontAskAsync(UserKey, PreviewConsentSwitch.RemoteImages);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_limit is not null)
+        {
+            return;
+        }
+
+        if (!_focused)
+        {
+            // D-21: opening moves the focus into the panel, so Esc and Tab act on it.
+            _focused = true;
+            await _panelElement.FocusAsync();
+        }
+
+        if (_frameKey == _attachedKey)
+        {
+            return;
+        }
+
+        _attachedKey = _frameKey;
+        _self ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("quorumPreview.initPanel", _panelElement, _resizerElement, PreviewConsent.WidthKey(UserKey));
+        await JS.InvokeVoidAsync("quorumPreview.attachViewer", _frameElement, _self);
+        await SendRenderAsync();
+    }
+
+    private async Task SendRenderAsync()
+    {
+        var theme = await ReadThemeAsync();
+        await JS.InvokeVoidAsync("quorumPreview.postToViewer", _frameElement, new
+        {
+            type = "render",
+            kind = PreviewKinds.DataValue(Content.Kind),
+            text = Content.Text,
+            theme,
+            options = new { runScripts = _runScripts, loadRemoteImages = _loadRemoteImages },
+        });
+    }
+
+    /// <summary>A small set of colour values, never CSS from the page (D-14).</summary>
+    private async Task<Dictionary<string, string>> ReadThemeAsync()
+    {
+        var colors = await JS.InvokeAsync<Dictionary<string, string>>("quorumPreview.themeColors");
+        colors["dark"] = Theme.IsDark ? "1" : string.Empty;
+        return colors;
+    }
+
+    private void OnThemeChanged() => _ = InvokeAsync(async () =>
+    {
+        if (_limit is not null || _failed)
+        {
+            return;
+        }
+
+        await JS.InvokeVoidAsync("quorumPreview.postToViewer", _frameElement, new { type = "theme", theme = await ReadThemeAsync() });
+    });
+
+    private async Task RunScriptsChangedAsync(bool value)
+    {
+        if (!value)
+        {
+            _runScripts = false;
+            await SendRenderAsync();
+            return;
+        }
+
+        if (!await TurnOnAsync(PreviewConsentSwitch.RunScripts,
+                "Run this block's scripts?",
+                "The code of this block will run isolated from the app and without network access, but it can still " +
+                "show anything on screen. With remote images also allowed, it could send what the page contains to external servers."))
+        {
+            return;
+        }
+
+        _runScripts = true;
+        await SendRenderAsync();
+    }
+
+    private async Task RemoteImagesChangedAsync(bool value)
+    {
+        if (!value)
+        {
+            _loadRemoteImages = false;
+            await SendRenderAsync();
+            return;
+        }
+
+        if (!await TurnOnAsync(PreviewConsentSwitch.RemoteImages,
+                "Load this block's remote images?",
+                "A page can put what it contains in the address of an image, so loading remote images could send the " +
+                "previewed content to external servers. Only HTTPS images would be loaded."))
+        {
+            return;
+        }
+
+        _loadRemoteImages = true;
+        await SendRenderAsync();
+    }
+
+    /// <summary>
+    /// Asks unless the stored choice says not to (AC-29); <see langword="false"/> when the person cancelled and the
+    /// switch must stay off.
+    /// </summary>
+    private async Task<bool> TurnOnAsync(PreviewConsentSwitch which, string title, string body)
+    {
+        if (await Consent.DontAskAsync(UserKey, which))
+        {
+            return true;
+        }
+
+        var parameters = new DialogParameters { ["Title"] = title, ["Body"] = body };
+        var dialog = await Dialogs.ShowAsync<PreviewConsentDialog>(title, parameters, ConsentDialogOptions);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not bool dontAsk)
+        {
+            return false;
+        }
+
+        if (dontAsk)
+        {
+            await Consent.SaveDontAskAsync(UserKey, which);
+            if (which == PreviewConsentSwitch.RunScripts)
+            {
+                _storedRunScripts = true;
+            }
+            else
+            {
+                _storedRemoteImages = true;
+            }
+        }
+
+        return true;
+    }
+
+    private static readonly DialogOptions ConsentDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private async Task AskAgainAsync(PreviewConsentSwitch which)
+    {
+        await Consent.AskAgainAsync(UserKey, which);
+        if (which == PreviewConsentSwitch.RunScripts)
+        {
+            _storedRunScripts = false;
+        }
+        else
+        {
+            _storedRemoteImages = false;
+        }
+    }
+
+    private Task CopyAsync() => JS.InvokeVoidAsync("quorumPreview.copyText", Content.Text).AsTask();
+
+    private Task DownloadAsync() =>
+        JS.InvokeVoidAsync("quorumPreview.download", PreviewRules.DownloadName(Content.Kind), Content.Text).AsTask();
+
+    private Task CloseAsync() => OnClosed.InvokeAsync();
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e) => e.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
+
+    /// <summary>Retry recreates the frame: a runaway script or a stalled load is gone with the old one (D-19).</summary>
+    private void Retry()
+    {
+        _failed = false;
+        _error = null;
+        _frameKey++;
+    }
+
+    [JSInvokable]
+    public void OnPreviewRendered(double height)
+    {
+        // The viewer sizes its own document; the height is part of the protocol (spec 014, API contract) and logged
+        // by no one for now: keeping it costs nothing and phase 2 may use it.
+    }
+
+    [JSInvokable]
+    public void OnPreviewError(string code, string message) => _ = InvokeAsync(() =>
+    {
+        if (code is "library" or "timeout")
+        {
+            _failed = true;
+            _error = null;
+        }
+        else
+        {
+            _error = string.IsNullOrWhiteSpace(message) ? "The preview could not render this content." : message;
+        }
+
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public void OnViewerTimeout() => _ = InvokeAsync(() =>
+    {
+        _failed = true;
+        StateHasChanged();
+    });
+
+    /// <summary>Esc while the focus is inside the viewer (D-3): the viewer forwards the key, the panel closes.</summary>
+    [JSInvokable]
+    public Task OnPreviewEscape() => InvokeAsync(CloseAsync);
+
+    public ValueTask DisposeAsync()
+    {
+        Theme.Changed -= OnThemeChanged;
+        _self?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

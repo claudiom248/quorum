@@ -1,0 +1,77 @@
+using System.Security.Cryptography;
+
+namespace Quorum.Integration.Tests.Web;
+
+/// <summary>
+/// The viewer and the vendored libraries ship inside the repository and the published output (spec 014, D-15,
+/// AC-36, AC-37): the hashes in the vendored note match the files, the download script is committed, and nothing
+/// in the viewer reaches an external address.
+/// </summary>
+public sealed class PreviewAssetTests
+{
+    private static string PreviewRoot { get; } = Path.Combine(RepoRoot(), "src", "Quorum.Web.Client", "wwwroot", "preview");
+
+    [Theory]
+    [InlineData("viewer.html")]
+    [InlineData("viewer.js")]
+    [InlineData("lib/VENDORED.md")]
+    [InlineData("lib/json-formatter-js/json-formatter.umd.js")]
+    [InlineData("lib/json-formatter-js/json-formatter.css")]
+    [InlineData("lib/json-formatter-js/LICENSE")]
+    public void TheViewerAndTheVendoredLibraryShipInTheRepository(string relative) =>
+        Assert.True(File.Exists(Path.Combine(PreviewRoot, relative)), $"wwwroot/preview/{relative} is missing.");
+
+    [Fact]
+    public void TheVendoredNoteNamesVersionLicenceAndScriptAndTheHashesMatchTheFiles()
+    {
+        var note = File.ReadAllText(Path.Combine(PreviewRoot, "lib", "VENDORED.md"));
+
+        Assert.Contains("json-formatter-js 2.5.23", note, StringComparison.Ordinal);
+        Assert.Contains("MIT", note, StringComparison.Ordinal);
+        Assert.Contains("vendor-preview-libs.ps1", note, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(RepoRoot(), "scripts", "vendor-preview-libs.ps1")),
+            "The download script that keeps the vendored files reproducible is not committed.");
+
+        foreach (var file in new[] { "json-formatter.umd.js", "json-formatter.css", "LICENSE" })
+        {
+            var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(
+                Path.Combine(PreviewRoot, "lib", "json-formatter-js", file)))).ToLowerInvariant();
+            Assert.Contains(hash, note, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void NothingInTheViewerReachesAnExternalAddress()
+    {
+        foreach (var file in new[] { "viewer.html", "viewer.js", Path.Combine("lib", "json-formatter-js", "json-formatter.umd.js") })
+        {
+            var text = File.ReadAllText(Path.Combine(PreviewRoot, file));
+            Assert.DoesNotMatch("https?://", text);
+        }
+    }
+
+    [Fact]
+    public void TheHostPageLoadsTheGlueScriptAndNothingElseForThePreview()
+    {
+        var index = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Quorum.Web.Client", "wwwroot", "index.html"));
+
+        // AC-35: preview.js binds clicks and creates the iframe only when a preview opens; no viewer or library is
+        // requested before that.
+        Assert.Contains("<script src=\"preview.js\"></script>", index, StringComparison.Ordinal);
+        Assert.DoesNotContain("viewer.html", index, StringComparison.Ordinal);
+        Assert.DoesNotContain("json-formatter", index, StringComparison.Ordinal);
+    }
+
+    private static string RepoRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Quorum.slnx")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("The repository root (Quorum.slnx) was not found above the test directory.");
+    }
+}
