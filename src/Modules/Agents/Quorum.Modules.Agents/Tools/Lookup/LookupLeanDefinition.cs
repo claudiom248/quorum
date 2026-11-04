@@ -42,8 +42,8 @@ internal static class LookupLeanDefinition
         var listed = string.Join("; ", lookups.Select(name => $"{name} ({resolved.Targets[name].Kind}){Described(resolved.Targets[name].Description)}")
             .Concat(bases.Select(name => $"{name} (knowledge base)")));
 
-        var describe = $"Describe the lists and knowledge bases of the lookup tool \"{toolName}\" before reading one: the operations each takes, the fields it can be filtered by, the order it can be sorted in and its limits. {toolDescription} Targets: {listed}.";
-        var query = $"Read one list or knowledge base of \"{toolName}\". A list takes the operations entries and count only; documents is for a knowledge base only, and count is for both. Call {DescribeOperation} first: it names, for each target, the operations and the filters it takes. A value is written as it is: a number or a date with a range is written as {{\"rating\": {{\"min\": 4}}}}, or {{\"max\": v}}, under its name in filters. Targets: {listed}.";
+        var describe = $"Describe the lists and knowledge bases of the lookup tool \"{toolName}\" before reading one: the operations each takes, the fields it can be filtered by, the order it can be sorted in and its limits. What it returns is binding: {QueryOperation} can do only what it lists for a target. {toolDescription} Targets: {listed}.";
+        var query = $"Read one list or knowledge base of \"{toolName}\". A list takes the operations entries and count only; documents is for a knowledge base only, and count is for both. Call {DescribeOperation} first, and write the call from what it returns: for each target it lists the operations, the filters, the sort values and the limits that target takes, and query takes nothing else for it. A filter, sort or search that {DescribeOperation} does not list for the target is refused. A value is written as it is: a number or a date with a range is written as {{\"rating\": {{\"min\": 4}}}}, or {{\"max\": v}}, under its name in filters. Targets: {listed}.";
 
         return new GeneratedLookupDefinition(
         [
@@ -118,8 +118,8 @@ internal static class LookupLeanDefinition
             ["description"] = "The operation describe names for the target: entries and count for a list, documents and count for a knowledge base.",
         },
         [FiltersParameter] = new JsonObject { ["type"] = "object", ["description"] = "Filters by field or attribute, as describe lists them: a value, a list of values, or for a range of a number or a date {\"min\": v} or {\"max\": v}, as in {\"rating\": {\"min\": 4}}." },
-        ["search"] = new JsonObject { ["type"] = "string" },
-        ["sort"] = new JsonObject { ["type"] = "string", ["description"] = "An order that describe lists for the target. Put '-' in front for the largest first, as in -headcount." },
+        ["search"] = new JsonObject { ["type"] = "string", ["description"] = "Text to find among the entries of a list. Only for a list: a knowledge base takes no search, filter it by the fields describe lists." },
+        ["sort"] = new JsonObject { ["type"] = "string", ["description"] = "Only for a list: an order that describe lists for the target. Put '-' in front for the largest first, as in -headcount." },
         ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = LookupToolDefinition.MaxLimit },
         ["cursor"] = new JsonObject { ["type"] = "string" },
     };
