@@ -6,7 +6,7 @@ namespace Quorum.Host.Infrastructure.Telemetry;
 
 /// <summary>
 /// Decides which HTTP requests get a span (spec 016 D-10). Static files, the UI, the version and the health endpoints never do;
-/// the answer path always does; the other <c>/api</c> requests only with <see cref="TelemetryOptions.AdminRequests"/>.
+/// the answer path and the upload of attachments (which feed it) always do, since a child of a request that was not sampled is not sampled either (spec 016 D-10); the other <c>/api</c> requests only with <see cref="TelemetryOptions.AdminRequests"/>.
 /// </summary>
 internal static partial class TelemetryFilters
 {
@@ -21,6 +21,6 @@ internal static partial class TelemetryFilters
         return adminRequests || AnswerPath().IsMatch(path);
     }
 
-    [GeneratedRegex("^/api/conversations/[^/]+/(messages|regenerate|tool-calls/[^/]+/(decision|answer))/?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("^/api/conversations/[^/]+/(messages|regenerate|attachments|tool-calls/[^/]+/(decision|answer))/?$", RegexOptions.IgnoreCase)]
     private static partial Regex AnswerPath();
 }

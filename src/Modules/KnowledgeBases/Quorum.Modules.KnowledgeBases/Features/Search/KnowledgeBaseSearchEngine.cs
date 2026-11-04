@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -8,6 +9,7 @@ using Quorum.Modules.KnowledgeBases.Features.Dictionary;
 using Quorum.Modules.KnowledgeBases.Mapping;
 using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage;
+using Quorum.Modules.KnowledgeBases.Telemetry;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Search;
@@ -183,6 +185,9 @@ internal sealed partial class KnowledgeBaseSearchEngine(
                 return Outcome.Failed(knowledgeBase, adapter.SecretUnreadable.Code, adapter.SecretUnreadable.Description);
             }
 
+            // The vector store's query as a span of its own: the kind of store and the hits, never the query text (spec 016 D-8).
+            using var query = KnowledgeBasesTelemetry.Source.StartActivity(KnowledgeBasesTelemetry.VectorQueryActivityName, ActivityKind.Client);
+            query?.SetTag(KnowledgeBasesTelemetry.VectorStoreKindTag, knowledgeBase.Kind.ToString());
             var hits = await adapter.SearchAsync(
                 connection,
                 new StoreQuery(
@@ -192,6 +197,7 @@ internal sealed partial class KnowledgeBaseSearchEngine(
                     input.ScoreThreshold,
                     ChunkReader.PathsOf(knowledgeBase.Mapping.Roles)),
                 limited);
+            query?.SetTag(KnowledgeBasesTelemetry.ResultCountTag, hits.Count);
 
             var chunks = new List<RetrievedChunk>(hits.Count);
             var unusable = 0;

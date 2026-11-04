@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.ClientModel.Primitives;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ using OpenAI;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Secrets;
+using Quorum.Modules.Agents.Telemetry;
 using Quorum.Shared.Results;
 
 namespace Quorum.Modules.Agents.Embeddings;
@@ -42,7 +44,26 @@ internal sealed partial class OpenAiEmbeddings(AgentsDbContext db, ApiKeyProtect
     // Servers that need no key (Ollama) still need the client to have one to build.
     private const string NoKey = "none";
 
+    /// <summary>One embedding, as a span of its own: model, count of vectors, and the error code when it fails (spec 016 D-8).</summary>
     public async Task<Result<IReadOnlyList<float>>> EmbedAsync(string text, string modelName, CancellationToken cancellationToken)
+    {
+        using var span = AgentsTelemetry.Source.StartActivity(AgentsTelemetry.EmbeddingActivityName, ActivityKind.Client);
+        span?.SetTag(AgentsTelemetry.EmbeddingModelTag, modelName);
+
+        var result = await EmbedCoreAsync(text, modelName, cancellationToken);
+        if (result.IsSuccess)
+        {
+            span?.SetTag(AgentsTelemetry.ResultCountTag, result.Value.Count);
+        }
+        else
+        {
+            span?.SetStatus(ActivityStatusCode.Error, result.Error.Code);
+        }
+
+        return result;
+    }
+
+    private async Task<Result<IReadOnlyList<float>>> EmbedCoreAsync(string text, string modelName, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);

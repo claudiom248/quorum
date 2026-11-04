@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
@@ -12,6 +13,7 @@ using Quorum.Modules.Conversations.Extraction;
 using Quorum.Shared.Extraction;
 using Quorum.Modules.Conversations.Persistence;
 using Quorum.Modules.Conversations.Streaming;
+using Quorum.Modules.Conversations.Telemetry;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Persistence;
 using Quorum.Shared.Results;
@@ -136,7 +138,7 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
         }
 
         var fileName = DisplayName(file.FileName);
-        var extracted = await DocumentTextExtractor.ExtractAsync(file.FileName, content, ExtractionTimeout, token);
+        var extracted = await ExtractTracedAsync(file.FileName, content, token);
         if (!extracted.IsSuccess)
         {
             return extracted.Error.ToProblem();
@@ -293,6 +295,25 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
     }
 
     /// <summary>The file name without any path, on one line of plain characters, at most 255 long.</summary>
+    /// <summary>
+    /// The extraction as a span of its own: the format (the extension) and the size, its duration being the span's. Never the content
+    /// or the name of the file (spec 016 D-8).
+    /// </summary>
+    private static async Task<Result<ExtractedDocument>> ExtractTracedAsync(string fileName, byte[] content, CancellationToken token)
+    {
+        using var span = ConversationsTelemetry.Source.StartActivity(ConversationsTelemetry.AttachmentExtractionActivityName, ActivityKind.Internal);
+        span?.SetTag(ConversationsTelemetry.AttachmentFormatTag, Path.GetExtension(fileName).ToLowerInvariant());
+        span?.SetTag(ConversationsTelemetry.AttachmentSizeTag, content.Length);
+
+        var extracted = await DocumentTextExtractor.ExtractAsync(fileName, content, ExtractionTimeout, token);
+        if (!extracted.IsSuccess)
+        {
+            span?.SetStatus(ActivityStatusCode.Error, extracted.Error.Code);
+        }
+
+        return extracted;
+    }
+
     private static string DisplayName(string uploadedName)
     {
         var name = Path.GetFileName(uploadedName.Replace('\\', '/'));
