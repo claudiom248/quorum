@@ -30,7 +30,9 @@ public static class TelemetrySetup
     public static WebApplicationBuilder AddQuorumTelemetry(this WebApplicationBuilder builder)
     {
         builder.Services.AddOptions<TelemetryOptions>().BindConfiguration(TelemetryOptions.SectionName);
-        if (!IsExportEnabled(builder.Configuration))
+        var exporting = IsExportEnabled(builder.Configuration);
+        builder.Services.PostConfigure<TelemetryOptions>(options => options.Exporting = exporting);
+        if (!exporting)
         {
             return builder;
         }
@@ -40,22 +42,35 @@ public static class TelemetrySetup
 
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(QuorumActivityNames.ServiceName, serviceVersion: version))
-            .WithTracing(tracing => tracing
-                .AddSource(
-                    QuorumActivityNames.AgentsSource,
-                    QuorumActivityNames.ConversationsSource,
-                    QuorumActivityNames.KnowledgeBasesSource,
-                    QuorumActivityNames.MicrosoftExtensionsAiSource,
-                    QuorumActivityNames.MicrosoftAgentsAiSource)
-                .AddAspNetCoreInstrumentation(options =>
-                    options.Filter = context => TelemetryFilters.ShouldTrace(context, telemetry.AdminRequests))
-                .AddHttpClientInstrumentation()
-                .AddNpgsql()
-                .AddProcessor(new QuorumTagsProcessor())
+            .WithTracing(tracing =>
+            {
+                tracing
+                    .AddSource(
+                        QuorumActivityNames.AgentsSource,
+                        QuorumActivityNames.ConversationsSource,
+                        QuorumActivityNames.KnowledgeBasesSource,
+                        QuorumActivityNames.MicrosoftExtensionsAiSource,
+                        QuorumActivityNames.MicrosoftAgentsAiSource)
+                    .AddAspNetCoreInstrumentation(options =>
+                        options.Filter = context => TelemetryFilters.ShouldTrace(context, telemetry.AdminRequests))
+                    .AddHttpClientInstrumentation()
+                    .AddNpgsql()
+                    .AddProcessor(new QuorumTagsProcessor());
+
+                // Before the exporter: the content of tool calls is redacted and cut before a span can be sent (spec 016 D-2).
+                if (telemetry.CaptureContent)
+                {
+                    tracing.AddProcessor(new ContentGuardProcessor(ContentGuardProcessor.LimitFrom(Environment.GetEnvironmentVariable("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT"))));
+                }
+
                 // Batched and exported off the request path; a slow or dead collector only fills the bounded queue (spec 016 D-19).
-                .AddProcessor(serviceProvider => new BatchActivityExportProcessor(new OtlpExportFailureReporter(
+                tracing.AddProcessor(serviceProvider => new BatchActivityExportProcessor(new OtlpExportFailureReporter(
                     new OtlpTraceExporter(new OtlpExporterOptions()),
-                    serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Quorum.Telemetry")))));
+                    serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Quorum.Telemetry"))));
+            });
+
+        // A template that breaks a rule is ignored and named once at startup; only with export on, since there are no traces to link otherwise (D-21, AC-23, AC-24).
+        builder.Services.AddHostedService<TraceUrlTemplateCheck>();
 
         return builder;
     }

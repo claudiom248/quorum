@@ -1,13 +1,13 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-namespace Quorum.Modules.Agents.Tools;
+namespace Quorum.Shared.Telemetry;
 
 /// <summary>
 /// Prepares the arguments of a tool call for the audit log: the values of keys that look sensitive are replaced, and the
 /// text is capped. Matching on the key name is a heuristic: a secret under an unexpected key, or inside free text, is not caught.
 /// </summary>
-internal static class AuditRedactor
+public static class AuditRedactor
 {
     public const int MaxArgumentCharacters = 32_000;
 
