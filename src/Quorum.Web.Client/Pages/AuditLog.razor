@@ -75,6 +75,7 @@
             <dt>Assistant</dt><dd>@shown.AssistantId</dd>
             <dt>Conversation</dt><dd>@shown.ConversationId</dd>
             <dt>Duration</dt><dd>@(shown.DurationMs is { } ms ? $"{ms} ms" : "unknown")</dd>
+            <dt>Trace</dt><dd>@if (shown.TraceUrl is { } link){<a href="@link" target="_blank" rel="noopener noreferrer" data-trace-link>@shown.TraceId</a>}else if (shown.TraceId is { } trace){<span data-trace-id>@trace</span>}else{<span>none</span>}</dd>
             <dt>Result</dt><dd>@(shown.ResultCharacters is { } size ? $"{size} characters" : "none")@(shown.SourceCount is { } sources ? $", {sources} source(s)" : string.Empty)</dd>
         </dl>
         <MudText Typo="Typo.subtitle2" Class="mt-3">Arguments@(shown.ArgumentsTruncated ? " (cut)" : string.Empty)</MudText>

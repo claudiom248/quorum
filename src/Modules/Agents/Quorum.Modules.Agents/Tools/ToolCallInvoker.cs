@@ -1,12 +1,16 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Telemetry;
+using Quorum.Shared.Telemetry;
 
 namespace Quorum.Modules.Agents.Tools;
 
@@ -26,6 +30,7 @@ internal sealed partial class ToolCallInvoker(
     SubAgentRunner subAgents,
     PendingInteractions interactions,
     TimeProvider clock,
+    IOptions<TelemetryOptions> telemetry,
     ILogger<ToolCallInvoker> logger)
 {
     internal const int MaxQuestionCharacters = 2000;
@@ -97,7 +102,21 @@ internal sealed partial class ToolCallInvoker(
         var (auditArguments, truncated) = AuditRedactor.Redact(raw);
 
         var tool = invocation.Function as QuorumTool;
-        var info = new CallInfo(callId, tool?.Descriptor.ServerName, tool?.Descriptor.Name ?? Shorten(call.Name), auditArguments, truncated, clock.GetTimestamp());
+
+        // The framework's span of this call is the current one: it gets the Quorum tags, and the audit entry the trace (spec 016 D-3, D-15, D-20).
+        var span = Activity.Current;
+        var info = new CallInfo(
+            callId,
+            tool?.Descriptor.ServerName,
+            tool?.Descriptor.Name ?? Shorten(call.Name),
+            auditArguments,
+            truncated,
+            clock.GetTimestamp(),
+            span,
+            telemetry.Value.Exporting ? span?.TraceId.ToHexString() : null);
+        span?.SetTag(AgentsTelemetry.ToolOriginTag, Origin(tool));
+        span?.SetTag(AgentsTelemetry.ToolRoundTag, invocation.Iteration + 1);
+        span?.SetTag(AgentsTelemetry.ToolArgumentsHashTag, AgentsTelemetry.ArgumentsHash(raw));
 
         var prepared = await PrepareAsync(run.Context, tool, call, raw, cancellationToken);
 
@@ -161,7 +180,10 @@ internal sealed partial class ToolCallInvoker(
         }
         else
         {
+            // The wait for the person is its own span under the call, so the call's duration is not the time someone takes to decide (D-17).
+            using var confirmation = AgentsTelemetry.Source.StartActivity(AgentsTelemetry.ConfirmationActivityName, ActivityKind.Internal);
             var reply = await WaitForReplyAsync(run, info, pending, wait!, cancellationToken);
+            confirmation?.SetTag(AgentsTelemetry.ConfirmationDecisionTag, DecisionName(reply));
             result = reply switch
             {
                 null => await RecordAsync(run.Context, info, asksUser ? QuestionTimedOut : ConfirmationTimedOut),
@@ -322,7 +344,8 @@ internal sealed partial class ToolCallInvoker(
             decision,
             info.Arguments,
             info.ArgumentsTruncated,
-            clock.GetUtcNow());
+            clock.GetUtcNow(),
+            info.TraceId);
 
         if (!await TryRecordAsync(entry))
         {
@@ -511,6 +534,7 @@ internal sealed partial class ToolCallInvoker(
     {
         var duration = clock.GetElapsedTime(info.Timestamp);
         entry.Complete(outcome, resultCharacters, errorCode, clock.GetUtcNow(), duration, sourceCount: sourceCount);
+        TagOutcome(info.Span, outcome, entry.Decision, errorCode);
 
         try
         {
@@ -540,8 +564,10 @@ internal sealed partial class ToolCallInvoker(
             verdict.Decision,
             info.Arguments,
             info.ArgumentsTruncated,
-            clock.GetUtcNow());
+            clock.GetUtcNow(),
+            info.TraceId);
         entry.Complete(verdict.Outcome, verdict.ResultCharacters, verdict.ErrorCode, clock.GetUtcNow(), clock.GetElapsedTime(info.Timestamp));
+        TagOutcome(info.Span, verdict.Outcome, verdict.Decision, verdict.ErrorCode);
 
         try
         {
@@ -602,7 +628,56 @@ internal sealed partial class ToolCallInvoker(
     [LoggerMessage(Level = LogLevel.Error, Message = "Tool call {CallId} to {Tool} threw an exception")]
     private static partial void LogToolCrashed(ILogger logger, Exception exception, Guid callId, string tool);
 
-    private sealed record CallInfo(Guid CallId, string? ServerName, string ToolName, string Arguments, bool ArgumentsTruncated, long Timestamp);
+    private sealed record CallInfo(
+        Guid CallId,
+        string? ServerName,
+        string ToolName,
+        string Arguments,
+        bool ArgumentsTruncated,
+        long Timestamp,
+        Activity? Span,
+        string? TraceId);
+
+    private static string Origin(QuorumTool? tool) => tool switch
+    {
+        null => "unknown",
+        AgentQuorumTool => "agent",
+        _ when tool.Descriptor.ServerName is not null => "mcp",
+        _ => "builtin",
+    };
+
+    private static string DecisionName(InteractionReply? reply) => reply switch
+    {
+        null => "timed_out",
+        { Answer: not null } => "answered",
+        { Approved: true } => "approved",
+        _ => "denied",
+    };
+
+    /// <summary>The outcome, the decision and the error code on the call's span; a failed or timed-out call is an error on it (spec 016 D-14).</summary>
+    private static void TagOutcome(Activity? span, ToolOutcome outcome, ToolDecision? decision, string? errorCode)
+    {
+        if (span is null)
+        {
+            return;
+        }
+
+        span.SetTag(AgentsTelemetry.ToolOutcomeTag, outcome.ToString());
+        if (decision is { } taken)
+        {
+            span.SetTag(AgentsTelemetry.ToolDecisionTag, taken.ToString());
+        }
+
+        if (errorCode is not null)
+        {
+            span.SetTag(AgentsTelemetry.ErrorCodeTag, errorCode);
+        }
+
+        if (outcome is ToolOutcome.Failed or ToolOutcome.TimedOut)
+        {
+            span.SetStatus(ActivityStatusCode.Error, errorCode);
+        }
+    }
 
     /// <summary>How a call ended without a tool running (or, for a question, without one to run).</summary>
     private sealed record Verdict(ToolOutcome Outcome, ToolResultStatus Status, ToolDecision? Decision, string? ErrorCode, string Message, int? ResultCharacters = null);
