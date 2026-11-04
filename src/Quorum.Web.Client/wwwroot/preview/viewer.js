@@ -44,16 +44,12 @@
         "base-uri 'none'",
     ].filter(Boolean).join("; ");
 
-    // A refresh, a base element or a link would send the frame to another address. The CSP blocks that navigation and
-    // the frame is left empty or with the browser's error page, so the viewer leaves them out: links are inert (D-10).
-    // DOMParser builds an inert document: no script runs and nothing is requested while it parses.
-    const withoutNavigation = (text) => {
+    // A refresh or a base element in the content would make the frame navigate by itself: the CSP blocks that and the
+    // frame is left empty or with the browser's error page, so the viewer leaves them out. Links keep their href. DOMParser
+    // builds an inert document: no script runs and nothing is requested while it parses.
+    const withoutFrameNavigation = (text) => {
         const parsed = new DOMParser().parseFromString(text, "text/html");
         parsed.querySelectorAll('meta[http-equiv="refresh" i], base').forEach((element) => element.remove());
-        parsed.querySelectorAll("a, area").forEach((element) => {
-            element.removeAttribute("href");
-            element.removeAttribute("xlink:href");
-        });
         return parsed.head.innerHTML + parsed.body.innerHTML;
     };
 
@@ -61,13 +57,17 @@
         const frame = document.createElement("iframe");
         frame.className = "pv-html";
         frame.title = "The previewed HTML page, isolated";
-        frame.setAttribute("sandbox", options.runScripts ? "allow-scripts" : "");
+        // Popups are allowed so that a link opens its address in a new tab (D-10); the new tab is not sandboxed and has
+        // no access to the app. Scripts run only with the person's consent (D-17).
+        frame.setAttribute("sandbox", (options.runScripts ? "allow-scripts " : "") + "allow-popups allow-popups-to-escape-sandbox");
         // The policy meta comes first, so a looser policy inside the content can only intersect it, never widen it
-        // (AC-26). White canvas whatever the theme (D-9).
+        // (AC-26). The base target sends every link, static or script-made, to a new tab (D-10). White canvas whatever the
+        // theme (D-9).
         frame.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
             '<meta http-equiv="Content-Security-Policy" content="' + framePolicy(options) + '">' +
+            '<base target="_blank">' +
             '<style>html,body{background:#fff;color:#111;margin:0;padding:.5rem}</style>' +
-            "</head><body>" + withoutNavigation(text) + "</body></html>";
+            "</head><body>" + withoutFrameNavigation(text) + "</body></html>";
         root.appendChild(frame);
     };
 

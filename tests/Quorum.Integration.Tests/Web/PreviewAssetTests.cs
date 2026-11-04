@@ -72,13 +72,15 @@ public sealed class PreviewAssetTests
     }
 
     [Fact]
-    public void TheViewerLeavesOutTheElementsThatWouldNavigateTheHtmlFrame()
+    public void TheViewerKeepsTheFrameFromNavigatingAndSendsLinksToANewTab()
     {
         var viewer = File.ReadAllText(Path.Combine(PreviewRoot, "viewer.js"));
 
-        // Spec 014 D-9/D-10: a refresh, a base or a link would navigate the frame; the CSP blocks it and the content is lost.
+        // Spec 014 D-9/D-10: a refresh or a content base would make the frame navigate by itself; links keep their href
+        // and open in a new tab through the base target the viewer adds.
         Assert.Contains("meta[http-equiv=\"refresh\" i], base", viewer, StringComparison.Ordinal);
-        Assert.Contains("removeAttribute(\"href\")", viewer, StringComparison.Ordinal);
+        Assert.Contains("<base target=\"_blank\">", viewer, StringComparison.Ordinal);
+        Assert.DoesNotContain("removeAttribute(\"href\")", viewer, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,7 +93,8 @@ public sealed class PreviewAssetTests
         Assert.Contains("default-src 'none'", host, StringComparison.Ordinal);
         Assert.Contains("frame-src about:", host, StringComparison.Ordinal);
         Assert.DoesNotContain("connect-src", host, StringComparison.Ordinal);
-        Assert.Contains("sandbox=\"allow-scripts\"", panel, StringComparison.Ordinal);
+        Assert.Contains("sandbox=\"allow-scripts allow-popups allow-popups-to-escape-sandbox\"", panel, StringComparison.Ordinal);
+        Assert.DoesNotContain("allow-top-navigation", panel, StringComparison.Ordinal);
         Assert.DoesNotContain("allow-same-origin", panel, StringComparison.Ordinal);
     }
 

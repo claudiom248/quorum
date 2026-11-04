@@ -73,7 +73,7 @@
         @if (_limit is null)
         {
             <iframe @key="_frameKey" @ref="_frameElement" class="preview-frame@((_failed || _error is not null) ? " hidden" : null)"
-                    sandbox="allow-scripts"
+                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                     title="The rendered preview of the @PreviewKinds.Label(Content.Kind) content"></iframe>
         }
     </div>
