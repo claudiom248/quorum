@@ -124,8 +124,8 @@ viewer's limit error).
 | I-1 | AC-21 | HTML fixture, Run scripts off | `window.__ran` is never set, the title is unchanged, no console output from the block |
 | I-2 | AC-22 | Select the viewer frame in the console and run `localStorage`, `document.cookie`, `window.parent.document`, `fetch('/api/auth/session')` | Each fails: opaque origin blocks storage and cookies, cross-origin blocks the parent document, the CSP (no `connect-src`) blocks the fetch |
 | I-3 | AC-23 | Click the link and the submit button inside the HTML preview; watch the meta refresh and `<base>` | No navigation, no request, no popup; the app page stays |
-| I-4 | AC-24 | Run scripts on, remote images off; in the viewer console run `fetch('https://example.test/')`, `new XMLHttpRequest().open('GET','https://example.test/')`, `new WebSocket('wss://example.test')`, `new Image().src='https://example.test/?d=1'`, `window.open('https://example.test/')`, `location='https://example.test/'`, `window.top.location='https://example.test/'` | Each is blocked; the network log shows nothing leaving for `example.test`; the app does not navigate |
-| I-5 | AC-25 | Remote images off, then on, with the fixture's external `<img>` | Off: no request for `p.png`. On: exactly that image is requested, nothing else external |
+| I-4 | AC-24 | Run scripts on, remote resources off; in the viewer console run `fetch('https://example.test/')`, `new XMLHttpRequest().open('GET','https://example.test/')`, `new WebSocket('wss://example.test')`, `new Image().src='https://example.test/?d=1'`, `window.open('https://example.test/')`, `location='https://example.test/'`, `window.top.location='https://example.test/'` | Each is blocked; the network log shows nothing leaving for `example.test`; the app does not navigate |
+| I-5 | AC-25 | Remote resources off, then on, with the fixture's external `<img>` | Off: no request for `p.png`. On: exactly that image is requested, nothing else external |
 | I-6 | AC-26 | The fixture's own looser `<meta http-equiv="Content-Security-Policy" content="default-src *">` | The viewer's and the nested frame's policies still hold; a content-supplied policy can only intersect |
 | I-7 | AC-27 | From the app page console: `window.postMessage({type:'rendered',height:9},'*')`; from the nested HTML frame (Run scripts on): `window.parent.parent.postMessage({type:'rendered',height:9},'*')` | The host ignores both: the first is not from the viewer frame, the second is not either; no visible effect, no error in the app |
 | I-8 | AC-31 | Block `localStorage` for the site in the browser settings, turn a switch on | The dialog appears every time; the page keeps working |
@@ -139,7 +139,7 @@ viewer's limit error).
 | C-3 | AC-29 | Check "Don't ask me again", confirm, reload, turn Run scripts on again | No dialog; the choice survived the reload and applies to every conversation |
 | C-4 | AC-29 | Sign in as another user in the same browser | The dialog asks again: the choices are per user |
 | C-5 | AC-29 | Panel menu → "Ask before running scripts" | The stored choice is removed; the next toggle asks again |
-| C-6 | AC-30 | Repeat C-1, C-3 and C-5 for Load remote images | Its own dialog, own box, own stored choice; independent of Run scripts |
+| C-6 | AC-30 | Repeat C-1, C-3 and C-5 for Load remote resources | Its own dialog, own box, own stored choice; independent of Run scripts |
 | C-7 | AC-32 | Preview the block above 1 MB | The limit notice appears instead of the render; Copy and Download work |
 | C-8 | AC-33 | Block `preview/viewer.js` in the network conditions (dev tools) and press Preview | "The preview could not start" with Retry, Copy and Download; the chat is unaffected; Retry recovers once the block is lifted |
 
@@ -147,7 +147,7 @@ viewer's limit error).
 
 | # | AC | Step | Expected |
 |---|----|------|----------|
-| A-1 | AC-35 | Open a conversation with the network log running; then open previews of each kind | Neither `viewer.html` nor any vendored library is requested before the first Preview; `json-formatter` loads only for a JSON preview; `mermaid.min.js` (PR 2) only for Mermaid |
+| A-1 | AC-35 | Open a conversation with the network log running; then open previews of each kind | Neither `viewer.css`, `viewer.js` nor any vendored library is requested before the first Preview; `json-formatter` files are requested only for a JSON preview; `mermaid.min.js` (PR 2) only for Mermaid. No request is made to the viewer's own URL at all: the viewer is a `srcdoc` document |
 | A-2 | AC-36 | Run the host with no outbound access (or throttle the browser to offline for everything but localhost) and open every kind of preview | Every preview works |
 | A-3 | AC-37 | **PR 2** — Inspect the published output (`dotnet publish`) | Both libraries are present with their licence files and `VENDORED.md`; nothing under `wwwroot/preview/**` references an external address |
 
