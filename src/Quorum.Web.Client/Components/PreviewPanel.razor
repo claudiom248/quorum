@@ -73,7 +73,7 @@
         @if (_limit is null)
         {
             <iframe @key="_frameKey" @ref="_frameElement" class="preview-frame@((_failed || _error is not null) ? " hidden" : null)"
-                    src="preview/viewer.html" sandbox="allow-scripts"
+                    sandbox="allow-scripts"
                     title="The rendered preview of the @PreviewKinds.Label(Content.Kind) content"></iframe>
         }
     </div>
@@ -156,6 +156,7 @@
         _self ??= DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("quorumPreview.initPanel", _panelElement, _resizerElement, PreviewConsent.WidthKey(UserKey));
         await JS.InvokeVoidAsync("quorumPreview.attachViewer", _frameElement, _self);
+        await JS.InvokeVoidAsync("quorumPreview.loadViewer", _frameElement, PreviewKinds.DataValue(Content.Kind), _self);
         await SendRenderAsync();
     }
 

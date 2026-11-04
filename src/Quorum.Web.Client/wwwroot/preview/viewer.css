@@ -1,0 +1,53 @@
+/* The viewer's own styles (spec 014). The host embeds this file in the viewer document, so it is never requested by URL. */
+
+:root {
+    --pv-background: #ffffff;
+    --pv-surface: #ffffff;
+    --pv-text: #1a1a1a;
+    --pv-text-secondary: #5c5c5c;
+    --pv-lines: #dcdcdc;
+    --pv-primary: #594ae2;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--pv-background);
+    color: var(--pv-text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body { padding: .5rem; }
+
+.pv-notice { color: var(--pv-text-secondary); padding: .5rem; }
+
+/* The HTML block renders in a nested sandboxed frame on a white canvas, whatever the theme (D-9, D-21). */
+.pv-html { border: 0; width: 100%; height: calc(100vh - 1rem); background: #fff; display: block; }
+
+.pv-svg { max-width: 100%; background: #fff; }
+
+.pv-csv-scroll { overflow: auto; max-height: calc(100vh - 1rem); }
+
+table.pv-csv { border-collapse: collapse; font-size: 13px; }
+
+table.pv-csv th, table.pv-csv td {
+    border: 1px solid var(--pv-lines);
+    padding: 2px 8px;
+    text-align: left;
+    white-space: pre;
+}
+
+table.pv-csv th { position: sticky; top: 0; background: var(--pv-surface); }
+
+/* json-formatter-js ships a light stylesheet only: these are the dark-theme overrides (D-14). */
+body[data-theme="dark"] .json-formatter-row,
+body[data-theme="dark"] .json-formatter-key { color: var(--pv-text); }
+body[data-theme="dark"] .json-formatter-string { color: #9ccc65; }
+body[data-theme="dark"] .json-formatter-number { color: #64b5f6; }
+body[data-theme="dark"] .json-formatter-boolean { color: #ffb74d; }
+body[data-theme="dark"] .json-formatter-null,
+body[data-theme="dark"] .json-formatter-undefined { color: #e57373; }
+body[data-theme="dark"] .json-formatter-bracket { color: var(--pv-text-secondary); }
+body[data-theme="dark"] .json-formatter-toggler { color: var(--pv-text-secondary); }
+
+.pv-mermaid { display: flex; justify-content: center; }

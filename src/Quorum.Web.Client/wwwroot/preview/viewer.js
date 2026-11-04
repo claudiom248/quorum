@@ -1,34 +1,16 @@
-// The preview viewer (spec 014, D-6 to D-14). Runs inside <iframe sandbox="allow-scripts"> with an opaque origin:
-// no access to the app, and its served CSP (D-7) allows no network at all. Untrusted text arrives as strings in
-// postMessage payloads and is only ever inserted as textContent, srcdoc or a data URI — never evaluated, never
-// parsed as HTML in this document. The HTML kind renders in a second, nested sandboxed frame (D-9).
+// The preview viewer (spec 014, D-6 to D-14). The host builds the viewer document from viewer.css, this file and the
+// libraries of the kind, and gives it to <iframe sandbox="allow-scripts"> as srcdoc: opaque origin, no access to the
+// app, and a CSP (D-7) that allows no network. Untrusted text arrives as strings in postMessage payloads and is only
+// ever inserted as textContent, srcdoc or a data URI — never evaluated, never parsed as HTML in this document. The
+// HTML kind renders in a second, nested sandboxed frame (D-9).
 (() => {
     "use strict";
 
     const root = document.getElementById("root");
-    const scripts = new Map();
 
     // The viewer talks only with its parent and only sends data (D-8). Its origin is opaque, so the target is "*";
     // nothing it sends is sensitive: state, a height and error messages.
     const send = (message) => window.parent.postMessage(message, "*");
-
-    const loadScript = (src) => {
-        let promise = scripts.get(src);
-        if (!promise) {
-            promise = new Promise((resolve, reject) => {
-                const element = document.createElement("script");
-                element.src = src;
-                element.onload = resolve;
-                element.onerror = () => reject(new Error("Cannot load " + src));
-                document.head.appendChild(element);
-            }).catch((error) => {
-                scripts.delete(src); // a retry after a failure may try again
-                throw error;
-            });
-            scripts.set(src, promise);
-        }
-        return promise;
-    };
 
     const applyTheme = (theme) => {
         if (!theme) {
@@ -62,6 +44,19 @@
         "base-uri 'none'",
     ].filter(Boolean).join("; ");
 
+    // A refresh, a base element or a link would send the frame to another address. The CSP blocks that navigation and
+    // the frame is left empty or with the browser's error page, so the viewer leaves them out: links are inert (D-10).
+    // DOMParser builds an inert document: no script runs and nothing is requested while it parses.
+    const withoutNavigation = (text) => {
+        const parsed = new DOMParser().parseFromString(text, "text/html");
+        parsed.querySelectorAll('meta[http-equiv="refresh" i], base').forEach((element) => element.remove());
+        parsed.querySelectorAll("a, area").forEach((element) => {
+            element.removeAttribute("href");
+            element.removeAttribute("xlink:href");
+        });
+        return parsed.head.innerHTML + parsed.body.innerHTML;
+    };
+
     const renderHtml = (text, options) => {
         const frame = document.createElement("iframe");
         frame.className = "pv-html";
@@ -72,7 +67,7 @@
         frame.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
             '<meta http-equiv="Content-Security-Policy" content="' + framePolicy(options) + '">' +
             '<style>html,body{background:#fff;color:#111;margin:0;padding:.5rem}</style>' +
-            "</head><body>" + text + "</body></html>";
+            "</head><body>" + withoutNavigation(text) + "</body></html>";
         root.appendChild(frame);
     };
 
@@ -87,7 +82,7 @@
     };
 
     // ---- JSON (D-11): a collapsible tree, root open one level, values as text.
-    const renderJson = async (text) => {
+    const renderJson = (text) => {
         let parsed;
         try {
             parsed = JSON.parse(text);
@@ -96,7 +91,10 @@
             return;
         }
 
-        await loadScript("lib/json-formatter-js/json-formatter.umd.js");
+        if (!window.JSONFormatter) {
+            throw new Error("json-formatter-js is not part of this viewer");
+        }
+
         const formatter = new window.JSONFormatter(parsed, 1, { hoverPreviewEnabled: false });
         root.appendChild(formatter.render());
     };
@@ -192,7 +190,10 @@
 
     // ---- Mermaid (D-13): strict security, no HTML labels, abandoned after 10 s.
     const renderMermaid = async (text, theme) => {
-        await loadScript("lib/mermaid/mermaid.min.js");
+        if (!window.mermaid) {
+            throw new Error("mermaid is not part of this viewer");
+        }
+
         window.mermaid.initialize({
             startOnLoad: false,
             securityLevel: "strict",
@@ -240,7 +241,7 @@
                     renderSvg(text);
                     break;
                 case "json":
-                    await renderJson(text);
+                    renderJson(text);
                     break;
                 case "csv":
                     renderCsv(text);

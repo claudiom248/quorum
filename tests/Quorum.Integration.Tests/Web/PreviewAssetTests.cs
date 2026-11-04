@@ -12,7 +12,7 @@ public sealed class PreviewAssetTests
     private static string PreviewRoot { get; } = Path.Combine(RepoRoot(), "src", "Quorum.Web.Client", "wwwroot", "preview");
 
     [Theory]
-    [InlineData("viewer.html")]
+    [InlineData("viewer.css")]
     [InlineData("viewer.js")]
     [InlineData("lib/VENDORED.md")]
     [InlineData("lib/json-formatter-js/json-formatter.umd.js")]
@@ -51,24 +51,48 @@ public sealed class PreviewAssetTests
     }
 
     [Fact]
-    public void TheViewerLoadsTheLibrariesFromWhereTheyAreVendored()
+    public void TheHostFetchesTheLibrariesFromWhereTheyAreVendored()
     {
-        var viewer = File.ReadAllText(Path.Combine(PreviewRoot, "viewer.js"));
+        var host = File.ReadAllText(Path.Combine(PreviewRoot, "..", "preview.js"));
 
-        // AC-17/AC-35: mermaid is loaded on the first Mermaid render only, from the vendored path.
-        Assert.Contains("lib/mermaid/mermaid.min.js", viewer, StringComparison.Ordinal);
-        Assert.Contains("lib/json-formatter-js/json-formatter.umd.js", viewer, StringComparison.Ordinal);
+        // AC-17/AC-35: the host fetches each library on the first preview of its kind, from the vendored path.
+        Assert.Contains("preview/lib/mermaid/mermaid.min.js", host, StringComparison.Ordinal);
+        Assert.Contains("preview/lib/json-formatter-js/json-formatter.umd.js", host, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(PreviewRoot, "lib", "mermaid", "mermaid.min.js")));
     }
 
     [Fact]
     public void NothingInTheViewerReachesAnExternalAddress()
     {
-        foreach (var file in new[] { "viewer.html", "viewer.js", Path.Combine("lib", "json-formatter-js", "json-formatter.umd.js") })
+        foreach (var file in new[] { "viewer.css", "viewer.js", Path.Combine("lib", "json-formatter-js", "json-formatter.umd.js") })
         {
             var text = File.ReadAllText(Path.Combine(PreviewRoot, file));
             Assert.DoesNotMatch("https?://", text);
         }
+    }
+
+    [Fact]
+    public void TheViewerLeavesOutTheElementsThatWouldNavigateTheHtmlFrame()
+    {
+        var viewer = File.ReadAllText(Path.Combine(PreviewRoot, "viewer.js"));
+
+        // Spec 014 D-9/D-10: a refresh, a base or a link would navigate the frame; the CSP blocks it and the content is lost.
+        Assert.Contains("meta[http-equiv=\"refresh\" i], base", viewer, StringComparison.Ordinal);
+        Assert.Contains("removeAttribute(\"href\")", viewer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheViewerPolicyClosesNetworkAndNavigationAndTheFrameIsSandboxedWithoutSameOrigin()
+    {
+        var host = File.ReadAllText(Path.Combine(PreviewRoot, "..", "preview.js"));
+        var panel = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Quorum.Web.Client", "Components", "PreviewPanel.razor"));
+
+        // D-7: no connect-src (so no fetch, XHR or WebSocket from any frame) and frame-src about: (no navigation).
+        Assert.Contains("default-src 'none'", host, StringComparison.Ordinal);
+        Assert.Contains("frame-src about:", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("connect-src", host, StringComparison.Ordinal);
+        Assert.Contains("sandbox=\"allow-scripts\"", panel, StringComparison.Ordinal);
+        Assert.DoesNotContain("allow-same-origin", panel, StringComparison.Ordinal);
     }
 
     [Fact]

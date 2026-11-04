@@ -61,7 +61,8 @@ public sealed class PreviewPanelTests : BunitContext
         var panel = Open(Json());
 
         var frame = panel.Find("iframe.preview-frame");
-        Assert.Equal("preview/viewer.html", frame.GetAttribute("src"));
+        // The viewer document arrives as srcdoc, built by the host (spec 014, D-6): no URL of the app is loaded.
+        Assert.Null(frame.GetAttribute("src"));
         Assert.Equal("allow-scripts", frame.GetAttribute("sandbox"));
         Assert.Contains("JSON", frame.GetAttribute("title"), StringComparison.Ordinal);
     }
@@ -75,6 +76,7 @@ public sealed class PreviewPanelTests : BunitContext
         Assert.Empty(panel.FindAll("iframe"));
         // AC-35: no viewer means no attach and nothing vendored is ever requested.
         Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier == "quorumPreview.attachViewer");
+        Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier == "quorumPreview.loadViewer");
         // AC-32: Copy and Download still work.
         Assert.NotEmpty(panel.FindAll("button[aria-label='Copy the raw text']"));
         Assert.NotEmpty(panel.FindAll("button[aria-label='Download the raw text']"));
