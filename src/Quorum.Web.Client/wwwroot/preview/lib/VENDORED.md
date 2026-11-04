@@ -15,3 +15,12 @@ Nothing is fetched from a CDN at runtime; the viewer only loads these files from
   - source: `https://cdn.jsdelivr.net/npm/json-formatter-js@2.5.23/LICENSE`
   - sha256: `2415902d73d0a011053c7c74f10237fc0c664a8b292458b9e32d0c0e46f2b1d1`
 
+## mermaid 12.3.0 (MIT)
+
+- `mermaid/mermaid.min.js`
+  - source: `https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js`
+  - sha256: `336df803d87a38b70a01e736e666c8f7601d2ce42f5e47c8fafe5d721074b9a3`
+- `mermaid/LICENSE`
+  - source: `https://cdn.jsdelivr.net/npm/mermaid@12.3.0/LICENSE`
+  - sha256: `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`
+

@@ -15,6 +15,15 @@ $libraries = @(
             @{ Url = "https://cdn.jsdelivr.net/npm/json-formatter-js@2.5.23/dist/json-formatter.css";   Name = "json-formatter.css" },
             @{ Url = "https://cdn.jsdelivr.net/npm/json-formatter-js@2.5.23/LICENSE";                   Name = "LICENSE" }
         )
+    },
+    @{
+        Name    = "mermaid"
+        Version = "12.3.0"
+        License = "MIT"
+        Files   = @(
+            @{ Url = "https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js"; Name = "mermaid.min.js" },
+            @{ Url = "https://cdn.jsdelivr.net/npm/mermaid@12.3.0/LICENSE";             Name = "LICENSE" }
+        )
     }
 )
 
