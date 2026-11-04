@@ -21,6 +21,10 @@ internal static class AgentsTelemetry
     public const string RoundsTag = "quorum.rounds";
     public const string ToolCallsTag = "quorum.tool_calls";
 
+    public const string EmbeddingActivityName = "quorum.embedding";
+    public const string EmbeddingModelTag = "quorum.embedding.model";
+    public const string ResultCountTag = "quorum.result_count";
+
     public const string ConfirmationActivityName = "quorum.confirmation";
     public const string ConfirmationDecisionTag = "quorum.decision";
 

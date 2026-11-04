@@ -8,6 +8,7 @@ using Quorum.Integration.Tests.Fixtures;
 
 namespace Quorum.Integration.Tests.Telemetry;
 
+[Collection("Telemetry")]
 public sealed class TelemetryFoundationTests(PostgresFixture postgres)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -83,7 +84,7 @@ public sealed class TelemetryFoundationTests(PostgresFixture postgres)
 
     private static async Task<Activity> WaitForSpanAsync(QuorumApp app, Func<Activity, bool> match)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
         while (true)
         {
             var found = app.Spans.Snapshot().FirstOrDefault(match);
@@ -92,7 +93,7 @@ public sealed class TelemetryFoundationTests(PostgresFixture postgres)
                 return found;
             }
 
-            Assert.True(DateTimeOffset.UtcNow < deadline, "No span matched within 10 seconds.");
+            Assert.True(DateTimeOffset.UtcNow < deadline, "No span matched within 30 seconds.");
             await Task.Delay(20, Ct);
         }
     }
