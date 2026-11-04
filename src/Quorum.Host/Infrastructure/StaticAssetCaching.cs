@@ -14,7 +14,14 @@ internal static partial class StaticAssetCaching
     /// A new instance for each middleware: the static file middleware fills in the options it is given (file provider,
     /// content types), so two of them must not share one.
     /// </summary>
-    public static StaticFileOptions CreateOptions() => new() { OnPrepareResponse = Apply };
+    public static StaticFileOptions CreateOptions() => new()
+    {
+        OnPrepareResponse = context =>
+        {
+            Apply(context);
+            PreviewSecurityHeaders.Apply(context);
+        },
+    };
 
     private static void Apply(StaticFileResponseContext context)
     {

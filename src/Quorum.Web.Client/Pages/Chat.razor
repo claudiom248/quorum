@@ -115,7 +115,7 @@
 
                         @if (run.Partial.Length > 0)
                         {
-                            <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(run.Partial))</div>
+                            <div class="bubble markdown">@((MarkupString)MarkdownRenderer.ToHtml(run.Partial, streaming: true))</div>
                         }
                         else if (run.Reasoning.Length == 0)
                         {
@@ -159,6 +159,11 @@
             <div class="composer-inner"><ProblemMessage Problem="_problem" /></div>
         </div>
     </section>
+
+    @if (_preview is { } preview)
+    {
+        <PreviewPanel Content="preview" UserKey="@UserKey" OnClosed="ClosePreview" />
+    }
 </div>
 
 @code {
@@ -178,6 +183,11 @@
     private string _draft = string.Empty;
     private bool _sending;
     private bool _renaming;
+
+    // The preview panel's content, if open: nothing is stored and it closes with the conversation (spec 014, D-3).
+    private PreviewContent? _preview;
+
+    private string UserKey => Session.User?.Email ?? "anonymous";
 
     [Parameter]
     public Guid? Id { get; set; }
@@ -228,6 +238,7 @@
         // Before the first await: the render in between must not show the previous conversation's messages or attachments.
         _calls = [];
         _problem = null;
+        _preview = null;
         _messages.Clear();
         _title = null;
         _loaded = null;
@@ -242,6 +253,7 @@
         {
             _self = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("quorumChat.bindComposer", _composerElement, _self);
+            await JS.InvokeVoidAsync("quorumPreview.bindButtons", _messagesElement, _self);
             await ReadLedgerStyleAsync();
         }
     }
@@ -255,6 +267,29 @@
     /// <summary>Called by the composer's Enter key handler.</summary>
     [JSInvokable]
     public Task SendFromKeyboard() => InvokeAsync(SendAsync);
+
+    /// <summary>
+    /// Called by the delegated click handler when a Preview button is pressed (spec 014, D-23): the kind comes from
+    /// the button's data attribute and the text was read from the code block's DOM node.
+    /// </summary>
+    [JSInvokable]
+    public Task OpenPreviewFromDom(string kind, string text) => InvokeAsync(() =>
+    {
+        if (PreviewKinds.Parse(kind) is not { } previewKind)
+        {
+            return;
+        }
+
+        _preview = new PreviewContent(previewKind, text);
+        StateHasChanged();
+    });
+
+    private void ClosePreview()
+    {
+        _preview = null;
+        // The focus returns to the Preview button that opened the panel (AC-9).
+        _ = JS.InvokeVoidAsync("quorumPreview.focusOpener");
+    }
 
     private async Task RefreshListAsync()
     {
