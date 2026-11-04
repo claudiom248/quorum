@@ -13,14 +13,15 @@ Status: evolving draft. Last updated: 2026-10-15.
 ## Glossary
 Names that reach the public API are hard to change later, so these terms are fixed now and used consistently in docs, code and API.
 
-- **Assistant**: what a user or an integration talks to; the published entry point. It has a name, a description, who may use it, and a topology behind it. Integrations (chat UI, customer-support tools, the future OpenAI-compatible API) always address an assistant, so its topology can change without affecting callers.
-- **Agent**: a building block inside a topology, with its own system prompt, model, tools, skills and permissions (e.g. "Contracts expert", "Web researcher", "Synthesis node"). The same agent can be reused by several assistants.
-- **Topology**: the graph of agents behind an assistant (fan-out to the relevant agents, a synthesis node producing the single answer). Defined in declarative config and editable in the visual graph editor, which uses the same schema.
+- **Assistant**: what a user or an integration talks to; the published entry point. It has a name and a **root agent**, and a limit on how many sub-agents run at once. Integrations (chat UI, customer-support tools, the future OpenAI-compatible API) always address an assistant, so the agents behind it can change without affecting callers.
+- **Agent**: a building block with its own system prompt, model endpoint, tools and permissions (e.g. "Contracts expert", "Web researcher"). The same agent can be reused by several assistants and by other agents.
+- **Root agent**: the agent an assistant points to; the only one that talks to the user and the only one that delegates.
+- **Sub-agent**: an agent the root agent calls like a tool. It receives only the task text, runs in its own context and returns one final message. Sub-agents do not delegate further (spec 013).
 - **Tenant**: an isolated organization within one installation; every application entity carries its `TenantId`.
 - **Model endpoint**: an OpenAI-compatible endpoint: base URL including the version segment (e.g. `http://ollama:11434/v1`), model name, optional API key (encrypted at rest) and context token budget.
 - **Setup mode / setup token**: the state the app stays in until the first-run wizard completes; the wizard is protected by a setup token printed to the logs and kept in memory only.
 
-**MVP note**: in spec 001 an assistant has a trivial topology with one implicit agent, so the system prompt and model endpoint live on the `Assistant` entity. When topologies arrive they move to agents, and the assistant references a topology.
+There is no Topology entity: the graph is the set of sub-agent edges declared on agents, and the assistant points to a root agent (spec 013). The system prompt and model endpoint live on the agent; a model endpoint is a resource of its own that agents refer to.
 
 ## MVP use cases
 - Answer questions on documents uploaded by the company (RAG). Formats supported in the MVP: **PDF, DOCX, TXT, Markdown**.
@@ -29,7 +30,7 @@ Names that reach the public API are hard to change later, so these terms are fix
 
 ## Implications of local models
 - OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp, LM Studio) in the presets; cloud providers are optional.
-- Limited resources: multi-agent topologies also run sequentially, with configurable concurrency limits.
+- Limited resources: sub-agents run one at a time by default, with a concurrency limit per assistant.
 - Presets tested on small models (7-14B), not only on large ones.
 - No outbound telemetry; web search is the only outbound traffic and it is explicit.
 

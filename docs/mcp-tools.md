@@ -1,6 +1,6 @@
 # MCP tools: administrator guide
 
-How to connect MCP servers to Quorum and decide what the assistants may run. Design decisions are in
+How to connect MCP servers to Quorum and decide what the agents may run. Design decisions are in
 [spec 004](specs/004-mcp-tools.md); this page is what an administrator needs.
 
 ## What Quorum speaks
@@ -18,7 +18,7 @@ Open **Tools → MCP servers** in the sidebar (it needs the administrator role).
 | See its state | Each server shows *Available* or *Unavailable* (with the last error) and how many tools wait for review |
 | Read its tools again | **Refresh** |
 | Change it | **Edit**. A changed URL makes the server unavailable until you refresh it |
-| Remove it | **Delete**: its tools leave every assistant. The audit log keeps their names |
+| Remove it | **Delete**: its tools leave every agent. The audit log keeps their names |
 
 ### Headers
 
@@ -34,9 +34,9 @@ A tool a server lists for the first time, or one whose name, description or inpu
 **pending review**: no model sees it. It also returns to the *Ask before running* policy.
 
 For each tool pending review choose a policy and **Approve and enable**, or **Keep disabled**. After a refresh, tools that
-vanished from the server are removed together with their activations on assistants.
+vanished from the server are removed together with their activations on agents.
 
-Approving makes a tool available; it still has to be switched on for an assistant in **Settings → Tools**.
+Approving makes a tool available; it still has to be switched on for an agent, in the tools of its form on the **Agents** page.
 
 The hints a server sends about a tool (read-only, destructive...) are shown as *claimed by the server*. A server can be wrong or
 dishonest, so they never change a policy.
@@ -55,13 +55,13 @@ The built-in tools (calculator, current date and time) are listed under **Tools 
 | Choice | Meaning |
 |---|---|
 | This tenant | Only this tenant. You may add other tenants by id; they see the server read-only |
-| Chosen assistants | Only the assistants you tick |
+| Chosen agents | Only the agents you tick |
 | Every tenant | Every tenant of the installation sees the server and its enabled tools. Review and policy stay with the owner |
 
 A server shared by another tenant appears marked *Shared with you* and cannot be changed here.
 
-Warnings about too many active tools, or tool definitions that take too much of the context, appear in **Settings → Tools** next to the
-tools of the assistant.
+Warnings about too many active tools, or tool definitions that take too much of the context, appear in the form of the agent next to the
+tools of the agent.
 
 ## Safety notes
 

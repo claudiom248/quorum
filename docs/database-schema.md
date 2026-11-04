@@ -4,7 +4,7 @@ Reference for the platform database (PostgreSQL 17). One database, **one schema 
 
 The schema is defined by the EF Core migrations under `src/Modules/<Module>/**/Persistence/Migrations`; this document is a snapshot of the result. When a migration changes a table, update the matching diagram here in the same PR.
 
-Snapshot taken at the `20261023112022_AddRagToolDocumentIds` migration of the Agents module (latest of all modules at the time of writing).
+Snapshot taken at the `20261103225724_AddToolCustomName` migration of the Agents module and the `20261103230552_AddUserLedgerStyle` migration of the Tenancy module (latest of each at the time of writing).
 
 The diagrams are Mermaid `erDiagram` blocks: GitHub and most Markdown viewers render them as boxes with one row per column.
 
@@ -41,9 +41,12 @@ erDiagram
     tenancy_users ||--o{ tenancy_user_logins : "UserId"
     tenancy_users ||--o{ tenancy_user_tokens : "UserId"
 
-    agents_model_endpoints ||--o{ agents_assistants : "ModelEndpointId"
-    agents_assistants ||--o{ agents_assistant_tools : "AssistantId"
-    agents_tools ||--o{ agents_assistant_tools : "ToolId"
+    agents_model_endpoints |o--o{ agents_agents : "ModelEndpointId"
+    agents_agents ||--o{ agents_assistants : "RootAgentId"
+    agents_agents ||--o{ agents_agent_sub_agents : "ParentAgentId"
+    agents_agents ||--o{ agents_agent_sub_agents : "ChildAgentId"
+    agents_agents ||--o{ agents_agent_tools : "AgentId"
+    agents_tools ||--o{ agents_agent_tools : "ToolId"
     agents_mcp_servers ||--o{ agents_tools : "ServerId"
     agents_tools ||--o| agents_rag_tools : "ToolId"
     agents_tools ||--o| agents_lookup_tools : "ToolId"
@@ -61,6 +64,7 @@ erDiagram
     conversations_conversations }o..|| tenancy_users : "UserId (soft)"
     agents_tool_audit_entries }o..|| tenancy_users : "UserId (soft)"
     agents_tool_audit_entries }o..o| agents_assistants : "AssistantId (soft)"
+    agents_tool_audit_entries }o..o| agents_agents : "AgentId (soft)"
     agents_tool_audit_entries }o..o| conversations_conversations : "ConversationId (soft)"
     agents_rag_tools }o..o{ knowledge_base_knowledge_bases : "KnowledgeBaseIds (soft)"
     agents_rag_tools }o..o{ knowledge_base_dictionary_fields : "ExposedFieldIds, FixedFilterFieldIds (soft)"
@@ -78,8 +82,10 @@ Every other soft reference:
 | From | To | Note |
 |---|---|---|
 | `*."TenantId"` | `tenancy.tenants."Id"` | On every application table |
-| `agents.tool_audit_entries."AssistantId"` / `"ConversationId"` | `agents.assistants."Id"` / `conversations.conversations."Id"` | Kept after those rows are deleted: it is an audit trail |
-| `ScopeAssistantIds` / `ScopeTenantIds` (uuid arrays) | `agents.assistants."Id"` / `tenancy.tenants."Id"` | On `mcp_servers`, `rag_tools`, `lookup_tools`, `web_search_tools`, `web_fetch_tools`, `knowledge_bases` (`ScopeTenantIds` also on `lookups`) |
+| `agents.tool_audit_entries."AssistantId"` / `"AgentId"` / `"ConversationId"` | `agents.assistants."Id"` / `agents.agents."Id"` / `conversations.conversations."Id"` | Kept after those rows are deleted: it is an audit trail. `AgentId` is the agent that ran the call (`NULL` on rows written before spec 013) |
+| `ScopeAgentIds` (uuid array) | `agents.agents."Id"` | On `mcp_servers`, `rag_tools`, `lookup_tools`, `web_search_tools`, `web_fetch_tools` |
+| `ScopeAssistantIds` (uuid array) | `agents.assistants."Id"` | On `knowledge_bases`: knowledge bases and lookups are scoped to assistants, not agents (spec 013, D-41) |
+| `ScopeTenantIds` (uuid array) | `tenancy.tenants."Id"` | On `mcp_servers`, the four tool tables above, `knowledge_bases` and `lookups` |
 
 ## Schema `tenancy`
 
@@ -103,6 +109,7 @@ erDiagram
         uuid TenantId FK "indexed"
         varchar(100) DisplayName
         varchar(50) Role "application role name"
+        varchar(20) LedgerStyle "NULL, how the chat shows tool calls and sub-agents (spec 015); the default style when null"
         timestamptz CreatedAt
         varchar(256) UserName "NULL"
         varchar(256) NormalizedUserName UK "NULL, unique (UserNameIndex)"
@@ -151,9 +158,12 @@ erDiagram
 
 ```mermaid
 erDiagram
-    model_endpoints ||--o{ assistants : "ModelEndpointId"
-    assistants ||--o{ assistant_tools : "AssistantId"
-    tools ||--o{ assistant_tools : "ToolId"
+    model_endpoints |o--o{ agents : "ModelEndpointId"
+    agents ||--o{ assistants : "RootAgentId"
+    agents ||--o{ agent_sub_agents : "ParentAgentId"
+    agents ||--o{ agent_sub_agents : "ChildAgentId"
+    agents ||--o{ agent_tools : "AgentId"
+    tools ||--o{ agent_tools : "ToolId"
     mcp_servers ||--o{ tools : "ServerId"
     tools ||--o| rag_tools : "ToolId"
     tools ||--o| web_search_tools : "ToolId"
@@ -161,7 +171,8 @@ erDiagram
 
     model_endpoints {
         uuid Id PK
-        uuid TenantId "indexed"
+        uuid TenantId UK "unique with Name"
+        varchar(100) Name UK "what the admin calls it; agents pick an endpoint by it"
         varchar(2048) BaseUrl "OpenAI-compatible server"
         varchar(200) ModelName
         text ProtectedApiKey "NULL, encrypted"
@@ -170,18 +181,39 @@ erDiagram
         timestamptz UpdatedAt
     }
 
+    agents {
+        uuid Id PK
+        uuid TenantId UK "unique with Slug"
+        varchar(32) Slug UK "the name the model calls it by when it is a sub-agent"
+        varchar(200) DisplayName
+        varchar(2000) Description "what a caller reads to decide whether to delegate"
+        text SystemPrompt
+        uuid ModelEndpointId FK "NULL, indexed; a sub-agent without one uses its caller's"
+        varchar(20) Scope "Global, Tenant: who may use the agent"
+        uuid[] ScopeTenantIds "used when Scope = Tenant"
+        timestamptz UpdatedAt
+    }
+
+    agent_sub_agents {
+        uuid ParentAgentId PK, FK "cascade"
+        uuid ChildAgentId PK, FK "indexed, restrict: an agent in use cannot be deleted"
+        uuid TenantId "indexed"
+        varchar(20) FailurePolicy "ReturnError, AbortTurn; default ReturnError"
+    }
+
+    agent_tools {
+        uuid AgentId PK, FK
+        uuid ToolId PK, FK "indexed"
+        uuid TenantId "indexed"
+        varchar(10) Manifest "Full, Lean; default Full"
+    }
+
     assistants {
         uuid Id PK
         uuid TenantId "indexed"
         varchar(200) Name
-        text SystemPrompt
-        uuid ModelEndpointId FK "indexed"
-    }
-
-    assistant_tools {
-        uuid AssistantId PK, FK
-        uuid ToolId PK, FK "indexed"
-        uuid TenantId "indexed"
+        uuid RootAgentId FK "indexed, restrict: the agent the user talks to"
+        integer MaxParallelSubAgents "default 1"
     }
 
     mcp_servers {
@@ -193,9 +225,9 @@ erDiagram
         varchar(20) Status "Available, Unavailable"
         varchar(500) LastError "NULL"
         timestamptz LastRefreshedAt "NULL, last tool discovery"
-        varchar(20) Scope "Global, Tenant, Assistant (Agent reserved)"
+        varchar(20) Scope "Global, Tenant, Agent"
         uuid[] ScopeTenantIds "used when Scope = Tenant"
-        uuid[] ScopeAssistantIds "used when Scope = Assistant"
+        uuid[] ScopeAgentIds "used when Scope = Agent"
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }
@@ -205,6 +237,7 @@ erDiagram
         uuid TenantId UK "see the unique indexes below"
         varchar(20) Origin UK "Builtin, Mcp, Rag, Lookup, WebSearch, WebFetch"
         varchar(128) Name UK
+        varchar(40) CustomName "NULL, the name the models see instead of Name (spec 015)"
         text Description
         text InputSchema "JSON Schema as text"
         varchar(20) State "PendingReview, Enabled, Disabled"
@@ -225,9 +258,9 @@ erDiagram
         double_precision ScoreThreshold "NULL"
         integer MaxResultCharacters
         boolean AllowDocumentIds "the tool offers document_ids; false for rows saved before spec 007"
-        varchar(20) Scope "Global, Tenant, Assistant (Agent reserved)"
+        varchar(20) Scope "Global, Tenant, Agent"
         uuid[] ScopeTenantIds "used when Scope = Tenant"
-        uuid[] ScopeAssistantIds "used when Scope = Assistant"
+        uuid[] ScopeAgentIds "used when Scope = Agent"
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }
@@ -242,9 +275,9 @@ erDiagram
         jsonb ExposedAliases "alias by field id"
         jsonb FixedFilters "filters applied on every call"
         uuid[] FixedFilterFieldIds "dictionary fields used by FixedFilters"
-        varchar(20) Scope "Global, Tenant, Assistant (Agent reserved)"
+        varchar(20) Scope "Global, Tenant, Agent"
         uuid[] ScopeTenantIds "used when Scope = Tenant"
-        uuid[] ScopeAssistantIds "used when Scope = Assistant"
+        uuid[] ScopeAgentIds "used when Scope = Agent"
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }
@@ -274,9 +307,9 @@ erDiagram
         integer SafeSearch "0 off, 1 moderate, 2 strict"
         text TimeRange "NULL, day, week, month or year"
         integer MaxInvocationsPerConversation "per conversation, then the model is told it stopped"
-        varchar(20) Scope "Global, Tenant, Assistant (Agent reserved)"
+        varchar(20) Scope "Global, Tenant, Agent"
         uuid[] ScopeTenantIds "used when Scope = Tenant"
-        uuid[] ScopeAssistantIds "used when Scope = Assistant"
+        uuid[] ScopeAgentIds "used when Scope = Agent"
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }
@@ -288,9 +321,9 @@ erDiagram
         integer TotalTokenBudget "NULL, the platform's when null"
         integer MaxUrlsPerInvocation "NULL, the platform's when null"
         integer Timeout "NULL, the platform's when null"
-        varchar(20) Scope "Global, Tenant, Assistant (Agent reserved)"
+        varchar(20) Scope "Global, Tenant, Agent"
         uuid[] ScopeTenantIds "used when Scope = Tenant"
-        uuid[] ScopeAssistantIds "used when Scope = Assistant"
+        uuid[] ScopeAgentIds "used when Scope = Agent"
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }
@@ -310,6 +343,7 @@ erDiagram
         uuid TenantId "indexes: TenantId+StartedAt, TenantId+ToolName"
         uuid UserId
         uuid AssistantId "kept after deletion"
+        uuid AgentId "NULL, agent that ran the call, kept after deletion"
         uuid ConversationId "kept after deletion"
         uuid CallId "id of the model tool call"
         varchar(64) ServerName "NULL, null for Builtin and Rag; lookup for a lookup tool (its ToolName is <name>.<operation>)"
@@ -335,7 +369,10 @@ Notes that do not fit in a box:
 | `tools.State` | `PendingReview` = new or changed, not offered to any model |
 | `tools.Policy` | `Auto` runs at once, `Confirm` waits for the user |
 | `tool_audit_entries.Outcome` | A call that never completes stays `Started` |
-| `assistant_tools` | Many-to-many between assistants and the tools they may use |
+| `agents` | Prompt, endpoint and tools live on the agent, not on the assistant (spec 013). There is no topology table: the graph is the set of `agent_sub_agents` edges |
+| `agent_sub_agents` | An edge says that the parent may delegate to the child, which the parent's model sees as a tool named after the child's slug. Only the root agent delegates (D-5), so there are no cycles to check |
+| `agent_tools` | Many-to-many between agents and the tools they may use. `Manifest` is meaningful only for lookup tools: `Lean` offers `describe` and `query` instead of the full functions (spec 012) |
+| `assistants` | The published entry point. `RootAgentId` points to an agent; the migration of spec 013 created one agent per existing assistant, with its prompt, endpoint and activations, and dropped `assistants."SystemPrompt"`, `"ModelEndpointId"` and `assistant_tools` |
 | `rag_tools` | A rag tool has no input schema stored: it is built from `ExposedFieldIds` at each answer, and `tools.DefinitionHash` holds the hash of the whole binding (including `AllowDocumentIds` when it is on) |
 | `lookup_tools` | Same for a lookup tool: the definition is built from the bound lookups, knowledge bases and exposed fields at each answer. The slices a tool needs are recorded on the other side, in `knowledge_base.lookup_slices."ToolIds"` |
 | `web_configuration` | One row for the whole installation, with the fixed id `00000000-0000-0000-0000-000000000001`: the migration inserts it with the platform's defaults and the application only ever changes that row. No `TenantId` and no query filter (specs 005, 006) |
