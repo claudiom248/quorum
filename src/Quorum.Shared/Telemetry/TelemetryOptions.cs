@@ -1,4 +1,4 @@
-namespace Quorum.Host.Infrastructure.Telemetry;
+namespace Quorum.Shared.Telemetry;
 
 /// <summary>
 /// The telemetry settings of <c>Quorum:Telemetry</c>, read once at startup (spec 016 D-3). The standard <c>OTEL_*</c> variables

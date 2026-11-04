@@ -2,9 +2,11 @@ using System.Text;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Shared.Telemetry;
 
 namespace Quorum.Modules.Agents.Chat;
 
@@ -14,7 +16,7 @@ namespace Quorum.Modules.Agents.Chat;
 /// final message. Its tool calls go through the same <see cref="ToolCallInvoker"/> as the root agent's, on a run of their own that
 /// shares the answer's events, deadline and gates, so they are audited, limited and shown nested under the delegation call (D-11, D-28).
 /// </summary>
-internal sealed partial class SubAgentRunner(IHttpClientFactory httpClientFactory, ILogger<SubAgentRunner> logger)
+internal sealed partial class SubAgentRunner(IHttpClientFactory httpClientFactory, IOptions<TelemetryOptions> telemetry, ILogger<SubAgentRunner> logger)
 {
     /// <returns>The final message of the sub-agent.</returns>
     /// <exception cref="ToolFailedException">The sub-agent failed and its edge returns the failure to the caller (D-13).</exception>
@@ -54,14 +56,17 @@ internal sealed partial class SubAgentRunner(IHttpClientFactory httpClientFactor
             throw new ModelStreamException("The task, the instructions and the tools of the sub-agent do not fit the context of its model.");
         }
 
+        var captureContent = telemetry.Value.CaptureContent;
         using var model = new OpenAiChatClient(httpClientFactory, agent.BaseUrl, agent.ModelName, agent.ApiKey, offersTools: agent.Tools.Count > 0);
-        using var tools = new FunctionInvokingChatClient(new ContextGuardChatClient(model, run))
+        using var traced = new OpenTelemetryChatClient(new ContextGuardChatClient(model, run)) { EnableSensitiveData = captureContent };
+        using var tools = new FunctionInvokingChatClient(traced)
         {
             AllowConcurrentInvocation = false,
             MaximumIterationsPerRequest = Math.Max(1, limits.MaxRounds - 1),
             FunctionInvoker = (invocation, token) => invoker.InvokeAsync(run, invocation, token),
         };
 
+        // The run of a sub-agent is an agent span of its own under the delegation call (spec 016 D-16).
         var chatAgent = new ChatClientAgent(
             tools,
             new ChatClientAgentOptions
@@ -72,7 +77,10 @@ internal sealed partial class SubAgentRunner(IHttpClientFactory httpClientFactor
                     Instructions = agent.Instructions,
                     Tools = agent.Tools.Count == 0 ? null : [.. agent.Tools],
                 },
-            });
+            })
+            .AsBuilder()
+            .UseOpenTelemetry(configure: options => options.EnableSensitiveData = captureContent)
+            .Build();
 
         // Only the final message is the result: the text the sub-agent writes before a tool call is thinking aloud, and none of it
         // reaches the user (D-32). The text is dropped at each tool call, so what is left at the end is the final message.

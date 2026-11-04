@@ -378,6 +378,7 @@ public sealed class FakeModelServer : HttpMessageHandler
                     }
 
                     _pending.Enqueue(Event(new { }, finishReason: script.ToolCalls.Count > 0 ? "tool_calls" : "stop"));
+                    _pending.Enqueue(UsageEvent());
                     _pending.Enqueue(Encoding.UTF8.GetBytes("data: [DONE]\n\n"));
                     _finished = true;
                 }
@@ -425,6 +426,21 @@ public sealed class FakeModelServer : HttpMessageHandler
             }
         }
 
+        /// <summary>The last chunk of a stream that asked for usage: no choices, the token counts of the request (spec 016 D-8).</summary>
+        private static byte[] UsageEvent()
+        {
+            var chunk = new
+            {
+                id = "chatcmpl-test",
+                @object = "chat.completion.chunk",
+                created = 1_790_000_000,
+                model = "fake",
+                choices = Array.Empty<object>(),
+                usage = new { prompt_tokens = FakeUsage.PromptTokens, completion_tokens = FakeUsage.CompletionTokens, total_tokens = FakeUsage.PromptTokens + FakeUsage.CompletionTokens },
+            };
+            return Encoding.UTF8.GetBytes($"data: {JsonSerializer.Serialize(chunk)}\n\n");
+        }
+
         private static byte[] Event(object delta, string? finishReason)
         {
             var chunk = new
@@ -438,4 +454,11 @@ public sealed class FakeModelServer : HttpMessageHandler
             return Encoding.UTF8.GetBytes($"data: {JsonSerializer.Serialize(chunk)}\n\n");
         }
     }
+}
+
+/// <summary>The token counts every fake chat stream reports when the request asks for usage.</summary>
+public static class FakeUsage
+{
+    public const int PromptTokens = 11;
+    public const int CompletionTokens = 7;
 }

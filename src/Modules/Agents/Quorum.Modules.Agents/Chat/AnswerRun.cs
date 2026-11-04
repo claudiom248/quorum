@@ -24,6 +24,8 @@ internal sealed class AnswerRun
     private readonly HashSet<string> _handledCalls = new(StringComparer.Ordinal);
     private readonly ChannelWriter<AnswerChunk> _events;
     private readonly RunGates _gates;
+    private int _rounds;
+    private int _toolCalls;
 
     /// <param name="maxParallelSubAgents">How many delegations of the answer may run at once (spec 013 D-14).</param>
     public AnswerRun(
@@ -70,6 +72,12 @@ internal sealed class AnswerRun
 
     public AnswerStop Stop { get; private set; }
 
+    /// <summary>The requests this run made to its model, one per round (spec 016 D-13).</summary>
+    public int Rounds => Volatile.Read(ref _rounds);
+
+    /// <summary>The tool calls this run took, its own and not those of its sub-agents (spec 016 D-13).</summary>
+    public int ToolCalls => Volatile.Read(ref _toolCalls);
+
     /// <summary>An unexpected failure of the invoker. It ends the answer: MEAI would only turn the exception into an error for the model.</summary>
     public Exception? Failure { get; private set; }
 
@@ -102,6 +110,10 @@ internal sealed class AnswerRun
             Failure ??= exception;
         }
     }
+
+    public void CountRound() => Interlocked.Increment(ref _rounds);
+
+    public void CountToolCall() => Interlocked.Increment(ref _toolCalls);
 
     /// <summary>Remembers the first limit reached; the answer ends with its message.</summary>
     public void StopFor(AnswerStop reason)
