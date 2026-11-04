@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Shared.Telemetry;
 
@@ -19,6 +21,16 @@ internal static class AgentsTelemetry
     public const string RoundsTag = "quorum.rounds";
     public const string ToolCallsTag = "quorum.tool_calls";
 
+    public const string ConfirmationActivityName = "quorum.confirmation";
+    public const string ConfirmationDecisionTag = "quorum.decision";
+
+    public const string ToolOriginTag = "quorum.tool.origin";
+    public const string ToolRoundTag = "quorum.tool.round";
+    public const string ToolArgumentsHashTag = "quorum.tool.arguments_hash";
+    public const string ToolDecisionTag = "quorum.tool.decision";
+    public const string ToolOutcomeTag = "quorum.tool.outcome";
+    public const string ErrorCodeTag = "quorum.error.code";
+
     public const string StopCompleted = "completed";
     public const string StopCancelled = "cancelled";
     public const string StopRounds = "rounds";
@@ -34,6 +46,13 @@ internal static class AgentsTelemetry
         [QuorumActivityNames.AssistantIdTag] = context.AssistantId,
         [QuorumActivityNames.AgentIdTag] = context.AgentId,
     };
+
+    /// <summary>
+    /// A short hash of a call's arguments: the same call repeated shows the same hash on its spans, without the arguments themselves
+    /// (spec 016 D-15). Not a secret store: a hash of a short argument can be guessed, which the spec accepts.
+    /// </summary>
+    public static string ArgumentsHash(string arguments) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(arguments)))[..16].ToLowerInvariant();
 
     /// <summary>Sets the identifiers on the root span before any child starts: the children copy them when they start (the Host's processor).</summary>
     public static void TagTurn(Activity activity, ToolRunContext context)
