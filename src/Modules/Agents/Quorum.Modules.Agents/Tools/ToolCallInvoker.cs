@@ -92,6 +92,7 @@ internal sealed partial class ToolCallInvoker(
         }
 
         var callId = Guid.CreateVersion7();
+        run.CountToolCall();
         var raw = OpenAiChatClient.RawArguments(call);
         var (auditArguments, truncated) = AuditRedactor.Redact(raw);
 

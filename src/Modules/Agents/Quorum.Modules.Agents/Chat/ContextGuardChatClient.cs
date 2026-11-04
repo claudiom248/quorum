@@ -23,6 +23,9 @@ internal sealed class ContextGuardChatClient(IChatClient inner, AnswerRun run) :
         ArgumentNullException.ThrowIfNull(messages);
         var history = messages as IList<ChatMessage> ?? messages.ToList();
 
+        // Every request to the model is one round of the run (spec 016 D-13).
+        run.CountRound();
+
         // The first request was measured before the answer started; only the results of tools can make it outgrow the budget.
         if (history.Any(message => message.Contents.OfType<FunctionResultContent>().Any()) && Characters(history, options) > run.UsableCharacters)
         {

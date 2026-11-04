@@ -1,13 +1,17 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Telemetry;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Mcp;
+using Quorum.Shared.Telemetry;
 
 namespace Quorum.Modules.Agents.Chat;
 
@@ -34,6 +38,7 @@ internal sealed record AnswerRequest(
 /// invoker is <see cref="ToolCallInvoker"/>. The agent runs on a background task and writes everything the user can watch (text,
 /// reasoning, tool calls and results) to one channel, so a tool call reaches the client even while the invoker waits for something.
 /// Rounds, total time and context are bounded; reaching a bound fails the answer with a readable error and keeps the text already streamed.
+/// The answer is also the root span of its trace (spec 016 D-7, D-13); the frameworks' spans of the model and the agent are its children.
 /// </summary>
 internal sealed partial class AnswerPipeline(
     IHttpClientFactory httpClientFactory,
@@ -41,6 +46,7 @@ internal sealed partial class AnswerPipeline(
     ToolCallInvoker invoker,
     PendingInteractions interactions,
     TimeProvider clock,
+    IOptions<TelemetryOptions> telemetry,
     ILogger<AnswerPipeline> logger)
 {
     public async IAsyncEnumerable<AnswerChunk> RunAsync(AnswerRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -50,8 +56,15 @@ internal sealed partial class AnswerPipeline(
         var channel = Channel.CreateBounded<AnswerChunk>(new BoundedChannelOptions(256) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         var run = new AnswerRun(request.Context, new AnswerDeadline(request.Context.Limits.TotalTimeout, clock), channel.Writer, request.UsableCharacters, request.MaxParallelSubAgents, databaseGate.Semaphore);
 
+        // Started before the producer, so the producer's task and every span under it run under the turn.
+        using var turn = AgentsTelemetry.Source.StartActivity(AgentsTelemetry.TurnActivityName, ActivityKind.Internal);
+        if (turn is not null)
+        {
+            AgentsTelemetry.TagTurn(turn, request.Context);
+        }
+
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var producer = Task.Run(() => ProduceAsync(request, run, channel.Writer, cancellationToken, stop.Token), CancellationToken.None);
+        var producer = Task.Run(() => ProduceAsync(request, run, channel.Writer, turn, cancellationToken, stop.Token), CancellationToken.None);
         try
         {
             await foreach (var chunk in channel.Reader.ReadAllAsync(cancellationToken))
@@ -76,13 +89,29 @@ internal sealed partial class AnswerPipeline(
         }
     }
 
-    private async Task ProduceAsync(AnswerRequest request, AnswerRun run, ChannelWriter<AnswerChunk> writer, CancellationToken userCancellation, CancellationToken cancellationToken)
+    private async Task ProduceAsync(
+        AnswerRequest request,
+        AnswerRun run,
+        ChannelWriter<AnswerChunk> writer,
+        Activity? turn,
+        CancellationToken userCancellation,
+        CancellationToken cancellationToken)
     {
         var limits = request.Context.Limits;
+        var captureContent = telemetry.Value.CaptureContent;
+
+        // The logs of the answer carry its identifiers too (spec 016 D-9), as do its spans.
+        using var scope = logger.BeginScope(AgentsTelemetry.Identifiers(request.Context));
+
+        // Why the answer ended, as the root span says it (spec 016 D-13); set before the answer is ended by one of its limits.
+        string? stop = null;
         try
         {
             using var model = new OpenAiChatClient(httpClientFactory, request.BaseUrl, request.ModelName, request.ApiKey, offersTools: request.Tools.Count > 0);
-            using var tools = new FunctionInvokingChatClient(new ContextGuardChatClient(model, run))
+
+            // The model's span is the framework's: Quorum only decides whether its content is recorded (spec 016 D-2).
+            using var traced = new OpenTelemetryChatClient(new ContextGuardChatClient(model, run)) { EnableSensitiveData = captureContent };
+            using var tools = new FunctionInvokingChatClient(traced)
             {
                 // The calls of a round start together so that delegations can run in parallel; the invoker runs ordinary tools one at a time.
                 AllowConcurrentInvocation = true,
@@ -103,7 +132,10 @@ internal sealed partial class AnswerPipeline(
                         Tools = request.Tools.Count == 0 ? null : [.. request.Tools],
                     },
                     AIContextProviders = request.AttachmentsBlock is null ? [] : [new AttachmentsProvider(request.AttachmentsBlock)],
-                });
+                })
+                .AsBuilder()
+                .UseOpenTelemetry(configure: options => options.EnableSensitiveData = captureContent)
+                .Build();
 
             // The history is the whole conversation, so the agent keeps no session: every answer starts from what it is given.
             var asked = new Dictionary<string, FunctionCallContent>(StringComparer.Ordinal);
@@ -122,27 +154,60 @@ internal sealed partial class AnswerPipeline(
 
             if (run.Stop == AnswerStop.TotalTime)
             {
+                stop = AgentsTelemetry.StopTotalTime;
                 throw TotalTimeExceeded(limits);
             }
 
             // Calls still unanswered mean the last response asked for tools the answer had no more rounds to run.
             if (run.Stop == AnswerStop.Rounds || asked.Count > 0)
             {
+                stop = AgentsTelemetry.StopRounds;
                 throw new ModelStreamException(
                     $"The model kept asking for tools after {limits.MaxRounds} rounds, so the answer was stopped. " +
                     "An administrator can raise the limit in the tool settings.");
             }
 
+            stop = AgentsTelemetry.StopCompleted;
             writer.TryComplete();
         }
         catch (OperationCanceledException) when (run.Stop == AnswerStop.TotalTime && !userCancellation.IsCancellationRequested)
         {
+            stop = AgentsTelemetry.StopTotalTime;
             writer.TryComplete(TotalTimeExceeded(limits));
+        }
+        catch (OperationCanceledException exception) when (userCancellation.IsCancellationRequested || cancellationToken.IsCancellationRequested)
+        {
+            // Stopped by the user or by the caller going away: not a failure of the turn (spec 016 D-14).
+            stop = AgentsTelemetry.StopCancelled;
+            writer.TryComplete(exception);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // Whatever ended the answer, the reader must see it: it decides what the stored answer becomes.
+            stop ??= AgentsTelemetry.StopError;
             writer.TryComplete(exception);
+        }
+        finally
+        {
+            EndTurn(turn, run, limits, stop ?? AgentsTelemetry.StopError);
+        }
+    }
+
+    /// <summary>Records how the turn ended on its root span: the reason, the counts, and an error status unless the user stopped it (D-13, D-14).</summary>
+    private static void EndTurn(Activity? turn, AnswerRun run, ToolLimits limits, string stop)
+    {
+        if (turn is null)
+        {
+            return;
+        }
+
+        turn.SetTag(AgentsTelemetry.StopReasonTag, stop);
+        turn.SetTag(AgentsTelemetry.RoundsTag, stop == AgentsTelemetry.StopRounds ? limits.MaxRounds : run.Rounds);
+        turn.SetTag(AgentsTelemetry.ToolCallsTag, run.ToolCalls);
+
+        if (stop != AgentsTelemetry.StopCompleted && stop != AgentsTelemetry.StopCancelled)
+        {
+            turn.SetStatus(ActivityStatusCode.Error, stop);
         }
     }
 

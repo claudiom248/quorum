@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
@@ -7,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using Quorum.Modules.Agents.Contracts;
+using Quorum.Modules.Agents.Telemetry;
 using Quorum.Modules.Agents.Tools;
 
 namespace Quorum.Modules.Agents.Chat;
@@ -90,6 +92,7 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
             // Calls are only collected when the answer offers tools: a model that calls a tool it was not given is ignored.
             var assembler = offersTools ? new ToolCallAssembler() : null;
             var messageId = Guid.NewGuid().ToString("N");
+            var identity = new StreamIdentity();
             var answered = false;
             var ended = false;
 
@@ -105,7 +108,7 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
                     }
                     else
                     {
-                        contents = ParseContents(items.Current.Data, assembler);
+                        contents = ParseContents(items.Current.Data, assembler, identity);
                     }
                 }
                 catch (IOException) when (cancellationToken.IsCancellationRequested)
@@ -128,8 +131,14 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
 
                 foreach (var content in contents)
                 {
+                    if (content is TextContent && !answered)
+                    {
+                        // Time to first token is an event of this model call's span (spec 016 D-8).
+                        Activity.Current?.AddEvent(new ActivityEvent(AgentsTelemetry.FirstTokenEvent));
+                    }
+
                     answered |= content is TextContent;
-                    yield return Update(content, messageId);
+                    yield return Update(content, messageId, identity);
                 }
             }
 
@@ -143,7 +152,7 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
 
             foreach (var call in calls)
             {
-                yield return Update(call, messageId);
+                yield return Update(call, messageId, identity);
             }
         }
     }
@@ -180,8 +189,8 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
         var other => JsonSerializer.Serialize(other, BodyOptions),
     };
 
-    private static ChatResponseUpdate Update(AIContent content, string messageId) =>
-        new(ChatRole.Assistant, [content]) { MessageId = messageId };
+    private static ChatResponseUpdate Update(AIContent content, string messageId, StreamIdentity identity) =>
+        new(ChatRole.Assistant, [content]) { MessageId = messageId, ModelId = identity.Model, ResponseId = identity.Id };
 
     private string BuildBody(IEnumerable<ChatMessage> messages, string? instructions, string? toolsJson)
     {
@@ -200,6 +209,8 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
         {
             ["model"] = modelName,
             ["stream"] = true,
+            // Servers send the token usage in a last chunk only when asked (spec 016 D-8).
+            ["stream_options"] = new JsonObject { ["include_usage"] = true },
             ["messages"] = wire,
         };
 
@@ -243,7 +254,7 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
         wire.Add(node);
     }
 
-    private static List<AIContent> ParseContents(string data, ToolCallAssembler? assembler)
+    private static List<AIContent> ParseContents(string data, ToolCallAssembler? assembler, StreamIdentity identity)
     {
         using var document = JsonDocument.Parse(data);
         var root = document.RootElement;
@@ -256,7 +267,22 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
             throw new ModelStreamException($"The model reported an error: {message}");
         }
 
+        identity.Model ??= root.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String ? model.GetString() : null;
+        identity.Id ??= root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null;
+
         List<AIContent> contents = [];
+
+        // The usage comes in a last chunk that has no choices, so it is read before them.
+        if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
+        {
+            contents.Add(new UsageContent(new UsageDetails
+            {
+                InputTokenCount = ReadCount(usage, "prompt_tokens"),
+                OutputTokenCount = ReadCount(usage, "completion_tokens"),
+                TotalTokenCount = ReadCount(usage, "total_tokens"),
+            }));
+        }
+
         if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
         {
             return contents;
@@ -279,6 +305,9 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
         return contents;
     }
 
+    private static long? ReadCount(JsonElement usage, string property) =>
+        usage.TryGetProperty(property, out var value) && value.TryGetInt64(out var count) ? count : null;
+
     private static void AddIfPresent(List<AIContent> contents, JsonElement delta, string property, Func<string, AIContent> create)
     {
         if (delta.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text)
@@ -297,5 +326,13 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
 
         body = body.Trim();
         return body.Length <= MaxErrorBodyLength ? body : body[..MaxErrorBodyLength] + "…";
+    }
+
+    /// <summary>The model and response identifiers the stream reported, learned from its first chunks.</summary>
+    private sealed class StreamIdentity
+    {
+        public string? Model { get; set; }
+
+        public string? Id { get; set; }
     }
 }
