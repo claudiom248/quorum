@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.0](https://github.com/claudiom248/quorum/compare/v0.15.0...v0.16.0) (2026-11-04)
+
+
+### Features
+
+* in-chat preview panel for rendered content (spec 014) ([#173](https://github.com/claudiom248/quorum/issues/173)) ([66418ae](https://github.com/claudiom248/quorum/commit/66418aeec7761984a1be4f995d7aa33aea25f7d9))
+* preview viewer as srcdoc, restyled, JSON colours, CDN allowlist (spec 014) ([#178](https://github.com/claudiom248/quorum/issues/178)) ([fb59eae](https://github.com/claudiom248/quorum/commit/fb59eaeb998229d28e6186006811be0143a18ee9))
+* vendored mermaid for preview diagrams (spec 014) ([#175](https://github.com/claudiom248/quorum/issues/175)) ([9c61664](https://github.com/claudiom248/quorum/commit/9c616645d717720cb9947f53bbe3e55ceb80974e))
+
+
+### Bug Fixes
+
+* Blazor WebAssembly 10.0.14 for advisory GHSA-g27p-qf6j-c96c ([#179](https://github.com/claudiom248/quorum/issues/179)) ([a71002f](https://github.com/claudiom248/quorum/commit/a71002f92cd260d876141b3836be4db70247c8a5))
+* lean query schema says search and sort are for lists and follows describe (spec 012) ([#180](https://github.com/claudiom248/quorum/issues/180)) ([10e5435](https://github.com/claudiom248/quorum/commit/10e5435ab0c714f8052bd4946da6d99973bcc98b))
+
 ## [0.15.0](https://github.com/claudiom248/quorum/compare/v0.14.0...v0.15.0) (2026-11-03)
 
 
