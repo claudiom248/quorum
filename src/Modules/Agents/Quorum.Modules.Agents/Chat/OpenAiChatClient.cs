@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
@@ -31,6 +32,12 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
 
     private const int MaxErrorBodyLength = 300;
 
+    // Endpoints that answered HTTP 400 to stream_options: asked once, then no more (the answer then has no token usage).
+    private static readonly ConcurrentDictionary<string, bool> UsageNotSupported = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Forgets which endpoints refused stream_options, so they are asked again; for tests that provoke the refusal.</summary>
+    internal static void ForgetUnsupportedUsage() => UsageNotSupported.Clear();
+
     // The body is not HTML: keep accents and symbols as they are instead of escaping them.
     private static readonly JsonSerializerOptions BodyOptions = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -50,28 +57,50 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
         var toolsJson = tools.Count == 0 ? null : ToolDefinitionRenderer.Render(tools);
 
         var client = httpClientFactory.CreateClient(HttpClientName);
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri($"{baseUrl.ToString().TrimEnd('/')}/chat/completions"))
+        var endpointKey = baseUrl.ToString();
+
+        async Task<HttpResponseMessage> SendAsync(bool includeUsage)
         {
-            Content = new StringContent(BuildBody(messages, options?.Instructions, toolsJson), Encoding.UTF8, "application/json"),
-        };
-        if (!string.IsNullOrEmpty(apiKey))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri($"{baseUrl.ToString().TrimEnd('/')}/chat/completions"))
+            {
+                Content = new StringContent(BuildBody(messages, options?.Instructions, toolsJson, includeUsage), Encoding.UTF8, "application/json"),
+            };
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            }
+
+            try
+            {
+                return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            catch (HttpRequestException exception)
+            {
+                throw new ModelStreamException($"Cannot reach the model at {baseUrl}: {exception.Message}", exception);
+            }
+            catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The HTTP client's timeout, not the user stopping the answer: the model never started to answer.
+                throw new ModelStreamException($"The model at {baseUrl} did not start answering in time.", exception);
+            }
         }
 
-        HttpResponseMessage response;
-        try
+        var response = await SendAsync(includeUsage: !UsageNotSupported.ContainsKey(endpointKey));
+        if (response.StatusCode == HttpStatusCode.BadRequest && !UsageNotSupported.ContainsKey(endpointKey))
         {
-            response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        }
-        catch (HttpRequestException exception)
-        {
-            throw new ModelStreamException($"Cannot reach the model at {baseUrl}: {exception.Message}", exception);
-        }
-        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            // The HTTP client's timeout, not the user stopping the answer: the model never started to answer.
-            throw new ModelStreamException($"The model at {baseUrl} did not start answering in time.", exception);
+            // A server that does not know stream_options refuses the whole request: remember it for this endpoint and ask again without.
+            var refusal = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (refusal.Contains("stream_options", StringComparison.OrdinalIgnoreCase) || refusal.Contains("include_usage", StringComparison.OrdinalIgnoreCase))
+            {
+                UsageNotSupported[endpointKey] = true;
+                response.Dispose();
+                response = await SendAsync(includeUsage: false);
+            }
+            else
+            {
+                // Not about the usage option: hand the refusal on as it was, for the error below.
+                response.Content = new StringContent(refusal, Encoding.UTF8, "application/json");
+            }
         }
 
         using (response)
@@ -192,7 +221,7 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
     private static ChatResponseUpdate Update(AIContent content, string messageId, StreamIdentity identity) =>
         new(ChatRole.Assistant, [content]) { MessageId = messageId, ModelId = identity.Model, ResponseId = identity.Id };
 
-    private string BuildBody(IEnumerable<ChatMessage> messages, string? instructions, string? toolsJson)
+    private string BuildBody(IEnumerable<ChatMessage> messages, string? instructions, string? toolsJson, bool includeUsage)
     {
         var wire = new JsonArray();
         if (!string.IsNullOrEmpty(instructions))
@@ -209,10 +238,14 @@ internal sealed class OpenAiChatClient(IHttpClientFactory httpClientFactory, Uri
         {
             ["model"] = modelName,
             ["stream"] = true,
-            // Servers send the token usage in a last chunk only when asked (spec 016 D-8).
-            ["stream_options"] = new JsonObject { ["include_usage"] = true },
             ["messages"] = wire,
         };
+
+        // Servers send the token usage in a last chunk only when asked (spec 016 D-8); some refuse the option, see UsageNotSupported.
+        if (includeUsage)
+        {
+            body["stream_options"] = new JsonObject { ["include_usage"] = true };
+        }
 
         if (toolsJson is not null)
         {

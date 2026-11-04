@@ -147,6 +147,14 @@ public sealed class FakeModelServer : HttpMessageHandler
                     };
                 }
 
+                if (script.RejectsStreamOptions && chatRequest.TryGetProperty("stream_options", out _))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                    {
+                        Content = new StringContent("{\"error\":{\"message\":\"Unknown parameter: stream_options\"}}", Encoding.UTF8, "application/json"),
+                    };
+                }
+
                 if (script.HttpErrorStatus is { } status)
                 {
                     return new HttpResponseMessage((HttpStatusCode)status)
@@ -241,6 +249,9 @@ public sealed class FakeModelServer : HttpMessageHandler
 
         /// <summary>When set, a request carrying <c>tools</c> is refused with HTTP 400, as models without tool support do.</summary>
         public bool RejectsTools { get; init; }
+
+        /// <summary>When set, a request carrying <c>stream_options</c> is refused with HTTP 400, as servers that do not know the option do (spec 016 D-8).</summary>
+        public bool RejectsStreamOptions { get; init; }
 
         public static ChatScript Reply(params string[] chunks) => new(chunks, TimeSpan.Zero, null);
 

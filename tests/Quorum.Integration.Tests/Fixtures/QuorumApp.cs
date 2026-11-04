@@ -43,8 +43,9 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     private readonly bool _telemetry;
     private readonly bool _adminRequests;
     private readonly string? _traceUrlTemplate;
+    private readonly bool _captureContent;
 
-    private QuorumApp(string connectionString, string dataProtectionKeysPath, FakeTimeProvider? clock, bool telemetry, bool adminRequests, string? traceUrlTemplate)
+    private QuorumApp(string connectionString, string dataProtectionKeysPath, FakeTimeProvider? clock, bool telemetry, bool adminRequests, string? traceUrlTemplate, bool captureContent)
     {
         _connectionString = connectionString;
         _dataProtectionKeysPath = dataProtectionKeysPath;
@@ -52,6 +53,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         _telemetry = telemetry;
         _adminRequests = adminRequests;
         _traceUrlTemplate = traceUrlTemplate;
+        _captureContent = captureContent;
     }
 
     public LogCapture Logs { get; } = new();
@@ -93,7 +95,8 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         FakeTimeProvider? clock = null,
         bool telemetry = false,
         bool adminRequests = false,
-        string? traceUrlTemplate = null)
+        string? traceUrlTemplate = null,
+        bool captureContent = false)
     {
         var app = new QuorumApp(
             connectionString,
@@ -101,14 +104,15 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             clock,
             telemetry,
             adminRequests,
-            traceUrlTemplate);
+            traceUrlTemplate,
+            captureContent);
         _ = app.Server;
         return app;
     }
 
     /// <summary>Starts on a new database; <paramref name="telemetry"/> turns the in-memory span exporter on (spec 016 D-23).</summary>
-    public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres, FakeTimeProvider? clock = null, bool telemetry = false, bool adminRequests = false, string? traceUrlTemplate = null) =>
-        Start(await postgres.CreateDatabaseAsync(), clock: clock, telemetry: telemetry, adminRequests: adminRequests, traceUrlTemplate: traceUrlTemplate);
+    public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres, FakeTimeProvider? clock = null, bool telemetry = false, bool adminRequests = false, string? traceUrlTemplate = null, bool captureContent = false) =>
+        Start(await postgres.CreateDatabaseAsync(), clock: clock, telemetry: telemetry, adminRequests: adminRequests, traceUrlTemplate: traceUrlTemplate, captureContent: captureContent);
 
     /// <summary>
     /// Brings the fakes and the in-memory caches back to how they were right after the setup; the database is restored apart (<see cref="DatabaseSnapshot"/>).
@@ -230,6 +234,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             // A collector that is not there: the export fails and the app must carry on (spec 016 D-19).
             builder.UseSetting("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9");
             builder.UseSetting("Quorum:Telemetry:AdminRequests", _adminRequests ? "true" : "false");
+            builder.UseSetting("Quorum:Telemetry:CaptureContent", _captureContent ? "true" : "false");
         }
 
         if (_traceUrlTemplate is not null)
