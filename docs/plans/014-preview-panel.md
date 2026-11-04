@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/014-preview-panel.md` (Approved 2026-11-03)
 **Architecture:** Modular Monolith; this spec is client-only (`Quorum.Web.Client`) plus one static-file response-header rule in the Host. No module, endpoint, entity or migration is touched.
 **Mode:** tests per acceptance criterion where they can run (bUnit for components, pure C# for the render rules, Host integration for the served policy and assets); the isolation criteria (AC-21 to AC-27) are verified with a recorded browser check, as the spec's deferred decision on Playwright prescribes.
-**Status:** Draft
+**Status:** Implemented (PRs #173, #175)
 **Affected:** `Quorum.Web.Client` (`MarkdownRenderer`, `Pages/Chat.razor`, new `Components/PreviewPanel.razor` and preview state classes, `wwwroot/preview.js`, `wwwroot/preview/**`, `wwwroot/css/app.css`, `wwwroot/index.html`), `Quorum.Host` (`Infrastructure/PreviewSecurityHeaders.cs`, `Program.cs` wiring), `scripts/`, `tests/Quorum.Integration.Tests` (`Web/`, `Host/`), `docs/checks/`.
 
 ## Decisions
