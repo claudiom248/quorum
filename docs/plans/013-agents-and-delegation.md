@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/013-agents-and-delegation.md` (Approved 2026-11-03, amended the same day while planning)
 **Architecture:** Modular Monolith; Vertical Slice inside each module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Draft
+**Status:** Implemented (2026-11-04)
 **Affected:** Agents (Domain, Persistence, Chat, Tools, Features, Provisioning, Contracts), Conversations (Streaming), `Quorum.Web.Client` (Settings, Chat, scope forms), `tests/Quorum.Integration.Tests`, `docs/database-schema.md`.
 
 ## Decisions
