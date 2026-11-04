@@ -1,5 +1,6 @@
 using Quorum.Host.Infrastructure;
 using Quorum.Host.Infrastructure.Database;
+using Quorum.Host.Infrastructure.Telemetry;
 using Quorum.Modules.Agents;
 using Quorum.Modules.Conversations;
 using Quorum.Modules.KnowledgeBases;
@@ -13,7 +14,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSerilog((services, logger) => logger
     .ReadFrom.Configuration(builder.Configuration)
     .ReadFrom.Services(services)
-    .Enrich.FromLogContext());
+    .Enrich.FromLogContext()
+    .WriteOpenTelemetryLogs(builder.Configuration));
+builder.AddQuorumTelemetry();
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();

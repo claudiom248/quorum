@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using OpenTelemetry.Trace;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Embeddings;
 using Quorum.Modules.Agents.Probing;
@@ -38,14 +40,22 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     private readonly string _connectionString;
     private readonly string _dataProtectionKeysPath;
 
-    private QuorumApp(string connectionString, string dataProtectionKeysPath, FakeTimeProvider? clock)
+    private readonly bool _telemetry;
+    private readonly bool _adminRequests;
+
+    private QuorumApp(string connectionString, string dataProtectionKeysPath, FakeTimeProvider? clock, bool telemetry, bool adminRequests)
     {
         _connectionString = connectionString;
         _dataProtectionKeysPath = dataProtectionKeysPath;
         Clock = clock;
+        _telemetry = telemetry;
+        _adminRequests = adminRequests;
     }
 
     public LogCapture Logs { get; } = new();
+
+    /// <summary>The spans this app ended, when it was started with telemetry (spec 016 D-23). Empty otherwise.</summary>
+    public SpanCollection Spans { get; } = new();
 
     public FakeModelServer ModelServer { get; } = new();
 
@@ -75,18 +85,26 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
     /// <summary>Holds the calls to Qdrant: tests set <see cref="QdrantGate.Hold"/>.</summary>
     internal QdrantGate Qdrant { get; } = new();
 
-    public static QuorumApp Start(string connectionString, string? dataProtectionKeysPath = null, FakeTimeProvider? clock = null)
+    public static QuorumApp Start(
+        string connectionString,
+        string? dataProtectionKeysPath = null,
+        FakeTimeProvider? clock = null,
+        bool telemetry = false,
+        bool adminRequests = false)
     {
         var app = new QuorumApp(
             connectionString,
             dataProtectionKeysPath ?? Path.Combine(Path.GetTempPath(), "quorum-tests", Guid.NewGuid().ToString("N")),
-            clock);
+            clock,
+            telemetry,
+            adminRequests);
         _ = app.Server;
         return app;
     }
 
-    public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres, FakeTimeProvider? clock = null) =>
-        Start(await postgres.CreateDatabaseAsync(), clock: clock);
+    /// <summary>Starts on a new database; <paramref name="telemetry"/> turns the in-memory span exporter on (spec 016 D-23).</summary>
+    public static async Task<QuorumApp> StartOnNewDatabaseAsync(PostgresFixture postgres, FakeTimeProvider? clock = null, bool telemetry = false, bool adminRequests = false) =>
+        Start(await postgres.CreateDatabaseAsync(), clock: clock, telemetry: telemetry, adminRequests: adminRequests);
 
     /// <summary>
     /// Brings the fakes and the in-memory caches back to how they were right after the setup; the database is restored apart (<see cref="DatabaseSnapshot"/>).
@@ -100,6 +118,7 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         Searxng.Reset();
         WebFetch.Reset();
         Qdrant.Reset();
+        Spans.Clear();
         if (Services.GetService<IMemoryCache>() is MemoryCache memory)
         {
             memory.Clear();
@@ -202,6 +221,12 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         builder.UseStaticWebAssets();
         builder.UseSetting("ConnectionStrings:Platform", _connectionString);
         builder.UseSetting("DataProtection:KeysPath", _dataProtectionKeysPath);
+        if (_telemetry)
+        {
+            // A collector that is not there: the export fails and the app must carry on (spec 016 D-19).
+            builder.UseSetting("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9");
+            builder.UseSetting("Quorum:Telemetry:AdminRequests", _adminRequests ? "true" : "false");
+        }
 
         builder.ConfigureTestServices(services =>
         {
@@ -231,6 +256,11 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
             services.AddHttpClient(SearxngProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Searxng);
             // The site a web fetch reads is the fake above: no test reaches a real web page (spec 006).
             services.AddHttpClient(HttpWebFetchProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => WebFetch);
+            if (_telemetry)
+            {
+                services.ConfigureOpenTelemetryTracerProvider(tracing => tracing.AddInMemoryExporter(Spans));
+            }
+
             if (Clock is not null)
             {
                 services.AddSingleton<TimeProvider>(Clock);
