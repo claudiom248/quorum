@@ -4,6 +4,7 @@ using System.Text;
 using Quorum.Integration.Tests.Attachments;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
+using Quorum.Modules.Agents.Telemetry;
 using Quorum.Modules.Conversations.Telemetry;
 using Quorum.Modules.KnowledgeBases.Telemetry;
 
@@ -43,6 +44,26 @@ public sealed class PipelineSpanTests(PostgresFixture postgres)
         var warmup = await WaitForSpanAsync(app, s => s.OperationName == KnowledgeBasesTelemetry.LookupWarmupActivityName);
         Assert.Null(warmup.Parent);
         Assert.Equal<object?>(0, warmup.GetTagItem(KnowledgeBasesTelemetry.LookupListsTag));
+    }
+
+    [Fact] // spec 016 D-8, D-9: the SQL text and the connection details stay in the installation
+    public async Task NoDatabaseSpanCarriesSqlTextOrConnectionDetails()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: true);
+        using var client = await app.SetUpAsync(toolsActive: false);
+        app.Spans.Clear();
+        var conversation = await ChatApi.CreateConversationAsync(client);
+
+        await ChatApi.SendAsync(client, conversation, "Hello");
+
+        await WaitForSpanAsync(app, s => s.OperationName == AgentsTelemetry.TurnActivityName);
+        var database = app.Spans.Snapshot().Where(s => s.Source.Name == "Npgsql").ToList();
+        Assert.NotEmpty(database);
+        Assert.All(database, span =>
+        {
+            Assert.Null(span.GetTagItem("db.query.text"));
+            Assert.Null(span.GetTagItem("db.npgsql.data_source"));
+        });
     }
 
     private static async Task<Activity> WaitForSpanAsync(QuorumApp app, Func<Activity, bool> match)

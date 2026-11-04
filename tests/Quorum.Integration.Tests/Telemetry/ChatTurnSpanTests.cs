@@ -5,6 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.Tools;
+using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Telemetry;
 using Quorum.Shared.Telemetry;
@@ -178,6 +179,30 @@ public sealed class ChatTurnSpanTests(PostgresFixture postgres)
         var turn = await WaitForSpanAsync(app, s => IsTurn(s) && s.GetTagItem(AgentsTelemetry.StopReasonTag) is not null);
         Assert.Equal(AgentsTelemetry.StopCancelled, turn.GetTagItem(AgentsTelemetry.StopReasonTag));
         Assert.NotEqual(ActivityStatusCode.Error, turn.Status);
+    }
+
+    [Fact] // spec 016 D-8: a server that does not know stream_options is asked again without it
+    public async Task AServerThatRefusesStreamOptionsIsAskedAgainWithoutThem()
+    {
+        try
+        {
+            await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: true);
+            using var client = await app.SetUpAsync(toolsActive: false);
+            app.ModelServer.EnqueueRounds(ChatScript.Reply("refused") with { RejectsStreamOptions = true }, ChatScript.Reply("Fine."));
+            var conversation = await ChatApi.CreateConversationAsync(client);
+
+            var events = await ChatApi.SendAsync(client, conversation, "Hello");
+
+            Assert.Equal("Completed", events[^1].Data.GetProperty("status").GetString());
+            var requests = app.ModelServer.ChatRequests;
+            Assert.Equal(2, requests.Count);
+            Assert.True(requests[0].TryGetProperty("stream_options", out _));
+            Assert.False(requests[1].TryGetProperty("stream_options", out _));
+        }
+        finally
+        {
+            OpenAiChatClient.ForgetUnsupportedUsage();
+        }
     }
 
     private static bool IsTurn(Activity span) => span.OperationName == AgentsTelemetry.TurnActivityName;

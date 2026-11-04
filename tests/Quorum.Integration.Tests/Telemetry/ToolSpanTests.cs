@@ -5,6 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.Tools;
+using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Telemetry;
 using Quorum.Shared.Telemetry;
 using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
@@ -150,6 +151,61 @@ public sealed class ToolSpanTests(PostgresFixture postgres)
         _ = app.Server;
 
         Assert.DoesNotContain(app.Logs.Messages, m => m.Contains("TraceUrlTemplate", StringComparison.Ordinal));
+    }
+
+    [Fact] // AC-7
+    public async Task WithContentCaptureOnToolArgumentsAndResultsAreRedactedOnTheSpans()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: true, captureContent: true);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.AddProbeAsync(app);
+        app.Spans.Clear();
+        app.Probe.Handler = (_, _) => Task.FromResult("{\"api_key\":\"resultsecret999\",\"note\":\"fine\"}");
+        app.ModelServer.EnqueueRounds(
+            ChatScript.CallTools(new FakeToolCall("probe", "{\"text\":\"hello\",\"token\":\"argsecret123\"}", "call_1")),
+            ChatScript.Reply("Done."));
+        var conversation = await ChatApi.CreateConversationAsync(client);
+
+        await ChatApi.SendAsync(client, conversation, "Go");
+
+        await WaitForSpanAsync(app, s => s.OperationName == AgentsTelemetry.TurnActivityName);
+        var tool = await WaitForSpanAsync(app, s => s.OperationName.StartsWith("execute_tool", StringComparison.Ordinal));
+        Assert.Equal("Succeeded", tool.GetTagItem(AgentsTelemetry.ToolOutcomeTag));
+        Assert.Contains("[redacted]", tool.GetTagItem("gen_ai.tool.call.arguments")?.ToString(), StringComparison.Ordinal);
+
+        // Nowhere on any span, the arguments and the result of the tool, nor the history that carries them again.
+        foreach (var span in app.Spans.Snapshot())
+        {
+            foreach (var tag in span.TagObjects)
+            {
+                var value = tag.Value?.ToString() ?? string.Empty;
+                Assert.DoesNotContain("argsecret123", value, StringComparison.Ordinal);
+                Assert.DoesNotContain("resultsecret999", value, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact] // AC-14
+    public async Task TheWaitForAConfirmationIsAChildSpanOfTheToolCallWithItsDecision()
+    {
+        await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: true);
+        using var client = await app.SetUpAsync();
+        await ToolFixtures.AddProbeAsync(app, ToolPolicy.Confirm);
+        app.Spans.Clear();
+        app.ModelServer.EnqueueRounds(
+            ChatScript.CallTools(new FakeToolCall("probe", "{\"text\":\"danger\"}", "call_1")),
+            ChatScript.Reply("Finished."));
+        var conversation = await ChatApi.CreateConversationAsync(client);
+        await using var answer = await LiveAnswer.StartAsync(client, conversation, "Go");
+        var callId = Guid.Parse((await answer.UntilAsync("tool_call")).Data.GetProperty("callId").GetString()!);
+
+        using var decision = await ChatApi.DecideAsync(client, conversation, callId, approved: true);
+        await answer.FinishAsync();
+
+        var tool = await WaitForSpanAsync(app, s => s.OperationName.StartsWith("execute_tool", StringComparison.Ordinal));
+        var confirmation = await WaitForSpanAsync(app, s => s.OperationName == AgentsTelemetry.ConfirmationActivityName);
+        Assert.Equal("approved", confirmation.GetTagItem(AgentsTelemetry.ConfirmationDecisionTag));
+        Assert.Equal(tool.Id, confirmation.Parent?.Id);
     }
 
     private static FakeToolCall Calculate(string expression, string id = "call_1") =>
