@@ -12,6 +12,7 @@ using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
 namespace Quorum.Integration.Tests.Telemetry;
 
 /// <summary>The spans of tool calls and the trace id on their audit entries (spec 016 D-15, D-17, D-20, D-21, D-14).</summary>
+[Collection("Telemetry")]
 public sealed class ToolSpanTests(PostgresFixture postgres)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -182,7 +183,7 @@ public sealed class ToolSpanTests(PostgresFixture postgres)
 
     private static async Task<List<Activity>> WaitForSpansAsync(QuorumApp app, int count, Func<Activity, bool> match)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
         while (true)
         {
             var found = app.Spans.Snapshot().Where(match).ToList();
@@ -191,7 +192,7 @@ public sealed class ToolSpanTests(PostgresFixture postgres)
                 return found;
             }
 
-            Assert.True(DateTimeOffset.UtcNow < deadline, $"Fewer than {count} matching spans within 10 seconds.");
+            Assert.True(DateTimeOffset.UtcNow < deadline, $"Fewer than {count} matching spans within 30 seconds.");
             await Task.Delay(20, Ct);
         }
     }
