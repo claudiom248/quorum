@@ -18,7 +18,9 @@ public sealed class PreviewAssetTests
     [InlineData("lib/json-formatter-js/json-formatter.umd.js")]
     [InlineData("lib/json-formatter-js/json-formatter.css")]
     [InlineData("lib/json-formatter-js/LICENSE")]
-    public void TheViewerAndTheVendoredLibraryShipInTheRepository(string relative) =>
+    [InlineData("lib/mermaid/mermaid.min.js")]
+    [InlineData("lib/mermaid/LICENSE")]
+    public void TheViewerAndTheVendoredLibrariesShipInTheRepository(string relative) =>
         Assert.True(File.Exists(Path.Combine(PreviewRoot, relative)), $"wwwroot/preview/{relative} is missing.");
 
     [Fact]
@@ -27,17 +29,36 @@ public sealed class PreviewAssetTests
         var note = File.ReadAllText(Path.Combine(PreviewRoot, "lib", "VENDORED.md"));
 
         Assert.Contains("json-formatter-js 2.5.23", note, StringComparison.Ordinal);
+        Assert.Contains("mermaid 12.3.0", note, StringComparison.Ordinal);
         Assert.Contains("MIT", note, StringComparison.Ordinal);
         Assert.Contains("vendor-preview-libs.ps1", note, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(RepoRoot(), "scripts", "vendor-preview-libs.ps1")),
             "The download script that keeps the vendored files reproducible is not committed.");
 
-        foreach (var file in new[] { "json-formatter.umd.js", "json-formatter.css", "LICENSE" })
+        foreach (var (library, file) in new[]
+                 {
+                     ("json-formatter-js", "json-formatter.umd.js"),
+                     ("json-formatter-js", "json-formatter.css"),
+                     ("json-formatter-js", "LICENSE"),
+                     ("mermaid", "mermaid.min.js"),
+                     ("mermaid", "LICENSE"),
+                 })
         {
             var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(
-                Path.Combine(PreviewRoot, "lib", "json-formatter-js", file)))).ToLowerInvariant();
+                Path.Combine(PreviewRoot, "lib", library, file)))).ToLowerInvariant();
             Assert.Contains(hash, note, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void TheViewerLoadsTheLibrariesFromWhereTheyAreVendored()
+    {
+        var viewer = File.ReadAllText(Path.Combine(PreviewRoot, "viewer.js"));
+
+        // AC-17/AC-35: mermaid is loaded on the first Mermaid render only, from the vendored path.
+        Assert.Contains("lib/mermaid/mermaid.min.js", viewer, StringComparison.Ordinal);
+        Assert.Contains("lib/json-formatter-js/json-formatter.umd.js", viewer, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(PreviewRoot, "lib", "mermaid", "mermaid.min.js")));
     }
 
     [Fact]
