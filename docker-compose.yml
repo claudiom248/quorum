@@ -133,9 +133,14 @@ services:
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      # Not "required" with ":?": compose checks the required variables of every service, also of profiles that are off, and that would
+      # stop every start without GRAFANA_ADMIN_PASSWORD in .env. Without it Grafana keeps its default password: set it in .env.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      # The image's own start script turns anonymous admin access on and overrides any variable; this copy leaves it off.
+      - ./deploy/observability/run-grafana.sh:/otel-lgtm/run-grafana.sh:ro
 
 volumes:
   quorum-keys:

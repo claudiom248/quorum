@@ -19,9 +19,10 @@ Then start the stack:
 docker compose up -d --build
 ```
 
-Grafana (Tempo for the traces, Loki for the logs) is at `http://127.0.0.1:3000`. Open Explore, choose Tempo, and search for
-`quorum.chat_turn`. The audit log of tool calls can link each call to its trace when you set `QUORUM_TRACE_URL_TEMPLATE`
-(see below).
+Grafana (Tempo for the traces, Loki for the logs) is at `http://127.0.0.1:3000`. Sign in as `GRAFANA_ADMIN_USER` (default `admin`)
+with `GRAFANA_ADMIN_PASSWORD`; without that variable the password is `admin`, so set it. Anonymous access is off. Open Explore,
+choose Tempo, and search for `quorum.chat_turn`. The audit log of tool calls can link each call to its trace when you set
+`QUORUM_TRACE_URL_TEMPLATE` (see below).
 
 The collector runs in the compose network. No OTLP port is published, and the interfaces listen on `127.0.0.1` only. For access from
 other machines, use a reverse proxy with TLS.
