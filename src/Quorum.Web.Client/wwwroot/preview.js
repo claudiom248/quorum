@@ -13,8 +13,11 @@ window.quorumPreview = (() => {
     // address by browsers with local network access protection, so the document is built here from the files under
     // preview/ and given to the frame as srcdoc. The viewer's policy is permissive on purpose: a nested frame inherits
     // it, and the nested frame's own policy (spec 014, D-9) decides its scripts and images.
-    const viewerPolicy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; " +
-        "font-src data:; form-action 'none'; base-uri 'none'; frame-src about:";
+    // The viewer's policy must allow what the frame may load: the frame inherits it, so the CDNs are listed here too (D-18).
+    const cdns = "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com " +
+        "https://fonts.googleapis.com https://fonts.gstatic.com";
+    const viewerPolicy = "default-src 'none'; script-src 'unsafe-inline' " + cdns + "; style-src 'unsafe-inline' " + cdns + "; " +
+        "img-src data: " + cdns + "; font-src data: " + cdns + "; form-action 'none'; base-uri 'none'; frame-src about:";
 
     // The libraries each kind needs, fetched only when a block of that kind is previewed (AC-35, AC-17).
     const kindAssets = {
@@ -60,7 +63,7 @@ window.quorumPreview = (() => {
             "<!doctype html>",
             '<html lang="en"><head><meta charset="utf-8"><title>Quorum preview viewer</title>',
             `<meta http-equiv="Content-Security-Policy" content="${viewerPolicy}">`,
-            `<style>${css}${styles.join("\n")}</style>`,
+            `<style>${styles.join("\n")}${css}</style>`,
             '</head><body><div id="root"></div>',
             ...scripts.map((text) => `<script>${text}</script>`),
             `<script>${script}</script>`,

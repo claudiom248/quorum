@@ -157,18 +157,18 @@ public sealed class PreviewPanelTests : BunitContext
     {
         var panel = Open(Html());
 
-        TurnOn(panel, "Load remote images");
-        WaitConsentDialog("Load this block's remote images?");
+        TurnOn(panel, "Load remote resources");
+        WaitConsentDialog("Load this block's remote resources?");
 
         _dialogs.FindComponent<MudCheckBox<bool>>().Find("input").Change(true);
         ClickButton(_dialogs, "Turn on");
 
-        var key = PreviewConsent.StorageKey(User, PreviewConsentSwitch.RemoteImages);
+        var key = PreviewConsent.StorageKey(User, PreviewConsentSwitch.RemoteResources);
         Assert.Contains(JSInterop.Invocations, call =>
             call.Identifier == "quorumPreview.storageSet" &&
             Equals(call.Arguments[0], key) &&
             Equals(call.Arguments[1], "1"));
-        panel.WaitForAssertion(() => Assert.Contains("\"loadRemoteImages\":true", LastRenderPayload(), StringComparison.Ordinal));
+        panel.WaitForAssertion(() => Assert.Contains("\"loadRemoteResources\":true", LastRenderPayload(), StringComparison.Ordinal));
     }
 
     [Fact]

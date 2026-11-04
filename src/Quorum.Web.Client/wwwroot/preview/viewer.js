@@ -34,12 +34,17 @@
     };
 
     // ---- HTML (D-9): a nested frame, srcdoc, no scripts and no network unless the person consented (D-17, D-18).
+    // With the consent to remote resources (D-18), styles, fonts and scripts may come from these five CDNs over HTTPS
+    // only, and scripts also need the consent to run them. Any other host stays blocked.
+    const cdns = "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com " +
+        "https://fonts.googleapis.com https://fonts.gstatic.com";
+
     const framePolicy = (options) => [
         "default-src 'none'",
-        options.runScripts ? "script-src 'unsafe-inline'" : "",
-        "style-src 'unsafe-inline'",
-        "img-src data:" + (options.loadRemoteImages ? " https:" : ""),
-        "font-src data:",
+        options.runScripts ? "script-src 'unsafe-inline'" + (options.loadRemoteResources ? " " + cdns : "") : "",
+        "style-src 'unsafe-inline'" + (options.loadRemoteResources ? " " + cdns : ""),
+        "img-src data:" + (options.loadRemoteResources ? " " + cdns : ""),
+        "font-src data:" + (options.loadRemoteResources ? " " + cdns : ""),
         "form-action 'none'",
         "base-uri 'none'",
     ].filter(Boolean).join("; ");
@@ -96,7 +101,14 @@
         }
 
         const formatter = new window.JSONFormatter(parsed, 1, { hoverPreviewEnabled: false });
-        root.appendChild(formatter.render());
+        const rendered = formatter.render();
+        // A string that looks like a URL comes back as a link; the viewer shows it as text (AC-14, D-11).
+        for (const anchor of rendered.querySelectorAll("a[href]")) {
+            anchor.removeAttribute("href");
+            anchor.classList.remove("json-formatter-url");
+        }
+
+        root.appendChild(rendered);
     };
 
     // ---- CSV (D-12): RFC 4180, delimiter guessed from the first line, cells as text only.
