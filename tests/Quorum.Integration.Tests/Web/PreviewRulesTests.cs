@@ -58,7 +58,7 @@ public sealed class PreviewConsentTests
     public void TheKeysAreScopedToTheUserAndToTheSwitch()
     {
         Assert.Equal("quorum.preview.a@b.test.runScripts.dontAsk", PreviewConsent.StorageKey("a@b.test", PreviewConsentSwitch.RunScripts));
-        Assert.Equal("quorum.preview.a@b.test.remoteImages.dontAsk", PreviewConsent.StorageKey("a@b.test", PreviewConsentSwitch.RemoteImages));
+        Assert.Equal("quorum.preview.a@b.test.remoteResources.dontAsk", PreviewConsent.StorageKey("a@b.test", PreviewConsentSwitch.RemoteResources));
         Assert.Equal("quorum.preview.a@b.test.width", PreviewConsent.WidthKey("a@b.test"));
     }
 }

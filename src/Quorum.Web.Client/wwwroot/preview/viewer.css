@@ -1,0 +1,102 @@
+/* The viewer's own styles (spec 014). The host embeds this file in the viewer document after the libraries' styles, so
+   these rules win over json-formatter-js' defaults. Colours come from the host's theme (D-14) or from the two blocks below. */
+
+:root {
+    --pv-background: #ffffff;
+    --pv-surface: #ffffff;
+    --pv-text: #1a1a1a;
+    --pv-text-secondary: #5c5c5c;
+    --pv-lines: #e3e3e3;
+    --pv-hover: rgba(0, 0, 0, 0.04);
+    --pv-primary: #594ae2;
+    --pv-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    --pv-json-string: #0b7a4b;
+    --pv-json-number: #2060c0;
+    --pv-json-boolean: #b5552a;
+    --pv-json-null: #8a8a8a;
+    --pv-json-key: #4b3fa0;
+    --pv-json-bracket: #6b6b6b;
+}
+
+body[data-theme="dark"] {
+    --pv-hover: rgba(255, 255, 255, 0.06);
+    --pv-lines: #33332f;
+    --pv-json-string: #8fd3a8;
+    --pv-json-number: #8db8ff;
+    --pv-json-boolean: #ffb88a;
+    --pv-json-null: #9b9b9b;
+    --pv-json-key: #cfc3ff;
+    --pv-json-bracket: #9a9a9a;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--pv-background);
+    color: var(--pv-text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body { padding: .5rem; }
+
+.pv-notice { color: var(--pv-text-secondary); padding: .5rem; }
+
+/* The HTML block renders in a nested sandboxed frame on a white canvas, whatever the theme (D-9, D-21). */
+.pv-html { border: 0; width: 100%; height: calc(100vh - 1rem); background: #fff; display: block; }
+
+.pv-svg { max-width: 100%; background: #fff; }
+
+.pv-csv-scroll { overflow: auto; max-height: calc(100vh - 1rem); }
+
+/* CSV: hairline rows, a sticky header under a rule, a soft hover (D-12). */
+table.pv-csv { border-collapse: collapse; font-size: 13px; width: 100%; }
+
+table.pv-csv th,
+table.pv-csv td {
+    padding: 6px 10px;
+    text-align: left;
+    white-space: pre;
+    border-bottom: 1px solid var(--pv-lines);
+}
+
+table.pv-csv th {
+    position: sticky;
+    top: 0;
+    background: var(--pv-surface);
+    font-weight: 500;
+    color: var(--pv-text-secondary);
+    border-bottom: 1px solid var(--pv-text-secondary);
+}
+
+table.pv-csv tr:hover td { background: var(--pv-hover); }
+
+/* JSON: monospace rows and token colours for both themes (D-11, D-14). The rules repeat the library's selector so
+   that they win on specificity as well as on order. */
+.json-formatter-row {
+    font-family: var(--pv-mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--pv-text);
+}
+
+.json-formatter-row .json-formatter-string,
+.json-formatter-row .json-formatter-stringifiable { color: var(--pv-json-string); }
+
+.json-formatter-row .json-formatter-number { color: var(--pv-json-number); }
+
+.json-formatter-row .json-formatter-boolean { color: var(--pv-json-boolean); }
+
+.json-formatter-row .json-formatter-null,
+.json-formatter-row .json-formatter-undefined { color: var(--pv-json-null); font-style: italic; }
+
+.json-formatter-row .json-formatter-key { color: var(--pv-json-key); }
+
+.json-formatter-row .json-formatter-bracket { color: var(--pv-json-bracket); }
+
+.json-formatter-row .json-formatter-toggler { color: var(--pv-json-bracket); }
+
+.json-formatter-row .json-formatter-date { background: none; }
+
+.pv-mermaid { display: flex; justify-content: center; padding: .5rem 0; }
+
+.pv-mermaid svg { max-width: 100%; height: auto; }

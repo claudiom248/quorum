@@ -19,7 +19,6 @@ internal static partial class StaticAssetCaching
         OnPrepareResponse = context =>
         {
             Apply(context);
-            PreviewSecurityHeaders.Apply(context);
         },
     };
 

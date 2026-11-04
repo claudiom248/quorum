@@ -9,6 +9,68 @@ window.quorumPreview = (() => {
     // D-20: between 320 px and 70% of the window.
     const clampWidth = (width) => Math.min(Math.max(width, 320), Math.round(window.innerWidth * 0.7));
 
+    // The viewer document (D-6, D-7, D-15). A sandboxed frame without an origin is blocked from loading the app's own
+    // address by browsers with local network access protection, so the document is built here from the files under
+    // preview/ and given to the frame as srcdoc. The viewer's policy is permissive on purpose: a nested frame inherits
+    // it, and the nested frame's own policy (spec 014, D-9) decides its scripts and images.
+    // The viewer's policy must allow what the frame may load: the frame inherits it, so the CDNs are listed here too (D-18).
+    const cdns = "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com " +
+        "https://fonts.googleapis.com https://fonts.gstatic.com";
+    const viewerPolicy = "default-src 'none'; script-src 'unsafe-inline' " + cdns + "; style-src 'unsafe-inline' " + cdns + "; " +
+        "img-src data: " + cdns + "; font-src data: " + cdns + "; form-action 'none'; base-uri 'none'; frame-src about:";
+
+    // The libraries each kind needs, fetched only when a block of that kind is previewed (AC-35, AC-17).
+    const kindAssets = {
+        json: { styles: ["preview/lib/json-formatter-js/json-formatter.css"], scripts: ["preview/lib/json-formatter-js/json-formatter.umd.js"] },
+        mermaid: { styles: [], scripts: ["preview/lib/mermaid/mermaid.min.js"] },
+    };
+
+    const texts = new Map();
+    const fetchText = (path) => {
+        let text = texts.get(path);
+        if (!text) {
+            text = fetch(path).then((response) => {
+                if (!response.ok) {
+                    throw new Error(`${path} answered ${response.status}`);
+                }
+
+                return response.text();
+            });
+            texts.set(path, text);
+            text.catch(() => texts.delete(path)); // a Retry may fetch it again
+        }
+
+        return text;
+    };
+
+    const buildViewer = async (kind) => {
+        const assets = kindAssets[kind] ?? { styles: [], scripts: [] };
+        const [css, script, styles, scripts] = await Promise.all([
+            fetchText("preview/viewer.css"),
+            fetchText("preview/viewer.js"),
+            Promise.all(assets.styles.map(fetchText)),
+            Promise.all(assets.scripts.map(fetchText)),
+        ]);
+
+        // Embedded text must not close its own element; the vendored files are checked for it here.
+        for (const text of [...scripts, script]) {
+            if (/<\/?script/i.test(text)) {
+                throw new Error("A vendored library contains a script tag and cannot be embedded.");
+            }
+        }
+
+        return [
+            "<!doctype html>",
+            '<html lang="en"><head><meta charset="utf-8"><title>Quorum preview viewer</title>',
+            `<meta http-equiv="Content-Security-Policy" content="${viewerPolicy}">`,
+            `<style>${styles.join("\n")}${css}</style>`,
+            '</head><body><div id="root"></div>',
+            ...scripts.map((text) => `<script>${text}</script>`),
+            `<script>${script}</script>`,
+            "</body></html>",
+        ].join("\n");
+    };
+
     return {
         // One delegated handler for every Preview button of the message list (D-23): the block's text is read from
         // the DOM node, never from an attribute.
@@ -99,6 +161,24 @@ window.quorumPreview = (() => {
             } else {
                 state.queued.push(message);
             }
+        },
+
+        // Builds the viewer document for the kind and gives it to the frame (the frame's messages are handled by
+        // attachViewer). A file that does not load is the library failure of D-19.
+        loadViewer: (iframe, kind, dotNetRef) => {
+            buildViewer(kind).then(
+                (html) => {
+                    iframe.srcdoc = html;
+                },
+                (error) => {
+                    const state = viewers.get(iframe);
+                    if (state) {
+                        state.failed = true;
+                        window.clearTimeout(state.timer);
+                    }
+
+                    dotNetRef.invokeMethodAsync("OnPreviewError", "library", error?.message ?? String(error));
+                });
         },
 
         copyText: async (text) => {

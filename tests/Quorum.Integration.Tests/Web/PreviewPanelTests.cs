@@ -61,8 +61,10 @@ public sealed class PreviewPanelTests : BunitContext
         var panel = Open(Json());
 
         var frame = panel.Find("iframe.preview-frame");
-        Assert.Equal("preview/viewer.html", frame.GetAttribute("src"));
-        Assert.Equal("allow-scripts", frame.GetAttribute("sandbox"));
+        // The viewer document arrives as srcdoc, built by the host (spec 014, D-6): no URL of the app is loaded.
+        Assert.Null(frame.GetAttribute("src"));
+        // Popups are allowed so that links open in a new tab (spec 014, D-10); the frame still has no same-origin.
+        Assert.Equal("allow-scripts allow-popups allow-popups-to-escape-sandbox", frame.GetAttribute("sandbox"));
         Assert.Contains("JSON", frame.GetAttribute("title"), StringComparison.Ordinal);
     }
 
@@ -75,6 +77,7 @@ public sealed class PreviewPanelTests : BunitContext
         Assert.Empty(panel.FindAll("iframe"));
         // AC-35: no viewer means no attach and nothing vendored is ever requested.
         Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier == "quorumPreview.attachViewer");
+        Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier == "quorumPreview.loadViewer");
         // AC-32: Copy and Download still work.
         Assert.NotEmpty(panel.FindAll("button[aria-label='Copy the raw text']"));
         Assert.NotEmpty(panel.FindAll("button[aria-label='Download the raw text']"));
@@ -154,18 +157,18 @@ public sealed class PreviewPanelTests : BunitContext
     {
         var panel = Open(Html());
 
-        TurnOn(panel, "Load remote images");
-        WaitConsentDialog("Load this block's remote images?");
+        TurnOn(panel, "Load remote resources");
+        WaitConsentDialog("Load this block's remote resources?");
 
         _dialogs.FindComponent<MudCheckBox<bool>>().Find("input").Change(true);
         ClickButton(_dialogs, "Turn on");
 
-        var key = PreviewConsent.StorageKey(User, PreviewConsentSwitch.RemoteImages);
+        var key = PreviewConsent.StorageKey(User, PreviewConsentSwitch.RemoteResources);
         Assert.Contains(JSInterop.Invocations, call =>
             call.Identifier == "quorumPreview.storageSet" &&
             Equals(call.Arguments[0], key) &&
             Equals(call.Arguments[1], "1"));
-        panel.WaitForAssertion(() => Assert.Contains("\"loadRemoteImages\":true", LastRenderPayload(), StringComparison.Ordinal));
+        panel.WaitForAssertion(() => Assert.Contains("\"loadRemoteResources\":true", LastRenderPayload(), StringComparison.Ordinal));
     }
 
     [Fact]

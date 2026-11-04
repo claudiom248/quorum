@@ -18,19 +18,19 @@
         {
             <MudSwitch T="bool" Value="_runScripts" ValueChanged="RunScriptsChangedAsync" Color="Color.Warning"
                        Label="Run scripts" aria-label="Run the scripts of this HTML block" />
-            <MudSwitch T="bool" Value="_loadRemoteImages" ValueChanged="RemoteImagesChangedAsync" Color="Color.Warning"
-                       Label="Load remote images" aria-label="Load the remote images of this HTML block" />
+            <MudSwitch T="bool" Value="_loadRemoteResources" ValueChanged="RemoteResourcesChangedAsync" Color="Color.Warning"
+                       Label="Load remote resources" aria-label="Load the remote resources of this HTML block" />
 
-            @if (_storedRunScripts || _storedRemoteImages)
+            @if (_storedRunScripts || _storedRemoteResources)
             {
                 <MudMenu Icon="@Icons.Material.Filled.MoreVert" aria-label="Preview consent options">
                     @if (_storedRunScripts)
                     {
                         <MudMenuItem OnClick="@(() => AskAgainAsync(PreviewConsentSwitch.RunScripts))">Ask before running scripts</MudMenuItem>
                     }
-                    @if (_storedRemoteImages)
+                    @if (_storedRemoteResources)
                     {
-                        <MudMenuItem OnClick="@(() => AskAgainAsync(PreviewConsentSwitch.RemoteImages))">Ask before loading remote images</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => AskAgainAsync(PreviewConsentSwitch.RemoteResources))">Ask before loading remote resources</MudMenuItem>
                     }
                 </MudMenu>
             }
@@ -73,7 +73,7 @@
         @if (_limit is null)
         {
             <iframe @key="_frameKey" @ref="_frameElement" class="preview-frame@((_failed || _error is not null) ? " hidden" : null)"
-                    src="preview/viewer.html" sandbox="allow-scripts"
+                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                     title="The rendered preview of the @PreviewKinds.Label(Content.Kind) content"></iframe>
         }
     </div>
@@ -89,9 +89,9 @@
     private string? _error;
     private bool _failed;
     private bool _runScripts;
-    private bool _loadRemoteImages;
+    private bool _loadRemoteResources;
     private bool _storedRunScripts;
-    private bool _storedRemoteImages;
+    private bool _storedRemoteResources;
     private bool _focused;
     private int _frameKey;
     private int _attachedKey = -1;
@@ -128,9 +128,9 @@
 
         // A new preview starts with both switches off, whatever a previous one had (D-17, D-18, AC-28).
         _runScripts = false;
-        _loadRemoteImages = false;
+        _loadRemoteResources = false;
         _storedRunScripts = await Consent.DontAskAsync(UserKey, PreviewConsentSwitch.RunScripts);
-        _storedRemoteImages = await Consent.DontAskAsync(UserKey, PreviewConsentSwitch.RemoteImages);
+        _storedRemoteResources = await Consent.DontAskAsync(UserKey, PreviewConsentSwitch.RemoteResources);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -156,6 +156,7 @@
         _self ??= DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("quorumPreview.initPanel", _panelElement, _resizerElement, PreviewConsent.WidthKey(UserKey));
         await JS.InvokeVoidAsync("quorumPreview.attachViewer", _frameElement, _self);
+        await JS.InvokeVoidAsync("quorumPreview.loadViewer", _frameElement, PreviewKinds.DataValue(Content.Kind), _self);
         await SendRenderAsync();
     }
 
@@ -168,7 +169,7 @@
             kind = PreviewKinds.DataValue(Content.Kind),
             text = Content.Text,
             theme,
-            options = new { runScripts = _runScripts, loadRemoteImages = _loadRemoteImages },
+            options = new { runScripts = _runScripts, loadRemoteResources = _loadRemoteResources },
         });
     }
 
@@ -202,7 +203,7 @@
         if (!await TurnOnAsync(PreviewConsentSwitch.RunScripts,
                 "Run this block's scripts?",
                 "The code of this block will run isolated from the app and without network access, but it can still " +
-                "show anything on screen. With remote images also allowed, it could send what the page contains to external servers."))
+                "show anything on screen. With remote resources also allowed, it could send what the page contains to external servers."))
         {
             return;
         }
@@ -211,24 +212,24 @@
         await SendRenderAsync();
     }
 
-    private async Task RemoteImagesChangedAsync(bool value)
+    private async Task RemoteResourcesChangedAsync(bool value)
     {
         if (!value)
         {
-            _loadRemoteImages = false;
+            _loadRemoteResources = false;
             await SendRenderAsync();
             return;
         }
 
-        if (!await TurnOnAsync(PreviewConsentSwitch.RemoteImages,
-                "Load this block's remote images?",
-                "A page can put what it contains in the address of an image, so loading remote images could send the " +
-                "previewed content to external servers. Only HTTPS images would be loaded."))
+        if (!await TurnOnAsync(PreviewConsentSwitch.RemoteResources,
+                "Load this block's remote resources?",
+                "Images, styles, fonts and scripts from the CDNs cdnjs, jsdelivr, unpkg and Google Fonts would load. " +
+                "would load. Those servers see the requests, and a page can put what it contains in their addresses."))
         {
             return;
         }
 
-        _loadRemoteImages = true;
+        _loadRemoteResources = true;
         await SendRenderAsync();
     }
 
@@ -260,7 +261,7 @@
             }
             else
             {
-                _storedRemoteImages = true;
+                _storedRemoteResources = true;
             }
         }
 
@@ -278,7 +279,7 @@
         }
         else
         {
-            _storedRemoteImages = false;
+            _storedRemoteResources = false;
         }
     }
 

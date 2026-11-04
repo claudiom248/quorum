@@ -362,8 +362,14 @@ body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .preview-frame { flex: 1; border: 0; width: 100%; height: 100%; background: #fff; }
 .preview-frame.hidden { display: none; }
 .preview-notice {
-    padding: 1.2rem; display: flex; flex-direction: column; gap: .7rem; align-items: flex-start;
-    color: var(--mud-palette-text-secondary); max-width: 32rem;
+    padding: .9rem 1rem; display: flex; flex-direction: column; gap: .6rem; align-items: flex-start;
+    align-self: flex-start; margin: 1rem; flex: none;
+    color: var(--mud-palette-text-secondary); max-width: 32rem; border-radius: 8px;
+    background: var(--mud-palette-background-gray);
+}
+.preview-notice[role="alert"] {
+    background: color-mix(in srgb, var(--mud-palette-error) 12%, transparent);
+    color: var(--mud-palette-error-darken);
 }
 
 /* Below 960 px the panel covers the screen with a way back to the chat, as the drawers of spec 010 (D-20). */

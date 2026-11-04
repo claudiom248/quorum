@@ -6,7 +6,7 @@ namespace Quorum.Web.Client;
 public enum PreviewConsentSwitch
 {
     RunScripts,
-    RemoteImages,
+    RemoteResources,
 }
 
 /// <summary>
@@ -27,13 +27,13 @@ public sealed class PreviewConsent(IJSRuntime js)
     public Task SaveDontAskAsync(string email, PreviewConsentSwitch which) =>
         js.InvokeVoidAsync("quorumPreview.storageSet", StorageKey(email, which), "1").AsTask();
 
-    /// <summary>The panel menu's "Ask before running scripts" / "…loading remote images" takes the choice back.</summary>
+    /// <summary>The panel menu's "Ask before running scripts" / "…loading remote resources" takes the choice back.</summary>
     public Task AskAgainAsync(string email, PreviewConsentSwitch which) =>
         js.InvokeVoidAsync("quorumPreview.storageRemove", StorageKey(email, which)).AsTask();
 
     private static string Segment(PreviewConsentSwitch which) => which switch
     {
         PreviewConsentSwitch.RunScripts => "runScripts",
-        _ => "remoteImages",
+        _ => "remoteResources",
     };
 }
