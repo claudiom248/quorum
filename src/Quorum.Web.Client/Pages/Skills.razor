@@ -1,154 +1,162 @@
 @page "/skills"
+@page "/skills/{Id}"
+@implements IDisposable
 @inject QuorumApi Api
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <PageTitle>Skills · Quorum</PageTitle>
 
-<div class="settings">
-
-<MudText Typo="Typo.h5" Class="mb-1">Skills</MudText>
-<MudText Typo="Typo.body2" Class="mb-4">
-    Procedures an agent loads when a task needs them. The agent always sees each skill's name and description; the instructions come only when it asks for them.
-</MudText>
-
-@if (_notice is not null)
-{
-    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3" data-notice>@_notice</MudAlert>
-}
-@if (_problem is not null)
-{
-    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" data-problem>@_problem</MudAlert>
-}
-
-<div class="d-flex gap-2 mb-3 flex-wrap">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewSkill" data-action="new-skill">New skill</MudButton>
-    <MudButton Variant="Variant.Outlined" Href="/api/skills/export" data-action="export-all">Export all</MudButton>
-</div>
-
-<MudTable T="SkillSummary" Items="_skills" Dense="true" Hover="true" Elevation="0" Outlined="true" data-grid="skills">
-    <HeaderContent>
-        <MudTh>Slug</MudTh>
-        <MudTh>Display name</MudTh>
-        <MudTh>Description</MudTh>
-        <MudTh>Scope</MudTh>
-        <MudTh>Agents</MudTh>
-        <MudTh></MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd DataLabel="Slug">@context.Slug</MudTd>
-        <MudTd DataLabel="Display name">@context.DisplayName</MudTd>
-        <MudTd DataLabel="Description">@context.Description</MudTd>
-        <MudTd DataLabel="Scope">@context.Scope</MudTd>
-        <MudTd DataLabel="Agents">@context.AgentCount</MudTd>
-        <MudTd>
-            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => EditAsync(context.Id)" aria-label="Edit skill" />
-            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Href="@($"/api/skills/{context.Id}/export")" aria-label="Export skill" />
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteAsync(context)" aria-label="Delete skill" />
-        </MudTd>
-    </RowTemplate>
-</MudTable>
-
-@if (_form is not null)
-{
-    <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-form="skill">
-        <MudText Typo="Typo.h6" Class="mb-2">@(_editingId is null ? "New skill" : "Edit skill")</MudText>
-        <MudTextField T="string" @bind-Value="_form.Slug" Label="Slug" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      HelperText="Lower-case letters, digits and hyphens. The model uses it to load the skill." />
-        <MudTextField T="string" @bind-Value="_form.DisplayName" Label="Display name" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
-        <MudTextField T="string" @bind-Value="_form.Description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
-                      Lines="2" HelperText="When to use it, in at most 1,024 characters. It is in the prompt of every turn." />
-        <MudTextField T="string" @bind-Value="_form.Body" Label="Instructions" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
-                      Lines="12" />
-        @if (_form.Body.Length > ResultWarningAt)
+<ListPage Title="Skills" Description="Procedures an agent loads when a task needs them. The agent sees each name and description; the instructions come only when it asks for them."
+          AddLabel="New skill" OnAdd="() => _screen.OpenDrawer(ListScreen<SkillSummary>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="false"
+          EmptyTitle="No skill yet" EmptyText="Add one, or import a SKILL.md package below. An agent uses a skill from its own editor.">
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        @if (_problem is not null)
         {
-            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" data-warning="body-size">
-                These instructions are longer than a tool result may be ({ResultWarningAt:N0} characters by default). The model will not get them whole: shorten them or split the skill.
-            </MudAlert>
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" data-problem>@_problem</MudAlert>
         }
-        <MudSelect T="string" @bind-Value="_form.Scope" Label="Scope" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2">
-            <MudSelectItem T="string" Value="@("Tenant")">Only this tenant</MudSelectItem>
-            <MudSelectItem T="string" Value="@("Global")">All tenants</MudSelectItem>
-        </MudSelect>
-        <div class="d-flex gap-2 mt-3">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy" data-action="save-skill">Save</MudButton>
-            <MudButton Variant="Variant.Text" OnClick="() => _form = null">Cancel</MudButton>
-        </div>
-    </MudPaper>
-}
 
-<MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-section="settings">
-    <MudText Typo="Typo.h6" Class="mb-2">Imported names</MudText>
-    <MudText Typo="Typo.body2" Class="mb-2">
-        How a skill imported from a package is named. Existing skills keep their names.
-    </MudText>
-    <MudSelect T="string" @bind-Value="_nameStyle" Label="Display name style" Variant="Variant.Outlined" Margin="Margin.Dense">
-        <MudSelectItem T="string" Value="@("Slug")">Slug: code-review stays code-review</MudSelectItem>
-        <MudSelectItem T="string" Value="@("Humanized")">Humanized: code-review becomes Code review</MudSelectItem>
-    </MudSelect>
-    <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="SaveNameStyleAsync" Disabled="_busy" data-action="save-name-style">Save style</MudButton>
-</MudPaper>
-
-<MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-section="import">
-    <MudText Typo="Typo.h6" Class="mb-2">Import</MudText>
-    <MudText Typo="Typo.body2" Class="mb-2">
-        Pick one SKILL.md, one or more .zip or .tar.gz packages, or a folder. You will see every skill found before anything is saved.
-    </MudText>
-    <div class="d-flex flex-column gap-2">
-        <label>Files or archives <input type="file" multiple accept=".md,.zip,.gz,.tgz" @ref="_filesInput" id="skills-files" /></label>
-        <label>Folder <input type="file" webkitdirectory multiple @ref="_folderInput" id="skills-folder" /></label>
-    </div>
-    <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="PreviewImportAsync" Disabled="_busy" data-action="preview-import">Preview</MudButton>
-
-    @if (_preview is not null)
-    {
-        <MudTable T="SkillImportItemInfo" Items="_preview.Items" Dense="true" Elevation="0" Outlined="true" Class="mt-3" data-grid="import-preview">
+        <MudTable T="SkillSummary" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="skills">
             <HeaderContent>
                 <MudTh>Slug</MudTh>
-                <MudTh>Status</MudTh>
-                <MudTh>Note</MudTh>
-                <MudTh>Decision</MudTh>
+                <MudTh>Display name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>Agents</MudTh>
+                <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="Slug">@context.Slug</MudTd>
-                <MudTd DataLabel="Status">@context.Status</MudTd>
-                <MudTd DataLabel="Note">
-                    @context.Reason
-                    @if (context.IgnoredFiles.Count > 0)
-                    {
-                        <div>Ignored files: @string.Join(", ", context.IgnoredFiles). The body may refer to them, and the agent will not have them.</div>
-                    }
-                    @if (context.IgnoredFields.Count > 0)
-                    {
-                        <div>Ignored fields: @string.Join(", ", context.IgnoredFields). They grant nothing.</div>
-                    }
+                <MudTd DataLabel="Slug">
+                    <MudLink Href="@_screen.DrawerUri(context.Id.ToString())" Class="tool-name">@context.Slug</MudLink>
                 </MudTd>
-                <MudTd DataLabel="Decision">
-                    @if (context.Status == "conflict")
-                    {
-                        <select aria-label="@($"Decision for {context.Slug}")" value="@DecisionOf(context.Slug)" @onchange="e => SetDecision(context.Slug, e.Value?.ToString())">
-                            <option value="skip">Skip</option>
-                            <option value="overwrite">Overwrite description and body</option>
-                        </select>
-                    }
+                <MudTd DataLabel="Display name">@context.DisplayName</MudTd>
+                <MudTd DataLabel="Description">@context.Description</MudTd>
+                <MudTd DataLabel="Scope">@context.Scope</MudTd>
+                <MudTd DataLabel="Agents">@context.AgentCount</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Href="@($"/api/skills/{context.Id}/export")" aria-label="Export skill" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteAsync(context)" aria-label="Delete skill" />
                 </MudTd>
             </RowTemplate>
         </MudTable>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="ConfirmImportAsync" Disabled="_busy" data-action="confirm-import">Import</MudButton>
-    }
 
-    @if (_importResult is not null)
-    {
-        <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3" data-result="import">
-            Created: @Join(_importResult.Created). Overwritten: @Join(_importResult.Overwritten). Skipped: @Join(_importResult.Skipped).
-            @if (_importResult.Failed.Count > 0)
+        <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-section="settings">
+            <MudText Typo="Typo.h6" Class="mb-2">Imported names</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                How a skill imported from a package is named. Existing skills keep their names.
+            </MudText>
+            <MudSelect T="string" @bind-Value="_nameStyle" Label="Display name style" Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem T="string" Value="@("Slug")">Slug: code-review stays code-review</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Humanized")">Humanized: code-review becomes Code review</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="SaveNameStyleAsync" Disabled="_busy" data-action="save-name-style">Save style</MudButton>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-section="import">
+            <MudText Typo="Typo.h6" Class="mb-2">Import</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Pick one SKILL.md, one or more .zip or .tar.gz packages, or a folder. You will see every skill found before anything is saved.
+            </MudText>
+            <div class="d-flex flex-column gap-3">
+                <div class="d-flex flex-wrap align-center gap-3">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile" OnClick="() => PickAsync(_filesInput)" data-action="pick-files">Choose files or archives</MudButton>
+                    <MudText Typo="Typo.body2" id="skills-files-names">No file selected</MudText>
+                </div>
+                <div class="d-flex flex-wrap align-center gap-3">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FolderOpen" OnClick="() => PickAsync(_folderInput)" data-action="pick-folder">Choose a folder</MudButton>
+                    <MudText Typo="Typo.body2" id="skills-folder-names">No folder selected</MudText>
+                </div>
+                <input type="file" multiple accept=".md,.zip,.gz,.tgz" @ref="_filesInput" id="skills-files" hidden />
+                <input type="file" webkitdirectory multiple @ref="_folderInput" id="skills-folder" hidden />
+            </div>
+            <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="PreviewImportAsync" Disabled="_busy" data-action="preview-import">Preview</MudButton>
+
+            @if (_preview is not null)
             {
-                <div>Failed: @string.Join("; ", _importResult.Failed.Select(f => $"{f.Slug} ({f.Reason})"))</div>
+                <MudTable T="SkillImportItemInfo" Items="_preview.Items" Dense="true" Elevation="0" Outlined="true" Class="mt-3" data-grid="import-preview">
+                    <HeaderContent>
+                        <MudTh>Slug</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Note</MudTh>
+                        <MudTh>Decision</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Slug">@context.Slug</MudTd>
+                        <MudTd DataLabel="Status">@context.Status</MudTd>
+                        <MudTd DataLabel="Note">
+                            @context.Reason
+                            @if (context.IgnoredFiles.Count > 0)
+                            {
+                                <div>Ignored files: @string.Join(", ", context.IgnoredFiles). The body may refer to them, and the agent will not have them.</div>
+                            }
+                            @if (context.IgnoredFields.Count > 0)
+                            {
+                                <div>Ignored fields: @string.Join(", ", context.IgnoredFields). They grant nothing.</div>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Decision">
+                            @if (context.Status == "conflict")
+                            {
+                                <select aria-label="@($"Decision for {context.Slug}")" value="@DecisionOf(context.Slug)" @onchange="e => SetDecision(context.Slug, e.Value?.ToString())">
+                                    <option value="skip">Skip</option>
+                                    <option value="overwrite">Overwrite description and body</option>
+                                </select>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="ConfirmImportAsync" Disabled="_busy" data-action="confirm-import">Import</MudButton>
             }
-        </MudAlert>
-    }
-</MudPaper>
 
-</div>
+            @if (_importResult is not null)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3" data-result="import">
+                    Created: @Join(_importResult.Created). Overwritten: @Join(_importResult.Overwritten). Skipped: @Join(_importResult.Skipped).
+                    @if (_importResult.Failed.Count > 0)
+                    {
+                        <div>Failed: @string.Join("; ", _importResult.Failed.Select(f => $"{f.Slug} ({f.Reason})"))</div>
+                    }
+                </MudAlert>
+            }
+        </MudPaper>
+    </ChildContent>
+</ListPage>
+
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="_form?.IsDirty == true" OnClose="_screen.CloseDrawer">
+    @if (_form is not null)
+    {
+        <ProblemMessage Problem="_drawerProblem" />
+        <div data-form="skill">
+            <MudTextField T="string" @bind-Value="_form.Slug" Label="Slug" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          HelperText="Lower-case letters, digits and hyphens. The model uses it to load the skill." />
+            <MudTextField T="string" @bind-Value="_form.DisplayName" Label="Display name" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+            <MudTextField T="string" @bind-Value="_form.Description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
+                          Lines="2" HelperText="When to use it, in at most 1,024 characters. It is in the prompt of every turn." />
+            <MudTextField T="string" @bind-Value="_form.Body" Label="Instructions" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
+                          Lines="12" />
+            @if (_form.Body.Length > ResultWarningAt)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" data-warning="body-size">
+                    These instructions are longer than a tool result may be ({ResultWarningAt:N0} characters by default). The model will not get them whole: shorten them or split the skill.
+                </MudAlert>
+            }
+            <MudSelect T="string" @bind-Value="_form.Scope" Label="Scope" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2">
+                <MudSelectItem T="string" Value="@("Tenant")">Only this tenant</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Global")">All tenants</MudSelectItem>
+            </MudSelect>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy" data-action="save-skill">@(_skillId is null ? "Create" : "Save changes")</MudButton>
+            @if (_skillId is not null)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteCurrentAsync" Disabled="_busy" data-action="delete-skill">Delete</MudButton>
+            }
+        </div>
+    }
+</ListDrawer>
 
 @code {
     /// <summary>The default limit of a tool result in characters (spec 017 D-10): the warning appears before it is reached, at save.</summary>
@@ -157,9 +165,12 @@
     private readonly Dictionary<string, string> _decisions = new(StringComparer.Ordinal);
     private ElementReference _filesInput;
     private ElementReference _folderInput;
-    private List<SkillSummary> _skills = [];
+    private ListDrawer? _drawer;
+    private ListScreen<SkillSummary> _screen = null!;
     private SkillForm? _form;
-    private Guid? _editingId;
+    private Guid? _skillId;
+    private string? _openedId;
+    private ApiProblem? _drawerProblem;
     private string _nameStyle = "Slug";
     private SkillImportPreviewInfo? _preview;
     private SkillImportResultInfo? _importResult;
@@ -167,49 +178,75 @@
     private string? _problem;
     private bool _busy;
 
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _form is null ? "Skill" : _skillId is null ? "New skill" : $"Edit {_form.Slug}";
+
     protected override async Task OnInitializedAsync()
     {
-        await ReloadAsync();
-        var settings = await Api.GetSkillSettingsAsync();
+        _screen = new ListScreen<SkillSummary>(Navigation, "/skills", LoadPageAsync, () => InvokeAsync(StateHasChanged));
+        var settingsTask = Api.GetSkillSettingsAsync();
+        await _screen.ReloadAsync();
+        var settings = await settingsTask;
         if (settings.IsSuccess)
         {
             _nameStyle = settings.Value.DisplayNameStyle;
         }
     }
 
-    private async Task ReloadAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var list = await Api.ListSkillsAsync();
-        if (list.IsSuccess)
+        if (firstRender)
         {
-            _skills = list.Value;
-            _problem = null;
-        }
-        else
-        {
-            _problem = list.Problem!.Message;
+            await JS.InvokeVoidAsync("quorumSkills.bindNames", _filesInput, "skills-files-names");
+            await JS.InvokeVoidAsync("quorumSkills.bindNames", _folderInput, "skills-folder-names");
         }
     }
 
-    private void NewSkill()
-    {
-        _editingId = null;
-        _form = new SkillForm();
-        _notice = null;
-    }
+    private Task PickAsync(ElementReference input) => JS.InvokeVoidAsync("quorumSkills.pick", input).AsTask();
 
-    private async Task EditAsync(Guid id)
+    protected override async Task OnParametersSetAsync()
     {
-        var skill = await Api.GetSkillAsync(id);
-        if (!skill.IsSuccess)
+        if (_openedId == Id)
         {
-            _problem = skill.Problem!.Message;
             return;
         }
 
-        _editingId = id;
-        _form = SkillForm.From(skill.Value);
-        _notice = null;
+        _openedId = Id;
+        _drawerProblem = null;
+        _skillId = null;
+
+        if (Id is null)
+        {
+            _form = null;
+        }
+        else if (Id == ListScreen<SkillSummary>.NewId)
+        {
+            _form = SkillForm.New();
+        }
+        else if (Guid.TryParse(Id, out var id))
+        {
+            var skill = await Api.GetSkillAsync(id);
+            if (skill.IsSuccess)
+            {
+                _skillId = id;
+                _form = SkillForm.From(skill.Value);
+            }
+            else
+            {
+                _form = null;
+                _drawerProblem = skill.Problem;
+            }
+        }
+    }
+
+    private async Task<ApiResult<Page<SkillSummary>>> LoadPageAsync(ListQuery query, string? cursor)
+    {
+        var list = await Api.ListSkillsAsync();
+        return list.IsSuccess
+            ? ApiResult.Ok(new Page<SkillSummary>(list.Value, null))
+            : ApiResult.Fail<Page<SkillSummary>>(list.Problem!);
     }
 
     private async Task SaveAsync()
@@ -221,21 +258,41 @@
 
         _busy = true;
         var request = _form.ToRequest();
-        ApiResult result = _editingId is { } id
+        ApiResult result = _skillId is { } id
             ? await Api.UpdateSkillAsync(id, request)
             : await Api.CreateSkillAsync(request);
         _busy = false;
 
         if (!result.IsSuccess)
         {
-            _problem = result.Problem!.Message;
+            _drawerProblem = result.Problem;
             return;
         }
 
-        _form = null;
-        _problem = null;
         _notice = "Saved.";
-        await ReloadAsync();
+        await CloseAfterAsync();
+    }
+
+    private async Task DeleteCurrentAsync()
+    {
+        if (_skillId is not { } id)
+        {
+            return;
+        }
+
+        _busy = true;
+        var result = await Api.DeleteSkillAsync(id);
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            // A skill still assigned to agents is kept; the message says which must change first (spec 017 D-14).
+            _drawerProblem = result.Problem;
+            return;
+        }
+
+        _notice = "Skill deleted.";
+        await CloseAfterAsync();
     }
 
     private async Task DeleteAsync(SkillSummary skill)
@@ -245,12 +302,21 @@
         {
             _notice = $"Deleted '{skill.Slug}'.";
             _problem = null;
-            await ReloadAsync();
+            await _screen.ReloadAsync();
             return;
         }
 
-        // A skill still assigned to agents is kept; the message says which must change first (spec 017 D-14).
         _problem = result.Problem!.Message;
+    }
+
+    // The form saved or the skill went away: nothing is left to lose, so the drawer closes without asking.
+    private async Task CloseAfterAsync()
+    {
+        _form = null;
+        _skillId = null;
+        _drawer?.SkipNextGuard();
+        _screen.CloseDrawer();
+        await _screen.ReloadAsync();
     }
 
     private async Task SaveNameStyleAsync()
@@ -317,7 +383,7 @@
         _importResult = result.Value;
         _preview = null;
         _problem = null;
-        await ReloadAsync();
+        await _screen.ReloadAsync();
     }
 
     private string DecisionOf(string slug) => _decisions.GetValueOrDefault(slug, "skip");
@@ -326,9 +392,13 @@
 
     private static string Join(IReadOnlyList<string> slugs) => slugs.Count == 0 ? "none" : string.Join(", ", slugs);
 
-    /// <summary>The fields of the editor, as text, until they are sent.</summary>
+    public void Dispose() => _screen.Dispose();
+
+    /// <summary>The fields of the drawer, as text, until they are sent; <see cref="IsDirty"/> tells whether they changed since they were loaded.</summary>
     private sealed class SkillForm
     {
+        private string _original = string.Empty;
+
         public string Slug { get; set; } = string.Empty;
 
         public string DisplayName { get; set; } = string.Empty;
@@ -339,15 +409,27 @@
 
         public string Scope { get; set; } = "Tenant";
 
+        public bool IsDirty => Key() != _original;
+
         public SkillRequest ToRequest() => new(Slug.Trim(), DisplayName.Trim(), Description.Trim(), Body, Scope, []);
 
-        public static SkillForm From(SkillDocument skill) => new()
+        public static SkillForm New() => new SkillForm().Clean();
+
+        public static SkillForm From(SkillDocument skill) => new SkillForm
         {
             Slug = skill.Slug,
             DisplayName = skill.DisplayName,
             Description = skill.Description,
             Body = skill.Body,
             Scope = skill.Scope,
-        };
+        }.Clean();
+
+        private SkillForm Clean()
+        {
+            _original = Key();
+            return this;
+        }
+
+        private string Key() => string.Join('\u001f', Slug, DisplayName, Description, Body, Scope);
     }
 }
