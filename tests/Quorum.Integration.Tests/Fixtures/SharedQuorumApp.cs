@@ -7,9 +7,12 @@ namespace Quorum.Integration.Tests.Fixtures;
 /// signed in as the administrator with a client of its own (a test may change its cookies and headers).
 /// The fakes and the caches go back to their state after the setup too; the clock is fixed when the app starts, so tests that move it keep an app of their own.
 /// </summary>
-public sealed class SharedQuorumApp(PostgresFixture postgres) : IAsyncLifetime
+public class SharedQuorumApp(PostgresFixture postgres) : IAsyncLifetime
 {
     private DatabaseSnapshot? _snapshot;
+
+    /// <summary>Whether the app starts with the export of spans on, collected in memory (spec 016 D-23). It is a setting of the start, so a test cannot change it.</summary>
+    protected virtual bool Telemetry => false;
 
     public QuorumApp App { get; private set; } = null!;
 
@@ -17,7 +20,7 @@ public sealed class SharedQuorumApp(PostgresFixture postgres) : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        App = await QuorumApp.StartOnNewDatabaseAsync(postgres);
+        App = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: Telemetry);
         using var setup = await App.SetUpAsync();
         _snapshot = await DatabaseSnapshot.TakeAsync(App.ConnectionString);
     }
@@ -40,5 +43,6 @@ public sealed class SharedQuorumApp(PostgresFixture postgres) : IAsyncLifetime
     {
         Admin?.Dispose();
         await App.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 }
