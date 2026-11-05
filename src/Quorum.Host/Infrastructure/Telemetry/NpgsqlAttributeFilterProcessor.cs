@@ -4,15 +4,15 @@ using OpenTelemetry;
 namespace Quorum.Host.Infrastructure.Telemetry;
 
 /// <summary>
-/// Takes off the spans of Npgsql what must not leave the installation: the text of the SQL command (spec 016 D-8: command text is not
-/// captured) and the details of the connection, whose data source holds the host, the port, the database and the user (D-9).
-/// It runs when a span ends, before the exporter takes it.
+/// Takes off the spans of Npgsql what must not leave the installation: the connection details, whose data source holds the host, the port,
+/// the database and the user (spec 016 D-9). The command text stays: every query of Quorum is parameterized, so it holds placeholders and no
+/// values (D-8, amended). It runs when a span ends, before the exporter takes it.
 /// </summary>
 internal sealed class NpgsqlAttributeFilterProcessor : BaseProcessor<Activity>
 {
     private const string NpgsqlSource = "Npgsql";
 
-    private static readonly string[] Removed = ["db.query.text", "db.statement", "db.npgsql.data_source"];
+    private static readonly string[] Removed = ["db.statement", "db.npgsql.data_source"];
 
     public override void OnEnd(Activity activity)
     {

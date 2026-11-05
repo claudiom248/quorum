@@ -153,6 +153,15 @@ passed by the compose file; headers are never logged. `docs/observability.md` ex
 The reason: Grafana with Tempo and Loki, tried on the real stack, was not what the team wanted to read traces and logs with; one
 backend for traces and logs in a single interface, run once for all the apps, is.
 
+### 2026-11-05: parameterized command text is kept (amends D-8)
+
+The `db.query.text` of the Npgsql spans is kept. Every query of Quorum is parameterized by construction, so the text holds placeholders
+in place of the values, as the OpenTelemetry database conventions allow for parameterized text. It shows the tables, the filters and
+the joins of a query and no value of the user. The connection's data source (host, port, database, user) stays out, and so does
+`db.statement`. EF Core command text is still not captured by the EF Core instrumentation, which is not enabled.
+The reason: the traces of a turn make 34 to 38 database queries, and without the text one cannot tell which table or filter costs
+what. Keeping the text is a responsibility of the code: every new query must be parameterized, and nothing in the telemetry checks it.
+
 ### 2026-11-05: the trace link template takes a time window (extends D-21)
 
 Besides `{traceId}`, the template of `Quorum:Telemetry:TraceUrlTemplate` fills `{from}` and `{to}` when it has them: Unix time in
