@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/017-agent-skills.md` (Approved 2026-11-04)
 **Architecture:** Modular Monolith; Vertical Slice inside the Agents module.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Approved (2026-11-04)
+**Status:** Approved (2026-11-04). Implemented in PRs 1 to 6 on local branches `feat/017-skills-*` (2026-11-05), not pushed.
 **Affected:** Agents (Domain, Persistence, Chat, Tools, Features/Skills), `Quorum.Shared` (`QuorumPolicies`), Tenancy (policy registration), `Quorum.Web.Client` (Skills page, agent form, built-in tools page), `tests/Quorum.Integration.Tests`, `docs/database-schema.md`, `docs/product.md`, `docs/mcp-tools.md`.
 
 ## What the code already gives us

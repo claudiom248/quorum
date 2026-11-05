@@ -17,6 +17,8 @@ Names that reach the public API are hard to change later, so these terms are fix
 - **Agent**: a building block with its own system prompt, model endpoint, tools and permissions (e.g. "Contracts expert", "Web researcher"). The same agent can be reused by several assistants and by other agents.
 - **Root agent**: the agent an assistant points to; the only one that talks to the user and the only one that delegates.
 - **Sub-agent**: an agent the root agent calls like a tool. It receives only the task text, runs in its own context and returns one final message. Sub-agents do not delegate further (spec 013).
+- **Skill**: a named set of instructions an agent loads when a task needs it, with a slug, a display name, a description of when to use it and a body. The agent sees the slug and the description on every turn; the body comes only through `load_skill`. Skills are text only and are assigned to agents, not to assistants (spec 017).
+- **load_skill**: the built-in tool through which a model reads the body of a skill assigned to its agent. Offered only to agents that have skills; it is never chosen per agent and needs no confirmation (spec 017).
 - **Tenant**: an isolated organization within one installation; every application entity carries its `TenantId`.
 - **Model endpoint**: an OpenAI-compatible endpoint: base URL including the version segment (e.g. `http://ollama:11434/v1`), model name, optional API key (encrypted at rest) and context token budget.
 - **Setup mode / setup token**: the state the app stays in until the first-run wizard completes; the wizard is protected by a setup token printed to the logs and kept in memory only.
