@@ -132,7 +132,7 @@ internal sealed class AgentEndpoints : IEndpointGroup
         {
             return BlockingReference.Conflict(
                 "agent.scope_in_use",
-                "The new scope would hide this agent from agents or assistants that use it. Change them first.",
+                "The new scope would hide this agent from agents, assistants or skills that depend on it. Change them first.",
                 broken);
         }
 

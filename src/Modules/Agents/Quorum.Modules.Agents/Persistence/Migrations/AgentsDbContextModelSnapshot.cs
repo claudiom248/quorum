@@ -77,6 +77,26 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("agents", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentSkill", b =>
+                {
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SkillId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("AgentId", "SkillId");
+
+                    b.HasIndex("SkillId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("agent_skills", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentSubAgent", b =>
                 {
                     b.Property<Guid>("ParentAgentId")
@@ -407,6 +427,69 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.ToTable("rag_tools", "agents");
                 });
 
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.Skill", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.PrimitiveCollection<List<Guid>>("ScopeTenantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Slug")
+                        .IsUnique();
+
+                    b.ToTable("skills", "agents");
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.SkillSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DisplayNameStyle")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("skill_settings", "agents");
+                });
+
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.Tool", b =>
                 {
                     b.Property<Guid>("Id")
@@ -735,6 +818,21 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ModelEndpointId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentSkill", b =>
+                {
+                    b.HasOne("Quorum.Modules.Agents.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Quorum.Modules.Agents.Domain.Skill", null)
+                        .WithMany()
+                        .HasForeignKey("SkillId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Quorum.Modules.Agents.Domain.AgentSubAgent", b =>

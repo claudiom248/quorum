@@ -10,6 +10,8 @@ internal sealed record BlockingReference(string Kind, Guid Id, string Name)
 
     public const string AssistantKind = "assistant";
 
+    public const string SkillKind = "skill";
+
     /// <summary>The <c>409 Conflict</c> that names what is in the way, with a stable <paramref name="code"/> for the client.</summary>
     public static ProblemHttpResult Conflict(string code, string detail, IReadOnlyList<BlockingReference> references) =>
         TypedResults.Problem(

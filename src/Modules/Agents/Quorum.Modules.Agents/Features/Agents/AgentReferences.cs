@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Domain;
+using Quorum.Modules.Agents.Features.Skills;
 using Quorum.Modules.Agents.Persistence;
 
 namespace Quorum.Modules.Agents.Features.Agents;
@@ -35,10 +36,14 @@ internal static class AgentReferences
         var hidden = assistants.Where(a => a.TenantId != agent.TenantId && newScope != AgentScope.Global && !newTenantIds.Contains(a.TenantId));
         var cut = callers.Where(c => !AgentRules.IsVisibleAsWidelyAs(newScope, newTenantIds.ToList(), c.Scope, c.ScopeTenantIds));
 
+        // A skill must be at least as visible as the agent that holds it (spec 017 D-13), so a wider agent scope can break it too.
+        var skills = await SkillScopeRules.SkillsBrokenByAsync(db, agent.Id, newScope, newTenantIds, cancellationToken);
+
         return
         [
             .. hidden.Select(a => new BlockingReference(BlockingReference.AssistantKind, a.Id, a.Name)),
             .. cut.Select(c => new BlockingReference(BlockingReference.AgentKind, c.Id, c.DisplayName)),
+            .. skills,
         ];
     }
 
