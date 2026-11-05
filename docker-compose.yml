@@ -31,8 +31,11 @@ services:
     environment:
       ConnectionStrings__Platform: ${QUORUM_DATABASE:-Host=postgres;Port=5432;Database=quorum;Username=quorum;Password=${POSTGRES_PASSWORD:-}}
       DataProtection__KeysPath: /var/lib/quorum/keys
-      # Traces leave the installation only when this is set (spec 016 D-1); set it in .env with the observability profile.
+      # Traces and logs leave the installation only when the endpoint is set (spec 016 D-1): any OTLP backend, run on its own like LiteLLM.
+      # See docs/observability.md. The protocol and the headers (for example the Authorization of the backend) follow the standard variables.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       Quorum__Telemetry__TraceUrlTemplate: ${QUORUM_TRACE_URL_TEMPLATE:-}
     # Lets the container reach a model server on the host at host.docker.internal; Docker Desktop already does, Linux needs this.
     extra_hosts:
@@ -112,35 +115,6 @@ services:
       - "127.0.0.1:${SEARXNG_PORT:-8888}:8080"
     volumes:
       - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
-
-  # Traces and logs (profile "observability", spec 016). Quorum exports to the collector when .env sets OTEL_EXPORTER_OTLP_ENDPOINT;
-  # the collector forwards to the backends. A customer adds exporters by editing deploy/observability/otel-collector.yaml, not Quorum.
-  # No OTLP port is published: the collector is reachable inside the compose network only.
-  otel-collector:
-    profiles: [observability]
-    image: otel/opentelemetry-collector-contrib:0.118.0
-    restart: unless-stopped
-    command: ["--config=/etc/otelcol/config.yaml"]
-    volumes:
-      - ./deploy/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-    depends_on:
-      - lgtm
-
-  # Grafana with Tempo (traces) and Loki (logs) in one image. The interface stays on this machine; the password comes from .env.
-  lgtm:
-    profiles: [observability]
-    image: grafana/otel-lgtm:0.8.1
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      # Not "required" with ":?": compose checks the required variables of every service, also of profiles that are off, and that would
-      # stop every start without GRAFANA_ADMIN_PASSWORD in .env. Without it Grafana keeps its default password: set it in .env.
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-    ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
-    volumes:
-      # The image's own start script turns anonymous admin access on and overrides any variable; this copy leaves it off.
-      - ./deploy/observability/run-grafana.sh:/otel-lgtm/run-grafana.sh:ro
 
 volumes:
   quorum-keys:
