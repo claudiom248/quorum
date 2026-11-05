@@ -9,6 +9,7 @@ using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Tools.Skills;
 using Quorum.Modules.Agents.Telemetry;
 using Quorum.Shared.Telemetry;
 
@@ -256,7 +257,8 @@ internal sealed partial class ToolCallInvoker(
     private async Task<Prepared> PrepareAsync(ToolRunContext context, QuorumTool? tool, FunctionCallContent call, string rawArguments, CancellationToken cancellationToken)
     {
         // A delegation is not a stored tool: the edge was read when the turn started, and a turn keeps the definitions it began with (spec 013 AC-25).
-        var policy = tool is AgentQuorumTool
+        // A skill is the same: it is read at the start of the turn and reading it needs no confirmation (spec 017 D-7).
+        var policy = tool is AgentQuorumTool or SkillQuorumTool
             ? ToolPolicy.Auto
             : tool is null ? null : await CurrentPolicyAsync(context, tool.Descriptor, cancellationToken);
         if (tool is null || policy is null)

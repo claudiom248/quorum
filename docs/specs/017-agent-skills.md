@@ -193,6 +193,10 @@ Skill document:
 | Honouring `allowed-tools` of a skill | Ignored (D-22); permissions only from spec 004. | Users and roles spec |
 | Persisting the ledger (including `load_skill`) per message | Not persisted, as for any tool (spec 013 D-11). | Ledger-per-message spec |
 
+## Amendments
+
+- **2026-11-05, D-5 (spike of PR 2).** `Microsoft.Agents.AI` 1.25.0 exposes `AgentSkillsProvider`, an `AIContextProvider` that builds the skill block and registers its own `load_skill` (with read-resource and run-script tools and their approval rules). Its `load_skill` runs outside `ToolCallInvoker`, so it would lose the audit entry (D-8), the result size rule (D-10), the ledger event (D-8), the tool rename of spec 015 and the turn snapshot (D-17). Its content builder (`AgentInlineSkillContentBuilder`) is internal. Decision: the `load_skill` tool and the skill block are ours (`SkillQuorumTool`, `SkillsNotice`), following the MAF model (advertise the names, load the body on demand). MAF stays the source of the skill concepts where it does not decide the runtime. `load_skill` is kept out of the tool pool: it is offered to agents with skills and never stored as an activation (D-4).
+
 ## Open Questions
 
 None. Confirmed in review (2026-11-04): the per-tenant display name style with `Slug` and `Humanized` (D-28), `load_skill` shown selected and locked in the tools tab (D-4), automatic activation, overwrite semantics, slug edits while assigned, the 30-minute preview and the 20 MB limit on the extracted size.
