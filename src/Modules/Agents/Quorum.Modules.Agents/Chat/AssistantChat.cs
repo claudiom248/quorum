@@ -8,6 +8,7 @@ using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Lookup;
 using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.Rag;
+using Quorum.Modules.Agents.Tools.Skills;
 using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.KnowledgeBases.Contracts;
@@ -47,6 +48,12 @@ internal sealed class AssistantChat(
     internal static string AskUserNotice(string toolName) =>
         "\n\nWhen you need something from the user to answer, such as a value you do not have, a missing detail or a choice, " +
         $"call the {toolName} tool. Do not write the question in your reply and do not answer without the information.";
+
+    // The names and descriptions are in the prompt on every turn; the instructions come with the tool, one skill at a time (spec 017 D-3).
+    internal static string SkillsNotice(string toolName, IReadOnlyList<SkillSnapshotEntry> skills) =>
+        "\n\nSkills: the procedures below are available to you. When a task matches one, call the " + toolName + " tool with the skill's name " +
+        "and follow the instructions it returns before you act on the task. Only the names and descriptions are shown here.\n" +
+        string.Join("\n", skills.Select(skill => $"- {skill.Slug}: {skill.Description}"));
 
     private static readonly Error AssistantNotFound = Error.NotFound("assistant.not_found", "The assistant does not exist.");
 
@@ -229,10 +236,22 @@ internal sealed class AssistantChat(
 
         var tools = toolFactory.Create(active, connections, rag, lookup, webSearch, webFetch).ToList();
 
+        // The root agent's skills, read now (spec 017 D-6, D-17). None when its endpoint has no tools: the caller is null there (D-16).
+        if (caller is not null && await SkillRuntime.LoadAsync(db, configuration.AgentId, cancellationToken) is { } skillTool)
+        {
+            tools.Add(skillTool);
+        }
+
         // One delegation tool per sub-agent of the root agent; a sub-agent never gets delegation tools of its own (D-5).
         foreach (var subAgent in resolvedSubAgents)
         {
-            var subTools = toolFactory.Create(subAgent.Active, connections, rag, lookup, webSearch, webFetch);
+            var subTools = toolFactory.Create(subAgent.Active, connections, rag, lookup, webSearch, webFetch).ToList();
+
+            // A sub-agent uses its own skills only, never the caller's (spec 017 D-6).
+            if (subAgent.Skill is { } subSkill)
+            {
+                subTools.Add(subSkill);
+            }
             tools.Add(new AgentQuorumTool(new SubAgentDefinition(
                 subAgent.AgentId,
                 subAgent.Slug,
@@ -276,11 +295,12 @@ internal sealed class AssistantChat(
     }
 
     /// <summary>The system prompt with the notices that go with the tools offered; unchanged when there are none.</summary>
-    private static string WithNotices(string systemPrompt, IReadOnlyList<QuorumTool> tools) =>
+    private static string WithNotices(string systemPrompt, List<QuorumTool> tools) =>
         tools.Count == 0
             ? systemPrompt
             : systemPrompt + ToolDataNotice
                 + (tools.OfType<AskUserQuorumTool>().FirstOrDefault() is { } askUser ? AskUserNotice(askUser.Name) : string.Empty)
+                + (tools.OfType<SkillQuorumTool>().FirstOrDefault() is { } skills ? SkillsNotice(skills.Name, skills.Skills) : string.Empty)
                 + (tools.Any(tool => tool is RagQuorumTool or WebSearchQuorumTool or WebFetchQuorumTool) ? SearchCitationNotice : string.Empty);
 
     /// <summary>
@@ -327,7 +347,8 @@ internal sealed class AssistantChat(
                     .Where(tool => !(tool.Origin == ToolOrigin.Builtin && tool.Name == BuiltinToolCatalog.AskUser))
                     .ToList()
                 : [];
-            sources.Add(new SubAgentSource(edge.Id, edge.Slug, edge.Description, edge.SystemPrompt, edge.FailurePolicy, endpoint, active));
+            var skill = endpoint.SupportsTools ? await SkillRuntime.LoadAsync(db, edge.Id, cancellationToken) : null;
+            sources.Add(new SubAgentSource(edge.Id, edge.Slug, edge.Description, edge.SystemPrompt, edge.FailurePolicy, endpoint, active, skill));
         }
 
         return sources;

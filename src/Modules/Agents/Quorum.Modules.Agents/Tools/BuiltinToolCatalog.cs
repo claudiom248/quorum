@@ -14,6 +14,12 @@ internal static class BuiltinToolCatalog
     public const string Calculator = "calculator";
 
     /// <summary>
+    /// The model reads the full instructions of a skill listed in its prompt (spec 017 D-3). Offered by the runtime, never stored as an
+    /// activation (D-4). Its policy is not consulted (D-7): reading a skill has no side effect, so it needs no confirmation.
+    /// </summary>
+    public const string LoadSkill = "load_skill";
+
+    /// <summary>
     /// The model asks the user a question. The invoker runs it: it pauses the answer like a confirmation does. Its policy is not
     /// consulted, because asking is already the interaction: <c>confirm</c> would only ask the user whether they want to be asked.
     /// </summary>
@@ -43,6 +49,13 @@ internal static class BuiltinToolCatalog
             "Supports + - * / % ^, parentheses and the functions sqrt, pow, abs, round, min and max.",
             """
             {"type":"object","properties":{"expression":{"type":"string","description":"The expression to evaluate, e.g. (12.5 + 3) * 4"}},"required":["expression"],"additionalProperties":false}
+            """),
+        new(
+            LoadSkill,
+            "Loads the full instructions of one of the skills listed in the system prompt. Call it with the skill's name when the task " +
+            "matches the skill's description, before you act on that task, and follow the instructions it returns.",
+            """
+            {"type":"object","properties":{"name":{"type":"string","description":"The name of the skill, as listed in the system prompt."}},"required":["name"],"additionalProperties":false}
             """),
     ];
 }

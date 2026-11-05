@@ -156,7 +156,8 @@ internal static class ToolPool
             join webFetch in db.WebFetchTools.IgnoreQueryFilters() on tool.Id equals webFetch.ToolId into webFetches
             from webFetch in webFetches.DefaultIfEmpty()
             where tool.State == ToolState.Enabled
-                  && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == tenantId)
+                  // load_skill is offered by the runtime to agents with skills and never activated (spec 017 D-4), so it is not in the pool.
+                  && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == tenantId && tool.Name != BuiltinToolCatalog.LoadSkill)
                       || (server != null
                           && server.Status == McpServerStatus.Available
                           && (server.Scope == ToolScopeKind.Global

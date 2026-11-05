@@ -25,7 +25,7 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, Share
         var tools = await ToolsApi.ListToolsAsync(client);
         var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
 
-        Assert.Equal(["ask_user", "calculator", "current_datetime"], tools.Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["ask_user", "calculator", "current_datetime", "load_skill"], tools.Select(t => t.Name).Order().ToArray());
         Assert.All(tools, tool =>
         {
             Assert.Equal("Builtin", tool.Origin);
@@ -54,7 +54,7 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, Share
         var pool = (await ToolsApi.GetAssistantToolsAsync(client, assistantId)).Pool;
         var settings = await client.GetFromJsonAsync<ToolsApi.ToolSettingsBody>(ToolsApi.ToolSettings, Ct);
 
-        Assert.Equal(3, tools.Count);
+        Assert.Equal(4, tools.Count);
         Assert.Equal(3, pool.Count);
         Assert.All(pool, tool => Assert.False(tool.Active));
         Assert.Equal(new ToolsApi.ToolSettingsBody(8, 300, 30, 300, 20_000, 90), settings);
@@ -76,7 +76,7 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, Share
 
         var tools = await ToolsApi.ListToolsAsync(client);
 
-        Assert.Equal(3, tools.Count);
+        Assert.Equal(4, tools.Count);
         var kept = tools.Single(t => t.Name == "calculator");
         Assert.Equal(calculator.Id, kept.Id);
         Assert.Equal("Disabled", kept.State);
@@ -102,7 +102,7 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, Share
         using var login = await client.PostAsJsonAsync(new Uri("/api/auth/login", UriKind.Relative), new { email = QuorumApp.AdminEmail, password = QuorumApp.AdminPassword }, Ct);
         var tools = await ToolsApi.ListToolsAsync(client);
 
-        Assert.Equal(3, tools.Count);
+        Assert.Equal(4, tools.Count);
         Assert.All(tools, tool => Assert.Equal("Builtin", tool.Origin));
         var kept = tools.Single(t => t.Name == "calculator");
         Assert.Equal(calculator.Id, kept.Id);
@@ -123,11 +123,11 @@ public sealed class BuiltinToolProvisioningTests(PostgresFixture postgres, Share
 
         var visible = await ToolsApi.ListToolsAsync(client);
 
-        Assert.Equal(3, visible.Count);
+        Assert.Equal(4, visible.Count);
         await using var verification = new NpgsqlConnection(app.ConnectionString);
         await verification.OpenAsync(Ct);
         await using var count = new NpgsqlCommand("SELECT count(*) FROM agents.tools", verification);
-        Assert.Equal(6L, await count.ExecuteScalarAsync(Ct));
+        Assert.Equal(8L, await count.ExecuteScalarAsync(Ct));
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)

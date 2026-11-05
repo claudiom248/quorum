@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Modules.Agents.Tools.Skills;
 
 namespace Quorum.Modules.Agents.Chat;
 
@@ -28,7 +29,8 @@ internal sealed record SubAgentSource(
     string SystemPrompt,
     SubAgentFailurePolicy FailurePolicy,
     EndpointConfiguration Endpoint,
-    IReadOnlyList<ActiveTool> Active);
+    IReadOnlyList<ActiveTool> Active,
+    SkillQuorumTool? Skill = null);
 
 /// <summary>
 /// The tools of an assistant as stored, before the catalog gives the rag and lookup ones their definition: what the root agent has
