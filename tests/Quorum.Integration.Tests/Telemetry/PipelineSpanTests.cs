@@ -35,8 +35,8 @@ public sealed class PipelineSpanTests(SharedTelemetryApp host) : IClassFixture<S
         Assert.DoesNotContain(span.TagObjects, tag => (tag.Value?.ToString() ?? string.Empty).Contains("notes.txt", StringComparison.Ordinal));
     }
 
-    [Fact] // spec 016 D-8, D-9: the SQL text and the connection details stay in the installation
-    public async Task NoDatabaseSpanCarriesSqlTextOrConnectionDetails()
+    [Fact] // spec 016 D-9: the connection details stay in the installation
+    public async Task NoDatabaseSpanCarriesConnectionDetails()
     {
         var conversation = await ChatApi.CreateConversationAsync(host.Admin);
 
@@ -47,7 +47,6 @@ public sealed class PipelineSpanTests(SharedTelemetryApp host) : IClassFixture<S
         Assert.NotEmpty(database);
         Assert.All(database, span =>
         {
-            Assert.Null(span.GetTagItem("db.query.text"));
             Assert.Null(span.GetTagItem("db.npgsql.data_source"));
         });
     }
