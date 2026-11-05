@@ -640,7 +640,17 @@ internal sealed partial class ToolCallInvoker(
     {
         null => "unknown",
         AgentQuorumTool => "agent",
-        _ when tool.Descriptor.ServerName is not null => "mcp",
+        _ => OriginName(tool.Descriptor.Origin),
+    };
+
+    /// <summary>The origin as the span reports it: the kind of tool, not its audit server, which every in-process tool has too.</summary>
+    internal static string OriginName(ToolOrigin origin) => origin switch
+    {
+        ToolOrigin.Mcp => "mcp",
+        ToolOrigin.Rag => "rag",
+        ToolOrigin.Lookup => "lookup",
+        ToolOrigin.WebSearch => "web_search",
+        ToolOrigin.WebFetch => "web_fetch",
         _ => "builtin",
     };
 

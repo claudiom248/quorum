@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Quorum.Host.Infrastructure.Telemetry;
+using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Shared.Telemetry;
 using Serilog.Core;
@@ -146,6 +147,18 @@ public sealed class TelemetryHardeningTests
         Assert.Equal(kept.TraceId.ToHexString(), ToolCallInvoker.TraceIdFor(kept, exporting: true));
         Assert.Null(ToolCallInvoker.TraceIdFor(kept, exporting: false));
         Assert.Null(ToolCallInvoker.TraceIdFor(null, exporting: true));
+    }
+
+    [Theory] // spec 016 D-15: the origin is the kind of tool; in-process tools carry an audit server name too, so the server is not the test
+    [InlineData("Builtin", "builtin")]
+    [InlineData("Mcp", "mcp")]
+    [InlineData("Rag", "rag")]
+    [InlineData("Lookup", "lookup")]
+    [InlineData("WebSearch", "web_search")]
+    [InlineData("WebFetch", "web_fetch")]
+    public void TheSpanNamesTheKindOfTool(string origin, string expected)
+    {
+        Assert.Equal(expected, ToolCallInvoker.OriginName(Enum.Parse<ToolOrigin>(origin)));
     }
 
     private static LogEvent EventWithTrace() => new(
