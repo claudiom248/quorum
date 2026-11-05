@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Quorum.Modules.Agents.Chat;
@@ -28,6 +29,11 @@ public static class AgentsModule
     public static IServiceCollection AddAgentsModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<AgentsDbContext>(AgentsDbContext.Schema);
+
+        // The assistant graph is kept between turns and dropped when anything in this schema is saved.
+        var graphCache = new AssistantGraphCache();
+        services.AddSingleton(_ => graphCache);
+        services.ConfigureDbContext<AgentsDbContext>(options => options.AddInterceptors(graphCache));
         // After the migrations (registered by the line above): initializers run in registration order.
         services.AddSingleton<IDatabaseInitializer, BuiltinToolsInitializer>();
         services.AddHostedService<AuditRetentionService>();

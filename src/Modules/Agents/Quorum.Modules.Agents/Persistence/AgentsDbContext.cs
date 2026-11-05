@@ -215,6 +215,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             entry.Property(e => e.TraceId).HasMaxLength(32);
             entry.HasIndex(e => new { e.TenantId, e.StartedAt });
             entry.HasIndex(e => new { e.TenantId, e.ToolName });
+            entry.HasIndex(e => e.ConversationId);
             entry.HasQueryFilter(e => e.TenantId == CurrentTenantId);
         });
     }

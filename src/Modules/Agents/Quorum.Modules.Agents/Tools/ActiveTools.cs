@@ -58,124 +58,109 @@ internal sealed record ToolRunContext(
     Guid ConversationId,
     ToolLimits Limits);
 
+/// <summary>Reads the platform's one web configuration at most once for whoever shares the reader.</summary>
+internal sealed class WebConfigurationReader(AgentsDbContext db)
+{
+    private bool _read;
+    private WebConfiguration? _value;
+
+    public async Task<WebConfiguration?> ReadAsync(CancellationToken cancellationToken)
+    {
+        if (!_read)
+        {
+            _value = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            _read = true;
+        }
+
+        return _value;
+    }
+}
+
 internal static class ActiveToolsQuery
 {
     /// <summary>The tools of the agent that are in its pool and activated, in a stable order.</summary>
-    public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken)
+    public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken, WebConfigurationReader? web = null) =>
+        (await LoadManyAsync(db, [agentId], cancellationToken, web)).GetValueOrDefault(agentId) ?? [];
+
+    /// <summary>The tools of each agent, for all of them with one query. An agent with none is absent.</summary>
+    public static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ActiveTool>>> LoadManyAsync(
+        AgentsDbContext db,
+        IReadOnlyCollection<Guid> agentIds,
+        CancellationToken cancellationToken,
+        WebConfigurationReader? web = null)
     {
-        // The activations of an agent another tenant shares are the owner's: outside the current tenant's filter.
-        var owner = await ToolPool.OwnerOfAsync(db, agentId, cancellationToken);
-        var tools = await (
-            from pooled in ToolPool.For(db, agentId, owner)
-            join activation in db.AgentTools.IgnoreQueryFilters() on pooled.Tool.Id equals activation.ToolId
-            where activation.AgentId == agentId
-            select pooled)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
+        if (agentIds.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<ActiveTool>>();
+        }
 
-        // The encrypted headers are read only here, for the tools that will run, and not by every listing of the pool.
-        var serverIds = tools.Select(pooled => pooled.Tool.ServerId).OfType<Guid>().Distinct().ToList();
-        var endpoints = serverIds.Count == 0
-            ? []
-            : await db.McpServers.IgnoreQueryFilters()
-                .Where(server => serverIds.Contains(server.Id))
-                .Select(server => new McpServerEndpoint(server.Id, server.Url, server.ProtectedHeaders))
-                .ToDictionaryAsync(endpoint => endpoint.ServerId, cancellationToken);
-
-        var ragIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.Rag).Select(pooled => pooled.Tool.Id).ToList();
-        var bindings = ragIds.Count == 0
-            ? []
-            : await db.RagTools.IgnoreQueryFilters().AsNoTracking()
-                .Where(rag => ragIds.Contains(rag.ToolId))
-                .ToDictionaryAsync(rag => rag.ToolId, RagBinding.From, cancellationToken);
-
-        var lookupIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.Lookup).Select(pooled => pooled.Tool.Id).ToList();
-        var lookupBindings = lookupIds.Count == 0
-            ? []
-            : await db.LookupTools.IgnoreQueryFilters().AsNoTracking()
-                .Where(lookup => lookupIds.Contains(lookup.ToolId))
-                .ToDictionaryAsync(lookup => lookup.ToolId, LookupBinding.From, cancellationToken);
-
-        // The manifest is the activation's, so the same tool can be lean on one agent and full on another (spec 012 D-8).
-        var manifests = lookupIds.Count == 0
-            ? new Dictionary<Guid, string>()
-            : await db.AgentTools.IgnoreQueryFilters().AsNoTracking()
-                .Where(activation => activation.AgentId == agentId && lookupIds.Contains(activation.ToolId))
-                .ToDictionaryAsync(activation => activation.ToolId, activation => activation.Manifest, cancellationToken);
-
-        var webSearchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebSearch).Select(pooled => pooled.Tool.Id).ToList();
-        var webSearchBindings = webSearchIds.Count == 0
-            ? []
-            : await db.WebSearchTools.IgnoreQueryFilters().AsNoTracking()
-                .Where(webSearch => webSearchIds.Contains(webSearch.ToolId))
-                .ToDictionaryAsync(webSearch => webSearch.ToolId, WebSearchBinding.From, cancellationToken);
-
-        var webFetchIds = tools.Where(pooled => pooled.Tool.Origin == ToolOrigin.WebFetch).Select(pooled => pooled.Tool.Id).ToList();
+        // The activations of an agent another tenant shares are the owner's, and the pool is worked out for that owner: the query says so.
+        var rows = await ToolPool.ForAgents(db, agentIds).ToListAsync(cancellationToken);
 
         // A tool that never overrode a field inherits it now, not when it was created: the row is read with the tool, so an
         // administrator changing the Settings tabs reaches the tools that follow it (spec 006, AC-13).
-        var webConfiguration = webFetchIds.Count == 0
-            ? null
-            : await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-        var webFetchBindings = webFetchIds.Count == 0
-            ? []
-            : await db.WebFetchTools.IgnoreQueryFilters().AsNoTracking()
-                .Where(webFetch => webFetchIds.Contains(webFetch.ToolId))
-                .ToDictionaryAsync(webFetch => webFetch.ToolId, webFetch => WebFetchBinding.From(webFetch, webConfiguration), cancellationToken);
+        var webConfiguration = rows.Any(row => row.WebFetch is not null)
+            ? await (web ?? new WebConfigurationReader(db)).ReadAsync(cancellationToken)
+            : null;
 
-        return tools
-            .Select(pooled =>
-            {
-                var webSearch = webSearchBindings.GetValueOrDefault(pooled.Tool.Id);
-                var webFetch = webFetchBindings.GetValueOrDefault(pooled.Tool.Id);
-
-                // A web search or fetch tool's definition comes from its binding, the way a rag tool's comes from the catalog; unlike
-                // a rag tool's it needs nothing from outside the row, so it is written here and not by a resolver.
-                string generatedDescription = pooled.Tool.Description;
-                string generatedSchema = pooled.Tool.InputSchema;
-                if (webSearch is not null)
-                {
-                    var generatedSearch = WebSearchToolDefinition.Build(pooled.Tool.Description, webSearch.TopN);
-                    generatedDescription = generatedSearch.Description;
-                    generatedSchema = generatedSearch.InputSchema;
-                }
-                else if (webFetch is not null)
-                {
-                    var generatedFetch = WebFetchToolDefinition.Build(pooled.Tool.Description, webFetch.MaxUrlsPerInvocation);
-                    generatedDescription = generatedFetch.Description;
-                    generatedSchema = generatedFetch.InputSchema;
-                }
-
-                return new ActiveTool(
-                    pooled.Tool.Id,
-                    pooled.Tool.Origin,
-                    pooled.Tool.Name,
-                    pooled.ExposedName,
-                    AuditServerOf(pooled),
-                    generatedDescription,
-                    generatedSchema,
-                    pooled.Tool.DefinitionHash,
-                    pooled.Tool.ServerId is { } serverId && endpoints.TryGetValue(serverId, out var endpoint) ? endpoint : null,
-                    bindings.GetValueOrDefault(pooled.Tool.Id),
-                    lookupBindings.GetValueOrDefault(pooled.Tool.Id) is { } lookupBinding
-                        ? lookupBinding with { Manifest = manifests.GetValueOrDefault(pooled.Tool.Id, LookupManifest.Full) }
-                        : null,
-                    webSearch,
-                    webFetch);
-            })
-            // Names are checked when a tool or an agent is saved, but older data may hold two that the model would take for one: the oldest keeps the name.
-            .GroupBy(tool => tool.ExposedName, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.OrderBy(tool => tool.ToolId).First())
-            .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
-            .ToList();
+        return rows
+            .GroupBy(row => row.AgentId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ActiveTool>)group
+                    .Select(row => ToActiveTool(row, webConfiguration))
+                    // Names are checked when a tool or an agent is saved, but older data may hold two that the model would take for one: the oldest keeps the name.
+                    .GroupBy(tool => tool.ExposedName, StringComparer.OrdinalIgnoreCase)
+                    .Select(names => names.OrderBy(tool => tool.ToolId).First())
+                    .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
+                    .ToList());
     }
 
-    private static string? AuditServerOf(PoolTool pooled) => pooled.Tool.Origin switch
+    private static ActiveTool ToActiveTool(RuntimePoolRow row, WebConfiguration? webConfiguration)
+    {
+        var webSearch = row.WebSearch is null ? null : WebSearchBinding.From(row.WebSearch);
+        var webFetch = row.WebFetch is null ? null : WebFetchBinding.From(row.WebFetch, webConfiguration);
+        var lookup = row.Lookup is null ? null : LookupBinding.From(row.Lookup) with { Manifest = row.Manifest };
+
+        // A web search or fetch tool's definition comes from its binding, the way a rag tool's comes from the catalog; unlike
+        // a rag tool's it needs nothing from outside the row, so it is written here and not by a resolver.
+        var description = row.Tool.Description;
+        var schema = row.Tool.InputSchema;
+        if (webSearch is not null)
+        {
+            var generated = WebSearchToolDefinition.Build(row.Tool.Description, webSearch.TopN);
+            description = generated.Description;
+            schema = generated.InputSchema;
+        }
+        else if (webFetch is not null)
+        {
+            var generated = WebFetchToolDefinition.Build(row.Tool.Description, webFetch.MaxUrlsPerInvocation);
+            description = generated.Description;
+            schema = generated.InputSchema;
+        }
+
+        return new ActiveTool(
+            row.Tool.Id,
+            row.Tool.Origin,
+            row.Tool.Name,
+            row.AsPoolTool().ExposedName,
+            AuditServerOf(row),
+            description,
+            schema,
+            row.Tool.DefinitionHash,
+            row.ServerId is { } serverId && row.ServerUrl is not null ? new McpServerEndpoint(serverId, row.ServerUrl, row.ProtectedHeaders) : null,
+            row.Rag is null ? null : RagBinding.From(row.Rag),
+            lookup,
+            webSearch,
+            webFetch);
+    }
+
+    private static string? AuditServerOf(RuntimePoolRow row) => row.Tool.Origin switch
     {
         ToolOrigin.Rag => ToolNaming.RagAuditServer,
         ToolOrigin.Lookup => ToolNaming.LookupAuditServer,
         ToolOrigin.WebSearch => ToolNaming.WebSearchAuditServer,
         ToolOrigin.WebFetch => ToolNaming.WebFetchAuditServer,
-        _ => pooled.ServerName,
+        _ => row.ServerName,
     };
 }

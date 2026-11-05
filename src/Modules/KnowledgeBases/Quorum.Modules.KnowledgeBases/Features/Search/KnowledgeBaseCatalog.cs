@@ -25,7 +25,10 @@ internal sealed class KnowledgeBaseCatalog(KnowledgeBasesDbContext db, ITenantCo
 
         var ids = query.KnowledgeBaseIds.Distinct().ToList();
         var visible = query.AssistantId is { } assistantId ? KnowledgeBaseVisibility.ForAssistant(db, assistantId) : KnowledgeBaseVisibility.KnowledgeBases(db);
-        var bases = await visible.AsNoTracking().Where(k => ids.Contains(k.Id)).OrderBy(k => k.Name).ToListAsync(cancellationToken);
+        // Only what the description shows: the connection and the rest of the row are not needed to offer a tool.
+        var bases = await visible.AsNoTracking().Where(k => ids.Contains(k.Id)).OrderBy(k => k.Name)
+            .Select(k => new { k.Id, k.Name, k.Description, k.Mapping })
+            .ToListAsync(cancellationToken);
 
         var wanted = bases.SelectMany(k => k.Mapping.Fields.Select(f => f.DictionaryFieldId)).Concat(query.FieldIds).Distinct().ToList();
         var fields = await DictionaryVisibility.Fields(db).AsNoTracking().Where(f => wanted.Contains(f.Id)).OrderBy(f => f.Name).ToListAsync(cancellationToken);

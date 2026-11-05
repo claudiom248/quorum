@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
@@ -21,7 +20,7 @@ internal sealed record ResolvedRagTool(GeneratedRagDefinition Definition, IReadO
 /// saved, so a renamed or deleted knowledge base never leaves a stale enum, and one the tenant can no longer see is simply absent.
 /// A tool left with no visible knowledge base is dropped: it is not offered.
 /// </summary>
-internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBaseCatalog catalog, IMemoryCache cache, ILogger<RagToolResolver> logger)
+internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBaseCatalog catalog, ILogger<RagToolResolver> logger)
 {
     /// <param name="assistantId">The assistant answering, or <see langword="null"/> for an administrator looking at a configuration.</param>
     /// <returns>The tools that can be offered, by tool id.</returns>
@@ -111,66 +110,44 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
         return await ResolveAsync(tenantId, assistantId, described, cancellationToken);
     }
 
-    /// <summary>Gives the rag tools among <paramref name="tools"/> the definition they have now; those with no visible knowledge base are left out.</summary>
-    /// <param name="allowRecent">Accepts a definition made in the last seconds, for the context gauge, which only needs its size and is asked for as the user types; an answer always gets a fresh one.</param>
-    public async Task<IReadOnlyList<ActiveTool>> ResolveActiveAsync(
-        IReadOnlyList<ActiveTool> tools,
+    /// <summary>
+    /// Gives the rag tools among those of several agents (the root agent and its sub-agents) the definition they have now, those with no
+    /// visible knowledge base left out: the catalog is asked
+    /// one time for all of them, and each group comes back in the order it came in.
+    /// </summary>
+    public async Task<IReadOnlyList<IReadOnlyList<ActiveTool>>> ResolveActiveGroupsAsync(
+        IReadOnlyList<IReadOnlyList<ActiveTool>> groups,
         Guid tenantId,
         Guid assistantId,
-        CancellationToken cancellationToken,
-        bool allowRecent = false)
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(groups);
 
-        var rag = tools.Where(t => t.Rag is not null).ToList();
+        // The same tool on two agents has the same binding: it is described once.
+        var rag = groups.SelectMany(tools => tools).Where(t => t.Rag is not null).DistinctBy(t => t.ToolId).ToList();
         if (rag.Count == 0)
         {
-            return tools;
+            return groups;
         }
 
-        // The key has the hash of the stored configuration, so an edited tool is never served from before the edit.
-        string KeyOf(ActiveTool tool) => $"rag-definition:{tenantId}:{assistantId}:{tool.ToolId}:{tool.DefinitionHash}";
-
-        var resolved = new Dictionary<Guid, ResolvedRagTool?>();
-        var missing = new List<ActiveTool>();
-        foreach (var tool in rag)
-        {
-            if (allowRecent && cache.TryGetValue(KeyOf(tool), out Recent? recent) && recent is not null)
-            {
-                resolved[tool.ToolId] = recent.Tool;
-            }
-            else
-            {
-                missing.Add(tool);
-            }
-        }
-
-        if (missing.Count > 0)
-        {
-            var fresh = await ResolveAsync(tenantId, assistantId, [.. missing.Select(t => new RagToolToDescribe(t.ToolId, t.Description, t.Rag!))], cancellationToken);
-            foreach (var tool in missing)
-            {
-                var found = fresh.GetValueOrDefault(tool.ToolId);
-                resolved[tool.ToolId] = found;
-                if (allowRecent)
-                {
-                    cache.Set(KeyOf(tool), new Recent(found), RecentFor);
-                }
-            }
-        }
+        var fresh = await ResolveAsync(tenantId, assistantId, [.. rag.Select(t => new RagToolToDescribe(t.ToolId, t.Description, t.Rag!))], cancellationToken);
+        var resolved = rag.ToDictionary(tool => tool.ToolId, tool => fresh.GetValueOrDefault(tool.ToolId));
 
         return
         [
-            .. tools.Select(tool => tool.Rag is null
-                ? tool
-                : resolved.GetValueOrDefault(tool.ToolId) is { } definition
-                    ? tool with
-                    {
-                        Description = definition.Definition.Description,
-                        InputSchema = definition.Definition.InputSchema,
-                        Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields, AllowDocumentIds = definition.OffersDocumentIds },
-                    }
-                    : null).OfType<ActiveTool>(),
+            .. groups.Select(tools => (IReadOnlyList<ActiveTool>)
+            [
+                .. tools.Select(tool => tool.Rag is null
+                    ? tool
+                    : resolved.GetValueOrDefault(tool.ToolId) is { } definition
+                        ? tool with
+                        {
+                            Description = definition.Definition.Description,
+                            InputSchema = definition.Definition.InputSchema,
+                            Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields, AllowDocumentIds = definition.OffersDocumentIds },
+                        }
+                        : null).OfType<ActiveTool>(),
+            ]),
         ];
     }
 
@@ -181,11 +158,6 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
         Name = alias ?? field.Name,
         Description = field.Description ?? (field.Cluster is null ? null : $"{field.Name} ({field.Cluster})"),
     };
-
-    private static readonly TimeSpan RecentFor = TimeSpan.FromSeconds(30);
-
-    /// <summary>A cached outcome; <see langword="null"/> inside means the tool had no visible knowledge base.</summary>
-    private sealed record Recent(ResolvedRagTool? Tool);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rag tool {ToolId} names {Count} dictionary fields that no longer exist or are no longer visible")]
     private static partial void LogMissingFields(ILogger logger, Guid toolId, int count);

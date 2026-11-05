@@ -15,7 +15,7 @@ namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 /// <see cref="IKnowledgeBaseLookups"/>. Like the catalog and the search, it answers for the tenant of the request only: for any other
 /// it behaves as if that tenant could see nothing, which also tells a caller nothing about what exists.
 /// </summary>
-internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantContext tenant, LookupCache cache, LiveLookupOperations live, TimeProvider clock) : IKnowledgeBaseLookups
+internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantContext tenant, LookupCache cache, LiveLookupOperations live, KnowledgeBaseChanges changes, TimeProvider clock) : IKnowledgeBaseLookups
 {
     /// <summary>The most slices a knowledge base has, counting the one of the whole knowledge base (spec 007 D-6).</summary>
     public const int MaxSlicesPerKnowledgeBase = 50;
@@ -170,7 +170,11 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
             return LookupRead.Of(LookupReadOutcome.NotAvailable);
         }
 
-        var found = (await LoadVisibleAsync(request.AssistantId, [request.LookupId], cancellationToken)).FirstOrDefault();
+        // What decides whether the tenant sees the list is kept until the module's data changes: a read of a list asks it every time.
+        var found = (await changes.GetOrLoadAsync(
+            $"lookup-visible:{request.TenantId}:{request.AssistantId}:{request.LookupId}",
+            async () => await LoadVisibleAsync(request.AssistantId, [request.LookupId], cancellationToken))
+            )?.FirstOrDefault();
         if (found is null)
         {
             return LookupRead.Of(LookupReadOutcome.NotAvailable);
@@ -200,8 +204,10 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
         }
 
         var hash = key.Value!.Hash;
-        var slice = await db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
-            .SingleOrDefaultAsync(s => s.LookupId == lookup.Id && s.FilterHash == hash, cancellationToken);
+        var slice = await changes.GetOrLoadAsync(
+            $"lookup-slice:{lookup.Id}:{hash}",
+            () => db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefaultAsync(s => s.LookupId == lookup.Id && s.FilterHash == hash, cancellationToken));
         if (slice is null)
         {
             return LookupRead.Of(LookupReadOutcome.Preparing, info.Name, info.KnowledgeBaseName);

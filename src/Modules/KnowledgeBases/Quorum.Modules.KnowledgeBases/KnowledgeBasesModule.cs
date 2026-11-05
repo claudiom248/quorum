@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Quorum.Modules.KnowledgeBases.Contracts;
@@ -22,6 +23,12 @@ public static class KnowledgeBasesModule
     public static IServiceCollection AddKnowledgeBasesModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<KnowledgeBasesDbContext>(KnowledgeBasesDbContext.Schema);
+
+        // Whoever keeps what it read from this module (the Agents module, the lookup reads) learns of every write, including the bulk ones.
+        var changes = new KnowledgeBaseChanges();
+        services.AddSingleton(_ => changes);
+        services.AddSingleton<IKnowledgeBaseChangeStamp>(_ => changes);
+        services.ConfigureDbContext<KnowledgeBasesDbContext>(options => options.AddInterceptors(changes.CommandInterceptor(), changes.TransactionInterceptor()));
 
         services.AddQdrantStore();
         services.AddPgVectorStore();

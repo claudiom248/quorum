@@ -2,8 +2,10 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quorum.Integration.Tests.Fixtures;
+using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.KnowledgeBases.Persistence;
 
 namespace Quorum.Integration.Tests.Tools;
 
@@ -140,6 +142,10 @@ internal static class ToolFixtures
         await connection.OpenAsync(Ct);
         await using var command = new NpgsqlCommand(sql, connection);
         await command.ExecuteNonQueryAsync(Ct);
+
+        // A statement stands for a change an administrator made through the application, which drops the assistant graph; one run behind its back would not.
+        app.Services.GetRequiredService<AssistantGraphCache>().Invalidate();
+        app.Services.GetRequiredService<KnowledgeBaseChanges>().Invalidate();
     }
 
     /// <summary>The audit entries, oldest first, read straight from the table.</summary>

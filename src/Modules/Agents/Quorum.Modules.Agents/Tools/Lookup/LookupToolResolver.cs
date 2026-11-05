@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.KnowledgeBases.Contracts;
@@ -42,10 +41,8 @@ internal sealed record ResolvedLookupTool(
 /// saved, so a renamed or deleted lookup never leaves a stale enum, and one the tenant can no longer see is simply absent. A tool left
 /// with no visible lookup is dropped: it is not offered.
 /// </summary>
-internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLookups lookups, IKnowledgeBaseCatalog catalog, IMemoryCache cache)
+internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLookups lookups, IKnowledgeBaseCatalog catalog)
 {
-    private static readonly TimeSpan RecentFor = TimeSpan.FromSeconds(30);
-
     /// <param name="assistantId">The assistant answering, or <see langword="null"/> for an administrator looking at a configuration.</param>
     /// <returns>The tools that can be offered, by tool id.</returns>
     public async Task<IReadOnlyDictionary<Guid, ResolvedLookupTool>> ResolveAsync(
@@ -183,81 +180,58 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
         return await ResolveAsync(tenantId, assistantId, described, cancellationToken);
     }
 
-    /// <summary>Gives the lookup tools among <paramref name="tools"/> the definition they have now; those with no visible lookup are left out.</summary>
-    /// <param name="allowRecent">Accepts a definition made in the last seconds, for the context gauge, which only needs its size and is asked for as the user types; an answer always gets a fresh one.</param>
-    public async Task<IReadOnlyList<ActiveTool>> ResolveActiveAsync(
-        IReadOnlyList<ActiveTool> tools,
+    /// <summary>
+    /// Gives the lookup tools among those of several agents (the root agent and its sub-agents) the definition they have now, those with no
+    /// visible lookup left out: the catalog is asked one time for all of them, and each group comes back in the order it came in.
+    /// </summary>
+    public async Task<IReadOnlyList<IReadOnlyList<ActiveTool>>> ResolveActiveGroupsAsync(
+        IReadOnlyList<IReadOnlyList<ActiveTool>> groups,
         Guid tenantId,
         Guid assistantId,
-        CancellationToken cancellationToken,
-        bool allowRecent = false)
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(groups);
 
-        var lookupTools = tools.Where(t => t.Lookup is not null).ToList();
+        // The same tool on two agents has the same binding (the manifest is the activation's and is applied below): it is described once.
+        var lookupTools = groups.SelectMany(tools => tools).Where(t => t.Lookup is not null).DistinctBy(t => t.ToolId).ToList();
         if (lookupTools.Count == 0)
         {
-            return tools;
+            return groups;
         }
 
-        // The key has the hash of the stored configuration, so an edited tool is never served from before the edit.
-        string KeyOf(ActiveTool tool) => $"lookup-definition:{tenantId}:{assistantId}:{tool.ToolId}:{tool.DefinitionHash}";
-
-        var resolved = new Dictionary<Guid, ResolvedLookupTool?>();
-        var missing = new List<ActiveTool>();
-        foreach (var tool in lookupTools)
-        {
-            if (allowRecent && cache.TryGetValue(KeyOf(tool), out Recent? recent) && recent is not null)
-            {
-                resolved[tool.ToolId] = recent.Tool;
-            }
-            else
-            {
-                missing.Add(tool);
-            }
-        }
-
-        if (missing.Count > 0)
-        {
-            var fresh = await ResolveAsync(tenantId, assistantId, [.. missing.Select(t => new LookupToolToDescribe(t.ToolId, t.Name, t.Description, t.Lookup!))], cancellationToken);
-            foreach (var tool in missing)
-            {
-                var found = fresh.GetValueOrDefault(tool.ToolId);
-                resolved[tool.ToolId] = found;
-                if (allowRecent)
-                {
-                    cache.Set(KeyOf(tool), new Recent(found), RecentFor);
-                }
-            }
-        }
+        var fresh = await ResolveAsync(tenantId, assistantId, [.. lookupTools.Select(t => new LookupToolToDescribe(t.ToolId, t.Name, t.Description, t.Lookup!))], cancellationToken);
+        var resolved = lookupTools.ToDictionary(tool => tool.ToolId, tool => fresh.GetValueOrDefault(tool.ToolId));
 
         // One row of configuration is offered as one function for each thing it can do: they share the policy, the activation and the audit.
         return
         [
-            .. tools.SelectMany(tool => tool.Lookup is null
-                ? [tool]
-                : resolved.GetValueOrDefault(tool.ToolId) is { } definition
-                    ? FunctionsOf(tool, definition).Select(function => tool with
-                    {
-                        Name = $"{tool.Name}.{function.Operation}",
-                        ExposedName = ToolNaming.LookupFunction(tool.Name, function.Operation),
-                        Description = function.Description,
-                        InputSchema = function.InputSchema,
-                        Lookup = tool.Lookup with
+            .. groups.Select(tools => (IReadOnlyList<ActiveTool>)
+            [
+                .. tools.SelectMany(tool => tool.Lookup is null
+                    ? [tool]
+                    : resolved.GetValueOrDefault(tool.ToolId) is { } definition
+                        ? FunctionsOf(tool, definition).Select(function => tool with
                         {
-                            Operation = function.Operation,
-                            Lookups = definition.Lookups,
-                            KnowledgeBases = definition.KnowledgeBases,
-                            FilterFields = definition.FilterFields,
-                            SortableAttributes = definition.SortableAttributes,
-                            FilterLists = definition.FilterLists,
-                            FilterTypes = definition.FilterTypes,
-                            ListFilters = definition.ListFilters,
-                            KnowledgeBaseFilters = definition.KnowledgeBaseFilters,
-                            Targets = definition.Targets,
-                        },
-                    })
-                    : []),
+                            Name = $"{tool.Name}.{function.Operation}",
+                            ExposedName = ToolNaming.LookupFunction(tool.Name, function.Operation),
+                            Description = function.Description,
+                            InputSchema = function.InputSchema,
+                            Lookup = tool.Lookup with
+                            {
+                                Operation = function.Operation,
+                                Lookups = definition.Lookups,
+                                KnowledgeBases = definition.KnowledgeBases,
+                                FilterFields = definition.FilterFields,
+                                SortableAttributes = definition.SortableAttributes,
+                                FilterLists = definition.FilterLists,
+                                FilterTypes = definition.FilterTypes,
+                                ListFilters = definition.ListFilters,
+                                KnowledgeBaseFilters = definition.KnowledgeBaseFilters,
+                                Targets = definition.Targets,
+                            },
+                        })
+                        : []),
+            ]),
         ];
     }
 
@@ -269,6 +243,4 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
         Description = field.Description ?? (field.Cluster is null ? null : $"{field.Name} ({field.Cluster})"),
     };
 
-    /// <summary>A cached outcome; <see langword="null"/> inside means the tool had no visible lookup.</summary>
-    private sealed record Recent(ResolvedLookupTool? Tool);
 }

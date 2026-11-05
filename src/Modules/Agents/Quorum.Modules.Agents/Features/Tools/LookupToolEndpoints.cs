@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
@@ -213,6 +214,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         LookupToolResolver resolver,
         IKnowledgeBaseLookups lookups,
         IPlatformUnitOfWork unitOfWork,
+        AssistantGraphCache graph,
         TimeProvider clock,
         ILogger<LookupToolEndpoints> logger,
         CancellationToken cancellationToken)
@@ -267,6 +269,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
             }
 
             await transaction.CommitAsync(cancellationToken);
+            graph.Invalidate();
         }
 
         LogSaved(logger, tool.Id, binding.LookupIds.Count, binding.KnowledgeBaseIds.Count, "created");
@@ -290,6 +293,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         LookupToolValidation validation,
         IKnowledgeBaseLookups lookups,
         IPlatformUnitOfWork unitOfWork,
+        AssistantGraphCache graph,
         TimeProvider clock,
         ILogger<LookupToolEndpoints> logger,
         CancellationToken cancellationToken)
@@ -343,6 +347,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
             }
 
             await transaction.CommitAsync(cancellationToken);
+            graph.Invalidate();
         }
 
         LogSaved(logger, id, binding.LookupIds.Count, binding.KnowledgeBaseIds.Count, "updated");
@@ -356,6 +361,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         ITenantContext tenant,
         IKnowledgeBaseLookups lookups,
         IPlatformUnitOfWork unitOfWork,
+        AssistantGraphCache graph,
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
@@ -370,6 +376,7 @@ internal sealed partial class LookupToolEndpoints : IEndpointGroup
         await db.SaveChangesAsync(cancellationToken);
         await lookups.ReleaseSlicesAsync(tenantId, id, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        graph.Invalidate();
         return TypedResults.NoContent();
     }
 

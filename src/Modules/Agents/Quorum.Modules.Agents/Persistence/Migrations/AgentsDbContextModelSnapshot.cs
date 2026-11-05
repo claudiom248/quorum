@@ -545,6 +545,8 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ConversationId");
+
                     b.HasIndex("TenantId", "StartedAt");
 
                     b.HasIndex("TenantId", "ToolName");

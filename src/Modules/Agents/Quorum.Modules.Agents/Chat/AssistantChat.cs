@@ -28,7 +28,9 @@ internal sealed class AssistantChat(
     IWebSearchProvider webSearchProvider,
     IWebFetchProvider webFetchProvider,
     WebFetchCache webFetchCache,
-    WebSearchInvocationCounter invocations) : IAssistantChat, IAssistantCatalog
+    WebSearchInvocationCounter invocations,
+    AssistantGraphCache graph,
+    IKnowledgeBaseChangeStamp knowledgeBaseChanges) : IAssistantChat, IAssistantCatalog
 {
     // Added to the system prompt only when tools are offered (D-31); attached documents carry the same warning in their own block.
     internal const string ToolDataNotice =
@@ -111,7 +113,7 @@ internal sealed class AssistantChat(
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
 
-        var prepared = await PrepareAsync(assistantId, Guid.Empty, cancellationToken, forMeasure: true);
+        var prepared = await PrepareAsync(assistantId, Guid.Empty, cancellationToken);
         if (prepared is null)
         {
             return AssistantNotFound;
@@ -129,7 +131,7 @@ internal sealed class AssistantChat(
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
 
-        var prepared = await PrepareAsync(assistantId, Guid.Empty, cancellationToken, forMeasure: true);
+        var prepared = await PrepareAsync(assistantId, Guid.Empty, cancellationToken);
         if (prepared is null)
         {
             return AssistantNotFound;
@@ -140,50 +142,39 @@ internal sealed class AssistantChat(
 
     /// <summary>The assistant's configuration with the tools it may offer to the current caller, or <see langword="null"/> when it does not exist.</summary>
     /// <param name="conversationId">The conversation a web search tool counts its invocations in; nothing for a measurement.</param>
-    private async Task<PreparedAssistant?> PrepareAsync(Guid assistantId, Guid conversationId, CancellationToken cancellationToken, bool forMeasure = false)
+    private async Task<PreparedAssistant?> PrepareAsync(Guid assistantId, Guid conversationId, CancellationToken cancellationToken)
     {
-        var configuration = await (
-            from assistant in db.Assistants
-            join agent in VisibleAgents() on assistant.RootAgentId equals agent.Id
-            join endpoint in db.ModelEndpoints.IgnoreQueryFilters() on agent.ModelEndpointId equals endpoint.Id
-            where assistant.Id == assistantId
-            select new AssistantConfiguration(
-                agent.Id,
-                agent.SystemPrompt,
-                endpoint.BaseUrl,
-                endpoint.ModelName,
-                endpoint.ProtectedApiKey,
-                endpoint.ContextTokenBudget,
-                endpoint.SupportsTools,
-                assistant.MaxParallelSubAgents))
-            .AsNoTracking()
-            .SingleOrDefaultAsync(cancellationToken);
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+
+        // What is stored comes from the graph cache; the definition of the rag and lookup tools below is made now.
+        var configuration = await graph.GetOrLoadAsync("configuration", tenantId, assistantId, 0, () => LoadConfigurationAsync(assistantId, cancellationToken));
         if (configuration is null)
         {
             return null;
         }
 
         var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
-        IReadOnlyList<ActiveTool> active = caller is null ? [] : await ActiveToolsQuery.LoadAsync(db, configuration.AgentId, cancellationToken);
 
-        // The sub-agents are read now, with their tools, and the turn keeps them as they are (spec 013 AC-25).
-        var subAgents = caller is null ? [] : await LoadSubAgentsAsync(configuration, cancellationToken);
-
-        // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
-        // The knowledge bases and lookups are the assistant's, also for the tools of a sub-agent (spec 013 D-41).
-        active = caller is null ? active : await ragResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
-        active = caller is null ? active : await lookupResolver.ResolveActiveAsync(active, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
-        var resolvedSubAgents = new List<SubAgentSource>(subAgents.Count);
-        foreach (var subAgent in subAgents)
+        // The sub-agents are read with their tools, and the turn keeps them as they are (spec 013 AC-25).
+        var stored = caller is null ? null : await graph.GetOrLoadAsync("tools", tenantId, assistantId, 0, () => LoadToolsAsync(configuration, cancellationToken));
+        IReadOnlyList<ActiveTool> active = [];
+        IReadOnlyList<SubAgentSource> resolvedSubAgents = [];
+        if (caller is not null && stored is not null)
         {
-            var subActive = await ragResolver.ResolveActiveAsync(subAgent.Active, caller!.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
-            subActive = await lookupResolver.ResolveActiveAsync(subActive, caller.TenantId, assistantId, cancellationToken, allowRecent: forMeasure);
-            resolvedSubAgents.Add(subAgent with { Active = subActive });
+            // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
+            // That is kept while neither this module nor the knowledge base module changes anything, so a change on either side reaches the next turn.
+            var resolved = await graph.GetOrLoadAsync(
+                "resolved",
+                tenantId,
+                assistantId,
+                knowledgeBaseChanges.Current,
+                async () => await ResolveAsync(stored, caller.TenantId, assistantId, cancellationToken));
+            active = resolved!.Active;
+            resolvedSubAgents = resolved.SubAgents;
         }
 
         var allActive = active.Concat(resolvedSubAgents.SelectMany(subAgent => subAgent.Active)).ToList();
-        var settings = allActive.Count == 0 && resolvedSubAgents.Count == 0 ? null : await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-        var limits = settings is null ? ToolLimits.Default : ToolLimits.From(settings);
+        var limits = stored?.Limits ?? ToolLimits.Default;
         // Only an assistant with MCP tools has sessions to open and close.
         var connections = allActive.Any(tool => tool.Server is not null) ? toolFactory.NewConnections() : null;
         // One numbering for the answer, so [3] means one source whether a knowledge base or the web gave it (spec 005, AC-6).
@@ -191,12 +182,12 @@ internal sealed class AssistantChat(
         var rag = caller is null ? null : new RagRuntime(knowledgeBaseSearch, numbering!, caller.TenantId, assistantId, limits.MaxResultCharacters);
         var lookup = caller is null ? null : new LookupRuntime(knowledgeBaseLookups, caller.TenantId, assistantId, limits.MaxResultCharacters);
 
-        // The web configuration is the platform's one row, read once when any web tool is offered.
+        // The web configuration is the platform's one row, kept with the graph when any web tool is offered.
         WebSearchRuntime? webSearch = null;
         WebFetchRuntime? webFetch = null;
         if (numbering is not null && allActive.Any(tool => tool.WebSearch is not null || tool.WebFetch is not null))
         {
-            var web = await db.WebConfigurations.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            var web = stored?.Web;
 
             if (allActive.Any(tool => tool.WebSearch is not null))
             {
@@ -296,7 +287,7 @@ internal sealed class AssistantChat(
     /// The sub-agents of the root agent with what they run on: their own endpoint or the root's (D-12), and their own tools, without
     /// <c>ask_user</c> (D-40). A sub-agent on an endpoint without tool support gets none, as the root agent would.
     /// </summary>
-    private async Task<IReadOnlyList<SubAgentSource>> LoadSubAgentsAsync(AssistantConfiguration root, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SubAgentSource>> LoadSubAgentsAsync(AssistantConfiguration root, WebConfigurationReader web, CancellationToken cancellationToken)
     {
         var edges = await (
             from edge in db.AgentSubAgents.IgnoreQueryFilters()
@@ -318,12 +309,21 @@ internal sealed class AssistantChat(
             .ToDictionaryAsync(endpoint => endpoint.Id, endpoint => endpoint.Configuration, cancellationToken);
         var inherited = new EndpointConfiguration(root.BaseUrl, root.ModelName, root.ProtectedApiKey, root.ContextTokenBudget, root.SupportsTools);
 
+        var resolvedEndpoints = edges
+            .Select(edge => edge.ModelEndpointId is { } endpointId && endpoints.TryGetValue(endpointId, out var own) ? own : inherited)
+            .ToList();
+
+        // One read of the tools of all the sub-agents that can use them, not one for each.
+        var withTools = edges.Where((_, index) => resolvedEndpoints[index].SupportsTools).Select(edge => edge.Id).ToList();
+        var toolsByAgent = await ActiveToolsQuery.LoadManyAsync(db, withTools, cancellationToken, web);
+
         var sources = new List<SubAgentSource>(edges.Count);
-        foreach (var edge in edges)
+        for (var index = 0; index < edges.Count; index++)
         {
-            var endpoint = edge.ModelEndpointId is { } endpointId && endpoints.TryGetValue(endpointId, out var own) ? own : inherited;
-            var active = endpoint.SupportsTools
-                ? (await ActiveToolsQuery.LoadAsync(db, edge.Id, cancellationToken))
+            var edge = edges[index];
+            var endpoint = resolvedEndpoints[index];
+            IReadOnlyList<ActiveTool> active = endpoint.SupportsTools
+                ? (toolsByAgent.GetValueOrDefault(edge.Id) ?? [])
                     .Where(tool => !(tool.Origin == ToolOrigin.Builtin && tool.Name == BuiltinToolCatalog.AskUser))
                     .ToList()
                 : [];
@@ -333,26 +333,44 @@ internal sealed class AssistantChat(
         return sources;
     }
 
-    private sealed record EndpointConfiguration(string BaseUrl, string ModelName, string? ProtectedApiKey, int ContextTokenBudget, bool SupportsTools);
+    private async Task<ResolvedAssistantTools?> ResolveAsync(AssistantTools stored, Guid tenantId, Guid assistantId, CancellationToken cancellationToken)
+    {
+        // The knowledge bases and lookups are the assistant's, also for the tools of a sub-agent (spec 013 D-41), so the root's and the sub-agents' are asked together.
+        IReadOnlyList<IReadOnlyList<ActiveTool>> groups = [stored.Active, .. stored.SubAgents.Select(subAgent => subAgent.Active)];
+        groups = await ragResolver.ResolveActiveGroupsAsync(groups, tenantId, assistantId, cancellationToken);
+        groups = await lookupResolver.ResolveActiveGroupsAsync(groups, tenantId, assistantId, cancellationToken);
+        return new ResolvedAssistantTools(groups[0], [.. stored.SubAgents.Select((subAgent, index) => subAgent with { Active = groups[index + 1] })]);
+    }
 
-    private sealed record SubAgentSource(
-        Guid AgentId,
-        string Slug,
-        string Description,
-        string SystemPrompt,
-        SubAgentFailurePolicy FailurePolicy,
-        EndpointConfiguration Endpoint,
-        IReadOnlyList<ActiveTool> Active);
+    private Task<AssistantConfiguration?> LoadConfigurationAsync(Guid assistantId, CancellationToken cancellationToken) => (
+        from assistant in db.Assistants
+        join agent in VisibleAgents() on assistant.RootAgentId equals agent.Id
+        join endpoint in db.ModelEndpoints.IgnoreQueryFilters() on agent.ModelEndpointId equals endpoint.Id
+        where assistant.Id == assistantId
+        select new AssistantConfiguration(
+            agent.Id,
+            agent.SystemPrompt,
+            endpoint.BaseUrl,
+            endpoint.ModelName,
+            endpoint.ProtectedApiKey,
+            endpoint.ContextTokenBudget,
+            endpoint.SupportsTools,
+            assistant.MaxParallelSubAgents))
+        .AsNoTracking()
+        .SingleOrDefaultAsync(cancellationToken);
 
-    private sealed record AssistantConfiguration(
-        Guid AgentId,
-        string SystemPrompt,
-        string BaseUrl,
-        string ModelName,
-        string? ProtectedApiKey,
-        int ContextTokenBudget,
-        bool SupportsTools,
-        int MaxParallelSubAgents);
+    private async Task<AssistantTools?> LoadToolsAsync(AssistantConfiguration configuration, CancellationToken cancellationToken)
+    {
+        var web = new WebConfigurationReader(db);
+        var active = await ActiveToolsQuery.LoadAsync(db, configuration.AgentId, cancellationToken, web);
+        var subAgents = await LoadSubAgentsAsync(configuration, web, cancellationToken);
+
+        var offersWeb = active.Concat(subAgents.SelectMany(subAgent => subAgent.Active)).Any(tool => tool.WebSearch is not null || tool.WebFetch is not null);
+        var webConfiguration = offersWeb ? await web.ReadAsync(cancellationToken) : null;
+        var settings = active.Count == 0 && subAgents.Count == 0 ? null : await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+
+        return new AssistantTools(active, subAgents, settings is null ? ToolLimits.Default : ToolLimits.From(settings), webConfiguration);
+    }
 
     private sealed record PreparedAssistant(
         AssistantConfiguration Configuration,
