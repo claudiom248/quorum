@@ -1,0 +1,29 @@
+# The OpenTelemetry Collector of the observability profile (spec 016 D-4). Quorum sends OTLP here; the collector forwards to the
+# backends. To add a destination (for example Langfuse, or a managed service), add an exporter and list it in the pipelines below.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/lgtm:
+    endpoint: lgtm:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/lgtm]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/lgtm]
