@@ -1,10 +1,12 @@
 using System.Data.Common;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quorum.Modules.KnowledgeBases.Persistence;
+using Quorum.Modules.KnowledgeBases.Telemetry;
 
 namespace Quorum.Modules.KnowledgeBases.Features.Lookups;
 
@@ -83,11 +85,16 @@ internal sealed partial class LookupRefreshService(LookupRefresher refresher, Lo
 
     private async Task RunAsync(CancellationToken cancellationToken)
     {
+        // One trace per turn: the queries of the refresh hang under it instead of each becoming a trace of its own.
+        using var span = KnowledgeBasesTelemetry.Source.StartActivity(KnowledgeBasesTelemetry.LookupRefreshActivityName, ActivityKind.Internal);
+        var refreshed = 0;
         try
         {
             for (var claim = 0; claim < MaxClaimsPerTurn; claim++)
             {
-                if (await refresher.RunDueAsync(cancellationToken) == 0)
+                var started = await refresher.RunDueAsync(cancellationToken);
+                refreshed += started;
+                if (started == 0)
                 {
                     break;
                 }
@@ -96,7 +103,12 @@ internal sealed partial class LookupRefreshService(LookupRefresher refresher, Lo
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             // A bug in one turn must not end the job for the life of the process; the slices stay due for the next one.
+            span?.SetStatus(ActivityStatusCode.Error, exception.GetType().Name);
             LogTurnFailed(logger, exception.GetType().Name);
+        }
+        finally
+        {
+            span?.SetTag(KnowledgeBasesTelemetry.LookupSlicesRefreshedTag, refreshed);
         }
     }
 
@@ -118,6 +130,8 @@ internal sealed partial class LookupCacheWarmup(IServiceScopeFactory scopes, Loo
 
     internal async Task WarmAsync(CancellationToken cancellationToken)
     {
+        // The warm-up at startup is a trace of its own: its queries hang under it (spec 016 D-7).
+        using var span = KnowledgeBasesTelemetry.Source.StartActivity(KnowledgeBasesTelemetry.LookupWarmupActivityName, ActivityKind.Internal);
         try
         {
             await using var scope = scopes.CreateAsyncScope();
@@ -132,6 +146,7 @@ internal sealed partial class LookupCacheWarmup(IServiceScopeFactory scopes, Loo
                 await cache.WarmAsync(db, entry.lookup, entry.slice, cancellationToken);
             }
 
+            span?.SetTag(KnowledgeBasesTelemetry.LookupListsTag, current.Count);
             LogWarmed(logger, current.Count);
         }
         catch (Exception exception) when (exception is DbException or InvalidOperationException)

@@ -18,9 +18,15 @@ internal static partial class TelemetryFilters
             return false;
         }
 
-        return adminRequests || AnswerPath().IsMatch(path);
+        // Only the upload of an attachment, not the reads of the list, which the page may repeat.
+        return adminRequests
+            || AnswerPath().IsMatch(path)
+            || (HttpMethods.IsPost(context.Request.Method) && AttachmentUploadPath().IsMatch(path));
     }
 
-    [GeneratedRegex("^/api/conversations/[^/]+/(messages|regenerate|attachments|tool-calls/[^/]+/(decision|answer))/?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("^/api/conversations/[^/]+/(messages|regenerate|tool-calls/[^/]+/(decision|answer))/?$", RegexOptions.IgnoreCase)]
     private static partial Regex AnswerPath();
+
+    [GeneratedRegex("^/api/conversations/[^/]+/attachments/?$", RegexOptions.IgnoreCase)]
+    private static partial Regex AttachmentUploadPath();
 }

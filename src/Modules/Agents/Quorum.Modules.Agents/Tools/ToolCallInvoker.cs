@@ -113,7 +113,7 @@ internal sealed partial class ToolCallInvoker(
             truncated,
             clock.GetTimestamp(),
             span,
-            telemetry.Value.Exporting ? span?.TraceId.ToHexString() : null);
+            TraceIdFor(span, telemetry.Value.Exporting));
         span?.SetTag(AgentsTelemetry.ToolOriginTag, Origin(tool));
         span?.SetTag(AgentsTelemetry.ToolRoundTag, invocation.Iteration + 1);
         span?.SetTag(AgentsTelemetry.ToolArgumentsHashTag, AgentsTelemetry.ArgumentsHash(raw));
@@ -637,6 +637,13 @@ internal sealed partial class ToolCallInvoker(
         long Timestamp,
         Activity? Span,
         string? TraceId);
+
+    /// <summary>
+    /// The trace id for the audit entry: only for a trace that is recorded, since one that a sampler drops is never exported and the
+    /// link from the audit page would find nothing (spec 016 D-11, D-20).
+    /// </summary>
+    internal static string? TraceIdFor(Activity? span, bool exporting) =>
+        exporting && span is { Recorded: true } ? span.TraceId.ToHexString() : null;
 
     private static string Origin(QuorumTool? tool) => tool switch
     {

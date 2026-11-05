@@ -21,11 +21,16 @@ namespace Quorum.Host.Infrastructure.Telemetry;
 public static class TelemetrySetup
 {
     private const string EndpointVariable = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    private const string TracesEndpointVariable = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
     private const string ProtocolVariable = "OTEL_EXPORTER_OTLP_PROTOCOL";
     private const string HeadersVariable = "OTEL_EXPORTER_OTLP_HEADERS";
 
-    /// <summary>Whether this installation exports telemetry: the standard endpoint variable is set (spec 016 D-1, D-5).</summary>
-    public static bool IsExportEnabled(IConfiguration configuration) => !string.IsNullOrWhiteSpace(configuration[EndpointVariable]);
+    /// <summary>
+    /// Whether this installation exports telemetry: the standard endpoint variable, or the one of the traces signal, is set
+    /// (spec 016 D-1, D-5). The logs follow the general endpoint only.
+    /// </summary>
+    public static bool IsExportEnabled(IConfiguration configuration) =>
+        !string.IsNullOrWhiteSpace(configuration[EndpointVariable]) || !string.IsNullOrWhiteSpace(configuration[TracesEndpointVariable]);
 
     public static WebApplicationBuilder AddQuorumTelemetry(this WebApplicationBuilder builder)
     {
@@ -55,7 +60,9 @@ public static class TelemetrySetup
                         options.Filter = context => TelemetryFilters.ShouldTrace(context, telemetry.AdminRequests))
                     .AddHttpClientInstrumentation()
                     .AddNpgsql()
-                    .AddProcessor(new QuorumTagsProcessor());
+                    .AddProcessor(new QuorumTagsProcessor())
+                    // The SQL text and the connection details of the data source stay in the installation (spec 016 D-8, D-9).
+                    .AddProcessor(new NpgsqlAttributeFilterProcessor());
 
                 // Before the exporter: the content of tool calls is redacted and cut before a span can be sent (spec 016 D-2).
                 if (telemetry.CaptureContent)
@@ -63,14 +70,16 @@ public static class TelemetrySetup
                     tracing.AddProcessor(new ContentGuardProcessor(ContentGuardProcessor.LimitFrom(Environment.GetEnvironmentVariable("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT"))));
                 }
 
-                // Batched and exported off the request path; a slow or dead collector only fills the bounded queue (spec 016 D-19).
-                tracing.AddProcessor(serviceProvider => new BatchActivityExportProcessor(new OtlpExportFailureReporter(
-                    new OtlpTraceExporter(new OtlpExporterOptions()),
-                    serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Quorum.Telemetry"))));
+                // The official exporter takes the endpoint, protocol and headers from the standard variables, and the resource (service.name)
+                // from the provider. Batched and exported off the request path: a slow or dead collector only fills the bounded queue (D-19).
+                tracing.AddOtlpExporter();
             });
 
         // A template that breaks a rule is ignored and named once at startup; only with export on, since there are no traces to link otherwise (D-21, AC-23, AC-24).
         builder.Services.AddHostedService<TraceUrlTemplateCheck>();
+
+        // The one warning when the collector cannot be reached (D-19), from the exporter's own diagnostics.
+        builder.Services.AddHostedService<CollectorOutageWatch>();
 
         return builder;
     }
@@ -83,12 +92,18 @@ public static class TelemetrySetup
             return logger;
         }
 
-        var endpoint = configuration[EndpointVariable]!;
+        // Only the traces endpoint is set: the logs have nowhere to go.
+        var endpoint = configuration[EndpointVariable];
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            return logger;
+        }
+
         var protocol = configuration[ProtocolVariable];
         var useHttp = string.Equals(protocol, "http/protobuf", StringComparison.OrdinalIgnoreCase);
         var version = typeof(TelemetrySetup).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
-        return logger.WriteTo.OpenTelemetry(options =>
+        var otlp = new LoggerConfiguration().WriteTo.OpenTelemetry(options =>
         {
             // The HTTP endpoint of the logs signal is the base URL plus its path; the gRPC one is the base URL itself.
             options.Endpoint = useHttp && !endpoint.EndsWith("/v1/logs", StringComparison.OrdinalIgnoreCase)
@@ -101,7 +116,11 @@ public static class TelemetrySetup
                 ["service.name"] = QuorumActivityNames.ServiceName,
                 ["service.version"] = version,
             };
-        });
+        }).CreateLogger();
+
+        // A log event keeps its trace and span ids only when that trace is recorded: the activity of a request the filter left out has
+        // an id too, and a link from the log to it would find nothing in the backend.
+        return logger.WriteTo.Sink(new RecordedTraceLogSink(otlp));
     }
 
     /// <summary>Parses <c>key=value,key=value</c> (values percent-encoded, as the standard defines them). Never logged.</summary>
