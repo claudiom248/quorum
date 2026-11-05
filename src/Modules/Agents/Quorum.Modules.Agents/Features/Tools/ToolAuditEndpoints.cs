@@ -234,5 +234,5 @@ internal sealed record ToolAuditItem(
         entry.DurationMs,
         entry.ErrorCode,
         entry.TraceId,
-        TraceLinks.LinkFor(traceUrlTemplate, entry.TraceId));
+        TraceLinks.LinkFor(traceUrlTemplate, entry.TraceId, entry.StartedAt, entry.CompletedAt));
 }

@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Quorum.Host.Infrastructure.Telemetry;
 using Quorum.Modules.Agents.Tools;
+using Quorum.Shared.Telemetry;
 using Serilog.Core;
 using Serilog.Events;
 using Serilog.Parsing;
@@ -61,6 +63,32 @@ public sealed class TelemetryHardeningTests
         context.Request.Path = path;
 
         Assert.Equal(expected, TelemetryFilters.ShouldTrace(context, adminRequests: false));
+    }
+
+    [Fact] // spec 016 D-21: the link carries the time range some backends need, around the call
+    public void TheLinkFillsTheWindowAroundTheCallInMicroseconds()
+    {
+        var started = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
+        var completed = started.AddSeconds(30);
+
+        var link = TraceLinks.LinkFor("https://traces.example.test/{traceId}?from={from}&to={to}", "abc123", started, completed);
+
+        var from = ((started - TraceLinks.WindowMargin).ToUnixTimeMilliseconds() * 1000).ToString(CultureInfo.InvariantCulture);
+        var to = ((completed + TraceLinks.WindowMargin).ToUnixTimeMilliseconds() * 1000).ToString(CultureInfo.InvariantCulture);
+        Assert.Equal($"https://traces.example.test/abc123?from={from}&to={to}", link);
+    }
+
+    [Fact] // spec 016 D-21: a call that never completed has its window around its start; a template without the window is as before
+    public void TheLinkWithoutACompletionOrWithoutTheWindowPlaceholdersStillWorks()
+    {
+        var started = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
+
+        var open = TraceLinks.LinkFor("https://traces.example.test/?id={traceId}&to={to}", "abc123", started, completedAt: null);
+        var plain = TraceLinks.LinkFor("https://traces.example.test/{traceId}", "abc123", started, started.AddSeconds(5));
+
+        var to = ((started + TraceLinks.WindowMargin).ToUnixTimeMilliseconds() * 1000).ToString(CultureInfo.InvariantCulture);
+        Assert.Equal($"https://traces.example.test/?id=abc123&to={to}", open);
+        Assert.Equal("https://traces.example.test/abc123", plain);
     }
 
     [Fact] // finding 6: no ids for a log written outside a recorded trace

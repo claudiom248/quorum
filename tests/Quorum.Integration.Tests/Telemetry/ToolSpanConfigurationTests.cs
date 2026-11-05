@@ -69,7 +69,7 @@ public sealed class ToolSpanConfigurationTests(PostgresFixture postgres)
     [Fact] // AC-20
     public async Task WithATemplateTheAuditEntryHasItsTraceLink()
     {
-        const string template = "https://grafana.example.test/explore?traceId={traceId}";
+        const string template = "https://grafana.example.test/explore?traceId={traceId}&from={from}&to={to}";
         await using var app = await QuorumApp.StartOnNewDatabaseAsync(postgres, telemetry: true, traceUrlTemplate: template);
         using var client = await app.SetUpAsync();
         app.ModelServer.EnqueueRounds(ChatScript.CallTools(Calculate("3+3")), ChatScript.Reply("Six."));
@@ -80,7 +80,7 @@ public sealed class ToolSpanConfigurationTests(PostgresFixture postgres)
         var entry = Assert.Single(await AuditItemsAsync(client));
         var traceId = entry.GetProperty("traceId").GetString();
         Assert.NotNull(traceId);
-        Assert.Equal($"https://grafana.example.test/explore?traceId={traceId}", entry.GetProperty("traceUrl").GetString());
+        Assert.Matches($@"^https://grafana\.example\.test/explore\?traceId={traceId}&from=\d{{16}}&to=\d{{16}}$", entry.GetProperty("traceUrl").GetString());
     }
 
     [Fact] // AC-23
