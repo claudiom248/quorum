@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.17.0](https://github.com/claudiom248/quorum/compare/v0.16.0...v0.17.0) (2026-11-05)
+
+
+### Features
+
+* chat turn spans with usage and outcome (spec 016) ([#187](https://github.com/claudiom248/quorum/issues/187)) ([f09866a](https://github.com/claudiom248/quorum/commit/f09866a79d4030dc0da9e37d3f239cd76ec888c2))
+* keep the parameterized command text of the database spans (spec 016 D-8 amended) ([#195](https://github.com/claudiom248/quorum/issues/195)) ([37f2ee7](https://github.com/claudiom248/quorum/commit/37f2ee7c9d271d5e72ef2f30fd6cb1e24fa3dcb6))
+* no bundled observability backend, export OTLP to any backend (spec 016) ([#194](https://github.com/claudiom248/quorum/issues/194)) ([b24ace1](https://github.com/claudiom248/quorum/commit/b24ace1344edba7f0c86a8aaef86990c7804b5b4))
+* observability compose profile and operator guide (spec 016) ([#192](https://github.com/claudiom248/quorum/issues/192)) ([2d69a1a](https://github.com/claudiom248/quorum/commit/2d69a1a2df9523a4f07fd090880c92b693645e59))
+* publish the bundled PostgreSQL on loopback ([#198](https://github.com/claudiom248/quorum/issues/198)) ([c250747](https://github.com/claudiom248/quorum/commit/c250747c0dffd72b4f91dd4905e04c7c57a6a631))
+* skill export as SKILL.md and zip (spec 017) ([#202](https://github.com/claudiom248/quorum/issues/202)) ([6ef4851](https://github.com/claudiom248/quorum/commit/6ef48519be51cb9e2186c9373c5e44b1ab931280))
+* skill runtime, load_skill and audit (spec 017) ([#200](https://github.com/claudiom248/quorum/issues/200)) ([8fdb239](https://github.com/claudiom248/quorum/commit/8fdb239f53e1cb0c04923e695f580930749467d5))
+* skills admin page, import dialog and agent selector (spec 017) ([#203](https://github.com/claudiom248/quorum/issues/203)) ([6c843ff](https://github.com/claudiom248/quorum/commit/6c843ff90888cb4cac3fafcc5351fd0e6be2e0f9))
+* skills, assignment and settings (spec 017) ([#199](https://github.com/claudiom248/quorum/issues/199)) ([6333e7b](https://github.com/claudiom248/quorum/commit/6333e7ba6f371aeef01828ad3ef7fad5452ff871))
+* telemetry foundation with OTLP export and HTTP/Npgsql instrumentation (spec 016) ([#185](https://github.com/claudiom248/quorum/issues/185)) ([6052c0a](https://github.com/claudiom248/quorum/commit/6052c0a11ceea839910fa5d2fdcaa15ffaa016ee))
+* tool spans, pipeline spans and trace link in the audit log (spec 016) ([#191](https://github.com/claudiom248/quorum/issues/191)) ([5d90364](https://github.com/claudiom248/quorum/commit/5d903647a5b7b9be789b0d2ad22cf2a1e5add63e))
+
+
+### Bug Fixes
+
+* telemetry service name, privacy and background traces (spec 016) ([#193](https://github.com/claudiom248/quorum/issues/193)) ([7f678f3](https://github.com/claudiom248/quorum/commit/7f678f3c2e229f32bd8daa07aec53064ea66f117))
+* tool spans name the kind of tool, not the audit server (spec 016) ([#197](https://github.com/claudiom248/quorum/issues/197)) ([eae58c2](https://github.com/claudiom248/quorum/commit/eae58c2786aac5f5550a7b615dfe91d72b27f4f6))
+
 ## [0.16.0](https://github.com/claudiom248/quorum/compare/v0.15.0...v0.16.0) (2026-11-04)
 
 
