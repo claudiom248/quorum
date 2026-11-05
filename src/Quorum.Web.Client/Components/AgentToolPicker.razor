@@ -5,6 +5,17 @@
     <MudTextField T="string" @bind-Value="_search" Label="Search the tools" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
                   Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
 
+    @* load_skill is offered by the server to an agent with skills, shown selected and locked, and never saved as a tool (spec 017 D-4). *@
+    <div class="settings-group mt-2" data-locked-tool="load_skill" data-selected="@(HasSkills ? "true" : "false")">
+        <MudChip T="string" Text="load_skill" Icon="@Icons.Material.Filled.Lock" Color="@(HasSkills ? Color.Primary : Color.Default)"
+                 Variant="@(HasSkills ? Variant.Filled : Variant.Outlined)" Disabled="true" />
+        <MudText Typo="Typo.caption">
+            @(HasSkills
+                ? "Offered because this agent has skills: it reads their instructions when a task needs them."
+                : "Offered once a skill is assigned to this agent.")
+        </MudText>
+    </div>
+
     <div class="settings-columns mt-2">
         @foreach (var group in Groups())
         {
@@ -44,6 +55,10 @@
 
     [Parameter]
     public EventCallback Changed { get; set; }
+
+    /// <summary>Whether the agent has skills assigned: then <c>load_skill</c> is offered to it (spec 017 D-4).</summary>
+    [Parameter]
+    public bool HasSkills { get; set; }
 
     // A group is named by its server, so inside it an MCP tool is shown by its own name: the server is not said twice.
     private static string LabelOf(PoolTool tool)
