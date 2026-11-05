@@ -152,3 +152,9 @@ off until an OTLP endpoint is set, now with `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL
 passed by the compose file; headers are never logged. `docs/observability.md` explains the setup with OpenObserve as the example.
 The reason: Grafana with Tempo and Loki, tried on the real stack, was not what the team wanted to read traces and logs with; one
 backend for traces and logs in a single interface, run once for all the apps, is.
+
+### 2026-11-05: the trace link template takes a time window (extends D-21)
+
+Besides `{traceId}`, the template of `Quorum:Telemetry:TraceUrlTemplate` fills `{from}` and `{to}` when it has them: Unix time in
+microseconds, one hour before the start and one hour after the end of the audited call. Some backends, OpenObserve among them, open a
+trace only with its time range. A template without them works as before; the rules of D-21 (absolute http or https, with `{traceId}`) do not change.

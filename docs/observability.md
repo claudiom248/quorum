@@ -55,6 +55,13 @@ Use the open source image (`public.ecr.aws/zinclabs/openobserve`); the quick sta
 user and password in a `.env` beside the file. The endpoint above is then `http://host.docker.internal:5080/api/default` and the
 header is `Authorization=Basic` followed by the base64 of `user:password`. Open `http://127.0.0.1:5080` and sign in.
 
+To link each tool call of the audit log to its trace, set the template in `.env`. OpenObserve opens a trace only with its time range,
+so the template has `{from}` and `{to}`:
+
+```bash
+QUORUM_TRACE_URL_TEMPLATE=http://127.0.0.1:5080/web/traces/trace-details?stream=default&trace_id={traceId}&from={from}&to={to}&org_identifier=default
+```
+
 Any other OTLP backend works the same way: set its endpoint, protocol and headers.
 
 ## What a trace holds
@@ -80,7 +87,7 @@ on only where that is acceptable. The SQL text and the details of the database c
 | Setting | Default | Meaning |
 |---|---|---|
 | `Quorum__Telemetry__AdminRequests` | `false` | A span for each administrative request (agents, tools, knowledge bases). |
-| `Quorum__Telemetry__TraceUrlTemplate` / `QUORUM_TRACE_URL_TEMPLATE` | empty | Link from the audit log to a trace; `{traceId}` is replaced. Must be an absolute `http` or `https` URL with `{traceId}`. |
+| `Quorum__Telemetry__TraceUrlTemplate` / `QUORUM_TRACE_URL_TEMPLATE` | empty | Link from the audit log to a trace. `{traceId}` is replaced; `{from}` and `{to}` too, when present: Unix time in microseconds, one hour before the start and one hour after the end of the call, for the backends that open a trace only with its time range. Must be an absolute `http` or `https` URL with `{traceId}`. |
 
 A template that breaks a rule is ignored, and the startup log names the rule (not the template, which may hold a token).
 
