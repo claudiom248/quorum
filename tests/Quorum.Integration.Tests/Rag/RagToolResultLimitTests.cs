@@ -1,12 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
 using Quorum.Integration.Tests.KnowledgeBases;
 using Quorum.Integration.Tests.Tools;
-using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.KnowledgeBases.Contracts;
+using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.Agents.Tools;
 using Quorum.Modules.Agents.Tools.Rag;
 using static Quorum.Integration.Tests.Fixtures.FakeModelServer;
@@ -57,33 +59,44 @@ public sealed class RagToolResultLimitTests(SharedQuorumApp host, QdrantFixture 
         Assert.True(result.GetProperty("content").GetString()!.Length <= 6_700);
     }
 
+
+    private static bool OffersCompany(JsonElement request) =>
+        request.TryGetProperty("tools", out var tools)
+        && tools.EnumerateArray().Any(tool => tool.GetProperty("function").GetProperty("name").GetString() == "company");
+
     [Fact]
-    public async Task ADefinitionMadeMomentsAgoIsReusedForTheContextGaugeButNeverForAnAnswer()
+    public async Task ADeletedKnowledgeBaseLeavesTheToolsOfTheNextTurnEvenThoughTheGraphIsKept()
     {
         await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
         var kb = await setup.RegisterAsync("policies");
         await RagApi.CreateOkAsync(setup.Admin, RagApi.Body(knowledgeBaseIds: [kb]));
         await RagApi.ActivateAsync(setup.Admin, "company");
 
-        async Task<int> OfferedAsync(bool allowRecent)
-        {
-            await using var scope = TenantScope.Open(setup.App, setup.TenantId);
-            var db = scope.ServiceProvider.GetRequiredService<AgentsDbContext>();
-            var resolver = scope.ServiceProvider.GetRequiredService<RagToolResolver>();
-            var active = await ActiveToolsQuery.LoadAsync(db, await AssistantFixtures.RootAgentIdAsync(setup.App, setup.AssistantId), Ct);
-            var resolved = await resolver.ResolveActiveAsync(active, setup.TenantId, setup.AssistantId, Ct, allowRecent);
-            return resolved.Count(t => t.Rag is not null);
-        }
+        await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "First");
+        Assert.True(OffersCompany(setup.App.ModelServer.ChatRequests[^1]));
 
-        Assert.Equal(1, await OfferedAsync(allowRecent: true));
         using var delete = await setup.Admin.DeleteAsync(KnowledgeBaseApi.One(kb), Ct);
         delete.EnsureSuccessStatusCode();
+        await ChatApi.SendAsync(setup.Admin, await ChatApi.CreateConversationAsync(setup.Admin), "Second");
 
-        // The gauge only needs the size and is asked for as the user types; an answer is made from what the catalog says now.
-        Assert.Equal(1, await OfferedAsync(allowRecent: true));
-        Assert.Equal(0, await OfferedAsync(allowRecent: false));
+        Assert.False(OffersCompany(setup.App.ModelServer.ChatRequests[^1]));
     }
 
+    [Fact]
+    public async Task AWriteTheKnowledgeBaseModuleMakesWithoutASaveStillChangesItsStamp()
+    {
+        await using var setup = await RagApi.Setup.OverAsync(host, qdrant);
+        await using var scope = TenantScope.Open(setup.App, setup.TenantId);
+        var db = scope.ServiceProvider.GetRequiredService<KnowledgeBasesDbContext>();
+        var stamp = scope.ServiceProvider.GetRequiredService<IKnowledgeBaseChangeStamp>();
+
+        var start = stamp.Current;
+        _ = await db.Database.ExecuteSqlAsync($"SELECT 1", Ct);
+        Assert.Equal(start, stamp.Current);
+
+        _ = await db.Database.ExecuteSqlAsync($"UPDATE knowledge_base.dictionary_fields SET \"Name\" = \"Name\" WHERE false", Ct);
+        Assert.True(stamp.Current > start);
+    }
     [Fact]
     public async Task AFieldDeletedBehindTheToolsBackIsLoggedByIdsAndCountsAndTheToolKeepsWorking()
     {

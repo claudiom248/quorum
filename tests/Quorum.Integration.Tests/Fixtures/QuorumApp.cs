@@ -20,6 +20,7 @@ using Quorum.Modules.Agents.Tools.Mcp;
 using Quorum.Modules.Agents.Tools.WebFetch;
 using Quorum.Modules.Agents.Tools.WebSearch;
 using Quorum.Modules.KnowledgeBases.Features.Lookups;
+using Quorum.Modules.KnowledgeBases.Persistence;
 using Quorum.Modules.KnowledgeBases.Storage.Qdrant;
 using Quorum.Modules.Tenancy.Domain;
 using Quorum.Modules.Tenancy.Persistence;
@@ -127,6 +128,10 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
         WebFetch.Reset();
         Qdrant.Reset();
         Spans.Clear();
+
+        // The database went back behind the application's back.
+        Services.GetRequiredService<AssistantGraphCache>().Invalidate();
+        Services.GetRequiredService<KnowledgeBaseChanges>().Invalidate();
         if (Services.GetService<IMemoryCache>() is MemoryCache memory)
         {
             memory.Clear();

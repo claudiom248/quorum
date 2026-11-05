@@ -29,6 +29,35 @@ internal sealed class PoolTool
     public ToolDefinition Definition => new(ExposedName, Tool.Description, Tool.InputSchema);
 }
 
+/// <summary>A tool an agent has activated and may use, with the server address and the bindings the runtime reads for it.</summary>
+internal sealed class RuntimePoolRow
+{
+    public required Guid AgentId { get; init; }
+
+    public required Tool Tool { get; init; }
+
+    public string? ServerName { get; init; }
+
+    public Guid? ServerId { get; init; }
+
+    public string? ServerUrl { get; init; }
+
+    public string? ProtectedHeaders { get; init; }
+
+    /// <summary>The manifest is the activation's, so the same tool can be lean on one agent and full on another (spec 012 D-8).</summary>
+    public required string Manifest { get; init; }
+
+    public RagTool? Rag { get; init; }
+
+    public LookupTool? Lookup { get; init; }
+
+    public WebSearchTool? WebSearch { get; init; }
+
+    public WebFetchTool? WebFetch { get; init; }
+
+    public PoolTool AsPoolTool() => new() { Tool = Tool, ServerName = ServerName };
+}
+
 /// <summary>
 /// The tools an agent of the current tenant can use (D-2, D-23): enabled built-in tools of the tenant, enabled tools of
 /// available MCP servers whose scope covers the agent, and enabled rag tools whose scope covers it. Activation
@@ -36,13 +65,76 @@ internal sealed class PoolTool
 /// </summary>
 internal static class ToolPool
 {
-    /// <summary>The tenant that owns the agent, whoever is running it.</summary>
-    public static Task<Guid> OwnerOfAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken) =>
-        db.Agents.IgnoreQueryFilters().Where(agent => agent.Id == agentId).Select(agent => agent.TenantId).SingleOrDefaultAsync(cancellationToken);
+    /// <summary>
+    /// What the runtime needs of the tools the given agents have activated, in one query: the pool rule of <see cref="For"/> applied to
+    /// each agent with the tenant that owns it (an agent another tenant shares runs with the tools its owner gave it, spec 013 D-21),
+    /// together with the activation, the server's address and the bindings, so nothing is read a second time.
+    /// The rule below must stay the same as the one in <see cref="For"/>.
+    /// </summary>
+    public static IQueryable<RuntimePoolRow> ForAgents(AgentsDbContext db, IReadOnlyCollection<Guid> agentIds)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(agentIds);
+
+        var ids = agentIds.ToList();
+        return
+            (from activation in db.AgentTools.IgnoreQueryFilters()
+             where ids.Contains(activation.AgentId)
+             join agent in db.Agents.IgnoreQueryFilters() on activation.AgentId equals agent.Id
+             join tool in db.Tools.IgnoreQueryFilters() on activation.ToolId equals tool.Id
+             join server in db.McpServers.IgnoreQueryFilters() on tool.ServerId equals server.Id into servers
+             from server in servers.DefaultIfEmpty()
+             join rag in db.RagTools.IgnoreQueryFilters() on tool.Id equals rag.ToolId into rags
+             from rag in rags.DefaultIfEmpty()
+             join lookup in db.LookupTools.IgnoreQueryFilters() on tool.Id equals lookup.ToolId into lookups
+             from lookup in lookups.DefaultIfEmpty()
+             join webSearch in db.WebSearchTools.IgnoreQueryFilters() on tool.Id equals webSearch.ToolId into webSearches
+             from webSearch in webSearches.DefaultIfEmpty()
+             join webFetch in db.WebFetchTools.IgnoreQueryFilters() on tool.Id equals webFetch.ToolId into webFetches
+             from webFetch in webFetches.DefaultIfEmpty()
+             where tool.State == ToolState.Enabled
+                   && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == agent.TenantId)
+                       || (server != null
+                           && server.Status == McpServerStatus.Available
+                           && (server.Scope == ToolScopeKind.Global
+                               || (server.Scope == ToolScopeKind.Tenant && (server.TenantId == agent.TenantId || server.ScopeTenantIds.Contains(agent.TenantId)))
+                               || (server.Scope == ToolScopeKind.Agent && server.TenantId == agent.TenantId && server.ScopeAgentIds.Contains(agent.Id))))
+                       || (rag != null
+                           && (rag.Scope == ToolScopeKind.Global
+                               || (rag.Scope == ToolScopeKind.Tenant && (rag.TenantId == agent.TenantId || rag.ScopeTenantIds.Contains(agent.TenantId)))
+                               || (rag.Scope == ToolScopeKind.Agent && rag.TenantId == agent.TenantId && rag.ScopeAgentIds.Contains(agent.Id))))
+                       || (lookup != null
+                           && (lookup.Scope == ToolScopeKind.Global
+                               || (lookup.Scope == ToolScopeKind.Tenant && (lookup.TenantId == agent.TenantId || lookup.ScopeTenantIds.Contains(agent.TenantId)))
+                               || (lookup.Scope == ToolScopeKind.Agent && lookup.TenantId == agent.TenantId && lookup.ScopeAgentIds.Contains(agent.Id))))
+                       || (webSearch != null
+                           && (webSearch.Scope == ToolScopeKind.Global
+                               || (webSearch.Scope == ToolScopeKind.Tenant && (webSearch.TenantId == agent.TenantId || webSearch.ScopeTenantIds.Contains(agent.TenantId)))
+                               || (webSearch.Scope == ToolScopeKind.Agent && webSearch.TenantId == agent.TenantId && webSearch.ScopeAgentIds.Contains(agent.Id))))
+                       || (webFetch != null
+                           && (webFetch.Scope == ToolScopeKind.Global
+                               || (webFetch.Scope == ToolScopeKind.Tenant && (webFetch.TenantId == agent.TenantId || webFetch.ScopeTenantIds.Contains(agent.TenantId)))
+                               || (webFetch.Scope == ToolScopeKind.Agent && webFetch.TenantId == agent.TenantId && webFetch.ScopeAgentIds.Contains(agent.Id)))))
+             select new RuntimePoolRow
+             {
+                 AgentId = agent.Id,
+                 Tool = tool,
+                 ServerName = server == null ? null : server.Name,
+                 ServerId = tool.ServerId,
+                 ServerUrl = server == null ? null : server.Url,
+                 ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
+                 Manifest = activation.Manifest,
+                 Rag = rag,
+                 Lookup = lookup,
+                 WebSearch = webSearch,
+                 WebFetch = webFetch,
+             })
+            .AsNoTracking();
+    }
 
     /// <param name="ownerTenantId">
     /// The tenant the pool is worked out for: the one that owns the agent. An agent another tenant shares (spec 013 D-21) runs with the
-    /// tools its owner gave it, so the runtime passes <see cref="OwnerOfAsync"/>; the admin listings leave it out for the current tenant.
+    /// tools its owner gave it, which the runtime reads through <see cref="ForAgents"/>; the admin listings leave it out for the current tenant.
     /// </param>
     public static IQueryable<PoolTool> For(AgentsDbContext db, Guid agentId, Guid? ownerTenantId = null)
     {

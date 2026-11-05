@@ -449,19 +449,10 @@ internal sealed partial class ToolCallInvoker(
     private async Task<ToolPolicy?> CurrentPolicyAsync(ToolRunContext context, ActiveTool tool, CancellationToken cancellationToken)
     {
         var current = await dbGate.RunAsync(
-            async () => await (
-                from candidate in ToolPool.For(db, context.AgentId, await ToolPool.OwnerOfAsync(db, context.AgentId, cancellationToken))
-                join server in db.McpServers.IgnoreQueryFilters() on candidate.Tool.ServerId equals server.Id into servers
-                from server in servers.DefaultIfEmpty()
-                where candidate.Tool.Id == tool.ToolId
-                      && db.AgentTools.IgnoreQueryFilters().Any(a => a.ToolId == candidate.Tool.Id && a.AgentId == context.AgentId)
-                select new
-                {
-                    candidate.Tool.Policy,
-                    candidate.Tool.DefinitionHash,
-                    ServerUrl = server == null ? null : server.Url,
-                    ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
-                })
+            // One query: the pool is worked out for the owner of the agent inside it, and the activation and the server are in the row.
+            async () => await ToolPool.ForAgents(db, [context.AgentId])
+                .Where(row => row.Tool.Id == tool.ToolId)
+                .Select(row => new { row.Tool.Policy, row.Tool.DefinitionHash, row.ServerUrl, row.ProtectedHeaders })
                 .SingleOrDefaultAsync(cancellationToken),
             cancellationToken);
 
