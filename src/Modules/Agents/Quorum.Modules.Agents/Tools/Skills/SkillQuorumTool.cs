@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Domain;
 
 namespace Quorum.Modules.Agents.Tools.Skills;
@@ -11,15 +12,23 @@ internal sealed record SkillSnapshotEntry(Guid SkillId, string Slug, string Desc
 /// <see cref="ToolCallInvoker"/> audits it, applies the result size rule and records it in the ledger like any other tool, with no
 /// confirmation (D-7). It is not stored as an activation: the runtime builds it from the tenant's built-in row when the agent has skills.
 /// </summary>
-internal sealed class SkillQuorumTool : QuorumTool
+internal sealed partial class SkillQuorumTool : QuorumTool
 {
     public const string NameArgument = "name";
 
+    private const int MaxLoggedNameLength = 64;
+
+    private readonly Guid _agentId;
+    private readonly ILogger _logger;
+
     /// <param name="skills">The skills of the agent this turn, ordered by slug.</param>
-    public SkillQuorumTool(ActiveTool descriptor, IReadOnlyList<SkillSnapshotEntry> skills)
+    /// <param name="agentId">The agent that holds them, for the log.</param>
+    public SkillQuorumTool(ActiveTool descriptor, IReadOnlyList<SkillSnapshotEntry> skills, Guid agentId, ILogger logger)
         : base(descriptor)
     {
         Skills = skills;
+        _agentId = agentId;
+        _logger = logger;
     }
 
     public IReadOnlyList<SkillSnapshotEntry> Skills { get; }
@@ -32,8 +41,13 @@ internal sealed class SkillQuorumTool : QuorumTool
             return Task.FromResult(found.Body);
         }
 
+        LogUnknownSkill(_logger, _agentId, name is { Length: > MaxLoggedNameLength } ? name[..MaxLoggedNameLength] : name ?? string.Empty);
+
         // The model corrects itself from this list (spec 017 D-9); the slugs are not secrets, the bodies are not listed.
         var available = Skills.Count == 0 ? "none" : string.Join(", ", Skills.Select(skill => skill.Slug));
         throw new ToolFailedException($"There is no skill named '{name}' for this agent. The skills available to it are: {available}.");
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The agent {AgentId} asked load_skill for the skill {Skill}, which it does not have.")]
+    private static partial void LogUnknownSkill(ILogger logger, Guid agentId, string skill);
 }

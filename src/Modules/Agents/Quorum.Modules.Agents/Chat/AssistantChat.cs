@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
@@ -31,7 +32,8 @@ internal sealed class AssistantChat(
     WebFetchCache webFetchCache,
     WebSearchInvocationCounter invocations,
     AssistantGraphCache graph,
-    IKnowledgeBaseChangeStamp knowledgeBaseChanges) : IAssistantChat, IAssistantCatalog
+    IKnowledgeBaseChangeStamp knowledgeBaseChanges,
+    ILogger<AssistantChat> logger) : IAssistantChat, IAssistantCatalog
 {
     // Added to the system prompt only when tools are offered (D-31); attached documents carry the same warning in their own block.
     internal const string ToolDataNotice =
@@ -237,7 +239,7 @@ internal sealed class AssistantChat(
         var tools = toolFactory.Create(active, connections, rag, lookup, webSearch, webFetch).ToList();
 
         // The root agent's skills, read now (spec 017 D-6, D-17). None when its endpoint has no tools: the caller is null there (D-16).
-        if (caller is not null && await SkillRuntime.LoadAsync(db, configuration.AgentId, cancellationToken) is { } skillTool)
+        if (caller is not null && await SkillRuntime.LoadAsync(db, configuration.AgentId, logger, cancellationToken) is { } skillTool)
         {
             tools.Add(skillTool);
         }
@@ -337,6 +339,9 @@ internal sealed class AssistantChat(
         var withTools = edges.Where((_, index) => resolvedEndpoints[index].SupportsTools).Select(edge => edge.Id).ToList();
         var toolsByAgent = await ActiveToolsQuery.LoadManyAsync(db, withTools, cancellationToken, web);
 
+        // The skills of all the sub-agents in one read, none for an endpoint without tools (spec 017 D-16).
+        var skillsByAgent = await SkillRuntime.LoadManyAsync(db, withTools, logger, cancellationToken);
+
         var sources = new List<SubAgentSource>(edges.Count);
         for (var index = 0; index < edges.Count; index++)
         {
@@ -347,7 +352,7 @@ internal sealed class AssistantChat(
                     .Where(tool => !(tool.Origin == ToolOrigin.Builtin && tool.Name == BuiltinToolCatalog.AskUser))
                     .ToList()
                 : [];
-            var skill = endpoint.SupportsTools ? await SkillRuntime.LoadAsync(db, edge.Id, cancellationToken) : null;
+            var skill = skillsByAgent.GetValueOrDefault(edge.Id);
             sources.Add(new SubAgentSource(edge.Id, edge.Slug, edge.Description, edge.SystemPrompt, edge.FailurePolicy, endpoint, active, skill));
         }
 

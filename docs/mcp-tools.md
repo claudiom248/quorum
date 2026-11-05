@@ -48,7 +48,7 @@ dishonest, so they never change a policy.
 | Ask before running | The chat shows the tool and its full arguments and waits for the person's approval |
 | Run without asking | The tool runs as soon as the model asks. Use it for tools you trust to be harmless |
 
-The built-in tools (calculator, current date and time) are listed under **Tools → Built-in** and are managed the same way.
+The built-in tools (calculator, current date and time) are listed under **Tools → Built-in** and are managed the same way. `load_skill` is the fourth one: it is offered to the agents that have skills, is not chosen per agent, and runs without confirmation, because reading a skill has no side effect (spec 017).
 
 ### Who can use a server
 

@@ -32,6 +32,8 @@ internal static class SkillFileDiscovery
 {
     private const int MaxFolderDepth = 2;
 
+    private const int MaxFrontmatterLength = 64 * 1024;
+
     private static readonly IDeserializer Yaml = new DeserializerBuilder().IgnoreUnmatchedProperties().Build();
 
     public static IReadOnlyList<SkillCandidate> Discover(IReadOnlyList<PackageFile> files, Func<string, bool> slugExists)
@@ -40,17 +42,29 @@ internal static class SkillFileDiscovery
             .Where(file => IsSkillFile(file.Path) && FolderDepth(file.Path) <= MaxFolderDepth)
             .OrderBy(file => file.Path, StringComparer.Ordinal)
             .ToList();
-        var folders = skillFiles.Select(file => FolderOf(file.Path)).ToList();
+        var folders = skillFiles.Select(file => FolderOf(file.Path)).ToHashSet(StringComparer.Ordinal);
+
+        // One pass over the files: each goes to the deepest folder above it that holds a skill, so the cost does not grow with skills x files.
+        var ignoredByFolder = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var file in files.Where(file => !IsSkillFile(file.Path)))
+        {
+            if (OwnerOf(file.Path, folders) is { } owner)
+            {
+                if (!ignoredByFolder.TryGetValue(owner, out var owned))
+                {
+                    ignoredByFolder[owner] = owned = [];
+                }
+
+                owned.Add(RelativeTo(owner, file.Path));
+            }
+        }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var candidates = new List<SkillCandidate>(skillFiles.Count);
         foreach (var skillFile in skillFiles)
         {
             var folder = FolderOf(skillFile.Path);
-            var ignoredFiles = files
-                .Where(file => !IsSkillFile(file.Path) && OwnedBy(file.Path, folder, folders))
-                .Select(file => RelativeTo(folder, file.Path))
-                .ToList();
+            IReadOnlyList<string> ignoredFiles = ignoredByFolder.GetValueOrDefault(folder) ?? [];
 
             var parsed = Parse(skillFile.Content, folder);
             if (parsed.Status == ImportStatus.Invalid)
@@ -92,14 +106,24 @@ internal static class SkillFileDiscovery
         return folder.Length == 0 ? 0 : folder.Split('/').Length;
     }
 
-    /// <summary>A file belongs to the skill of the deepest folder above it that holds a skill.</summary>
-    private static bool OwnedBy(string path, string folder, IReadOnlyList<string> folders)
+    /// <summary>The skill a file belongs to: the deepest folder above it that holds a skill, or <see langword="null"/> when none does.</summary>
+    private static string? OwnerOf(string path, HashSet<string> folders)
     {
-        var owner = folders
-            .Where(candidate => candidate.Length == 0 || path.StartsWith(candidate + "/", StringComparison.Ordinal))
-            .OrderByDescending(candidate => candidate.Length)
-            .FirstOrDefault();
-        return owner is not null && owner == folder;
+        var folder = FolderOf(path);
+        while (true)
+        {
+            if (folders.Contains(folder))
+            {
+                return folder;
+            }
+
+            if (folder.Length == 0)
+            {
+                return null;
+            }
+
+            folder = FolderOf(folder);
+        }
     }
 
     /// <summary>The frontmatter as YAML between two <c>---</c> lines, then the body. Unknown fields are reported, not refused (D-22).</summary>
@@ -111,6 +135,12 @@ internal static class SkillFileDiscovery
         if (frontmatter is null)
         {
             return Invalid(fallbackSlug, "The file has no frontmatter between two --- lines.");
+        }
+
+        // The parser is recursive: a frontmatter this long is not a skill's, and a deeply nested one could overflow the stack.
+        if (frontmatter.Length > MaxFrontmatterLength)
+        {
+            return Invalid(fallbackSlug, $"The frontmatter is longer than {MaxFrontmatterLength / 1024} KB.");
         }
 
         Dictionary<string, object?>? fields;

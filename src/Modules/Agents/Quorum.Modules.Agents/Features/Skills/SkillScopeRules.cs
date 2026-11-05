@@ -18,9 +18,10 @@ internal static class SkillScopeRules
         IReadOnlyCollection<Guid> tenantIds,
         CancellationToken cancellationToken)
     {
+        // A Global skill is held by agents of other tenants too: their assignments are outside this tenant's filter (spec 017 D-13).
         var holders = await (
-            from link in db.AgentSkills.AsNoTracking()
-            join agent in db.Agents.AsNoTracking() on link.AgentId equals agent.Id
+            from link in db.AgentSkills.IgnoreQueryFilters().AsNoTracking()
+            join agent in db.Agents.IgnoreQueryFilters().AsNoTracking() on link.AgentId equals agent.Id
             where link.SkillId == skillId
             orderby agent.DisplayName
             select agent)
@@ -57,8 +58,8 @@ internal static class SkillScopeRules
 
     /// <summary>The agents that hold the skill, for the 409 of a delete.</summary>
     public static Task<List<BlockingReference>> HoldersOfAsync(AgentsDbContext db, Guid skillId, CancellationToken cancellationToken) =>
-        (from link in db.AgentSkills.AsNoTracking()
-         join agent in db.Agents.AsNoTracking() on link.AgentId equals agent.Id
+        (from link in db.AgentSkills.IgnoreQueryFilters().AsNoTracking()
+         join agent in db.Agents.IgnoreQueryFilters().AsNoTracking() on link.AgentId equals agent.Id
          where link.SkillId == skillId
          orderby agent.DisplayName
          select new BlockingReference(BlockingReference.AgentKind, agent.Id, agent.DisplayName))

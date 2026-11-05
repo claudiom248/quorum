@@ -164,6 +164,8 @@ erDiagram
     agents ||--o{ agent_sub_agents : "ChildAgentId"
     agents ||--o{ agent_tools : "AgentId"
     tools ||--o{ agent_tools : "ToolId"
+    agents ||--o{ agent_skills : "AgentId"
+    skills ||--o{ agent_skills : "SkillId"
     mcp_servers ||--o{ tools : "ServerId"
     tools ||--o| rag_tools : "ToolId"
     tools ||--o| web_search_tools : "ToolId"
@@ -206,6 +208,29 @@ erDiagram
         uuid ToolId PK, FK "indexed"
         uuid TenantId "indexed"
         varchar(10) Manifest "Full, Lean; default Full"
+    }
+
+    skills {
+        uuid Id PK
+        uuid TenantId UK "unique with Slug"
+        varchar(32) Slug UK "the argument of load_skill; in the prompt of every agent that has the skill"
+        varchar(200) DisplayName
+        varchar(1024) Description "in the prompt on every turn (Agent Skills limit)"
+        text Body "read on demand by load_skill; no limit in the table"
+        varchar(20) Scope "Global, Tenant"
+        uuid[] ScopeTenantIds "used when Scope = Tenant"
+        timestamptz UpdatedAt
+    }
+
+    agent_skills {
+        uuid AgentId PK, FK "cascade"
+        uuid SkillId PK, FK "indexed, restrict: a skill in use cannot be deleted"
+        uuid TenantId "indexed"
+    }
+
+    skill_settings {
+        uuid TenantId PK
+        varchar(20) DisplayNameStyle "Slug or Humanized; no row means Slug"
     }
 
     assistants {
@@ -372,6 +397,9 @@ Notes that do not fit in a box:
 | `agents` | Prompt, endpoint and tools live on the agent, not on the assistant (spec 013). There is no topology table: the graph is the set of `agent_sub_agents` edges |
 | `agent_sub_agents` | An edge says that the parent may delegate to the child, which the parent's model sees as a tool named after the child's slug. Only the root agent delegates (D-5), so there are no cycles to check |
 | `agent_tools` | Many-to-many between agents and the tools they may use. `Manifest` is meaningful only for lookup tools: `Lean` offers `describe` and `query` instead of the full functions (spec 012) |
+| `skills` | A skill is text only (spec 017): slug and description are validated at save, the body has no size limit, and a body larger than the tool result limit fails at call time with the "result too large" message instead of being cut |
+| `agent_skills` | Many-to-many between agents and skills. Assignments are by id, so a skill keeps them when its slug changes. Deleting a skill that is still assigned is refused by the application (409) and by the restrict foreign key |
+| `skill_settings` | One row per tenant, created on the first save: the display name style used when skills are imported (spec 017 D-28). Without a row the style is `Slug` |
 | `assistants` | The published entry point. `RootAgentId` points to an agent; the migration of spec 013 created one agent per existing assistant, with its prompt, endpoint and activations, and dropped `assistants."SystemPrompt"`, `"ModelEndpointId"` and `assistant_tools` |
 | `rag_tools` | A rag tool has no input schema stored: it is built from `ExposedFieldIds` at each answer, and `tools.DefinitionHash` holds the hash of the whole binding (including `AllowDocumentIds` when it is on) |
 | `lookup_tools` | Same for a lookup tool: the definition is built from the bound lookups, knowledge bases and exposed fields at each answer. The slices a tool needs are recorded on the other side, in `knowledge_base.lookup_slices."ToolIds"` |

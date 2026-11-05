@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Features.Skills.Import;
 using Quorum.Modules.Agents.Persistence;
@@ -16,7 +17,7 @@ namespace Quorum.Modules.Agents.Features.Skills;
 /// Importing skills in two steps (spec 017 D-19 to D-24): a preview of every skill found, then the confirmation with a decision per
 /// conflict. Nothing is written before the confirmation.
 /// </summary>
-internal sealed class SkillImportEndpoints : IEndpointGroup
+internal sealed partial class SkillImportEndpoints : IEndpointGroup
 {
     public void Map(IEndpointRouteBuilder app)
     {
@@ -76,16 +77,12 @@ internal sealed class SkillImportEndpoints : IEndpointGroup
         ITenantContext tenant,
         SkillImportPreviews previews,
         TimeProvider clock,
+        ILogger<SkillImportEndpoints> logger,
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? throw new InvalidOperationException("Authorized requests have a tenant.");
 
-        var preview = previews.Take(tenantId, request.PreviewId);
-        if (preview is null)
-        {
-            return TypedResults.Problem(detail: "The preview does not exist or has expired. Upload the skills again.", statusCode: StatusCodes.Status404NotFound);
-        }
-
+        // The decisions are checked before the preview is taken: a typo must not burn the preview.
         var decisions = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var decision in request.Decisions ?? [])
         {
@@ -95,6 +92,12 @@ internal sealed class SkillImportEndpoints : IEndpointGroup
             }
 
             decisions[decision.Slug] = decision.Action;
+        }
+
+        var preview = previews.Take(tenantId, request.PreviewId);
+        if (preview is null)
+        {
+            return TypedResults.Problem(detail: "The preview does not exist or has expired. Upload the skills again.", statusCode: StatusCodes.Status404NotFound);
         }
 
         var style = await db.SkillSettings.AsNoTracking().Select(s => (SkillDisplayNameStyle?)s.DisplayNameStyle).SingleOrDefaultAsync(cancellationToken)
@@ -127,6 +130,7 @@ internal sealed class SkillImportEndpoints : IEndpointGroup
             if (await db.Skills.AnyAsync(s => s.Slug == candidate.Slug, cancellationToken))
             {
                 failed.Add(new SkillImportFailure(candidate.Slug, "A skill with this slug was created after the preview."));
+                LogImportSkillFailed(logger, candidate.Slug, "slug taken after the preview");
                 continue;
             }
 
@@ -142,11 +146,19 @@ internal sealed class SkillImportEndpoints : IEndpointGroup
                 // Another request took the slug between the check and the save: this skill fails, the others go on.
                 db.ChangeTracker.Clear();
                 failed.Add(new SkillImportFailure(candidate.Slug, "A skill with this slug was created after the preview."));
+                LogImportSkillFailed(logger, candidate.Slug, "slug taken between the check and the save");
             }
         }
 
+        LogImportConfirmed(logger, created.Count, overwritten.Count, skipped.Count, failed.Count);
         return TypedResults.Ok(new SkillImportResultResponse(created, overwritten, skipped, failed));
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Skill import confirmed: {Created} created, {Overwritten} overwritten, {Skipped} skipped, {Failed} failed.")]
+    private static partial void LogImportConfirmed(ILogger logger, int created, int overwritten, int skipped, int failed);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Skill import failed for the skill {Skill}: {Reason}.")]
+    private static partial void LogImportSkillFailed(ILogger logger, string skill, string reason);
 
     /// <summary>The name a person reads: <c>code-review</c> becomes <c>Code review</c> (D-28).</summary>
     internal static string Humanize(string slug)
