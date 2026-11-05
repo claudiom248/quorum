@@ -150,7 +150,8 @@ internal static class SkillFileDiscovery
             return Invalid(slug, "The body is empty.", ignoredFields);
         }
 
-        return new SkillCandidate(slug, ImportStatus.New, null, trimmedDescription, body.Trim(), [], ignoredFields);
+        // The body is kept as written: the line break that ends the closing --- line is already the split between the two (spec 017 D-25, AC-28).
+        return new SkillCandidate(slug, ImportStatus.New, null, trimmedDescription, body, [], ignoredFields);
     }
 
     private static SkillCandidate Invalid(string slug, string reason, IReadOnlyList<string>? ignoredFields = null) =>
