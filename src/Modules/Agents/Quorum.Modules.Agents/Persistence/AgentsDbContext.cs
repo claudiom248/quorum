@@ -41,6 +41,12 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
 
     public DbSet<WebFetchTool> WebFetchTools => Set<WebFetchTool>();
 
+    public DbSet<Skill> Skills => Set<Skill>();
+
+    public DbSet<AgentSkill> AgentSkills => Set<AgentSkill>();
+
+    public DbSet<SkillSettings> SkillSettings => Set<SkillSettings>();
+
     /// <summary>
     /// The tenant of the request. Queries that must also see what other tenants share with this one (a server's scope) turn the
     /// tenant filter off and state the rule themselves, with this value.
@@ -194,6 +200,39 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             activation.HasOne<Agent>().WithMany().HasForeignKey(a => a.AgentId).OnDelete(DeleteBehavior.Cascade);
             activation.HasOne<Tool>().WithMany().HasForeignKey(a => a.ToolId).OnDelete(DeleteBehavior.Cascade);
             activation.HasQueryFilter(a => a.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Skill>(skill =>
+        {
+            skill.ToTable("skills");
+            skill.Property(s => s.Slug).HasMaxLength(AgentRules.MaxSlugLength);
+            skill.Property(s => s.DisplayName).HasMaxLength(SkillRules.MaxDisplayNameLength);
+            skill.Property(s => s.Description).HasMaxLength(SkillRules.MaxDescriptionLength);
+            skill.Property(s => s.Body).HasColumnType("text");
+            skill.Property(s => s.Scope).HasConversion<string>().HasMaxLength(20);
+            skill.HasIndex(s => new { s.TenantId, s.Slug }).IsUnique();
+            skill.HasQueryFilter(s => s.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<AgentSkill>(assignment =>
+        {
+            assignment.ToTable("agent_skills");
+            assignment.HasKey(a => new { a.AgentId, a.SkillId });
+            assignment.HasIndex(a => a.TenantId);
+            assignment.HasIndex(a => a.SkillId);
+            // An agent's assignments go with it; a skill still assigned cannot be deleted (spec 017 D-14), and the database refuses it too.
+            assignment.HasOne<Agent>().WithMany().HasForeignKey(a => a.AgentId).OnDelete(DeleteBehavior.Cascade);
+            assignment.HasOne<Skill>().WithMany().HasForeignKey(a => a.SkillId).OnDelete(DeleteBehavior.Restrict);
+            assignment.HasQueryFilter(a => a.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<SkillSettings>(settings =>
+        {
+            settings.ToTable("skill_settings");
+            settings.HasKey(s => s.TenantId);
+            settings.Property(s => s.TenantId).ValueGeneratedNever();
+            settings.Property(s => s.DisplayNameStyle).HasConversion<string>().HasMaxLength(20);
+            settings.HasQueryFilter(s => s.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<ToolSettings>(settings =>
