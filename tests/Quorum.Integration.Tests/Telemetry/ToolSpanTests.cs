@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Quorum.Integration.Tests.Chat;
 using Quorum.Integration.Tests.Fixtures;
+using Quorum.Integration.Tests.KnowledgeBases.Lookups;
+using Quorum.Integration.Tests.LookupTools;
 using Quorum.Integration.Tests.Tools;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Telemetry;
@@ -44,6 +46,22 @@ public sealed class ToolSpanTests(SharedTelemetryApp host) : IClassFixture<Share
         var entry = Assert.Single(await AuditItemsAsync(host.Admin));
         Assert.Equal(turn.TraceId.ToHexString(), entry.GetProperty("traceId").GetString());
         Assert.Equal(JsonValueKind.Null, entry.GetProperty("traceUrl").ValueKind);
+    }
+
+    [Fact] // spec 016 D-15: a lookup runs in-process and carries an audit server name, but its span names the kind of tool
+    public async Task ALookupToolCallSpanCarriesTheLookupOrigin()
+    {
+        var lookup = await LookupApi.CreateManualOkAsync(host.Admin, LookupApi.ManualBody());
+        await LookupToolApi.CreateOkAsync(host.Admin, LookupToolApi.Body(lookups: [LookupToolApi.Bind(lookup)]));
+        await ToolFixtures.ActivateOnlyAsync(host.Admin, "lists");
+        host.App.ModelServer.EnqueueRounds(ChatScript.CallTools(new FakeToolCall("lists_entries", "{}", "call_1")), ChatScript.Reply("Done."));
+        var conversation = await ChatApi.CreateConversationAsync(host.Admin);
+
+        await ChatApi.SendAsync(host.Admin, conversation, "Which values?");
+
+        var turn = await WaitForTurnAsync(host.App, conversation);
+        var tool = Assert.Single(ToolSpansOf(host.App, turn));
+        Assert.Equal("lookup", tool.GetTagItem(AgentsTelemetry.ToolOriginTag));
     }
 
     [Fact] // AC-11
