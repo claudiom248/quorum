@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Quorum.Modules.Agents.Chat;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Embeddings;
+using Quorum.Modules.Agents.Features.Skills.Import;
 using Quorum.Modules.Agents.Features.Tools;
 using Quorum.Modules.Agents.Persistence;
 using Quorum.Modules.Agents.Probing;
@@ -48,6 +49,8 @@ public static class AgentsModule
 
         services.AddScoped<IEmbeddings, OpenAiEmbeddings>();
         services.AddScoped<IRagToolUsage, RagToolUsage>();
+        // Previews of skill imports live for 30 minutes in the process (spec 017 D-20); the cache they use is the shared memory cache.
+        services.AddSingleton<SkillImportPreviews>();
         services.AddScoped<ILookupToolUsage, LookupToolUsage>();
         services.AddScoped<IAssistantDirectory, AssistantDirectory>();
         services.AddMemoryCache();
