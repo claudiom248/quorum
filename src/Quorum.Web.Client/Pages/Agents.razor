@@ -120,7 +120,7 @@
                         }
                         else
                         {
-                            <AgentToolPicker Pool="_tools.Pool" Active="_activeTools" Manifests="_manifests" Changed="ToolsChanged" />
+                            <AgentToolPicker Pool="_tools.Pool" Active="_activeTools" Manifests="_manifests" Changed="ToolsChanged" HasSkills="_skillIds.Count > 0" />
                             @foreach (var warning in _tools.Warnings)
                             {
                                 <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">@warning.Message</MudAlert>
@@ -128,6 +128,33 @@
                         }
                     </div>
                 }
+                <div data-section="skills">
+                    <MudText Typo="Typo.subtitle2">Skills</MudText>
+                    @if (_allSkills.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="tool-hint">No skill exists yet. Create one on the Skills page.</MudText>
+                    }
+                    else
+                    {
+                        @foreach (var skill in _allSkills)
+                        {
+                            <MudCheckBox T="bool" Value="_skillIds.Contains(skill.Id)" ValueChanged="on => ToggleSkill(skill.Id, on)"
+                                         Label="@skill.Slug" Color="Color.Primary" Dense="true" />
+                        }
+                        @if (_skillIds.Count > SkillsWarnAbove)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2" data-warning="skills-count">
+                                @_skillIds.Count skills: small models choose worse among many. This is only a warning.
+                            </MudAlert>
+                        }
+                        @if (EndpointWithoutTools)
+                        {
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-2" data-notice="skills-inert">
+                                The model endpoint of this agent does not support tools: its skills are saved but not used until another endpoint is chosen.
+                            </MudAlert>
+                        }
+                    }
+                </div>
                 <div data-section="assistant">
                     <MudSwitch T="bool" @bind-Value="_form.OfferAsAssistant" Label="Offer as an assistant" Color="Color.Primary" />
                     <MudText Typo="Typo.body2" Class="tool-hint">People start a chat with an assistant, which answers through this agent.</MudText>
@@ -215,6 +242,27 @@
     private AgentTools? _tools;
     private readonly HashSet<Guid> _activeTools = [];
     private readonly Dictionary<Guid, string> _manifests = [];
+
+    // Skills of the agent (spec 017 D-26): the options are the visible ones, the set is saved after the agent.
+    private const int SkillsWarnAbove = 10;
+    private List<SkillSummary> _allSkills = [];
+    private readonly HashSet<Guid> _skillIds = [];
+    private readonly HashSet<Guid> _savedSkillIds = [];
+
+    private bool EndpointWithoutTools =>
+        Guid.TryParse(_form?.ModelEndpointId, out var endpointId) && _endpoints.Any(endpoint => endpoint.Id == endpointId && !endpoint.SupportsTools);
+
+    private void ToggleSkill(Guid id, bool on)
+    {
+        if (on)
+        {
+            _skillIds.Add(id);
+        }
+        else
+        {
+            _skillIds.Remove(id);
+        }
+    }
     private ApiProblem? _drawerProblem;
     private ApiProblem? _formProblem;
     private ApiProblem? _carriedProblem;
@@ -255,6 +303,8 @@
         _tools = null;
         _activeTools.Clear();
         _manifests.Clear();
+        _skillIds.Clear();
+        _savedSkillIds.Clear();
         _drawerProblem = null;
         _formProblem = _carriedProblem;
         _carriedProblem = null;
@@ -373,6 +423,17 @@
             _form.MaxParallelSubAgents = _assistant.MaxParallelSubAgents;
         }
 
+        var skillOptions = await Api.ListSkillsAsync();
+        _allSkills = skillOptions.IsSuccess ? skillOptions.Value : [];
+        var assigned = await Api.GetAgentSkillsAsync(id);
+        if (assigned.IsSuccess)
+        {
+            _skillIds.UnionWith(assigned.Value.Select(skill => skill.Id));
+        }
+
+        _savedSkillIds.Clear();
+        _savedSkillIds.UnionWith(_skillIds);
+
         var tools = await Api.GetAgentToolsAsync(id);
         if (tools.IsSuccess)
         {
@@ -462,6 +523,17 @@
         {
             var manifests = _manifests.Where(pair => _activeTools.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
             result = await Api.SetAgentToolsAsync(id, [.. _activeTools], manifests);
+        }
+
+        // The skills follow the agent the same way, with the same permission rule: assigning needs agents.manage (spec 017 D-15).
+        // Only a change is sent: an agent whose skills did not change keeps its request count the same.
+        if (agentSaved && savedId is { } skillAgentId && !_skillIds.SetEquals(_savedSkillIds))
+        {
+            var skillResult = await Api.SetAgentSkillsAsync(skillAgentId, [.. _skillIds]);
+            if (!skillResult.IsSuccess)
+            {
+                result = skillResult;
+            }
         }
 
         // The assistant follows the agent it answers through: the agent already exists by now.

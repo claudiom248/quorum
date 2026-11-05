@@ -76,10 +76,28 @@ public sealed class FakeApiHandler : HttpMessageHandler
         }
 
         var response = Respond(request.Method, path);
+
+        // The agent page reads the skills too (spec 017): a test that does not care about them gets an empty set, not a 404 with no body.
+        var unanswered = response.StatusCode == HttpStatusCode.NotFound
+            || (request.Method == HttpMethod.Get && response.StatusCode == HttpStatusCode.NoContent);
+        if (unanswered && SkillsRoute(path))
+        {
+            response = SkillsDefault(request.Method, path);
+        }
+
         return request.Method == HttpMethod.Get && ListRoutes.Contains(path) && response.IsSuccessStatusCode
             ? await AsPageAsync(response, cancellationToken)
             : response;
     }
+
+    private static bool SkillsRoute(string path) =>
+        path.StartsWith("/api/skills", StringComparison.Ordinal)
+        || (path.StartsWith("/api/agents/", StringComparison.Ordinal) && path.EndsWith("/skills", StringComparison.Ordinal));
+
+    private static HttpResponseMessage SkillsDefault(HttpMethod method, string path) =>
+        method == HttpMethod.Get && path == "/api/skills/settings" ? Json(new { displayNameStyle = "Slug" })
+        : method == HttpMethod.Get ? Json(Array.Empty<object>())
+        : new HttpResponseMessage(HttpStatusCode.NoContent);
 
     private static readonly HashSet<string> ListRoutes =
         ["/api/knowledge-bases", "/api/knowledge-bases/dictionary", "/api/knowledge-bases/manual-lookups", "/api/tools/servers", "/api/tools/rag", "/api/tools/lookup"];

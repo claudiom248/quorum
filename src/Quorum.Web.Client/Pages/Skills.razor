@@ -1,0 +1,353 @@
+@page "/skills"
+@inject QuorumApi Api
+@inject IJSRuntime JS
+
+<PageTitle>Skills · Quorum</PageTitle>
+
+<div class="settings">
+
+<MudText Typo="Typo.h5" Class="mb-1">Skills</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Procedures an agent loads when a task needs them. The agent always sees each skill's name and description; the instructions come only when it asks for them.
+</MudText>
+
+@if (_notice is not null)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3" data-notice>@_notice</MudAlert>
+}
+@if (_problem is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" data-problem>@_problem</MudAlert>
+}
+
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewSkill" data-action="new-skill">New skill</MudButton>
+    <MudButton Variant="Variant.Outlined" Href="/api/skills/export" data-action="export-all">Export all</MudButton>
+</div>
+
+<MudTable T="SkillSummary" Items="_skills" Dense="true" Hover="true" Elevation="0" Outlined="true" data-grid="skills">
+    <HeaderContent>
+        <MudTh>Slug</MudTh>
+        <MudTh>Display name</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh>Scope</MudTh>
+        <MudTh>Agents</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Slug">@context.Slug</MudTd>
+        <MudTd DataLabel="Display name">@context.DisplayName</MudTd>
+        <MudTd DataLabel="Description">@context.Description</MudTd>
+        <MudTd DataLabel="Scope">@context.Scope</MudTd>
+        <MudTd DataLabel="Agents">@context.AgentCount</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => EditAsync(context.Id)" aria-label="Edit skill" />
+            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Href="@($"/api/skills/{context.Id}/export")" aria-label="Export skill" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="() => DeleteAsync(context)" aria-label="Delete skill" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@if (_form is not null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-form="skill">
+        <MudText Typo="Typo.h6" Class="mb-2">@(_editingId is null ? "New skill" : "Edit skill")</MudText>
+        <MudTextField T="string" @bind-Value="_form.Slug" Label="Slug" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      HelperText="Lower-case letters, digits and hyphens. The model uses it to load the skill." />
+        <MudTextField T="string" @bind-Value="_form.DisplayName" Label="Display name" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+        <MudTextField T="string" @bind-Value="_form.Description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
+                      Lines="2" HelperText="When to use it, in at most 1,024 characters. It is in the prompt of every turn." />
+        <MudTextField T="string" @bind-Value="_form.Body" Label="Instructions" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
+                      Lines="12" />
+        @if (_form.Body.Length > ResultWarningAt)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" data-warning="body-size">
+                These instructions are longer than a tool result may be ({ResultWarningAt:N0} characters by default). The model will not get them whole: shorten them or split the skill.
+            </MudAlert>
+        }
+        <MudSelect T="string" @bind-Value="_form.Scope" Label="Scope" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2">
+            <MudSelectItem T="string" Value="@("Tenant")">Only this tenant</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Global")">All tenants</MudSelectItem>
+        </MudSelect>
+        <div class="d-flex gap-2 mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy" data-action="save-skill">Save</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="() => _form = null">Cancel</MudButton>
+        </div>
+    </MudPaper>
+}
+
+<MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-section="settings">
+    <MudText Typo="Typo.h6" Class="mb-2">Imported names</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">
+        How a skill imported from a package is named. Existing skills keep their names.
+    </MudText>
+    <MudSelect T="string" @bind-Value="_nameStyle" Label="Display name style" Variant="Variant.Outlined" Margin="Margin.Dense">
+        <MudSelectItem T="string" Value="@("Slug")">Slug: code-review stays code-review</MudSelectItem>
+        <MudSelectItem T="string" Value="@("Humanized")">Humanized: code-review becomes Code review</MudSelectItem>
+    </MudSelect>
+    <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="SaveNameStyleAsync" Disabled="_busy" data-action="save-name-style">Save style</MudButton>
+</MudPaper>
+
+<MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true" data-section="import">
+    <MudText Typo="Typo.h6" Class="mb-2">Import</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">
+        Pick one SKILL.md, one or more .zip or .tar.gz packages, or a folder. You will see every skill found before anything is saved.
+    </MudText>
+    <div class="d-flex flex-column gap-2">
+        <label>Files or archives <input type="file" multiple accept=".md,.zip,.gz,.tgz" @ref="_filesInput" id="skills-files" /></label>
+        <label>Folder <input type="file" webkitdirectory multiple @ref="_folderInput" id="skills-folder" /></label>
+    </div>
+    <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="PreviewImportAsync" Disabled="_busy" data-action="preview-import">Preview</MudButton>
+
+    @if (_preview is not null)
+    {
+        <MudTable T="SkillImportItemInfo" Items="_preview.Items" Dense="true" Elevation="0" Outlined="true" Class="mt-3" data-grid="import-preview">
+            <HeaderContent>
+                <MudTh>Slug</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Note</MudTh>
+                <MudTh>Decision</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Slug">@context.Slug</MudTd>
+                <MudTd DataLabel="Status">@context.Status</MudTd>
+                <MudTd DataLabel="Note">
+                    @context.Reason
+                    @if (context.IgnoredFiles.Count > 0)
+                    {
+                        <div>Ignored files: @string.Join(", ", context.IgnoredFiles). The body may refer to them, and the agent will not have them.</div>
+                    }
+                    @if (context.IgnoredFields.Count > 0)
+                    {
+                        <div>Ignored fields: @string.Join(", ", context.IgnoredFields). They grant nothing.</div>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Decision">
+                    @if (context.Status == "conflict")
+                    {
+                        <select aria-label="@($"Decision for {context.Slug}")" value="@DecisionOf(context.Slug)" @onchange="e => SetDecision(context.Slug, e.Value?.ToString())">
+                            <option value="skip">Skip</option>
+                            <option value="overwrite">Overwrite description and body</option>
+                        </select>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="ConfirmImportAsync" Disabled="_busy" data-action="confirm-import">Import</MudButton>
+    }
+
+    @if (_importResult is not null)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3" data-result="import">
+            Created: @Join(_importResult.Created). Overwritten: @Join(_importResult.Overwritten). Skipped: @Join(_importResult.Skipped).
+            @if (_importResult.Failed.Count > 0)
+            {
+                <div>Failed: @string.Join("; ", _importResult.Failed.Select(f => $"{f.Slug} ({f.Reason})"))</div>
+            }
+        </MudAlert>
+    }
+</MudPaper>
+
+</div>
+
+@code {
+    /// <summary>The default limit of a tool result in characters (spec 017 D-10): the warning appears before it is reached, at save.</summary>
+    private const int ResultWarningAt = 20_000;
+
+    private readonly Dictionary<string, string> _decisions = new(StringComparer.Ordinal);
+    private ElementReference _filesInput;
+    private ElementReference _folderInput;
+    private List<SkillSummary> _skills = [];
+    private SkillForm? _form;
+    private Guid? _editingId;
+    private string _nameStyle = "Slug";
+    private SkillImportPreviewInfo? _preview;
+    private SkillImportResultInfo? _importResult;
+    private string? _notice;
+    private string? _problem;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        var settings = await Api.GetSkillSettingsAsync();
+        if (settings.IsSuccess)
+        {
+            _nameStyle = settings.Value.DisplayNameStyle;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        var list = await Api.ListSkillsAsync();
+        if (list.IsSuccess)
+        {
+            _skills = list.Value;
+            _problem = null;
+        }
+        else
+        {
+            _problem = list.Problem!.Message;
+        }
+    }
+
+    private void NewSkill()
+    {
+        _editingId = null;
+        _form = new SkillForm();
+        _notice = null;
+    }
+
+    private async Task EditAsync(Guid id)
+    {
+        var skill = await Api.GetSkillAsync(id);
+        if (!skill.IsSuccess)
+        {
+            _problem = skill.Problem!.Message;
+            return;
+        }
+
+        _editingId = id;
+        _form = SkillForm.From(skill.Value);
+        _notice = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        var request = _form.ToRequest();
+        ApiResult result = _editingId is { } id
+            ? await Api.UpdateSkillAsync(id, request)
+            : await Api.CreateSkillAsync(request);
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem!.Message;
+            return;
+        }
+
+        _form = null;
+        _problem = null;
+        _notice = "Saved.";
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(SkillSummary skill)
+    {
+        var result = await Api.DeleteSkillAsync(skill.Id);
+        if (result.IsSuccess)
+        {
+            _notice = $"Deleted '{skill.Slug}'.";
+            _problem = null;
+            await ReloadAsync();
+            return;
+        }
+
+        // A skill still assigned to agents is kept; the message says which must change first (spec 017 D-14).
+        _problem = result.Problem!.Message;
+    }
+
+    private async Task SaveNameStyleAsync()
+    {
+        _busy = true;
+        var result = await Api.SetSkillSettingsAsync(_nameStyle);
+        _busy = false;
+        _problem = result.IsSuccess ? null : result.Problem!.Message;
+        _notice = result.IsSuccess ? "The display name style is saved. It applies to skills imported from now on." : null;
+    }
+
+    private async Task PreviewImportAsync()
+    {
+        _busy = true;
+        _importResult = null;
+        _decisions.Clear();
+        var files = new List<SkillFileUpload>();
+        files.AddRange(await JS.InvokeAsync<List<SkillFileUpload>>("quorumSkills.readFiles", _filesInput));
+        files.AddRange(await JS.InvokeAsync<List<SkillFileUpload>>("quorumSkills.readFiles", _folderInput));
+        var result = files.Count == 0
+            ? null
+            : await Api.PreviewSkillImportAsync(files);
+        _busy = false;
+
+        if (result is null)
+        {
+            _problem = "Pick a file, an archive or a folder first.";
+            return;
+        }
+
+        if (!result.IsSuccess)
+        {
+            _preview = null;
+            _problem = result.Problem!.Message;
+            return;
+        }
+
+        _problem = null;
+        _preview = result.Value;
+        foreach (var item in _preview.Items.Where(i => i.Status == "conflict"))
+        {
+            _decisions[item.Slug] = "skip";
+        }
+    }
+
+    private async Task ConfirmImportAsync()
+    {
+        if (_preview is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        var decisions = _decisions.Select(pair => new SkillImportDecisionInfo(pair.Key, pair.Value)).ToList();
+        var result = await Api.ConfirmSkillImportAsync(_preview.PreviewId, decisions);
+        _busy = false;
+
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem!.Message;
+            return;
+        }
+
+        _importResult = result.Value;
+        _preview = null;
+        _problem = null;
+        await ReloadAsync();
+    }
+
+    private string DecisionOf(string slug) => _decisions.GetValueOrDefault(slug, "skip");
+
+    private void SetDecision(string slug, string? action) => _decisions[slug] = action == "overwrite" ? "overwrite" : "skip";
+
+    private static string Join(IReadOnlyList<string> slugs) => slugs.Count == 0 ? "none" : string.Join(", ", slugs);
+
+    /// <summary>The fields of the editor, as text, until they are sent.</summary>
+    private sealed class SkillForm
+    {
+        public string Slug { get; set; } = string.Empty;
+
+        public string DisplayName { get; set; } = string.Empty;
+
+        public string Description { get; set; } = string.Empty;
+
+        public string Body { get; set; } = string.Empty;
+
+        public string Scope { get; set; } = "Tenant";
+
+        public SkillRequest ToRequest() => new(Slug.Trim(), DisplayName.Trim(), Description.Trim(), Body, Scope, []);
+
+        public static SkillForm From(SkillDocument skill) => new()
+        {
+            Slug = skill.Slug,
+            DisplayName = skill.DisplayName,
+            Description = skill.Description,
+            Body = skill.Body,
+            Scope = skill.Scope,
+        };
+    }
+}
