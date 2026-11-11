@@ -42,7 +42,7 @@ public sealed class ServiceTokenSettingsTests : BunitContext
                 });
             }
 
-            if (method == HttpMethod.Get && path == "/api/assistants")
+            if (method == HttpMethod.Get && path == "/api/admin/assistants")
             {
                 return FakeApiHandler.Json(Array.Empty<object>());
             }

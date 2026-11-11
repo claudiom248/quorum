@@ -56,7 +56,7 @@ public sealed class AuditAndEditorPagesTests : ListPageTestContext
                 return Page();
             }
 
-            if (path == "/api/assistants")
+            if (path == "/api/admin/assistants")
             {
                 return FakeApiHandler.Json(Array.Empty<object>());
             }

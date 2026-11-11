@@ -30,7 +30,7 @@ public sealed class AgentPagesTests : ListPageTestContext
                 return FakeApiHandler.Json(items);
             }
 
-            if (method == HttpMethod.Get && path == "/api/assistants")
+            if (method == HttpMethod.Get && path == "/api/admin/assistants")
             {
                 return FakeApiHandler.Json(assistants);
             }
@@ -116,7 +116,7 @@ public sealed class AgentPagesTests : ListPageTestContext
     {
         Api.Respond = (method, path) =>
         {
-            if (method == HttpMethod.Get && (path is "/api/agents" or "/api/model-endpoints" or "/api/assistants"))
+            if (method == HttpMethod.Get && (path is "/api/agents" or "/api/model-endpoints" or "/api/admin/assistants"))
             {
                 return FakeApiHandler.Json(Array.Empty<object>());
             }
@@ -179,7 +179,7 @@ public sealed class AgentPagesTests : ListPageTestContext
         Api.Respond = (method, path) => method switch
         {
             _ when method == HttpMethod.Get && path == "/api/model-endpoints" => FakeApiHandler.Json(new[] { EndpointItem(Endpoint, "qwen-flash", "qwen3.8-flash") }),
-            _ when method == HttpMethod.Get && path is "/api/agents" or "/api/assistants" => FakeApiHandler.Json(Array.Empty<object>()),
+            _ when method == HttpMethod.Get && path is "/api/agents" or "/api/admin/assistants" => FakeApiHandler.Json(Array.Empty<object>()),
             _ => new HttpResponseMessage(HttpStatusCode.NoContent),
         };
 

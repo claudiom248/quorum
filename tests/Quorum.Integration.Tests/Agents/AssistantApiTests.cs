@@ -43,7 +43,7 @@ public sealed class AssistantApiTests(SharedQuorumApp host) : IClassFixture<Shar
     }
 
     private static async Task<List<AssistantBody>> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<List<AssistantBody>>(Assistants, Ct))!;
+        (await client.GetFromJsonAsync<List<AssistantBody>>(new Uri("/api/admin/assistants", UriKind.Relative), Ct))!;
 
     [Fact]
     public async Task CreatesUpdatesAndListsAnAssistant()
@@ -73,7 +73,8 @@ public sealed class AssistantApiTests(SharedQuorumApp host) : IClassFixture<Shar
         using var update = await client.PutAsJsonAsync(Assistant(only.Id), Body(only.Name, "assistant", 4), Ct);
         using var rename = await client.PutAsJsonAsync(Assistant(only.Id), Body("Renamed", "assistant"), Ct);
         using var created = await client.PostAsJsonAsync(Assistants, Body("Second", "assistant"), Ct);
-        var fetched = await client.GetFromJsonAsync<AssistantBody>(created.Headers.Location!, Ct);
+        var createdId = (await created.Content.ReadFromJsonAsync<AssistantBody>(Ct))!.Id;
+        var fetched = await client.GetFromJsonAsync<AssistantBody>(new Uri($"/api/admin/assistants/{createdId}", UriKind.Relative), Ct);
 
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, rename.StatusCode);

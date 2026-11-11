@@ -46,7 +46,7 @@ public sealed partial class QuorumApi(HttpClient http)
         SendAsync<ModelConnection>(HttpMethod.Post, "api/settings/assistant/test", new { baseUrl, apiKey, modelName }, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<AssistantSummary>>> ListAssistantsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<AssistantSummary>>("api/assistants", cancellationToken);
+        GetAsync<List<AssistantSummary>>("api/admin/assistants", cancellationToken);
 
     public Task<ApiResult<List<AgentSummary>>> ListAgentsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<AgentSummary>>("api/agents", cancellationToken);
