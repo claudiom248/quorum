@@ -27,7 +27,11 @@ public sealed record UpdateAssistantSettingsRequest(string BaseUrl, string Model
 
 public sealed record ConversationSummary(Guid Id, string? Title, DateTimeOffset UpdatedAt);
 
-public sealed record ConversationDetail(Guid Id, string? Title, IReadOnlyList<MessageDto> Messages, IReadOnlyList<AttachmentInfo>? Attachments = null);
+/// <param name="Debug">The overrides of a debug conversation (spec 018 D-14); <see langword="null"/> for a consumer conversation.</param>
+public sealed record ConversationDetail(Guid Id, string? Title, IReadOnlyList<MessageDto> Messages, IReadOnlyList<AttachmentInfo>? Attachments = null, Guid? AssistantId = null, IReadOnlyList<string>? DisabledTools = null, DebugOverridesInfo? Debug = null);
+
+/// <summary>The overrides of a debug conversation (spec 018 D-12).</summary>
+public sealed record DebugOverridesInfo(Guid? ModelEndpointId, IReadOnlyList<string> DisabledTools);
 
 /// <param name="Sources">What an assistant message cited, by number; none for a user message or an answer that cited nothing.</param>
 public sealed record MessageDto(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt, IReadOnlyList<MessageSourceDto>? Sources = null);
@@ -115,7 +119,11 @@ public sealed record CreatedServiceToken(Guid Id, string Token, DateTimeOffset C
 /// <param name="Name">What the model calls the tool: its own name, or <c>server__tool</c> for an MCP tool.</param>
 /// <param name="Origin">Where it comes from: <c>builtin</c>, <c>rag</c>, <c>lookup</c>, <c>web_search</c>, <c>web_fetch</c> or <c>mcp</c>.</param>
 /// <param name="Server">The MCP server of an MCP tool.</param>
-public sealed record PoolTool(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "mcp", string? Server = null);
+/// <param name="Mode">Required or Optional on this agent (spec 018 D-3); the picker shows it for the active tools.</param>
+public sealed record PoolTool(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "mcp", string? Server = null, string Mode = "Required");
+
+/// <summary>A root tool of an assistant as the chat shows it (spec 018 D-6): its name as the model sees it, its description and its mode.</summary>
+public sealed record ChatTool(string Name, string Description, string Mode);
 
 public sealed record ToolWarning(string Code, string Message);
 

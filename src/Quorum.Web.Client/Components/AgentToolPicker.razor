@@ -25,6 +25,14 @@
                 {
                     var id = tool.ToolId;
                     <MudCheckBox T="bool" Value="Active.Contains(id)" ValueChanged="on => ToggleAsync(id, on)" Label="@LabelOf(tool)" Color="Color.Primary" Dense="true" />
+                    @if (Active.Contains(id))
+                    {
+                        // Required tools stay on for consumers; optional ones they may turn off (spec 018 D-3, D-4).
+                        <MudSelect T="string" Value="ModeOf(id)" ValueChanged="on => SetModeAsync(id, on)" Label="Mode" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" data-tool-mode="@id">
+                            <MudSelectItem T="string" Value="@("Required")">Required</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Optional")">Optional</MudSelectItem>
+                        </MudSelect>
+                    }
                     @if (tool.Manifest is not null)
                     {
                         // A lookup tool is offered full, or lean: describe and query instead of the lists themselves (spec 012 D-8).
@@ -48,6 +56,18 @@
     /// <summary>The tools that are on; the picker adds and removes ids.</summary>
     [Parameter, EditorRequired]
     public HashSet<Guid> Active { get; set; } = [];
+
+    /// <summary><c>Required</c> or <c>Optional</c> by tool id (spec 018 D-3); a tool left out is required.</summary>
+    [Parameter]
+    public Dictionary<Guid, string> Modes { get; set; } = [];
+
+    private string ModeOf(Guid id) => Modes.GetValueOrDefault(id, "Required");
+
+    private Task SetModeAsync(Guid id, string mode)
+    {
+        Modes[id] = mode;
+        return Changed.InvokeAsync();
+    }
 
     /// <summary>For a lookup tool: <c>Full</c> or <c>Lean</c> by tool id.</summary>
     [Parameter, EditorRequired]

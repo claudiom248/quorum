@@ -1,0 +1,116 @@
+@* The debug chat's overrides (spec 018 D-12, D-13): the model endpoint and the tools a turn runs without, changed between messages.
+   Every root tool is listed, required ones included and marked, because the administrator may turn any of them off. *@
+@inject QuorumApi Api
+
+<div class="debug-overrides" data-debug-overrides>
+    <MudText Typo="Typo.subtitle2">Debug overrides</MudText>
+    <MudSelect T="Guid?" Value="_endpointId" ValueChanged="SetEndpointAsync" Label="Model endpoint" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+               Clearable="true" data-endpoint-select>
+        @foreach (var endpoint in _endpoints)
+        {
+            <MudSelectItem T="Guid?" Value="@(endpoint.Id)">@endpoint.Name</MudSelectItem>
+        }
+    </MudSelect>
+
+    @foreach (var tool in _tools)
+    {
+        var name = tool.Name;
+        <MudCheckBox T="bool" Value="!_disabled.Contains(name)" ValueChanged="on => ToggleToolAsync(name, on)" Color="Color.Primary" Dense="true"
+                     Label="@($"{name}{(tool.Mode == "Required" ? " (required)" : string.Empty)}")" data-debug-tool="@name" />
+    }
+
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="!_dirty || ConversationId is null" OnClick="ApplyAsync" data-apply-overrides>
+        Apply to the next message
+    </MudButton>
+    @if (_problem is not null)
+    {
+        <ProblemMessage Problem="_problem" />
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid? ConversationId { get; set; }
+
+    [Parameter]
+    public Guid? AssistantId { get; set; }
+
+    private readonly List<ModelEndpointInfo> _endpoints = [];
+    private readonly List<ChatTool> _tools = [];
+    private readonly HashSet<string> _disabled = new(StringComparer.Ordinal);
+    private Guid? _endpointId;
+    private ApiProblem? _problem;
+    private bool _dirty;
+    private Guid? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AssistantId is not { } assistantId || _loadedFor == assistantId)
+        {
+            return;
+        }
+
+        _loadedFor = assistantId;
+        var tools = await Api.ListAdminAssistantToolsAsync(assistantId);
+        _tools.Clear();
+        if (tools.IsSuccess)
+        {
+            _tools.AddRange(tools.Value);
+        }
+
+        var endpoints = await Api.ListModelEndpointsAsync();
+        _endpoints.Clear();
+        if (endpoints.IsSuccess)
+        {
+            _endpoints.AddRange(endpoints.Value);
+        }
+    }
+
+    /// <summary>Shows the overrides a debug conversation carries, read when the page loads it.</summary>
+    public void Show(DebugOverridesInfo? overrides)
+    {
+        _endpointId = overrides?.ModelEndpointId;
+        _disabled.Clear();
+        foreach (var name in overrides?.DisabledTools ?? [])
+        {
+            _disabled.Add(name);
+        }
+
+        _dirty = false;
+        StateHasChanged();
+    }
+
+    private Task SetEndpointAsync(Guid? id)
+    {
+        _endpointId = id;
+        _dirty = true;
+        return Task.CompletedTask;
+    }
+
+    private Task ToggleToolAsync(string name, bool on)
+    {
+        if (on)
+        {
+            _disabled.Remove(name);
+        }
+        else
+        {
+            _disabled.Add(name);
+        }
+
+        _dirty = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (ConversationId is not { } id)
+        {
+            return;
+        }
+
+        var result = await Api.ChangeDebugOverridesAsync(id, _endpointId, _disabled.Order(StringComparer.Ordinal).ToList());
+        _problem = result.IsSuccess ? null : result.Problem;
+        _dirty = !result.IsSuccess;
+    }
+}

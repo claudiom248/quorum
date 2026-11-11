@@ -120,7 +120,7 @@
                         }
                         else
                         {
-                            <AgentToolPicker Pool="_tools.Pool" Active="_activeTools" Manifests="_manifests" Changed="ToolsChanged" HasSkills="_skillIds.Count > 0" />
+                            <AgentToolPicker Pool="_tools.Pool" Active="_activeTools" Manifests="_manifests" Modes="_modes" Changed="ToolsChanged" HasSkills="_skillIds.Count > 0" />
                             @foreach (var warning in _tools.Warnings)
                             {
                                 <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">@warning.Message</MudAlert>
@@ -163,6 +163,10 @@
                         <MudStack Spacing="2" Class="mt-2">
                             <MudTextField @bind-Value="_form.AssistantName" Label="Assistant name" Variant="Variant.Outlined"
                                           HelperText="Shown in the chat. Empty uses the agent's name." />
+                            <MudSwitch T="bool" @bind-Value="_form.AssistantExposed" Label="Show to users" Color="Color.Primary" />
+                            <MudText Typo="Typo.body2" Class="tool-hint">Only assistants shown to users can be chosen to start a chat.</MudText>
+                            <MudSwitch T="bool" @bind-Value="_form.AssistantAllowToolSelection" Label="Let users choose tools" Color="Color.Primary" />
+                            <MudText Typo="Typo.body2" Class="tool-hint">Users may turn off the optional tools of this agent for their chats; required tools stay on.</MudText>
                             @if (_form.SubAgents.Count > 0)
                             {
                                 <MudNumericField T="int" @bind-Value="_form.MaxParallelSubAgents" Label="Sub-agents at the same time" Variant="Variant.Outlined" Min="1"
@@ -224,6 +228,12 @@
 
         public string AssistantName { get; set; } = string.Empty;
 
+        /// <summary>Only exposed assistants are chosen by consumers (spec 018 D-1).</summary>
+        public bool AssistantExposed { get; set; }
+
+        /// <summary>Consumers see the agent's tools and may turn the optional ones off (spec 018 D-2).</summary>
+        public bool AssistantAllowToolSelection { get; set; }
+
         public int MaxParallelSubAgents { get; set; } = 1;
     }
 
@@ -242,6 +252,7 @@
     private AgentTools? _tools;
     private readonly HashSet<Guid> _activeTools = [];
     private readonly Dictionary<Guid, string> _manifests = [];
+    private readonly Dictionary<Guid, string> _modes = [];
 
     // Skills of the agent (spec 017 D-26): the options are the visible ones, the set is saved after the agent.
     private const int SkillsWarnAbove = 10;
@@ -303,6 +314,7 @@
         _tools = null;
         _activeTools.Clear();
         _manifests.Clear();
+        _modes.Clear();
         _skillIds.Clear();
         _savedSkillIds.Clear();
         _drawerProblem = null;
@@ -420,6 +432,8 @@
         {
             _form.OfferAsAssistant = true;
             _form.AssistantName = _assistant.Name;
+            _form.AssistantExposed = _assistant.Exposed;
+            _form.AssistantAllowToolSelection = _assistant.AllowToolSelection;
             _form.MaxParallelSubAgents = _assistant.MaxParallelSubAgents;
         }
 
@@ -439,6 +453,10 @@
         {
             _tools = tools.Value;
             _activeTools.UnionWith(tools.Value.Pool.Where(t => t.Active).Select(t => t.ToolId));
+            foreach (var tool in tools.Value.Pool)
+            {
+                _modes[tool.ToolId] = tool.Mode;
+            }
             foreach (var tool in tools.Value.Pool.Where(t => t.Manifest is not null))
             {
                 _manifests[tool.ToolId] = tool.Manifest!;
@@ -468,7 +486,8 @@
             _form.MaxParallelSubAgents,
             string.Join(',', _form.SubAgents.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}:{pair.Value}")),
             string.Join(',', _activeTools.Order()),
-            string.Join(',', _manifests.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}:{pair.Value}")));
+            string.Join(',', _manifests.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}:{pair.Value}")),
+            string.Join(',', _modes.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}:{pair.Value}")));
 
     private void ToggleSub(string slug, bool on)
     {
@@ -522,7 +541,8 @@
         if (agentSaved && _tools is not null && savedId is { } id)
         {
             var manifests = _manifests.Where(pair => _activeTools.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
-            result = await Api.SetAgentToolsAsync(id, [.. _activeTools], manifests);
+            var modes = _modes.Where(pair => _activeTools.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            result = await Api.SetAgentToolsAsync(id, [.. _activeTools], manifests, modes);
         }
 
         // The skills follow the agent the same way, with the same permission rule: assigning needs agents.manage (spec 017 D-15).
@@ -578,7 +598,7 @@
             return _assistant is null ? ApiResult.Success : await Api.DeleteAssistantAsync(_assistant.Id);
         }
 
-        var request = new AssistantRequest(name, slug, parallel);
+        var request = new AssistantRequest(name, slug, parallel, form.AssistantExposed, form.AssistantAllowToolSelection);
         if (_assistant is null)
         {
             return await Api.CreateAssistantAsync(request);

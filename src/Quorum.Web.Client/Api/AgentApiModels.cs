@@ -46,6 +46,6 @@ public sealed record AgentRequest(
     IReadOnlyList<Guid> ScopeTenantIds,
     IReadOnlyList<SubAgentEdge> SubAgents);
 
-public sealed record AssistantInfo(Guid Id, string Name, string RootAgentSlug, int MaxParallelSubAgents);
+public sealed record AssistantInfo(Guid Id, string Name, string RootAgentSlug, int MaxParallelSubAgents, bool Exposed = false, bool AllowToolSelection = false);
 
-public sealed record AssistantRequest(string Name, string RootAgentSlug, int MaxParallelSubAgents);
+public sealed record AssistantRequest(string Name, string RootAgentSlug, int MaxParallelSubAgents, bool? Exposed = null, bool? AllowToolSelection = null);
