@@ -12,7 +12,7 @@ internal static class ToolsApi
 
     public static Uri ToolSettings { get; } = new("/api/settings/tools", UriKind.Relative);
 
-    public static Uri Assistants { get; } = new("/api/assistants", UriKind.Relative);
+    public static Uri Assistants { get; } = new("/api/admin/assistants", UriKind.Relative);
 
     public static Uri Tool(Guid id) => new($"/api/tools/{id}", UriKind.Relative);
 

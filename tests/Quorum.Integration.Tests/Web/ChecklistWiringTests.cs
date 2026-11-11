@@ -28,7 +28,7 @@ public sealed class ChecklistWiringTests : ListPageTestContext
             }),
             ("PUT", _) when path.StartsWith("/api/onboarding/checklist/", StringComparison.Ordinal) => new HttpResponseMessage(_putStatus),
             ("GET", "/api/tools/servers" or "/api/knowledge-bases") => Page(),
-            ("GET", "/api/assistants" or "/api/tenants" or "/api/model-endpoints") => FakeApiHandler.Json(Array.Empty<object>()),
+            ("GET", "/api/admin/assistants" or "/api/tenants" or "/api/model-endpoints") => FakeApiHandler.Json(Array.Empty<object>()),
             ("GET", "/api/agents") => FakeApiHandler.Json(new[] { new { id = AgentId, slug = "assistant", displayName = "Assistant", description = "d", scope = "Tenant", modelEndpointId = (Guid?)null, subAgentCount = 0, toolCount = 0 } }),
             ("GET", _) when path == $"/api/agents/{AgentId}" => FakeApiHandler.Json(new
             {

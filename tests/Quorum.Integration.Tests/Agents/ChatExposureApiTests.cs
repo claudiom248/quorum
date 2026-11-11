@@ -45,7 +45,7 @@ public sealed class ChatExposureApiTests(SharedQuorumApp host) : IClassFixture<S
         var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetGuid();
 
         using var renamed = await client.PutAsJsonAsync(new Uri($"/api/assistants/{id}", UriKind.Relative), new { name = "Legal", rootAgentSlug = slug }, Ct);
-        var stored = await client.GetFromJsonAsync<JsonElement>(new Uri($"/api/assistants/{id}", UriKind.Relative), Ct);
+        var stored = await client.GetFromJsonAsync<JsonElement>(new Uri($"/api/admin/assistants/{id}", UriKind.Relative), Ct);
 
         Assert.Equal(HttpStatusCode.NoContent, renamed.StatusCode);
         Assert.Equal((true, true), (stored.GetProperty("exposed").GetBoolean(), stored.GetProperty("allowToolSelection").GetBoolean()));
@@ -54,7 +54,7 @@ public sealed class ChatExposureApiTests(SharedQuorumApp host) : IClassFixture<S
             new Uri($"/api/assistants/{id}", UriKind.Relative),
             new { name = "Legal", rootAgentSlug = slug, exposed = false },
             Ct);
-        var after = await client.GetFromJsonAsync<JsonElement>(new Uri($"/api/assistants/{id}", UriKind.Relative), Ct);
+        var after = await client.GetFromJsonAsync<JsonElement>(new Uri($"/api/admin/assistants/{id}", UriKind.Relative), Ct);
 
         Assert.Equal(HttpStatusCode.NoContent, hidden.StatusCode);
         Assert.False(after.GetProperty("exposed").GetBoolean());
@@ -88,5 +88,5 @@ public sealed class ChatExposureApiTests(SharedQuorumApp host) : IClassFixture<S
         tools.GetProperty("pool").EnumerateArray().Single(t => t.GetProperty("toolId").GetGuid() == toolId).GetProperty("mode").GetString()!;
 
     private static async Task<JsonElement> FirstAssistantAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<JsonElement>(Assistants, Ct)).EnumerateArray().First();
+        (await client.GetFromJsonAsync<JsonElement>(new Uri("/api/admin/assistants", UriKind.Relative), Ct)).EnumerateArray().First();
 }

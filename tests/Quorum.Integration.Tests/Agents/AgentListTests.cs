@@ -13,7 +13,7 @@ public sealed class AgentListTests(SharedQuorumApp host) : IClassFixture<SharedQ
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static readonly Uri Agents = new("/api/agents", UriKind.Relative);
-    private static readonly Uri Assistants = new("/api/assistants", UriKind.Relative);
+    private static readonly Uri Assistants = new("/api/admin/assistants", UriKind.Relative);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -46,7 +46,7 @@ public sealed class AgentListTests(SharedQuorumApp host) : IClassFixture<SharedQ
         using var forbidden = await member.GetAsync(Agents, Ct);
         using var allowed = await admin.GetAsync(Agents, Ct);
         // The list of assistants stays open to any signed-in user.
-        using var assistants = await member.GetAsync(Assistants, Ct);
+        using var assistants = await member.GetAsync(new Uri("/api/assistants", UriKind.Relative), Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);

@@ -36,7 +36,7 @@ public sealed partial class QuorumApi
         SendAsync(HttpMethod.Delete, $"api/agents/{id}", body: null, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<AssistantInfo>>> ListAssistantInfosAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<AssistantInfo>>("api/assistants", cancellationToken);
+        GetAsync<List<AssistantInfo>>("api/admin/assistants", cancellationToken);
 
     public Task<ApiResult<AssistantInfo>> CreateAssistantAsync(AssistantRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<AssistantInfo>(HttpMethod.Post, "api/assistants", request, setupToken: null, cancellationToken);

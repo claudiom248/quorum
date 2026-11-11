@@ -54,8 +54,8 @@ public sealed class ToolPermissionTests(SharedQuorumApp host) : IClassFixture<Sh
         using var member = await app.CreateMemberClientAsync();
         using var anonymous = app.CreateUiClient();
 
-        using var asMember = await member.GetAsync(ToolsApi.Assistants, Ct);
-        using var asAnonymous = await anonymous.GetAsync(ToolsApi.Assistants, Ct);
+        using var asMember = await member.GetAsync(new Uri("/api/assistants", UriKind.Relative), Ct);
+        using var asAnonymous = await anonymous.GetAsync(new Uri("/api/assistants", UriKind.Relative), Ct);
 
         Assert.Equal(HttpStatusCode.OK, asMember.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, asAnonymous.StatusCode);

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Agents.Contracts;
 using Quorum.Modules.Agents.Domain;
 using Quorum.Modules.Agents.Persistence;
+using Quorum.Modules.Agents.Tools;
 using Quorum.Shared.Endpoints;
 using Quorum.Shared.Results;
 using Quorum.Shared.Tenancy;
@@ -25,8 +26,17 @@ internal sealed class AssistantEndpoints : IEndpointGroup
     {
         var assistants = app.MapGroup("/api/assistants").WithTags("Assistants");
 
-        assistants.MapGet("/", ListAsync).RequireAuthorization().WithName("ListAssistants");
-        assistants.MapGet("/{id:guid}", GetAsync).RequireAuthorization().WithName("GetAssistant");
+        // Consumer routes: only exposed assistants, with the fields a consumer may see (spec 018 D-10, D-11).
+        assistants.MapGet("/", ConsumerListAsync).RequireAuthorization().WithName("ListAssistants");
+        assistants.MapGet("/{id:guid}", ConsumerGetAsync).RequireAuthorization().WithName("GetAssistant");
+        assistants.MapGet("/{id:guid}/tools", ConsumerToolsAsync).RequireAuthorization().WithName("ListAssistantTools");
+
+        // Admin routes: every assistant and every root tool, whatever the consumer sees (spec 018 D-12).
+        var admin = app.MapGroup("/api/admin/assistants").WithTags("Assistants");
+        admin.MapGet("/", ListAsync).RequireAuthorization(QuorumPolicies.AgentsManage).WithName("AdminListAssistants");
+        admin.MapGet("/{id:guid}", GetAsync).RequireAuthorization(QuorumPolicies.AgentsManage).WithName("AdminGetAssistant");
+        admin.MapGet("/{id:guid}/tools", AdminToolsAsync).RequireAuthorization(QuorumPolicies.AgentsManage).WithName("AdminListAssistantTools");
+
         assistants.MapPost("/", CreateAsync).RequireAuthorization(QuorumPolicies.AgentsManage).WithName("CreateAssistant");
         assistants.MapPut("/{id:guid}", UpdateAsync).RequireAuthorization(QuorumPolicies.AgentsManage).WithName("UpdateAssistant");
         assistants.MapDelete("/{id:guid}", DeleteAsync).RequireAuthorization(QuorumPolicies.AgentsManage).WithName("DeleteAssistant");
@@ -40,6 +50,57 @@ internal sealed class AssistantEndpoints : IEndpointGroup
             select new AssistantResponse(assistant.Id, assistant.Name, agent.Slug, assistant.MaxParallelSubAgents, assistant.Exposed, assistant.AllowToolSelection))
             .AsNoTracking()
             .ToListAsync(cancellationToken));
+
+    private static async Task<Ok<List<ConsumerAssistantResponse>>> ConsumerListAsync(AgentsDbContext db, CancellationToken cancellationToken) =>
+        TypedResults.Ok(await db.Assistants
+            .Where(assistant => assistant.Exposed)
+            .OrderBy(assistant => assistant.Id)
+            .Select(assistant => new ConsumerAssistantResponse(assistant.Id, assistant.Name, assistant.AllowToolSelection))
+            .AsNoTracking()
+            .ToListAsync(cancellationToken));
+
+    /// <summary>A consumer asking for a hidden assistant gets the same answer as for one that does not exist (spec 018 D-11).</summary>
+    private static async Task<Results<Ok<ConsumerAssistantResponse>, ProblemHttpResult>> ConsumerGetAsync(Guid id, AgentsDbContext db, CancellationToken cancellationToken)
+    {
+        var assistant = await db.Assistants
+            .Where(a => a.Id == id && a.Exposed)
+            .Select(a => new ConsumerAssistantResponse(a.Id, a.Name, a.AllowToolSelection))
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return assistant is null ? NotFound.ToProblem() : TypedResults.Ok(assistant);
+    }
+
+    /// <summary>The tools a consumer may turn off: none when the assistant does not allow the selection (spec 018 D-2, D-4, D-5).</summary>
+    private static async Task<Results<Ok<List<ChatToolResponse>>, ProblemHttpResult>> ConsumerToolsAsync(Guid id, AgentsDbContext db, CancellationToken cancellationToken)
+    {
+        var assistant = await db.Assistants.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id && a.Exposed, cancellationToken);
+        if (assistant is null)
+        {
+            return NotFound.ToProblem();
+        }
+
+        return TypedResults.Ok(assistant.AllowToolSelection
+            ? await RootToolsAsync(assistant.RootAgentId, db, cancellationToken)
+            : []);
+    }
+
+    /// <summary>Every root tool with its mode, for the debug chat, whether or not the consumer sees them (spec 018 D-12).</summary>
+    private static async Task<Results<Ok<List<ChatToolResponse>>, ProblemHttpResult>> AdminToolsAsync(Guid id, AgentsDbContext db, CancellationToken cancellationToken)
+    {
+        var assistant = await db.Assistants.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (assistant is null)
+        {
+            return NotFound.ToProblem();
+        }
+
+        return TypedResults.Ok(await RootToolsAsync(assistant.RootAgentId, db, cancellationToken));
+    }
+
+    /// <summary>The root agent's active tools as the model sees them: the exposed name, the description and the mode of this agent (spec 018 D-5, D-6).</summary>
+    private static async Task<List<ChatToolResponse>> RootToolsAsync(Guid rootAgentId, AgentsDbContext db, CancellationToken cancellationToken) =>
+        [.. (await AgentToolLoader.LoadAsync(db, rootAgentId, cancellationToken, new WebConfigurationReader(db)))
+            .Select(tool => new ChatToolResponse(tool.ExposedName, tool.Description, tool.Mode.ToString()))];
 
     private static async Task<Results<Ok<AssistantResponse>, ProblemHttpResult>> GetAsync(Guid id, AgentsDbContext db, CancellationToken cancellationToken)
     {
@@ -137,6 +198,12 @@ internal sealed class AssistantEndpoints : IEndpointGroup
 }
 
 internal sealed record AssistantResponse(Guid Id, string Name, string RootAgentSlug, int MaxParallelSubAgents, bool Exposed, bool AllowToolSelection);
+
+/// <summary>What a consumer sees of an exposed assistant (spec 018 D-11).</summary>
+internal sealed record ConsumerAssistantResponse(Guid Id, string Name, bool AllowToolSelection);
+
+/// <summary>A root tool as the model names it, with its mode (spec 018 D-3, D-6).</summary>
+internal sealed record ChatToolResponse(string Name, string Description, string Mode);
 
 /// <summary>Exposure and tool selection left out keep the stored value on update (spec 018 D-1, D-2).</summary>
 internal sealed record AssistantRequest(string? Name, string? RootAgentSlug, int? MaxParallelSubAgents, bool? Exposed = null, bool? AllowToolSelection = null);

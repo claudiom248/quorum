@@ -137,7 +137,7 @@ public sealed class KnowledgeListPagesTests : ListPageTestContext
                         _deleteFieldStatus);
             }
 
-            if (path == "/api/assistants")
+            if (path == "/api/admin/assistants")
             {
                 return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), name = "Assistant" } });
             }
