@@ -17,6 +17,12 @@ public static class QuorumPolicies
     /// <summary>Manage model endpoints, agents and their sub-agent edges, and the assistants that point to them.</summary>
     public const string AgentsManage = "agents.manage";
 
+    /// <summary>Create, edit, delete and test the models of the installation (spec 019 D-6).</summary>
+    public const string ModelsManage = "models.manage";
+
+    /// <summary>List and read the models the tenant sees; the managing permissions read them too (spec 019, Authorization).</summary>
+    public const string ModelsRead = "models.read";
+
     /// <summary>Manage the skills of the tenant: read, write, import, export, and the display name style (spec 017 D-15).</summary>
     public const string SkillsManage = "skills.manage";
 

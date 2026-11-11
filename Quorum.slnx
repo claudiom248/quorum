@@ -20,6 +20,10 @@
   <Folder Name="/src/Modules/Licensing/">
     <Project Path="src/Modules/Licensing/Quorum.Modules.Licensing/Quorum.Modules.Licensing.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Models/">
+    <Project Path="src/Modules/Models/Quorum.Modules.Models.Contracts/Quorum.Modules.Models.Contracts.csproj" />
+    <Project Path="src/Modules/Models/Quorum.Modules.Models/Quorum.Modules.Models.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Tenancy/">
     <Project Path="src/Modules/Tenancy/Quorum.Modules.Tenancy.Contracts/Quorum.Modules.Tenancy.Contracts.csproj" />
     <Project Path="src/Modules/Tenancy/Quorum.Modules.Tenancy/Quorum.Modules.Tenancy.csproj" />

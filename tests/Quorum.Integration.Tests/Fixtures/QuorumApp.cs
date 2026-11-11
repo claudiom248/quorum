@@ -264,6 +264,8 @@ public sealed class QuorumApp : WebApplicationFactory<Program>
                 },
                 preserveStaticLogger: true);
             services.AddHttpClient(ModelEndpointProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddHttpClient(Quorum.Modules.Models.Probing.ModelProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
+            services.AddHttpClient(Quorum.Modules.Models.Embeddings.ModelEmbeddings.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiChatClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             services.AddHttpClient(OpenAiEmbeddings.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => ModelServer);
             // Hundreds of tests sign in or create a user: the production iteration count would dominate their time.
