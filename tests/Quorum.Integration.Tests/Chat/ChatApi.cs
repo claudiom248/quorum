@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using System.Net.Http.Json;
 using Quorum.Integration.Tests.Fixtures;
@@ -28,7 +29,9 @@ internal static class ChatApi
 
     public static async Task<Guid> CreateConversationAsync(HttpClient client)
     {
-        using var response = await client.PostAsync(Conversations, content: null, TestContext.Current.CancellationToken);
+        var assistants = await client.GetFromJsonAsync<JsonElement>(new Uri("/api/assistants", UriKind.Relative), TestContext.Current.CancellationToken);
+        var assistantId = assistants.EnumerateArray().First().GetProperty("id").GetGuid();
+        using var response = await client.PostAsJsonAsync(Conversations, new { assistantId }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<CreatedBody>(TestContext.Current.CancellationToken);
         return body!.Id;

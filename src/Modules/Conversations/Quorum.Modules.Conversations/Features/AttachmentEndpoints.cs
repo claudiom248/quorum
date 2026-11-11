@@ -147,7 +147,7 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
         var sizes = existing.Select(a => new ChatAttachmentSize(a.FileNameLength, a.TextLength))
             .Append(new ChatAttachmentSize(fileName.Length, extracted.Value.Text.Length))
             .ToList();
-        var usage = await chat.MeasureContextBySizesAsync(conversation.AssistantId, [], sizes, token);
+        var usage = await chat.MeasureContextBySizesAsync(conversation.AssistantId, [], sizes, token, ConversationEndpoints.TurnOptionsOf(conversation));
         if (!usage.IsSuccess)
         {
             return usage.Error.ToProblem();
@@ -280,7 +280,8 @@ internal sealed class AttachmentEndpoints : IEndpointGroup
             conversation.AssistantId,
             ConversationEndpoints.Turns(conversation).ToList(),
             sizes,
-            cancellationToken);
+            cancellationToken,
+            ConversationEndpoints.TurnOptionsOf(conversation));
 
         return usage.IsSuccess
             ? TypedResults.Ok(new ContextResponse(
