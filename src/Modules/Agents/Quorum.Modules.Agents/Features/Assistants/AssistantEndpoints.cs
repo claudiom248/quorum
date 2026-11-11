@@ -17,6 +17,10 @@ internal sealed class AssistantEndpoints : IEndpointGroup
 {
     private static readonly Error NotFound = Error.NotFound("assistant.not_found", "The assistant does not exist.");
 
+    private static readonly Error DefaultNotExposed = Error.Conflict(
+        "assistant.default_not_exposed",
+        "The first assistant stays exposed: the first-run setup answers through it, and consumers can always start with it.");
+
     public void Map(IEndpointRouteBuilder app)
     {
         var assistants = app.MapGroup("/api/assistants").WithTags("Assistants");
@@ -33,7 +37,7 @@ internal sealed class AssistantEndpoints : IEndpointGroup
             from assistant in db.Assistants
             join agent in db.Agents on assistant.RootAgentId equals agent.Id
             orderby assistant.Id
-            select new AssistantResponse(assistant.Id, assistant.Name, agent.Slug, assistant.MaxParallelSubAgents))
+            select new AssistantResponse(assistant.Id, assistant.Name, agent.Slug, assistant.MaxParallelSubAgents, assistant.Exposed, assistant.AllowToolSelection))
             .AsNoTracking()
             .ToListAsync(cancellationToken));
 
@@ -43,7 +47,7 @@ internal sealed class AssistantEndpoints : IEndpointGroup
             from a in db.Assistants
             join agent in db.Agents on a.RootAgentId equals agent.Id
             where a.Id == id
-            select new AssistantResponse(a.Id, a.Name, agent.Slug, a.MaxParallelSubAgents))
+            select new AssistantResponse(a.Id, a.Name, agent.Slug, a.MaxParallelSubAgents, a.Exposed, a.AllowToolSelection))
             .AsNoTracking()
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -66,11 +70,12 @@ internal sealed class AssistantEndpoints : IEndpointGroup
         }
 
         var assistant = Assistant.Create(tenantId, input.Name, input.Root.Id, input.MaxParallelSubAgents, clock.GetUtcNow());
+        assistant.SetChatExposure(request.Exposed ?? false, request.AllowToolSelection ?? false);
         db.Assistants.Add(assistant);
         await db.SaveChangesAsync(cancellationToken);
 
         return TypedResults.CreatedAtRoute(
-            new AssistantResponse(assistant.Id, assistant.Name, input.Root.Slug, assistant.MaxParallelSubAgents),
+            new AssistantResponse(assistant.Id, assistant.Name, input.Root.Slug, assistant.MaxParallelSubAgents, assistant.Exposed, assistant.AllowToolSelection),
             "GetAssistant",
             new RouteValueDictionary { ["id"] = assistant.Id });
     }
@@ -92,10 +97,21 @@ internal sealed class AssistantEndpoints : IEndpointGroup
             return TypedResults.ValidationProblem(input.Errors);
         }
 
+        var exposed = request.Exposed ?? assistant.Exposed;
+        if (!exposed && await IsDefaultAsync(assistant, db, cancellationToken))
+        {
+            return DefaultNotExposed.ToProblem();
+        }
+
         assistant.Revise(input.Name, input.Root.Id, input.MaxParallelSubAgents);
+        assistant.SetChatExposure(exposed, request.AllowToolSelection ?? assistant.AllowToolSelection);
         await db.SaveChangesAsync(cancellationToken);
         return TypedResults.NoContent();
     }
+
+    /// <summary>The first-run assistant (spec 013 D-35): the oldest one, the one the setup and the settings facade answer through.</summary>
+    private static async Task<bool> IsDefaultAsync(Assistant assistant, AgentsDbContext db, CancellationToken cancellationToken) =>
+        await db.Assistants.OrderBy(a => a.Id).Select(a => a.Id).FirstAsync(cancellationToken) == assistant.Id;
 
     /// <summary>
     /// Allowed with conversations (spec 013 D-36): they keep their soft <c>AssistantId</c>, stay readable, and sending to one is refused
@@ -120,9 +136,10 @@ internal sealed class AssistantEndpoints : IEndpointGroup
     }
 }
 
-internal sealed record AssistantResponse(Guid Id, string Name, string RootAgentSlug, int MaxParallelSubAgents);
+internal sealed record AssistantResponse(Guid Id, string Name, string RootAgentSlug, int MaxParallelSubAgents, bool Exposed, bool AllowToolSelection);
 
-internal sealed record AssistantRequest(string? Name, string? RootAgentSlug, int? MaxParallelSubAgents);
+/// <summary>Exposure and tool selection left out keep the stored value on update (spec 018 D-1, D-2).</summary>
+internal sealed record AssistantRequest(string? Name, string? RootAgentSlug, int? MaxParallelSubAgents, bool? Exposed = null, bool? AllowToolSelection = null);
 
 /// <summary>What an administrator sent for an assistant, checked: the root agent must exist, be visible and have an endpoint (spec 013 D-12, D-25).</summary>
 internal sealed record AssistantInput(Dictionary<string, string[]> Errors, string Name, Agent Root, int MaxParallelSubAgents)

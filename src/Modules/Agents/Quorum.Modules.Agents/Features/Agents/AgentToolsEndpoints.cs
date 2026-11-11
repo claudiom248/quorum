@@ -31,6 +31,10 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
         "tool.endpoint_without_tools",
         "The model endpoint of this agent does not support tools. Choose another endpoint first.");
 
+    private static readonly Error ModeNotSupported = Error.Validation(
+        "tool.mode_not_supported",
+        "A tool mode is required or optional.");
+
     private static readonly Error ClashWithSubAgent = Error.Validation(
         "tool.clashes_with_sub_agent",
         "A tool has the same name as a sub-agent of this agent: the model would see two tools with one name.");
@@ -62,7 +66,9 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
         var pool = await ToolPool.Of(db, id).AsNoTracking().ToListAsync(cancellationToken);
         var (rag, lookups) = await ResolveAsync(db, resolver, lookupResolver, pool, id, cancellationToken);
         pool = [.. pool.Where(t => (t.Tool.Origin != ToolOrigin.Rag || rag.ContainsKey(t.Tool.Id)) && (t.Tool.Origin != ToolOrigin.Lookup || lookups.ContainsKey(t.Tool.Id)))];
-        var activations = await db.AgentTools.Where(a => a.AgentId == id).ToDictionaryAsync(a => a.ToolId, a => a.Manifest, cancellationToken);
+        var attached = await db.AgentTools.AsNoTracking().Where(a => a.AgentId == id).ToListAsync(cancellationToken);
+        var activations = attached.ToDictionary(a => a.ToolId, a => a.Manifest);
+        var modes = attached.ToDictionary(a => a.ToolId, a => a.Mode);
         var active = activations.Keys.ToHashSet();
 
         // The size a rag tool takes is that of the definition the model gets, not of the stored one.
@@ -87,7 +93,8 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
                     active.Contains(t.Tool.Id),
                     t.Tool.Origin == ToolOrigin.Lookup ? activations.GetValueOrDefault(t.Tool.Id, LookupManifest.Full) : null,
                     OriginName(t.Tool.Origin),
-                    t.ServerName))
+                    t.ServerName,
+                    modes.GetValueOrDefault(t.Tool.Id, ToolMode.Required).ToString()))
                 .OrderBy(t => t.Name, StringComparer.Ordinal)
                 .ToList(),
             warnings));
@@ -158,7 +165,19 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
             return AgentNotFound.ToProblem();
         }
 
-        var wanted = (request.ToolIds ?? []).Distinct().ToList();
+        // The tools with their modes (spec 018 D-3) supersede the plain list; a plain list keeps the modes the tools have.
+        var wanted = (request.Tools is { } withModes ? withModes.Select(t => t.ToolId) : request.ToolIds ?? []).Distinct().ToList();
+        var modes = new Dictionary<Guid, ToolMode>();
+        foreach (var tool in request.Tools ?? [])
+        {
+            if (!TryMode(tool.Mode, out var mode))
+            {
+                return ModeNotSupported.ToProblem();
+            }
+
+            modes[tool.ToolId] = mode;
+        }
+
         if (wanted.Count > 0
             && agent.ModelEndpointId is { } endpointId
             && await db.ModelEndpoints.AnyAsync(e => e.Id == endpointId && !e.SupportsTools, cancellationToken))
@@ -211,6 +230,11 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
             activation.SetManifest(manifests[activation.ToolId]);
         }
 
+        foreach (var activation in current.Where(a => wanted.Contains(a.ToolId) && modes.ContainsKey(a.ToolId)))
+        {
+            activation.SetMode(modes[activation.ToolId]);
+        }
+
         foreach (var toolId in wanted.Where(toolId => current.All(a => a.ToolId != toolId)))
         {
             var created = AgentTool.Create(agent.TenantId, id, toolId);
@@ -219,11 +243,34 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
                 created.SetManifest(manifest);
             }
 
+            if (modes.TryGetValue(toolId, out var mode))
+            {
+                created.SetMode(mode);
+            }
+
             db.AgentTools.Add(created);
         }
 
         await db.SaveChangesAsync(cancellationToken);
         return TypedResults.NoContent();
+    }
+
+    /// <summary>The mode as the administrator writes it, <c>required</c> or <c>optional</c>; left out means required.</summary>
+    private static bool TryMode(string? value, out ToolMode mode)
+    {
+        mode = ToolMode.Required;
+        if (string.IsNullOrEmpty(value) || string.Equals(value, "required", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(value, "optional", StringComparison.OrdinalIgnoreCase))
+        {
+            mode = ToolMode.Optional;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>The manifest as the administrator writes it, <c>full</c> or <c>lean</c>, in the stored form.</summary>
@@ -247,10 +294,15 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
 /// <param name="Manifest">For a lookup tool: <c>Full</c> or <c>Lean</c> on this agent; <see langword="null"/> for the other tools.</param>
 /// <param name="Origin">Where the tool comes from (<c>builtin</c>, <c>rag</c>, <c>lookup</c>, <c>web_search</c>, <c>web_fetch</c> or <c>mcp</c>), which the name no longer says.</param>
 /// <param name="Server">The MCP server of an MCP tool; <see langword="null"/> for the others.</param>
-internal sealed record PoolToolResponse(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "mcp", string? Server = null);
+/// <param name="Mode"><c>Required</c> or <c>Optional</c> on this agent (spec 018 D-3); <c>Required</c> for a tool not attached.</param>
+internal sealed record PoolToolResponse(Guid ToolId, string Name, bool Active, string? Manifest = null, string Origin = "mcp", string? Server = null, string Mode = "Required");
 
 internal sealed record AgentToolsResponse(List<PoolToolResponse> Pool, IReadOnlyList<ToolWarning> Warnings);
 
-/// <param name="ToolIds">The tools active on the agent after the call.</param>
+/// <param name="ToolIds">The tools active on the agent after the call; a tool left out keeps its mode when it was attached.</param>
 /// <param name="Manifests">For lookup tools, <c>full</c> or <c>lean</c> by tool id; a tool left out keeps its manifest.</param>
-internal sealed record SetAgentToolsRequest(List<Guid>? ToolIds, Dictionary<Guid, string>? Manifests = null);
+/// <param name="Tools">The tools active after the call with their modes (spec 018 D-3); supersedes <paramref name="ToolIds"/> when sent.</param>
+internal sealed record SetAgentToolsRequest(List<Guid>? ToolIds, Dictionary<Guid, string>? Manifests = null, List<AgentToolModeRequest>? Tools = null);
+
+/// <param name="Mode"><c>required</c> (default) or <c>optional</c>.</param>
+internal sealed record AgentToolModeRequest(Guid ToolId, string? Mode);

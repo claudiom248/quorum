@@ -20,6 +20,12 @@ internal sealed class Assistant
     /// <summary>How many sub-agents may run at once; 1 runs them one after the other, as local hardware needs (D-23).</summary>
     public int MaxParallelSubAgents { get; private set; } = DefaultMaxParallelSubAgents;
 
+    /// <summary>Only exposed assistants can be chosen by consumers (spec 018 D-1).</summary>
+    public bool Exposed { get; private set; }
+
+    /// <summary>When on, consumers see the root agent's tools and may turn the optional ones off (spec 018 D-2).</summary>
+    public bool AllowToolSelection { get; private set; }
+
     public static Assistant Create(Guid tenantId, string name, Guid rootAgentId, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(now),
@@ -33,6 +39,12 @@ internal sealed class Assistant
         Name = name;
         RootAgentId = rootAgentId;
         MaxParallelSubAgents = maxParallelSubAgents;
+    }
+
+    public void SetChatExposure(bool exposed, bool allowToolSelection)
+    {
+        Exposed = exposed;
+        AllowToolSelection = allowToolSelection;
     }
 
     /// <summary>Same as <see cref="Create"/> with a parallelism limit chosen by the administrator.</summary>
