@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Net.ServerSentEvents;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -35,6 +36,12 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         conversations.MapPost("/{id:guid}/regenerate", RegenerateAsync).WithName("RegenerateAnswer");
         conversations.MapPost("/{id:guid}/tool-calls/{callId:guid}/decision", DecideToolCallAsync).WithName("DecideToolCall");
         conversations.MapPost("/{id:guid}/tool-calls/{callId:guid}/answer", AnswerQuestionAsync).WithName("AnswerQuestion");
+
+        // The administrator's debug chat: any assistant, its tools, and an endpoint replaced per conversation (spec 018 D-12, D-13, D-15).
+        var admin = app.MapGroup("/api/admin/conversations").WithTags("Conversations").RequireAuthorization(QuorumPolicies.AgentsManage);
+        admin.MapPost("/", AdminCreateAsync).WithName("AdminCreateConversation");
+        admin.MapGet("/", AdminListAsync).WithName("AdminListConversations");
+        admin.MapPatch("/{id:guid}/overrides", AdminChangeOverridesAsync).WithName("AdminChangeOverrides");
     }
 
     /// <summary>Approves or denies a tool call the answer of this conversation waits to run.</summary>
@@ -88,31 +95,171 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         return result.IsSuccess ? TypedResults.NoContent() : result.Error.ToProblem();
     }
 
-    private static async Task<Ok<List<ConversationSummary>>> ListAsync(ConversationsDbContext db, CancellationToken cancellationToken) =>
-        TypedResults.Ok(await db.Conversations
-            .OrderByDescending(c => c.UpdatedAt)
-            .Select(c => new ConversationSummary(c.Id, c.Title, c.UpdatedAt))
-            .ToListAsync(cancellationToken));
-
-    private static async Task<Results<Created<ConversationCreated>, ProblemHttpResult>> CreateAsync(
+    /// <summary>A debug conversation: any assistant of the tenant, exposed or not, with the overrides the administrator chose (spec 018 D-12).</summary>
+    private static async Task<Results<Created<ConversationCreated>, ValidationProblem, ProblemHttpResult>> AdminCreateAsync(
+        AdminConversationRequest? request,
         ConversationsDbContext db,
-        IAssistantCatalog assistants,
+        IChatAssistantAccess access,
         ITenantContext tenant,
         ICurrentUser user,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        if (await assistants.GetDefaultAssistantIdAsync(cancellationToken) is not { } assistantId)
+        if (request?.AssistantId is not { } assistantId || assistantId == Guid.Empty)
         {
-            return ConversationErrors.NoAssistant.ToProblem();
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["assistantId"] = ["Choose the assistant to debug."] });
         }
 
-        var conversation = Conversation.Start(tenant.TenantId!.Value, user.UserId!.Value, assistantId, clock.GetUtcNow());
+        var disabled = (request.DisabledTools ?? []).Distinct(StringComparer.Ordinal).ToList();
+        var selection = await access.CheckSelectionAsync(assistantId, debug: true, disabled, cancellationToken);
+        if (selection.Problem == ChatSelectionProblem.NotFound)
+        {
+            return ConversationErrors.AssistantNotFound.ToProblem();
+        }
+
+        if (selection.Problem == ChatSelectionProblem.InvalidNames)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["disabledTools"] = [$"These tools are not attached to this assistant: {string.Join(", ", selection.Names)}."],
+            });
+        }
+
+        if (request.ModelEndpointId is { } endpointId && await OverrideProblemAsync(access, assistantId, endpointId, cancellationToken) is { } problem)
+        {
+            return problem;
+        }
+
+        var conversation = Conversation.StartDebug(tenant.TenantId!.Value, user.UserId!.Value, assistantId, clock.GetUtcNow(), request.ModelEndpointId, disabled);
         db.Conversations.Add(conversation);
         await db.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Created($"/api/conversations/{conversation.Id}", new ConversationCreated(conversation.Id));
     }
+
+    private static async Task<Ok<List<ConversationSummary>>> AdminListAsync(ConversationsDbContext db, CancellationToken cancellationToken) =>
+        TypedResults.Ok(await db.Conversations
+            .Where(c => c.Mode == ConversationMode.Debug)
+            .OrderByDescending(c => c.UpdatedAt)
+            .Select(c => new ConversationSummary(c.Id, c.Title, c.UpdatedAt))
+            .ToListAsync(cancellationToken));
+
+    /// <summary>Changes the overrides of a debug conversation; the next message uses them (spec 018 D-13, D-14).</summary>
+    private static async Task<Results<NoContent, ValidationProblem, ProblemHttpResult>> AdminChangeOverridesAsync(
+        Guid id,
+        ConversationOverridesRequest request,
+        ConversationsDbContext db,
+        IChatAssistantAccess access,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        // A consumer conversation has no overrides to change: the same answer as for one that does not exist (spec 018 AC-15).
+        if (await db.Conversations.SingleOrDefaultAsync(c => c.Id == id && c.Mode == ConversationMode.Debug, cancellationToken) is not { } conversation)
+        {
+            return ConversationErrors.NotFound.ToProblem();
+        }
+
+        var disabled = (request.DisabledTools ?? []).Distinct(StringComparer.Ordinal).ToList();
+        var selection = await access.CheckSelectionAsync(conversation.AssistantId, debug: true, disabled, cancellationToken);
+        if (selection.Problem == ChatSelectionProblem.NotFound)
+        {
+            return ConversationErrors.AssistantNotFound.ToProblem();
+        }
+
+        if (selection.Problem == ChatSelectionProblem.InvalidNames)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["disabledTools"] = [$"These tools are not attached to this assistant: {string.Join(", ", selection.Names)}."],
+            });
+        }
+
+        if (request.ModelEndpointId is { } endpointId && await OverrideProblemAsync(access, conversation.AssistantId, endpointId, cancellationToken) is { } problem)
+        {
+            return problem;
+        }
+
+        conversation.ChangeOverrides(request.ModelEndpointId, disabled, clock.GetUtcNow());
+        await db.SaveChangesAsync(cancellationToken);
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>The refusal of an endpoint override that does not exist or cannot carry the root's tools (spec 018 D-12, D-16), or <see langword="null"/>.</summary>
+    private static async Task<ProblemHttpResult?> OverrideProblemAsync(IChatAssistantAccess access, Guid assistantId, Guid endpointId, CancellationToken cancellationToken)
+    {
+        var check = await access.CheckOverrideAsync(assistantId, endpointId, cancellationToken);
+        return check.Problem switch
+        {
+            ChatOverrideProblem.EndpointNotFound => ConversationErrors.ModelNotFound.ToProblem(),
+            ChatOverrideProblem.WithoutTools => Error.Validation("conversation.model_without_tools", "This model does not support tools, and the assistant has tools: choose another model.").ToProblem(),
+            _ => null,
+        };
+    }
+
+    private static async Task<Ok<List<ConversationSummary>>> ListAsync(ConversationsDbContext db, CancellationToken cancellationToken) =>
+        TypedResults.Ok(await db.Conversations
+            .Where(c => c.Mode == ConversationMode.Consumer)
+            .OrderByDescending(c => c.UpdatedAt)
+            .Select(c => new ConversationSummary(c.Id, c.Title, c.UpdatedAt))
+            .ToListAsync(cancellationToken));
+
+    /// <summary>
+    /// A consumer starts a conversation with an exposed assistant and the optional tools it turns off (spec 018 D-8, D-9, D-11).
+    /// The assistant is named by the caller: the default one is only the setup's (D-9).
+    /// </summary>
+    private static async Task<Results<Created<ConversationCreated>, ValidationProblem, ProblemHttpResult>> CreateAsync(
+        HttpRequest httpRequest,
+        ConversationsDbContext db,
+        IChatAssistantAccess access,
+        ITenantContext tenant,
+        ICurrentUser user,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        // The body is read here, not bound: a request without one must reach the authorization, not the fallback of unknown API routes.
+        var request = httpRequest.ContentType is not null ? await httpRequest.ReadFromJsonAsync<ConversationCreateRequest>(cancellationToken) : null;
+        if (request?.AssistantId is not { } assistantId || assistantId == Guid.Empty)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["assistantId"] = ["Choose the assistant of the conversation."] });
+        }
+
+        var disabled = (request.DisabledTools ?? []).Distinct(StringComparer.Ordinal).ToList();
+        var check = await access.CheckSelectionAsync(assistantId, debug: false, disabled, cancellationToken);
+        switch (check.Problem)
+        {
+            case ChatSelectionProblem.NotFound:
+                return ConversationErrors.AssistantNotFound.ToProblem();
+            case ChatSelectionProblem.SelectionNotAllowed:
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["disabledTools"] = ["This assistant does not let you choose its tools."],
+                });
+            case ChatSelectionProblem.InvalidNames:
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["disabledTools"] = [$"These tools cannot be turned off: {string.Join(", ", check.Names)}. Only optional tools of this assistant can."],
+                });
+        }
+
+        var conversation = Conversation.Start(tenant.TenantId!.Value, user.UserId!.Value, assistantId, clock.GetUtcNow(), disabled);
+        db.Conversations.Add(conversation);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Created($"/api/conversations/{conversation.Id}", new ConversationCreated(conversation.Id));
+    }
+
+    /// <summary>The turn options of a conversation: the selection it fixed, and for a debug one the endpoint override (spec 018 D-12, D-14).</summary>
+    internal static ChatTurnOptions TurnOptionsOf(Conversation conversation) =>
+        new(conversation.DisabledTools, conversation.Mode == ConversationMode.Debug, conversation.OverrideModelEndpointId);
+
+    private static ConversationResponse ToResponse(ConversationRow row) => new(
+        row.Id,
+        row.Title,
+        row.Messages,
+        row.Attachments,
+        row.AssistantId,
+        row.DisabledTools,
+        row.Mode == ConversationMode.Debug ? new DebugOverridesResponse(row.OverrideModelEndpointId, row.DisabledTools) : null);
 
     private static async Task<Results<Ok<ConversationResponse>, ProblemHttpResult>> GetAsync(
         Guid id,
@@ -124,7 +271,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
             .AsNoTracking()
             .AsSplitQuery()
             .Where(c => c.Id == id)
-            .Select(c => new ConversationResponse(
+            .Select(c => new ConversationRow(
                 c.Id,
                 c.Title,
                 c.Messages
@@ -144,10 +291,14 @@ internal sealed class ConversationEndpoints : IEndpointGroup
                     .Where(a => a.ConversationId == c.Id)
                     .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
                     .Select(a => new AttachmentResponse(a.Id, a.FileName, a.MediaType, a.SizeBytes, a.CharacterCount, a.CreatedAt))
-                    .ToList()))
+                    .ToList(),
+                c.AssistantId,
+                c.DisabledTools,
+                c.Mode,
+                c.OverrideModelEndpointId))
             .SingleOrDefaultAsync(cancellationToken);
 
-        return conversation is null ? ConversationErrors.NotFound.ToProblem() : TypedResults.Ok(conversation);
+        return conversation is null ? ConversationErrors.NotFound.ToProblem() : TypedResults.Ok(ToResponse(conversation));
     }
 
     private static async Task<Results<NoContent, ValidationProblem, ProblemHttpResult>> RenameAsync(
@@ -224,7 +375,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
         {
             var history = Turns(conversation).Append(new ChatTurn(ChatTurnRole.User, content)).ToList();
             var attachments = await AttachmentEndpoints.LoadForChatAsync(db, conversation.Id, lease.Token);
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, conversation.Id, history, attachments, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, conversation.Id, history, attachments, lease.Token, TurnOptionsOf(conversation));
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();
@@ -274,7 +425,7 @@ internal sealed class ConversationEndpoints : IEndpointGroup
             var replaced = conversation.LastAnswer;
             var history = Turns(conversation, except: replaced).ToList();
             var attachments = await AttachmentEndpoints.LoadForChatAsync(db, conversation.Id, lease.Token);
-            var answer = await chat.StartAnswerAsync(conversation.AssistantId, conversation.Id, history, attachments, lease.Token);
+            var answer = await chat.StartAnswerAsync(conversation.AssistantId, conversation.Id, history, attachments, lease.Token, TurnOptionsOf(conversation));
             if (!answer.IsSuccess)
             {
                 return answer.Error.ToProblem();
@@ -320,13 +471,44 @@ internal static class ConversationErrors
         Error.Conflict("conversation.nothing_to_regenerate", "The conversation has no message to answer.");
 
     public static Error NoAssistant { get; } = Error.Conflict("conversation.no_assistant", "No assistant is configured yet.");
+
+    public static Error AssistantNotFound { get; } = Error.NotFound("conversation.assistant_not_found", "The assistant does not exist or is not available to you.");
+
+    public static Error ModelNotFound { get; } = Error.NotFound("conversation.model_not_found", "The model does not exist in this tenant.");
 }
 
 internal sealed record ConversationSummary(Guid Id, string? Title, DateTimeOffset UpdatedAt);
 
 internal sealed record ConversationCreated(Guid Id);
 
-internal sealed record ConversationResponse(Guid Id, string? Title, List<MessageResponse> Messages, List<AttachmentResponse> Attachments);
+/// <summary>The conversation as the client reads it; <see cref="Debug"/> is present only for a debug conversation (spec 018 D-14).</summary>
+internal sealed record ConversationResponse(
+    Guid Id,
+    string? Title,
+    List<MessageResponse> Messages,
+    List<AttachmentResponse> Attachments,
+    Guid AssistantId,
+    string[] DisabledTools,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DebugOverridesResponse? Debug);
+
+internal sealed record DebugOverridesResponse(Guid? ModelEndpointId, string[] DisabledTools);
+
+internal sealed record ConversationCreateRequest(Guid? AssistantId, List<string>? DisabledTools);
+
+internal sealed record AdminConversationRequest(Guid? AssistantId, Guid? ModelEndpointId, List<string>? DisabledTools);
+
+internal sealed record ConversationOverridesRequest(Guid? ModelEndpointId, List<string>? DisabledTools);
+
+/// <summary>The projection of a conversation the read returns, before the debug part is decided.</summary>
+internal sealed record ConversationRow(
+    Guid Id,
+    string? Title,
+    List<MessageResponse> Messages,
+    List<AttachmentResponse> Attachments,
+    Guid AssistantId,
+    string[] DisabledTools,
+    ConversationMode Mode,
+    Guid? OverrideModelEndpointId);
 
 /// <param name="Sources">The sources an assistant message cited, by number; empty for a user message and for an answer that cited none.</param>
 internal sealed record MessageResponse(Guid Id, string Role, string Content, string Status, DateTimeOffset CreatedAt, List<SourceResponse> Sources);

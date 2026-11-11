@@ -140,11 +140,23 @@ public sealed partial class QuorumApi(HttpClient http)
         SendAsync<ToolRefresh>(HttpMethod.Post, $"api/tools/servers/{id}/refresh", body: null, setupToken: null, cancellationToken);
 
     public Task<ApiResult<List<ConversationSummary>>> ListConversationsAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<List<ConversationSummary>>("api/conversations", cancellationToken);
+        GetAsync<List<ConversationSummary>>("api/admin/conversations", cancellationToken);
 
+    /// <summary>The debug chat starts a conversation with the first assistant of the tenant, through the administrator's route (spec 018 D-20).</summary>
     public async Task<ApiResult<Guid>> CreateConversationAsync(CancellationToken cancellationToken = default)
     {
-        var created = await SendAsync<CreatedConversation>(HttpMethod.Post, "api/conversations", body: null, setupToken: null, cancellationToken);
+        var assistants = await GetAsync<List<AssistantSummary>>("api/admin/assistants", cancellationToken);
+        if (!assistants.IsSuccess)
+        {
+            return ApiResult.Fail<Guid>(assistants.Problem!);
+        }
+
+        var created = await SendAsync<CreatedConversation>(
+            HttpMethod.Post,
+            "api/admin/conversations",
+            new { assistantId = assistants.Value.FirstOrDefault()?.Id ?? Guid.Empty },
+            setupToken: null,
+            cancellationToken);
         return created.IsSuccess ? ApiResult.Ok(created.Value.Id) : ApiResult.Fail<Guid>(created.Problem!);
     }
 

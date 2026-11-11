@@ -29,7 +29,16 @@ internal sealed partial class Conversation
 
     public IReadOnlyList<Message> Messages => _messages;
 
-    public static Conversation Start(Guid tenantId, Guid userId, Guid assistantId, DateTimeOffset now) => new()
+    /// <summary>A consumer conversation (fixed selection) or a debug one that the administrator may reconfigure (spec 018 D-12, D-13).</summary>
+    public ConversationMode Mode { get; private set; } = ConversationMode.Consumer;
+
+    /// <summary>Tool names as the model sees them, turned off for the turns of this conversation (spec 018 D-7, D-8).</summary>
+    public string[] DisabledTools { get; private set; } = [];
+
+    /// <summary>The endpoint of a debug conversation, replacing the root agent's (spec 018 D-12); <see langword="null"/> otherwise.</summary>
+    public Guid? OverrideModelEndpointId { get; private set; }
+
+    public static Conversation Start(Guid tenantId, Guid userId, Guid assistantId, DateTimeOffset now, IReadOnlyList<string>? disabledTools = null) => new()
     {
         Id = Guid.CreateVersion7(now),
         TenantId = tenantId,
@@ -37,7 +46,24 @@ internal sealed partial class Conversation
         AssistantId = assistantId,
         CreatedAt = now,
         UpdatedAt = now,
+        DisabledTools = [.. disabledTools ?? []],
     };
+
+    public static Conversation StartDebug(Guid tenantId, Guid userId, Guid assistantId, DateTimeOffset now, Guid? modelEndpointId, IReadOnlyList<string> disabledTools)
+    {
+        var conversation = Start(tenantId, userId, assistantId, now, disabledTools);
+        conversation.Mode = ConversationMode.Debug;
+        conversation.OverrideModelEndpointId = modelEndpointId;
+        return conversation;
+    }
+
+    /// <summary>Changes the overrides of a debug conversation; the next message uses them (spec 018 D-13, D-14).</summary>
+    public void ChangeOverrides(Guid? modelEndpointId, IReadOnlyList<string> disabledTools, DateTimeOffset now)
+    {
+        OverrideModelEndpointId = modelEndpointId;
+        DisabledTools = [.. disabledTools];
+        UpdatedAt = now;
+    }
 
     public Message AddUserMessage(string content, DateTimeOffset now)
     {

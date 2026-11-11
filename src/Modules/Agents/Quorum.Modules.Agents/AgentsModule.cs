@@ -67,6 +67,7 @@ public static class AgentsModule
         services.AddScoped<AssistantChat>();
         services.AddScoped<IAssistantChat>(provider => provider.GetRequiredService<AssistantChat>());
         services.AddScoped<IAssistantCatalog>(provider => provider.GetRequiredService<AssistantChat>());
+        services.AddScoped<IChatAssistantAccess, ChatAssistantAccess>();
         services.AddSingleton<QuorumToolFactory>();
         services.AddScoped<AnswerPipeline>();
         services.AddScoped<AgentsDatabaseGate>();
