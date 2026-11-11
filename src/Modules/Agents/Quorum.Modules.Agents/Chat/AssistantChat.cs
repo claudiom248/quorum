@@ -72,14 +72,16 @@ internal sealed class AssistantChat(
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
 
-        var prepared = await PrepareAsync(assistantId, conversationId, cancellationToken);
-        if (prepared is null)
+        var turn = await LoadAssistantAsync(assistantId, conversationId, cancellationToken);
+        if (turn is null)
         {
             return AssistantNotFound;
         }
 
+        var endpoint = turn.Configuration.Endpoint;
+
         // Rejecting what does not fit happens here, before the answer starts, so the caller can answer with a plain error and store nothing.
-        var turns = ContextWindow.Select(prepared.SystemPrompt, history, attachments, prepared.ContextTokenBudget, prepared.ToolsCharacters);
+        var turns = ContextWindow.Select(turn.SystemPrompt, history, attachments, endpoint.ContextTokenBudget, turn.ToolsCharacters);
         if (!turns.IsSuccess)
         {
             return turns.Error;
@@ -88,26 +90,26 @@ internal sealed class AssistantChat(
         var block = AttachmentBlock.Render(attachments, AttachmentBlock.NewDelimiter());
 
         var context = new ToolRunContext(
-            prepared.Caller?.TenantId ?? Guid.Empty,
-            prepared.Caller?.UserId ?? Guid.Empty,
+            turn.Caller?.TenantId ?? Guid.Empty,
+            turn.Caller?.UserId ?? Guid.Empty,
             assistantId,
-            prepared.Configuration.AgentId,
+            turn.Configuration.AgentId,
             conversationId,
-            prepared.Limits);
+            turn.Limits);
 
         var answer = pipeline.RunAsync(
             new AnswerRequest(
-                new Uri(prepared.BaseUrl),
-                prepared.ModelName,
-                apiKeyProtector.Unprotect(prepared.ProtectedApiKey),
-                prepared.SystemPrompt,
+                new Uri(endpoint.BaseUrl),
+                endpoint.ModelName,
+                apiKeyProtector.Unprotect(endpoint.ProtectedApiKey),
+                turn.SystemPrompt,
                 block.Length == 0 ? null : block,
-                turns.Value.Select(turn => new ChatMessage(turn.Role == ChatTurnRole.User ? ChatRole.User : ChatRole.Assistant, turn.Content)).ToList(),
-                prepared.Tools,
-                ContextWindow.CharacterBudget(prepared.ContextTokenBudget),
+                turns.Value.Select(item => new ChatMessage(item.Role == ChatTurnRole.User ? ChatRole.User : ChatRole.Assistant, item.Content)).ToList(),
+                turn.Tools,
+                ContextWindow.CharacterBudget(endpoint.ContextTokenBudget),
                 context,
-                prepared.Connections,
-                prepared.Configuration.MaxParallelSubAgents),
+                turn.Connections,
+                turn.Configuration.MaxParallelSubAgents),
             cancellationToken);
 
         return Result<IAsyncEnumerable<AnswerChunk>>.Success(answer);
@@ -122,13 +124,13 @@ internal sealed class AssistantChat(
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
 
-        var prepared = await PrepareAsync(assistantId, Guid.Empty, cancellationToken);
-        if (prepared is null)
+        var turn = await LoadAssistantAsync(assistantId, Guid.Empty, cancellationToken);
+        if (turn is null)
         {
             return AssistantNotFound;
         }
 
-        return ContextWindow.Measure(prepared.SystemPrompt, history, attachments, prepared.ContextTokenBudget, prepared.ToolsCharacters);
+        return ContextWindow.Measure(turn.SystemPrompt, history, attachments, turn.Configuration.Endpoint.ContextTokenBudget, turn.ToolsCharacters);
     }
 
     public async Task<Result<ContextUsage>> MeasureContextBySizesAsync(
@@ -140,101 +142,49 @@ internal sealed class AssistantChat(
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
 
-        var prepared = await PrepareAsync(assistantId, Guid.Empty, cancellationToken);
-        if (prepared is null)
+        var turn = await LoadAssistantAsync(assistantId, Guid.Empty, cancellationToken);
+        if (turn is null)
         {
             return AssistantNotFound;
         }
 
-        return ContextWindow.Measure(prepared.SystemPrompt, history, attachments, prepared.ContextTokenBudget, prepared.ToolsCharacters);
+        return ContextWindow.Measure(turn.SystemPrompt, history, attachments, turn.Configuration.Endpoint.ContextTokenBudget, turn.ToolsCharacters);
     }
 
     /// <summary>The assistant's configuration with the tools it may offer to the current caller, or <see langword="null"/> when it does not exist.</summary>
     /// <param name="conversationId">The conversation a web search tool counts its invocations in; nothing for a measurement.</param>
-    private async Task<PreparedAssistant?> PrepareAsync(Guid assistantId, Guid conversationId, CancellationToken cancellationToken)
+    private async Task<AssistantForTurn?> LoadAssistantAsync(Guid assistantId, Guid conversationId, CancellationToken cancellationToken)
     {
         var tenantId = db.CurrentTenantId ?? Guid.Empty;
 
-        // What is stored comes from the graph cache; the definition of the rag and lookup tools below is made now.
-        var configuration = await graph.GetOrLoadAsync("configuration", tenantId, assistantId, 0, () => LoadConfigurationAsync(assistantId, cancellationToken));
+        // What is stored comes from the graph cache; the definition of the rag and lookup tools is made now, unless the cache has it.
+        var configuration = await graph.GetOrLoadAsync(GraphPart.Configuration, tenantId, assistantId, GraphPart.NoKnowledgeBaseChanges, () => LoadConfigurationAsync(assistantId, cancellationToken));
         if (configuration is null)
         {
             return null;
         }
 
-        var caller = configuration.SupportsTools ? await toolAccess.ResolveAsync() : null;
+        var caller = configuration.Endpoint.SupportsTools ? await toolAccess.ResolveAsync() : null;
 
         // The sub-agents are read with their tools, and the turn keeps them as they are (spec 013 AC-25).
-        var stored = caller is null ? null : await graph.GetOrLoadAsync("tools", tenantId, assistantId, 0, () => LoadToolsAsync(configuration, cancellationToken));
-        IReadOnlyList<ActiveTool> active = [];
-        IReadOnlyList<SubAgentSource> resolvedSubAgents = [];
-        if (caller is not null && stored is not null)
-        {
-            // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
-            // That is kept while neither this module nor the knowledge base module changes anything, so a change on either side reaches the next turn.
-            var resolved = await graph.GetOrLoadAsync(
-                "resolved",
-                tenantId,
-                assistantId,
-                knowledgeBaseChanges.Current,
-                async () => await ResolveAsync(stored, caller.TenantId, assistantId, cancellationToken));
-            active = resolved!.Active;
-            resolvedSubAgents = resolved.SubAgents;
-        }
+        var stored = caller is null ? null : await graph.GetOrLoadAsync(GraphPart.Tools, tenantId, assistantId, GraphPart.NoKnowledgeBaseChanges, () => LoadToolsAsync(configuration, cancellationToken));
+        var (active, subAgents) = caller is not null && stored is not null
+            ? await ResolveDefinitionsAsync(assistantId, tenantId, caller, stored, cancellationToken)
+            : ([], []);
 
-        var allActive = active.Concat(resolvedSubAgents.SelectMany(subAgent => subAgent.Active)).ToList();
+        var allActive = active.Concat(subAgents.SelectMany(subAgent => subAgent.Active)).ToList();
         var limits = stored?.Limits ?? ToolLimits.Default;
+
         // Only an assistant with MCP tools has sessions to open and close.
         var connections = allActive.Any(tool => tool.Server is not null) ? toolFactory.NewConnections() : null;
+
         // One numbering for the answer, so [3] means one source whether a knowledge base or the web gave it (spec 005, AC-6).
         var numbering = caller is null ? null : new SourceNumbering();
         var rag = caller is null ? null : new RagRuntime(knowledgeBaseSearch, numbering!, caller.TenantId, assistantId, limits.MaxResultCharacters);
         var lookup = caller is null ? null : new LookupRuntime(knowledgeBaseLookups, caller.TenantId, assistantId, limits.MaxResultCharacters);
-
-        // The web configuration is the platform's one row, kept with the graph when any web tool is offered.
-        WebSearchRuntime? webSearch = null;
-        WebFetchRuntime? webFetch = null;
-        if (numbering is not null && allActive.Any(tool => tool.WebSearch is not null || tool.WebFetch is not null))
-        {
-            var web = stored?.Web;
-
-            if (allActive.Any(tool => tool.WebSearch is not null))
-            {
-                var seconds = web?.SearchTimeoutSeconds ?? WebConfiguration.DefaultSearchTimeoutSeconds;
-
-                // A search that outlives the tenant's timeout on one call would be cut by the invoker, whose message says less than ours: ask for less.
-                var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : seconds;
-                webSearch = new WebSearchRuntime(
-                    webSearchProvider,
-                    numbering,
-                    web?.SearchUrl,
-                    Math.Min(seconds, callSeconds),
-                    limits.MaxResultCharacters,
-                    conversationId,
-                    invocations);
-            }
-
-            if (allActive.Any(tool => tool.WebFetch is not null))
-            {
-                var fetchSeconds = web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
-                var callSeconds = limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : fetchSeconds;
-
-                // The platform's wait is only a ceiling: what each page is worth is on the tool itself (spec 006, AC-1). A tenant
-                // whose call timeout is under a second truncates to no seconds at all, which would call every page timed out
-                // before the request leaves the process.
-                webFetch = new WebFetchRuntime(
-                    webFetchProvider,
-                    webFetchCache,
-                    numbering,
-                    Math.Max(1, Math.Min(fetchSeconds, callSeconds)),
-                    limits.MaxResultCharacters,
-                    TimeSpan.FromMilliseconds(web?.FetchDelayMs ?? WebConfiguration.DefaultFetchDelayMs),
-                    web?.RespectRobotsTxt ?? WebConfiguration.DefaultRespectRobotsTxt,
-                    web?.UserAgent ?? WebConfiguration.DefaultUserAgent,
-                    web?.CacheEnabled ?? WebConfiguration.DefaultCacheEnabled,
-                    TimeSpan.FromMinutes(web?.CacheTtlMinutes ?? WebConfiguration.DefaultCacheTtlMinutes));
-            }
-        }
+        var (webSearch, webFetch) = numbering is not null && OffersWeb(allActive)
+            ? WebRuntimes(stored?.Web, allActive, limits, numbering, conversationId)
+            : (null, null);
 
         var tools = toolFactory.Create(active, connections, rag, lookup, webSearch, webFetch).ToList();
 
@@ -245,7 +195,7 @@ internal sealed class AssistantChat(
         }
 
         // One delegation tool per sub-agent of the root agent; a sub-agent never gets delegation tools of its own (D-5).
-        foreach (var subAgent in resolvedSubAgents)
+        foreach (var subAgent in subAgents)
         {
             var subTools = toolFactory.Create(subAgent.Active, connections, rag, lookup, webSearch, webFetch).ToList();
 
@@ -254,6 +204,7 @@ internal sealed class AssistantChat(
             {
                 subTools.Add(subSkill);
             }
+
             tools.Add(new AgentQuorumTool(new SubAgentDefinition(
                 subAgent.AgentId,
                 subAgent.Slug,
@@ -265,23 +216,93 @@ internal sealed class AssistantChat(
                 subAgent.Endpoint.ContextTokenBudget,
                 WithNotices(subAgent.SystemPrompt, subTools),
                 subTools,
-                subTools.Count == 0 ? 0 : ToolDefinitionRenderer.Length(subTools.Select(ToolDefinition.From).ToList()))));
+                ToolDefinitionRenderer.Length(subTools.Select(ToolDefinition.From).ToList()))));
         }
 
-        if (tools.Count == 0)
-        {
-            return new PreparedAssistant(configuration, configuration.SystemPrompt, caller, [], 0, ToolLimits.Unbounded, connections);
-        }
-
-        return new PreparedAssistant(
+        // With no tool offered the answer keeps the limits it had before tools existed: one round, and no time limit beyond the model server's.
+        return new AssistantForTurn(
             configuration,
             WithNotices(configuration.SystemPrompt, tools),
             caller,
             tools,
             ToolDefinitionRenderer.Length(tools.Select(ToolDefinition.From).ToList()),
-            limits,
+            tools.Count > 0 ? limits : ToolLimits.Unbounded,
             connections);
     }
+
+    /// <summary>The definitions the catalog gives the rag and lookup tools now, for the root agent and its sub-agents together.</summary>
+    private async Task<(IReadOnlyList<ActiveTool> Active, IReadOnlyList<SubAgentSource> SubAgents)> ResolveDefinitionsAsync(
+        Guid assistantId,
+        Guid tenantId,
+        ToolCaller caller,
+        AssistantTools stored,
+        CancellationToken cancellationToken)
+    {
+        // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
+        // That is kept while neither this module nor the knowledge base module changes anything, so a change on either side reaches the next turn.
+        var resolved = await graph.GetOrLoadAsync(
+            GraphPart.Resolved,
+            tenantId,
+            assistantId,
+            knowledgeBaseChanges.Current,
+            () => ResolveAsync(stored, caller.TenantId, assistantId, cancellationToken));
+        return (resolved!.Active, resolved.SubAgents);
+    }
+
+    /// <summary>The web search and fetch tools of the answer, with the tenant's limits and the platform's web configuration.</summary>
+    private (WebSearchRuntime? Search, WebFetchRuntime? Fetch) WebRuntimes(
+        WebConfiguration? web,
+        IReadOnlyList<ActiveTool> allActive,
+        ToolLimits limits,
+        SourceNumbering numbering,
+        Guid conversationId)
+    {
+        WebSearchRuntime? webSearch = null;
+        WebFetchRuntime? webFetch = null;
+
+        if (allActive.Any(tool => tool.WebSearch is not null))
+        {
+            var seconds = web?.SearchTimeoutSeconds ?? WebConfiguration.DefaultSearchTimeoutSeconds;
+
+            // A search that outlives the tenant's timeout on one call would be cut by the invoker, whose message says less than ours: ask for less.
+            webSearch = new WebSearchRuntime(
+                webSearchProvider,
+                numbering,
+                web?.SearchUrl,
+                Math.Min(seconds, CallSeconds(limits, seconds)),
+                limits.MaxResultCharacters,
+                conversationId,
+                invocations);
+        }
+
+        if (allActive.Any(tool => tool.WebFetch is not null))
+        {
+            var fetchSeconds = web?.FetchTimeoutSeconds ?? WebConfiguration.DefaultFetchTimeoutSeconds;
+
+            // The platform's wait is only a ceiling: what each page is worth is on the tool itself (spec 006, AC-1). A tenant
+            // whose call timeout is under a second truncates to no seconds at all, which would call every page timed out
+            // before the request leaves the process.
+            webFetch = new WebFetchRuntime(
+                webFetchProvider,
+                webFetchCache,
+                numbering,
+                Math.Max(1, Math.Min(fetchSeconds, CallSeconds(limits, fetchSeconds))),
+                limits.MaxResultCharacters,
+                TimeSpan.FromMilliseconds(web?.FetchDelayMs ?? WebConfiguration.DefaultFetchDelayMs),
+                web?.RespectRobotsTxt ?? WebConfiguration.DefaultRespectRobotsTxt,
+                web?.UserAgent ?? WebConfiguration.DefaultUserAgent,
+                web?.CacheEnabled ?? WebConfiguration.DefaultCacheEnabled,
+                TimeSpan.FromMinutes(web?.CacheTtlMinutes ?? WebConfiguration.DefaultCacheTtlMinutes));
+        }
+
+        return (webSearch, webFetch);
+    }
+
+    /// <summary>The seconds a call may take on the tenant's settings, or <paramref name="ownWait"/> when the tenant sets none.</summary>
+    private static int CallSeconds(ToolLimits limits, int ownWait) =>
+        limits.CallTimeout > TimeSpan.Zero ? (int)limits.CallTimeout.TotalSeconds : ownWait;
+
+    private static bool OffersWeb(IEnumerable<ActiveTool> tools) => tools.Any(tool => tool.WebSearch is not null || tool.WebFetch is not null);
 
     /// <summary>
     /// The agents the current tenant may use: its own, and the ones another tenant shares with it through their scope (spec 013 D-21, D-25).
@@ -329,34 +350,36 @@ internal sealed class AssistantChat(
             .Where(endpoint => endpointIds.Contains(endpoint.Id))
             .Select(endpoint => new { endpoint.Id, Configuration = new EndpointConfiguration(endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget, endpoint.SupportsTools) })
             .ToDictionaryAsync(endpoint => endpoint.Id, endpoint => endpoint.Configuration, cancellationToken);
-        var inherited = new EndpointConfiguration(root.BaseUrl, root.ModelName, root.ProtectedApiKey, root.ContextTokenBudget, root.SupportsTools);
 
-        var resolvedEndpoints = edges
-            .Select(edge => edge.ModelEndpointId is { } endpointId && endpoints.TryGetValue(endpointId, out var own) ? own : inherited)
+        // A sub-agent without an endpoint of its own runs on the root's (D-12).
+        var resolved = edges
+            .Select(edge => (Edge: edge, Endpoint: edge.ModelEndpointId is { } endpointId && endpoints.TryGetValue(endpointId, out var own) ? own : root.Endpoint))
             .ToList();
 
-        // One read of the tools of all the sub-agents that can use them, not one for each.
-        var withTools = edges.Where((_, index) => resolvedEndpoints[index].SupportsTools).Select(edge => edge.Id).ToList();
-        var toolsByAgent = await ActiveToolsQuery.LoadManyAsync(db, withTools, cancellationToken, web);
+        // One read of the tools and skills of all the sub-agents that can use them, not one for each.
+        var withTools = resolved.Where(item => item.Endpoint.SupportsTools).Select(item => item.Edge.Id).ToList();
+        var toolsByAgent = await AgentToolLoader.LoadManyAsync(db, withTools, cancellationToken, web);
 
         // The skills of all the sub-agents in one read, none for an endpoint without tools (spec 017 D-16).
         var skillsByAgent = await SkillRuntime.LoadManyAsync(db, withTools, logger, cancellationToken);
 
-        var sources = new List<SubAgentSource>(edges.Count);
-        for (var index = 0; index < edges.Count; index++)
+        return [.. resolved.Select(item =>
         {
-            var edge = edges[index];
-            var endpoint = resolvedEndpoints[index];
-            IReadOnlyList<ActiveTool> active = endpoint.SupportsTools
-                ? (toolsByAgent.GetValueOrDefault(edge.Id) ?? [])
+            IReadOnlyList<ActiveTool> active = item.Endpoint.SupportsTools
+                ? (toolsByAgent.GetValueOrDefault(item.Edge.Id) ?? [])
                     .Where(tool => !(tool.Origin == ToolOrigin.Builtin && tool.Name == BuiltinToolCatalog.AskUser))
                     .ToList()
                 : [];
-            var skill = skillsByAgent.GetValueOrDefault(edge.Id);
-            sources.Add(new SubAgentSource(edge.Id, edge.Slug, edge.Description, edge.SystemPrompt, edge.FailurePolicy, endpoint, active, skill));
-        }
-
-        return sources;
+            return new SubAgentSource(
+                item.Edge.Id,
+                item.Edge.Slug,
+                item.Edge.Description,
+                item.Edge.SystemPrompt,
+                item.Edge.FailurePolicy,
+                item.Endpoint,
+                active,
+                skillsByAgent.GetValueOrDefault(item.Edge.Id));
+        })];
     }
 
     private async Task<ResolvedAssistantTools?> ResolveAsync(AssistantTools stored, Guid tenantId, Guid assistantId, CancellationToken cancellationToken)
@@ -376,11 +399,7 @@ internal sealed class AssistantChat(
         select new AssistantConfiguration(
             agent.Id,
             agent.SystemPrompt,
-            endpoint.BaseUrl,
-            endpoint.ModelName,
-            endpoint.ProtectedApiKey,
-            endpoint.ContextTokenBudget,
-            endpoint.SupportsTools,
+            new EndpointConfiguration(endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget, endpoint.SupportsTools),
             assistant.MaxParallelSubAgents))
         .AsNoTracking()
         .SingleOrDefaultAsync(cancellationToken);
@@ -388,31 +407,21 @@ internal sealed class AssistantChat(
     private async Task<AssistantTools?> LoadToolsAsync(AssistantConfiguration configuration, CancellationToken cancellationToken)
     {
         var web = new WebConfigurationReader(db);
-        var active = await ActiveToolsQuery.LoadAsync(db, configuration.AgentId, cancellationToken, web);
+        var active = await AgentToolLoader.LoadAsync(db, configuration.AgentId, cancellationToken, web);
         var subAgents = await LoadSubAgentsAsync(configuration, web, cancellationToken);
 
-        var offersWeb = active.Concat(subAgents.SelectMany(subAgent => subAgent.Active)).Any(tool => tool.WebSearch is not null || tool.WebFetch is not null);
-        var webConfiguration = offersWeb ? await web.ReadAsync(cancellationToken) : null;
+        var webConfiguration = OffersWeb(active.Concat(subAgents.SelectMany(subAgent => subAgent.Active))) ? await web.ReadAsync(cancellationToken) : null;
         var settings = active.Count == 0 && subAgents.Count == 0 ? null : await db.ToolSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
 
         return new AssistantTools(active, subAgents, settings is null ? ToolLimits.Default : ToolLimits.From(settings), webConfiguration);
     }
 
-    private sealed record PreparedAssistant(
+    private sealed record AssistantForTurn(
         AssistantConfiguration Configuration,
         string SystemPrompt,
         ToolCaller? Caller,
         IReadOnlyList<QuorumTool> Tools,
         int ToolsCharacters,
         ToolLimits Limits,
-        McpAnswerConnections? Connections)
-    {
-        public string BaseUrl => Configuration.BaseUrl;
-
-        public string ModelName => Configuration.ModelName;
-
-        public string? ProtectedApiKey => Configuration.ProtectedApiKey;
-
-        public int ContextTokenBudget => Configuration.ContextTokenBudget;
-    }
+        McpAnswerConnections? Connections);
 }

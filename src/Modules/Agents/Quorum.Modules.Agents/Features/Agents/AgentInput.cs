@@ -188,7 +188,7 @@ internal sealed record AgentInput(
     public static async Task<List<string>> ToolNamesOfAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken)
     {
         var active = db.AgentTools.Where(a => a.AgentId == agentId).Select(a => a.ToolId);
-        var pool = await ToolPool.For(db, agentId).AsNoTracking().Where(t => active.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
+        var pool = await ToolPool.Of(db, agentId).AsNoTracking().Where(t => active.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
         return [.. pool.Select(t => t.ExposedName)];
     }
 }

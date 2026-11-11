@@ -15,22 +15,25 @@ internal sealed class PoolTool
     /// <summary>The server of an MCP tool, loaded by the admin listings only (the pool an agent draws from does not need it).</summary>
     public McpServer? Server { get; init; }
 
-    public string ExposedName => Tool.Origin switch
-    {
-        ToolOrigin.Builtin => ToolNaming.Builtin(Tool.ExposedName),
-        ToolOrigin.Rag => ToolNaming.Rag(Tool.Name),
-        ToolOrigin.Lookup => ToolNaming.Lookup(Tool.Name),
-        ToolOrigin.WebSearch => ToolNaming.WebSearch(Tool.Name),
-        ToolOrigin.WebFetch => ToolNaming.WebFetch(Tool.Name),
-        _ => ToolNaming.Mcp(ServerName ?? throw new InvalidOperationException("An MCP tool has a server."), Tool.Name),
-    };
+    public string ExposedName => ExposedNameOf(Tool, ServerName);
 
     /// <summary>As stored. The schema of a rag or lookup tool is generated when it is used, so this one is only the administrator's description.</summary>
     public ToolDefinition Definition => new(ExposedName, Tool.Description, Tool.InputSchema);
+
+    /// <summary>The name the model reads the tool by: from its origin and, for an MCP tool, its server.</summary>
+    public static string ExposedNameOf(Tool tool, string? serverName) => tool.Origin switch
+    {
+        ToolOrigin.Builtin => ToolNaming.Builtin(tool.ExposedName),
+        ToolOrigin.Rag => ToolNaming.Rag(tool.Name),
+        ToolOrigin.Lookup => ToolNaming.Lookup(tool.Name),
+        ToolOrigin.WebSearch => ToolNaming.WebSearch(tool.Name),
+        ToolOrigin.WebFetch => ToolNaming.WebFetch(tool.Name),
+        _ => ToolNaming.Mcp(serverName ?? throw new InvalidOperationException("An MCP tool has a server."), tool.Name),
+    };
 }
 
 /// <summary>A tool an agent has activated and may use, with the server address and the bindings the runtime reads for it.</summary>
-internal sealed class RuntimePoolRow
+internal sealed class PoolRow
 {
     public required Guid AgentId { get; init; }
 
@@ -45,7 +48,7 @@ internal sealed class RuntimePoolRow
     public string? ProtectedHeaders { get; init; }
 
     /// <summary>The manifest is the activation's, so the same tool can be lean on one agent and full on another (spec 012 D-8).</summary>
-    public required string Manifest { get; init; }
+    public string? Manifest { get; init; }
 
     public RagTool? Rag { get; init; }
 
@@ -55,7 +58,6 @@ internal sealed class RuntimePoolRow
 
     public WebFetchTool? WebFetch { get; init; }
 
-    public PoolTool AsPoolTool() => new() { Tool = Tool, ServerName = ServerName };
 }
 
 /// <summary>
@@ -71,7 +73,7 @@ internal static class ToolPool
     /// together with the activation, the server's address and the bindings, so nothing is read a second time.
     /// The rule below must stay the same as the one in <see cref="For"/>.
     /// </summary>
-    public static IQueryable<RuntimePoolRow> ForAgents(AgentsDbContext db, IReadOnlyCollection<Guid> agentIds)
+    public static IQueryable<PoolRow> ActivatedFor(AgentsDbContext db, IReadOnlyCollection<Guid> agentIds)
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(agentIds);
@@ -93,7 +95,7 @@ internal static class ToolPool
              join webFetch in db.WebFetchTools.IgnoreQueryFilters() on tool.Id equals webFetch.ToolId into webFetches
              from webFetch in webFetches.DefaultIfEmpty()
              where tool.State == ToolState.Enabled
-                   && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == agent.TenantId)
+                   && ((tool.Origin == ToolOrigin.Builtin && tool.TenantId == agent.TenantId && tool.Name != BuiltinToolCatalog.LoadSkill)
                        || (server != null
                            && server.Status == McpServerStatus.Available
                            && (server.Scope == ToolScopeKind.Global
@@ -115,7 +117,7 @@ internal static class ToolPool
                            && (webFetch.Scope == ToolScopeKind.Global
                                || (webFetch.Scope == ToolScopeKind.Tenant && (webFetch.TenantId == agent.TenantId || webFetch.ScopeTenantIds.Contains(agent.TenantId)))
                                || (webFetch.Scope == ToolScopeKind.Agent && webFetch.TenantId == agent.TenantId && webFetch.ScopeAgentIds.Contains(agent.Id)))))
-             select new RuntimePoolRow
+             select new PoolRow
              {
                  AgentId = agent.Id,
                  Tool = tool,
@@ -132,16 +134,17 @@ internal static class ToolPool
             .AsNoTracking();
     }
 
-    /// <param name="ownerTenantId">
-    /// The tenant the pool is worked out for: the one that owns the agent. An agent another tenant shares (spec 013 D-21) runs with the
-    /// tools its owner gave it, which the runtime reads through <see cref="ForAgents"/>; the admin listings leave it out for the current tenant.
-    /// </param>
-    public static IQueryable<PoolTool> For(AgentsDbContext db, Guid agentId, Guid? ownerTenantId = null)
+    /// <summary>
+    /// The pool of an agent of the current tenant, for the admin listings. An agent another tenant shares (spec 013 D-21) runs with the tools
+    /// its owner gave it, which the runtime reads through <see cref="ActivatedFor"/>. The rule below must stay the same as the one there:
+    /// EF cannot translate the two as one query, so each is written out.
+    /// </summary>
+    public static IQueryable<PoolTool> Of(AgentsDbContext db, Guid agentId)
     {
         ArgumentNullException.ThrowIfNull(db);
 
         // Tools of a server or a binding another tenant owns are outside the tenant filter: the scope rule below is what lets them in.
-        var tenantId = ownerTenantId ?? db.CurrentTenantId ?? Guid.Empty;
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
 
         return
             from tool in db.Tools.IgnoreQueryFilters()

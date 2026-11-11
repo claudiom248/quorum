@@ -35,6 +35,7 @@ public static class AgentsModule
         var graphCache = new AssistantGraphCache();
         services.AddSingleton(_ => graphCache);
         services.ConfigureDbContext<AgentsDbContext>(options => options.AddInterceptors(graphCache));
+
         // After the migrations (registered by the line above): initializers run in registration order.
         services.AddSingleton<IDatabaseInitializer, BuiltinToolsInitializer>();
         services.AddHostedService<AuditRetentionService>();

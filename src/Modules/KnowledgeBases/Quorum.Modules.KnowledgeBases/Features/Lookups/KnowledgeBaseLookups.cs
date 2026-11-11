@@ -172,7 +172,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
 
         // What decides whether the tenant sees the list is kept until the module's data changes: a read of a list asks it every time.
         var found = (await changes.GetOrLoadAsync(
-            $"lookup-visible:{request.TenantId}:{request.AssistantId}:{request.LookupId}",
+            VisibleKey(request),
             async () => await LoadVisibleAsync(request.AssistantId, [request.LookupId], cancellationToken))
             )?.FirstOrDefault();
         if (found is null)
@@ -205,7 +205,7 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
 
         var hash = key.Value!.Hash;
         var slice = await changes.GetOrLoadAsync(
-            $"lookup-slice:{lookup.Id}:{hash}",
+            SliceKey(lookup.Id, hash),
             () => db.LookupSlices.IgnoreQueryFilters().AsNoTracking()
                 .SingleOrDefaultAsync(s => s.LookupId == lookup.Id && s.FilterHash == hash, cancellationToken));
         if (slice is null)
@@ -303,6 +303,11 @@ internal sealed class KnowledgeBaseLookups(KnowledgeBasesDbContext db, ITenantCo
     }
 
     private const string NoKnowledgeBase = "None of the knowledge bases can be queried.";
+
+    // The keys of what the change stamp keeps: a list the tenant sees, and a slice of a list. Each one names what it depends on.
+    private static string VisibleKey(LookupReadRequest request) => $"lookup-visible:{request.TenantId}:{request.AssistantId}:{request.LookupId}";
+
+    private static string SliceKey(Guid lookupId, string filterHash) => $"lookup-slice:{lookupId}:{filterHash}";
 
     private bool IsCurrentTenant(Guid tenantId) => tenant.TenantId == tenantId && tenantId != Guid.Empty;
 

@@ -58,14 +58,14 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
             return new Dictionary<Guid, ResolvedLookupTool>();
         }
 
-        var seen = await lookups.ListAsync(
+        var visibleLists = await lookups.ListAsync(
             new LookupListQuery(tenantId, assistantId, [.. tools.SelectMany(t => t.Binding.LookupIds).Distinct()]),
             cancellationToken);
-        var byId = seen.ToDictionary(l => l.Id);
+        var byId = visibleLists.ToDictionary(l => l.Id);
 
         // The knowledge bases of the live operations and those the lists come from: a filter is offered for a field either maps.
         var fieldIds = tools.SelectMany(t => t.Binding.ExposedFieldIds).Distinct().ToList();
-        var basesWanted = tools.SelectMany(t => t.Binding.KnowledgeBaseIds).Concat(seen.Select(l => l.KnowledgeBaseId).OfType<Guid>()).Distinct().ToList();
+        var basesWanted = tools.SelectMany(t => t.Binding.KnowledgeBaseIds).Concat(visibleLists.Select(l => l.KnowledgeBaseId).OfType<Guid>()).Distinct().ToList();
         var description = fieldIds.Count == 0 && basesWanted.Count == 0
             ? new BindingDescription([], [])
             : await catalog.DescribeAsync(new BindingQuery(tenantId, assistantId, basesWanted, fieldIds), cancellationToken);
@@ -93,8 +93,9 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
             // the tool already binds: that view is read through the lookup (spec 012 A1-1, A1-3). A tool with none keeps its lists.
             var entitySources = offeredByName.Where(l => l.Info.Kind == LookupKindInfo.Entity).Select(l => l.Info.KnowledgeBaseId).OfType<Guid>().ToHashSet();
             var queried = tool.Binding.KnowledgeBaseIds.Distinct()
-                .Where(id => basesById.TryGetValue(id, out var k) && LookupToolRoles.IsDocument(k) && !entitySources.Contains(id))
-                .Select(id => basesById[id])
+                .Select(id => basesById.GetValueOrDefault(id))
+                .OfType<KnowledgeBaseInfo>()
+                .Where(k => LookupToolRoles.IsDocument(k) && !entitySources.Contains(k.Id))
                 .OrderBy(k => k.Name, StringComparer.Ordinal)
                 .ToList();
 
@@ -112,7 +113,7 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
             // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.
             var exposed = tool.Binding.ExposedFieldIds.Distinct()
                 .Where(id => fieldsById.ContainsKey(id) && (queriedFields.Contains(id) || listFields.Contains(id)))
-                .Select(id => Named(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
+                .Select(id => OfferedFields.Offered(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
@@ -134,13 +135,13 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
                 offered.ToDictionary(l => l.Name, l => l.Info.Id, StringComparer.Ordinal),
                 [.. offered.Select(l => l.Info)],
                 queried.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
-                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal))
+                OfferedFields.FirstByName(exposed, field => field.Id))
             {
                 SortableAttributes = offered
                     .Where(l => l.Info.SortableAttributes is { Count: > 0 })
                     .ToDictionary(l => l.Name, l => l.Info.SortableAttributes!, StringComparer.Ordinal),
                 FilterLists = LookupToolDefinition.ListsOfFilters(offered, exposed),
-                FilterTypes = exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Type, StringComparer.Ordinal),
+                FilterTypes = OfferedFields.FirstByName(exposed, field => field.Type),
                 ListFilters = offered.ToDictionary(l => l.Name, l => l.Filters ?? [], StringComparer.Ordinal),
                 KnowledgeBaseFilters = queried.ToDictionary(k => k.Name, k => (IReadOnlyList<string>)[.. exposed.Where(f => k.FieldIds.Contains(f.Id)).Select(f => f.Name)], StringComparer.Ordinal),
                 Targets = offered.ToDictionary(l => l.Name, l => l.Info, StringComparer.Ordinal),
@@ -193,54 +194,38 @@ internal sealed class LookupToolResolver(AgentsDbContext db, IKnowledgeBaseLooku
         ArgumentNullException.ThrowIfNull(groups);
 
         // The same tool on two agents has the same binding (the manifest is the activation's and is applied below): it is described once.
-        var lookupTools = groups.SelectMany(tools => tools).Where(t => t.Lookup is not null).DistinctBy(t => t.ToolId).ToList();
+        var lookupTools = ActiveToolGroups.DistinctWhere(groups, tool => tool.Lookup is not null);
         if (lookupTools.Count == 0)
         {
             return groups;
         }
 
         var fresh = await ResolveAsync(tenantId, assistantId, [.. lookupTools.Select(t => new LookupToolToDescribe(t.ToolId, t.Name, t.Description, t.Lookup!))], cancellationToken);
-        var resolved = lookupTools.ToDictionary(tool => tool.ToolId, tool => fresh.GetValueOrDefault(tool.ToolId));
 
         // One row of configuration is offered as one function for each thing it can do: they share the policy, the activation and the audit.
-        return
-        [
-            .. groups.Select(tools => (IReadOnlyList<ActiveTool>)
-            [
-                .. tools.SelectMany(tool => tool.Lookup is null
-                    ? [tool]
-                    : resolved.GetValueOrDefault(tool.ToolId) is { } definition
-                        ? FunctionsOf(tool, definition).Select(function => tool with
-                        {
-                            Name = $"{tool.Name}.{function.Operation}",
-                            ExposedName = ToolNaming.LookupFunction(tool.Name, function.Operation),
-                            Description = function.Description,
-                            InputSchema = function.InputSchema,
-                            Lookup = tool.Lookup with
-                            {
-                                Operation = function.Operation,
-                                Lookups = definition.Lookups,
-                                KnowledgeBases = definition.KnowledgeBases,
-                                FilterFields = definition.FilterFields,
-                                SortableAttributes = definition.SortableAttributes,
-                                FilterLists = definition.FilterLists,
-                                FilterTypes = definition.FilterTypes,
-                                ListFilters = definition.ListFilters,
-                                KnowledgeBaseFilters = definition.KnowledgeBaseFilters,
-                                Targets = definition.Targets,
-                            },
-                        })
-                        : []),
-            ]),
-        ];
+        return ActiveToolGroups.Rebuild(groups, tool => tool.Lookup is null
+            ? [tool]
+            : fresh.GetValueOrDefault(tool.ToolId) is { } definition
+                ? FunctionsOf(tool, definition).Select(function => tool with
+                {
+                    Name = $"{tool.Name}.{function.Operation}",
+                    ExposedName = ToolNaming.LookupFunction(tool.Name, function.Operation),
+                    Description = function.Description,
+                    InputSchema = function.InputSchema,
+                    Lookup = tool.Lookup with
+                    {
+                        Operation = function.Operation,
+                        Lookups = definition.Lookups,
+                        KnowledgeBases = definition.KnowledgeBases,
+                        FilterFields = definition.FilterFields,
+                        SortableAttributes = definition.SortableAttributes,
+                        FilterLists = definition.FilterLists,
+                        FilterTypes = definition.FilterTypes,
+                        ListFilters = definition.ListFilters,
+                        KnowledgeBaseFilters = definition.KnowledgeBaseFilters,
+                        Targets = definition.Targets,
+                    },
+                })
+                : []);
     }
-
-    // The model knows the field by its alias. A field with no description of its own says which cluster it is from, so two fields that
-    // share a name (hr/year, finance/year) are not told apart only by their aliases.
-    private static FilterFieldInfo Named(FilterFieldInfo field, string? alias) => field with
-    {
-        Name = alias ?? field.Name,
-        Description = field.Description ?? (field.Cluster is null ? null : $"{field.Name} ({field.Cluster})"),
-    };
-
 }

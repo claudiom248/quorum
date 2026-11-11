@@ -37,13 +37,11 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
             return new Dictionary<Guid, ResolvedRagTool>();
         }
 
-        var description = await catalog.DescribeAsync(
-            new BindingQuery(
-                tenantId,
-                assistantId,
-                [.. tools.SelectMany(t => t.Binding.KnowledgeBaseIds).Distinct()],
-                [.. tools.SelectMany(t => t.Binding.ExposedFieldIds.Concat(t.Binding.FixedFilterFieldIds)).Distinct()]),
-            cancellationToken);
+        var knowledgeBaseIds = tools.SelectMany(t => t.Binding.KnowledgeBaseIds).Distinct().ToList();
+        var fieldIds = tools.SelectMany(t => t.Binding.ExposedFieldIds.Concat(t.Binding.FixedFilterFieldIds)).Distinct().ToList();
+        var description = knowledgeBaseIds.Count == 0 && fieldIds.Count == 0
+            ? new BindingDescription([], [])
+            : await catalog.DescribeAsync(new BindingQuery(tenantId, assistantId, knowledgeBaseIds, fieldIds), cancellationToken);
 
         var basesById = description.KnowledgeBases.ToDictionary(k => k.Id);
         var fieldsById = description.Fields.ToDictionary(f => f.Id);
@@ -69,7 +67,7 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
             // A field is offered only while a visible knowledge base maps it: a parameter nothing can apply would only mislead the model.
             var exposed = tool.Binding.ExposedFieldIds.Distinct()
                 .Where(id => fieldsById.ContainsKey(id) && visible.Any(k => k.FieldIds.Contains(id)))
-                .Select(id => Offered(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
+                .Select(id => OfferedFields.Offered(fieldsById[id], tool.Binding.ExposedAliases.GetValueOrDefault(id)))
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
 
@@ -79,7 +77,7 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
             resolved[tool.ToolId] = new ResolvedRagTool(
                 RagToolDefinition.Build(tool.Description, visible, exposed, offersDocumentIds),
                 visible.ToDictionary(k => k.Name, k => k.Id, StringComparer.Ordinal),
-                exposed.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal),
+                OfferedFields.FirstByName(exposed, field => field.Id),
                 offersDocumentIds);
         }
 
@@ -112,8 +110,7 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
 
     /// <summary>
     /// Gives the rag tools among those of several agents (the root agent and its sub-agents) the definition they have now, those with no
-    /// visible knowledge base left out: the catalog is asked
-    /// one time for all of them, and each group comes back in the order it came in.
+    /// visible knowledge base left out: the catalog is asked one time for all of them, and each group comes back in the order it came in.
     /// </summary>
     public async Task<IReadOnlyList<IReadOnlyList<ActiveTool>>> ResolveActiveGroupsAsync(
         IReadOnlyList<IReadOnlyList<ActiveTool>> groups,
@@ -123,41 +120,25 @@ internal sealed partial class RagToolResolver(AgentsDbContext db, IKnowledgeBase
     {
         ArgumentNullException.ThrowIfNull(groups);
 
-        // The same tool on two agents has the same binding: it is described once.
-        var rag = groups.SelectMany(tools => tools).Where(t => t.Rag is not null).DistinctBy(t => t.ToolId).ToList();
+        var rag = ActiveToolGroups.DistinctWhere(groups, tool => tool.Rag is not null);
         if (rag.Count == 0)
         {
             return groups;
         }
 
         var fresh = await ResolveAsync(tenantId, assistantId, [.. rag.Select(t => new RagToolToDescribe(t.ToolId, t.Description, t.Rag!))], cancellationToken);
-        var resolved = rag.ToDictionary(tool => tool.ToolId, tool => fresh.GetValueOrDefault(tool.ToolId));
 
-        return
-        [
-            .. groups.Select(tools => (IReadOnlyList<ActiveTool>)
-            [
-                .. tools.Select(tool => tool.Rag is null
-                    ? tool
-                    : resolved.GetValueOrDefault(tool.ToolId) is { } definition
-                        ? tool with
-                        {
-                            Description = definition.Definition.Description,
-                            InputSchema = definition.Definition.InputSchema,
-                            Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields, AllowDocumentIds = definition.OffersDocumentIds },
-                        }
-                        : null).OfType<ActiveTool>(),
-            ]),
-        ];
+        return ActiveToolGroups.Rebuild(groups, tool => tool.Rag is null
+            ? [tool]
+            : fresh.GetValueOrDefault(tool.ToolId) is { } definition
+                ? [tool with
+                {
+                    Description = definition.Definition.Description,
+                    InputSchema = definition.Definition.InputSchema,
+                    Rag = tool.Rag with { KnowledgeBases = definition.KnowledgeBases, FilterFields = definition.FilterFields, AllowDocumentIds = definition.OffersDocumentIds },
+                }]
+                : []);
     }
-
-    // The model knows the field by its alias. A field with no description of its own says which cluster it is from, so two fields that
-    // share a name (hr/year, finance/year) are not told apart only by their aliases.
-    private static FilterFieldInfo Offered(FilterFieldInfo field, string? alias) => field with
-    {
-        Name = alias ?? field.Name,
-        Description = field.Description ?? (field.Cluster is null ? null : $"{field.Name} ({field.Cluster})"),
-    };
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rag tool {ToolId} names {Count} dictionary fields that no longer exist or are no longer visible")]
     private static partial void LogMissingFields(ILogger logger, Guid toolId, int count);

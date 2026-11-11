@@ -23,9 +23,15 @@ internal sealed class KnowledgeBaseChanges : IKnowledgeBaseChangeStamp, IDisposa
 
     public long Current => Interlocked.Read(ref _version);
 
-    public DbCommandInterceptor CommandInterceptor() => new CommandWatcher(this);
+    public KnowledgeBaseChanges()
+    {
+        WriteCommands = new WriteCommandInterceptor(this);
+        Commits = new CommitInterceptor(this);
+    }
 
-    public DbTransactionInterceptor TransactionInterceptor() => new TransactionWatcher(this);
+    public DbCommandInterceptor WriteCommands { get; }
+
+    public DbTransactionInterceptor Commits { get; }
 
     /// <summary>Makes everything read before this moment stale.</summary>
     public void Invalidate() => Interlocked.Increment(ref _version);
@@ -53,12 +59,12 @@ internal sealed class KnowledgeBaseChanges : IKnowledgeBaseChangeStamp, IDisposa
     public void Dispose() => _entries.Dispose();
 
     // What reads (a SELECT, which includes the advisory locks) leaves the data as it was; anything else may not.
-    private static bool Writes(DbCommand command) =>
+    private static bool IsWrite(DbCommand command) =>
         !command.CommandText.AsSpan().TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase);
 
-    private void Wrote(DbCommand command, DbContext? context)
+    private void RecordWrite(DbCommand command, DbContext? context)
     {
-        if (!Writes(command))
+        if (!IsWrite(command))
         {
             return;
         }
@@ -72,46 +78,46 @@ internal sealed class KnowledgeBaseChanges : IKnowledgeBaseChangeStamp, IDisposa
 
     private sealed record Entry<T>(long Version, T Value);
 
-    private sealed class CommandWatcher(KnowledgeBaseChanges owner) : DbCommandInterceptor
+    private sealed class WriteCommandInterceptor(KnowledgeBaseChanges owner) : DbCommandInterceptor
     {
         public override DbDataReader ReaderExecuted(DbCommand command, CommandExecutedEventData eventData, DbDataReader result)
         {
-            owner.Wrote(command, eventData.Context);
+            owner.RecordWrite(command, eventData.Context);
             return result;
         }
 
         public override ValueTask<DbDataReader> ReaderExecutedAsync(DbCommand command, CommandExecutedEventData eventData, DbDataReader result, CancellationToken cancellationToken = default)
         {
-            owner.Wrote(command, eventData.Context);
+            owner.RecordWrite(command, eventData.Context);
             return ValueTask.FromResult(result);
         }
 
         public override int NonQueryExecuted(DbCommand command, CommandExecutedEventData eventData, int result)
         {
-            owner.Wrote(command, eventData.Context);
+            owner.RecordWrite(command, eventData.Context);
             return result;
         }
 
         public override ValueTask<int> NonQueryExecutedAsync(DbCommand command, CommandExecutedEventData eventData, int result, CancellationToken cancellationToken = default)
         {
-            owner.Wrote(command, eventData.Context);
+            owner.RecordWrite(command, eventData.Context);
             return ValueTask.FromResult(result);
         }
 
         public override object? ScalarExecuted(DbCommand command, CommandExecutedEventData eventData, object? result)
         {
-            owner.Wrote(command, eventData.Context);
+            owner.RecordWrite(command, eventData.Context);
             return result;
         }
 
         public override ValueTask<object?> ScalarExecutedAsync(DbCommand command, CommandExecutedEventData eventData, object? result, CancellationToken cancellationToken = default)
         {
-            owner.Wrote(command, eventData.Context);
+            owner.RecordWrite(command, eventData.Context);
             return ValueTask.FromResult(result);
         }
     }
 
-    private sealed class TransactionWatcher(KnowledgeBaseChanges owner) : DbTransactionInterceptor
+    private sealed class CommitInterceptor(KnowledgeBaseChanges owner) : DbTransactionInterceptor
     {
         public override void TransactionCommitted(DbTransaction transaction, TransactionEndEventData eventData) => Committed(eventData.Context);
 
