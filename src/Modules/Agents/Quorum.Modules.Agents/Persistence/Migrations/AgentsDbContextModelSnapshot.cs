@@ -139,6 +139,13 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                         .HasColumnType("character varying(10)")
                         .HasDefaultValue("Full");
 
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("Required");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -156,6 +163,16 @@ namespace Quorum.Modules.Agents.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowToolSelection")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("Exposed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<int>("MaxParallelSubAgents")
                         .ValueGeneratedOnAdd()

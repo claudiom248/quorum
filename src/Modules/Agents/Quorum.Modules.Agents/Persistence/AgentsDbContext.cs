@@ -72,6 +72,8 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             assistant.ToTable("assistants");
             assistant.Property(a => a.Name).HasMaxLength(200);
             assistant.Property(a => a.MaxParallelSubAgents).HasDefaultValue(Assistant.DefaultMaxParallelSubAgents);
+            assistant.Property(a => a.Exposed).HasDefaultValue(false);
+            assistant.Property(a => a.AllowToolSelection).HasDefaultValue(false);
             assistant.HasIndex(a => a.TenantId);
             assistant.HasOne<Agent>().WithMany().HasForeignKey(a => a.RootAgentId).OnDelete(DeleteBehavior.Restrict);
             assistant.HasQueryFilter(a => a.TenantId == CurrentTenantId);
@@ -196,6 +198,7 @@ internal sealed class AgentsDbContext(DbContextOptions<AgentsDbContext> options,
             activation.ToTable("agent_tools");
             activation.HasKey(a => new { a.AgentId, a.ToolId });
             activation.Property(a => a.Manifest).HasMaxLength(10).HasDefaultValue(LookupManifest.Full);
+            activation.Property(a => a.Mode).HasConversion<string>().HasMaxLength(16).HasDefaultValue(ToolMode.Required);
             activation.HasIndex(a => a.TenantId);
             activation.HasOne<Agent>().WithMany().HasForeignKey(a => a.AgentId).OnDelete(DeleteBehavior.Cascade);
             activation.HasOne<Tool>().WithMany().HasForeignKey(a => a.ToolId).OnDelete(DeleteBehavior.Cascade);

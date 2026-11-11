@@ -33,6 +33,8 @@ internal sealed class AssistantProvisioning(AgentsDbContext db, ApiKeyProtector 
             [],
             now);
         var assistant = Assistant.Create(tenantId, AssistantDefaults.AssistantName, agent.Id, now);
+        // The first-run assistant is the one consumers start with and the setup answers through (spec 018 D-18).
+        assistant.SetChatExposure(exposed: true, allowToolSelection: false);
 
         db.ModelEndpoints.Add(endpoint);
         db.Agents.Add(agent);
