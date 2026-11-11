@@ -12,15 +12,7 @@ namespace Quorum.Modules.Agents.Chat;
 internal sealed record EndpointConfiguration(string BaseUrl, string ModelName, string? ProtectedApiKey, int ContextTokenBudget, bool SupportsTools);
 
 /// <summary>The root agent of an assistant with the endpoint it runs on.</summary>
-internal sealed record AssistantConfiguration(
-    Guid AgentId,
-    string SystemPrompt,
-    string BaseUrl,
-    string ModelName,
-    string? ProtectedApiKey,
-    int ContextTokenBudget,
-    bool SupportsTools,
-    int MaxParallelSubAgents);
+internal sealed record AssistantConfiguration(Guid AgentId, string SystemPrompt, EndpointConfiguration Endpoint, int MaxParallelSubAgents);
 
 internal sealed record SubAgentSource(
     Guid AgentId,
@@ -66,20 +58,21 @@ internal sealed class AssistantGraphCache : SaveChangesInterceptor, IDisposable
     private readonly ConditionalWeakTable<DbContext, object> _pending = [];
     private long _version;
 
-    public long Version => Interlocked.Read(ref _version);
+    private long Version => Interlocked.Read(ref _version);
 
     /// <summary>Makes every graph read before this moment stale. For a change that is committed after the save that made it.</summary>
     public void Invalidate() => Interlocked.Increment(ref _version);
 
-    /// <param name="part">Which part of the graph; the parts of one assistant are read apart.</param>
+    /// <param name="part">Which part of the graph (see <see cref="GraphPart"/>); the parts of one assistant are read apart.</param>
+    /// <param name="knowledgeBaseVersion">The change stamp of the knowledge base module, for a part that depends on it.</param>
     /// <param name="load">Reads the part; a <see langword="null"/> result (the assistant does not exist) is not kept.</param>
-    public async Task<T?> GetOrLoadAsync<T>(string part, Guid tenantId, Guid assistantId, long externalVersion, Func<Task<T?>> load)
+    public async Task<T?> GetOrLoadAsync<T>(string part, Guid tenantId, Guid assistantId, long knowledgeBaseVersion, Func<Task<T?>> load)
         where T : class
     {
         var key = (part, tenantId, assistantId);
 
         // The version is read before the graph is: a change that lands while it is read leaves the entry stale, not fresh.
-        var version = Version + externalVersion;
+        var version = Version + knowledgeBaseVersion;
         if (_entries.TryGetValue(key, out Entry<T>? kept) && kept is not null && kept.Version == version)
         {
             return kept.Value;
@@ -162,4 +155,18 @@ internal sealed class AssistantGraphCache : SaveChangesInterceptor, IDisposable
     }
 
     private sealed record Entry<T>(long Version, T Value);
+}
+
+/// <summary>The parts of the assistant graph that <see cref="AssistantGraphCache"/> keeps.</summary>
+internal static class GraphPart
+{
+    public const string Configuration = "configuration";
+
+    public const string Tools = "tools";
+
+    /// <summary>The rag and lookup definitions, made from the knowledge base catalog as it is now.</summary>
+    public const string Resolved = "resolved";
+
+    /// <summary>For a part that does not depend on the knowledge base module.</summary>
+    public const long NoKnowledgeBaseChanges = 0;
 }

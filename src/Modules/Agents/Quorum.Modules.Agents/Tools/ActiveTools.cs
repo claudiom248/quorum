@@ -76,7 +76,8 @@ internal sealed class WebConfigurationReader(AgentsDbContext db)
     }
 }
 
-internal static class ActiveToolsQuery
+/// <summary>The tools the agents of an assistant have activated, as the runtime offers them (spec 013 AC-25, spec 012 D-8).</summary>
+internal static class AgentToolLoader
 {
     /// <summary>The tools of the agent that are in its pool and activated, in a stable order.</summary>
     public static async Task<IReadOnlyList<ActiveTool>> LoadAsync(AgentsDbContext db, Guid agentId, CancellationToken cancellationToken, WebConfigurationReader? web = null) =>
@@ -95,7 +96,7 @@ internal static class ActiveToolsQuery
         }
 
         // The activations of an agent another tenant shares are the owner's, and the pool is worked out for that owner: the query says so.
-        var rows = await ToolPool.ForAgents(db, agentIds).ToListAsync(cancellationToken);
+        var rows = await ToolPool.ActivatedFor(db, agentIds).ToListAsync(cancellationToken);
 
         // A tool that never overrode a field inherits it now, not when it was created: the row is read with the tool, so an
         // administrator changing the Settings tabs reaches the tools that follow it (spec 006, AC-13).
@@ -105,45 +106,35 @@ internal static class ActiveToolsQuery
 
         return rows
             .GroupBy(row => row.AgentId)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<ActiveTool>)group
-                    .Select(row => ToActiveTool(row, webConfiguration))
-                    // Names are checked when a tool or an agent is saved, but older data may hold two that the model would take for one: the oldest keeps the name.
-                    .GroupBy(tool => tool.ExposedName, StringComparer.OrdinalIgnoreCase)
-                    .Select(names => names.OrderBy(tool => tool.ToolId).First())
-                    .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)
-                    .ToList());
+            .ToDictionary(group => group.Key, group => ActiveToolsOf(group.Select(row => ToActiveTool(row, webConfiguration))));
     }
 
-    private static ActiveTool ToActiveTool(RuntimePoolRow row, WebConfiguration? webConfiguration)
+    // Names are checked when a tool or an agent is saved, but older data may hold two that the model would take for one: the oldest keeps the name.
+    private static IReadOnlyList<ActiveTool> ActiveToolsOf(IEnumerable<ActiveTool> tools) =>
+        [.. tools
+            .OrderBy(tool => tool.ToolId)
+            .DistinctBy(tool => tool.ExposedName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tool => tool.ExposedName, StringComparer.Ordinal)];
+
+    private static ActiveTool ToActiveTool(PoolRow row, WebConfiguration? webConfiguration)
     {
         var webSearch = row.WebSearch is null ? null : WebSearchBinding.From(row.WebSearch);
         var webFetch = row.WebFetch is null ? null : WebFetchBinding.From(row.WebFetch, webConfiguration);
-        var lookup = row.Lookup is null ? null : LookupBinding.From(row.Lookup) with { Manifest = row.Manifest };
+        var lookup = row.Lookup is null ? null : LookupBinding.From(row.Lookup) with { Manifest = row.Manifest ?? LookupManifest.Full };
 
         // A web search or fetch tool's definition comes from its binding, the way a rag tool's comes from the catalog; unlike
         // a rag tool's it needs nothing from outside the row, so it is written here and not by a resolver.
-        var description = row.Tool.Description;
-        var schema = row.Tool.InputSchema;
-        if (webSearch is not null)
-        {
-            var generated = WebSearchToolDefinition.Build(row.Tool.Description, webSearch.TopN);
-            description = generated.Description;
-            schema = generated.InputSchema;
-        }
-        else if (webFetch is not null)
-        {
-            var generated = WebFetchToolDefinition.Build(row.Tool.Description, webFetch.MaxUrlsPerInvocation);
-            description = generated.Description;
-            schema = generated.InputSchema;
-        }
+        var (description, schema) = webSearch is not null
+            ? WebSearchDefinition(row.Tool, webSearch)
+            : webFetch is not null
+                ? WebFetchDefinition(row.Tool, webFetch)
+                : (row.Tool.Description, row.Tool.InputSchema);
 
         return new ActiveTool(
             row.Tool.Id,
             row.Tool.Origin,
             row.Tool.Name,
-            row.AsPoolTool().ExposedName,
+            PoolTool.ExposedNameOf(row.Tool, row.ServerName),
             AuditServerOf(row),
             description,
             schema,
@@ -155,7 +146,20 @@ internal static class ActiveToolsQuery
             webFetch);
     }
 
-    private static string? AuditServerOf(RuntimePoolRow row) => row.Tool.Origin switch
+    private static (string Description, string InputSchema) WebSearchDefinition(Tool tool, WebSearchBinding binding)
+    {
+        var generated = WebSearchToolDefinition.Build(tool.Description, binding.TopN);
+        return (generated.Description, generated.InputSchema);
+    }
+
+    private static (string Description, string InputSchema) WebFetchDefinition(Tool tool, WebFetchBinding binding)
+    {
+        var generated = WebFetchToolDefinition.Build(tool.Description, binding.MaxUrlsPerInvocation);
+        return (generated.Description, generated.InputSchema);
+    }
+
+    // The audit log stores these names as the server of the call, which is how a rag, lookup or web tool is told apart in it.
+    private static string? AuditServerOf(PoolRow row) => row.Tool.Origin switch
     {
         ToolOrigin.Rag => ToolNaming.RagAuditServer,
         ToolOrigin.Lookup => ToolNaming.LookupAuditServer,

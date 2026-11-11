@@ -59,7 +59,7 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
         var budget = agent.ModelEndpointId is { } endpointId
             ? await db.ModelEndpoints.Where(e => e.Id == endpointId).Select(e => e.ContextTokenBudget).SingleOrDefaultAsync(cancellationToken)
             : 0;
-        var pool = await ToolPool.For(db, id).AsNoTracking().ToListAsync(cancellationToken);
+        var pool = await ToolPool.Of(db, id).AsNoTracking().ToListAsync(cancellationToken);
         var (rag, lookups) = await ResolveAsync(db, resolver, lookupResolver, pool, id, cancellationToken);
         pool = [.. pool.Where(t => (t.Tool.Origin != ToolOrigin.Rag || rag.ContainsKey(t.Tool.Id)) && (t.Tool.Origin != ToolOrigin.Lookup || lookups.ContainsKey(t.Tool.Id)))];
         var activations = await db.AgentTools.Where(a => a.AgentId == id).ToDictionaryAsync(a => a.ToolId, a => a.Manifest, cancellationToken);
@@ -166,7 +166,7 @@ internal sealed class AgentToolsEndpoints : IEndpointGroup
             return EndpointWithoutTools.ToProblem();
         }
 
-        var inPool = await ToolPool.For(db, id).AsNoTracking().Where(t => wanted.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
+        var inPool = await ToolPool.Of(db, id).AsNoTracking().Where(t => wanted.Contains(t.Tool.Id)).ToListAsync(cancellationToken);
         if (inPool.Count != wanted.Count)
         {
             return NotInPool.ToProblem();

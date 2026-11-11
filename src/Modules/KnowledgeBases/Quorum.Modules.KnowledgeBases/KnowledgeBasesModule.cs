@@ -28,7 +28,7 @@ public static class KnowledgeBasesModule
         var changes = new KnowledgeBaseChanges();
         services.AddSingleton(_ => changes);
         services.AddSingleton<IKnowledgeBaseChangeStamp>(_ => changes);
-        services.ConfigureDbContext<KnowledgeBasesDbContext>(options => options.AddInterceptors(changes.CommandInterceptor(), changes.TransactionInterceptor()));
+        services.ConfigureDbContext<KnowledgeBasesDbContext>(options => options.AddInterceptors(changes.WriteCommands, changes.Commits));
 
         services.AddQdrantStore();
         services.AddPgVectorStore();

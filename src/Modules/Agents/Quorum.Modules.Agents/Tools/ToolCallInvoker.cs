@@ -452,7 +452,7 @@ internal sealed partial class ToolCallInvoker(
     {
         var current = await dbGate.RunAsync(
             // One query: the pool is worked out for the owner of the agent inside it, and the activation and the server are in the row.
-            async () => await ToolPool.ForAgents(db, [context.AgentId])
+            async () => await ToolPool.ActivatedFor(db, [context.AgentId])
                 .Where(row => row.Tool.Id == tool.ToolId)
                 .Select(row => new { row.Tool.Policy, row.Tool.DefinitionHash, row.ServerUrl, row.ProtectedHeaders })
                 .SingleOrDefaultAsync(cancellationToken),
