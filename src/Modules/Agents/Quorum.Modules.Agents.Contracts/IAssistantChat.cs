@@ -21,14 +21,16 @@ public interface IAssistantChat
         Guid conversationId,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        ChatTurnOptions? options = null);
 
     /// <summary>How much of the assistant's context the conversation uses, without calling the model.</summary>
     Task<Result<ContextUsage>> MeasureContextAsync(
         Guid assistantId,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        ChatTurnOptions? options = null);
 
     /// <summary>
     /// The same measure from the sizes of the attachments, for callers that must not load their text only to count it.
@@ -37,7 +39,20 @@ public interface IAssistantChat
         Guid assistantId,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachmentSize> attachments,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        ChatTurnOptions? options = null);
+}
+
+/// <summary>
+/// What a conversation changes for one turn (spec 018): the optional tools a consumer turned off, whether the conversation is a
+/// debug one (any tool may then be turned off, and the endpoint replaced), and the endpoint of a debug conversation.
+/// </summary>
+/// <param name="DisabledTools">Tool names as the model sees them (spec 018 D-6), turned off for the turn.</param>
+/// <param name="Debug">The conversation is a debug one (spec 018 D-12).</param>
+/// <param name="ModelEndpointId">An endpoint replacing the root agent's for the turn; sub-agents inheriting the root endpoint follow it (D-12).</param>
+public sealed record ChatTurnOptions(IReadOnlyList<string> DisabledTools, bool Debug = false, Guid? ModelEndpointId = null)
+{
+    public static readonly ChatTurnOptions None = new([]);
 }
 
 /// <summary>A document attached to a conversation: its display name and the text extracted from it.</summary>
