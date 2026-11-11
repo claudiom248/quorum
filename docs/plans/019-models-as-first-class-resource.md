@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/019-models-as-first-class-resource.md` (Approved 2026-11-11)
 **Architecture:** Modular Monolith; a new module `Models` with Vertical Slice inside, consumed through `Quorum.Modules.Models.Contracts`.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first (AC-19 to AC-21 are manual, see "Delivery").
-**Status:** In Review
+**Status:** Approved (2026-11-11)
 **Affected:** new `Quorum.Modules.Models` + `.Contracts`; Agents (Domain, Persistence, Chat, Features, Embeddings, Probing, Secrets, Provisioning, Features/Settings); Agents.Contracts; KnowledgeBases (Domain, Persistence, Features/Registry, Search, Inspect, Verification); Tenancy (Features/Setup, policy registration); Conversations (only if spec 018 landed first, see Order); `Quorum.Shared` (`QuorumPolicies`, `QuorumActivityNames`); `Quorum.Host`; `Quorum.slnx`; `Quorum.Web.Client`; `tests/Quorum.Integration.Tests`; `docs/`; `CLAUDE.md`.
 
 ## What the code already gives us
