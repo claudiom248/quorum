@@ -46,4 +46,26 @@ public sealed partial class QuorumApi
 
     public Task<ApiResult> DeleteAssistantAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, $"api/assistants/{id}", body: null, setupToken: null, cancellationToken);
+
+    /// <summary>The root tools of an assistant with their modes, for the debug chat, whether or not a consumer sees them (spec 018 D-12).</summary>
+    public Task<ApiResult<List<ChatTool>>> ListAdminAssistantToolsAsync(Guid assistantId, CancellationToken cancellationToken = default) =>
+        GetAsync<List<ChatTool>>($"api/admin/assistants/{assistantId}/tools", cancellationToken);
+
+    /// <summary>Starts a debug conversation on any assistant with the overrides the administrator chose (spec 018 D-12).</summary>
+    public async Task<ApiResult<Guid>> CreateDebugConversationAsync(Guid assistantId, Guid? modelEndpointId, IReadOnlyList<string> disabledTools, CancellationToken cancellationToken = default)
+    {
+        var created = await SendAsync<CreatedDebugConversation>(
+            HttpMethod.Post,
+            "api/admin/conversations",
+            new { assistantId, modelEndpointId, disabledTools },
+            setupToken: null,
+            cancellationToken);
+        return created.IsSuccess ? ApiResult.Ok(created.Value.Id) : ApiResult.Fail<Guid>(created.Problem!);
+    }
+
+    /// <summary>Changes the overrides of a debug conversation; the next message uses them (spec 018 D-13).</summary>
+    public Task<ApiResult> ChangeDebugOverridesAsync(Guid conversationId, Guid? modelEndpointId, IReadOnlyList<string> disabledTools, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Patch, $"api/admin/conversations/{conversationId}/overrides", new { modelEndpointId, disabledTools }, setupToken: null, cancellationToken);
+
+    private sealed record CreatedDebugConversation(Guid Id);
 }

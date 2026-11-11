@@ -110,4 +110,19 @@ public sealed class AgentToolPickerTests : BunitContext
 
         Assert.Equal("Lean", _manifests[Lookup]);
     }
+
+    [Fact] // AC-20 (UI): an active tool shows its mode, an inactive one does not
+    public void AnActiveToolShowsItsModeAndAnInactiveOneDoesNot()
+    {
+        var page = Render<AgentToolPicker>(parameters => parameters
+            .Add(picker => picker.Pool, [Tool("builtin", "calculator", Calculator), Tool("builtin", "clock", Clock)])
+            .Add(picker => picker.Active, _active)
+            .Add(picker => picker.Manifests, _manifests)
+            .Add(picker => picker.Modes, new Dictionary<Guid, string>())
+            .Add(picker => picker.Changed, () => _changes++));
+
+        var modes = page.FindAll("[data-tool-mode]").Select(element => element.GetAttribute("data-tool-mode")).Distinct().ToList();
+
+        Assert.Equal([Calculator.ToString()], modes);
+    }
 }

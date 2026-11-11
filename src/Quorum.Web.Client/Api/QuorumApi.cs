@@ -54,17 +54,26 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult<AgentTools>> GetAgentToolsAsync(Guid agentId, CancellationToken cancellationToken = default) =>
         GetAsync<AgentTools>($"api/agents/{agentId}/tools", cancellationToken);
 
-    /// <summary>Activates exactly these tools on the agent.</summary>
+    /// <summary>Activates exactly these tools on the agent, each with its mode when <paramref name="modes"/> is given (spec 018 D-3).</summary>
     /// <param name="manifests">For lookup tools: <c>full</c> or <c>lean</c> by tool id; a tool left out keeps its manifest.</param>
+    /// <param name="modes"><c>Required</c> or <c>Optional</c> by tool id; a tool left out is required.</param>
     public Task<ApiResult> SetAgentToolsAsync(
         Guid agentId,
         IReadOnlyList<Guid> toolIds,
         IReadOnlyDictionary<Guid, string>? manifests = null,
+        IReadOnlyDictionary<Guid, string>? modes = null,
         CancellationToken cancellationToken = default) =>
         SendAsync(
             HttpMethod.Put,
             $"api/agents/{agentId}/tools",
-            new { toolIds, manifests = manifests?.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value.ToLowerInvariant()) },
+            modes is null
+                ? new { toolIds, manifests = manifests?.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value.ToLowerInvariant()) }
+                : new
+                {
+                    toolIds,
+                    tools = toolIds.Select(id => new { toolId = id, mode = modes.GetValueOrDefault(id, "Required").ToLowerInvariant() }).ToList(),
+                    manifests = manifests?.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value.ToLowerInvariant()),
+                },
             setupToken: null,
             cancellationToken);
 
