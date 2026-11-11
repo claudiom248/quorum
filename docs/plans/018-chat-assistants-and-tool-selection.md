@@ -3,7 +3,7 @@
 **Spec:** `docs/specs/018-chat-assistants-and-tool-selection.md` (Approved 2026-11-11)
 **Architecture:** Modular Monolith; Vertical Slice inside the Agents and Conversations modules.
 **Mode:** `/tdd`: every acceptance criterion becomes a failing test first.
-**Status:** Approved (2026-11-11)
+**Status:** Implemented (2026-11-11)
 **Affected:** Agents (Domain, Persistence, Chat, Features/Assistants, Features/Agents), Agents.Contracts, Conversations (Domain, Persistence, Features), `Quorum.Web.Client` (Chat page, assistant form, agent tools editor, API client), `tests/Quorum.Integration.Tests`, `docs/database-schema.md`, `docs/product.md`.
 
 ## What the code already gives us

@@ -68,7 +68,7 @@ Decided on 2026-10-15 when splitting the MVP; each gets its own spec, plan and P
 | 013 | Agents and delegation: agent entity, sub-agents called as tools (no nesting, no Topology entity), assistant -> root agent, admin UI. Replaces the former "005 - Declarative config and topology" (renumbered 2026-11-03) |
 | - | Handoff between agents: active agent per conversation, visible to the user, returned by the current agent (after 013) |
 | - | Declarative format: import/export of assistants and agents as files, same schema as the graph editor (after 013) |
-| - | Public API: `/v1/chat/completions` (stateless) and `/v1/responses` (stateful, mapped onto Conversations), assistants addressed through the `model` field, per-application API keys |
+| - | Public API: `/v1/chat/completions` (stateless) and `/v1/responses` (stateful, mapped onto Conversations), assistants addressed through the `model` field, per-application API keys. The consumer side of the selection (`exposed`, `disabledTools`) is in spec 018; this item is the `/v1` surface only |
 | 006 | Web search as a tool (after 004) |
 | 007 | Metadata lookups: lists of values and counts from the metadata of knowledge bases, a lookup tool with live operations and `document_ids` on rag tools (added 2026-10-22) |
 | 008 | pgvector knowledge bases: a relation of a PostgreSQL database as a KB kind, completing the per-kind abstraction (added 2026-10-22; numbered after 005 and 006, already cited by approved specs, and after 007 (lookups)) |
