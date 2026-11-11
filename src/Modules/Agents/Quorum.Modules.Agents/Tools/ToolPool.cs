@@ -50,6 +50,9 @@ internal sealed class PoolRow
     /// <summary>The manifest is the activation's, so the same tool can be lean on one agent and full on another (spec 012 D-8).</summary>
     public string? Manifest { get; init; }
 
+    /// <summary>Required or optional on this agent (spec 018 D-3); a tool of the pool that is not attached is required.</summary>
+    public ToolMode Mode { get; init; } = ToolMode.Required;
+
     public RagTool? Rag { get; init; }
 
     public LookupTool? Lookup { get; init; }
@@ -126,6 +129,7 @@ internal static class ToolPool
                  ServerUrl = server == null ? null : server.Url,
                  ProtectedHeaders = server == null ? null : server.ProtectedHeaders,
                  Manifest = activation.Manifest,
+                 Mode = activation.Mode,
                  Rag = rag,
                  Lookup = lookup,
                  WebSearch = webSearch,

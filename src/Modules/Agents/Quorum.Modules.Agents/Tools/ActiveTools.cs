@@ -28,7 +28,8 @@ internal sealed record ActiveTool(
     RagBinding? Rag = null,
     LookupBinding? Lookup = null,
     WebSearchBinding? WebSearch = null,
-    WebFetchBinding? WebFetch = null);
+    WebFetchBinding? WebFetch = null,
+    ToolMode Mode = ToolMode.Required);
 
 /// <summary>What a call needs to reach an MCP server: its identity, address and the encrypted static headers.</summary>
 internal sealed record McpServerEndpoint(Guid ServerId, string Url, string? ProtectedHeaders);
@@ -143,7 +144,8 @@ internal static class AgentToolLoader
             row.Rag is null ? null : RagBinding.From(row.Rag),
             lookup,
             webSearch,
-            webFetch);
+            webFetch,
+            row.Mode);
     }
 
     private static (string Description, string InputSchema) WebSearchDefinition(Tool tool, WebSearchBinding binding)

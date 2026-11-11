@@ -67,12 +67,19 @@ internal sealed class AssistantChat(
         Guid conversationId,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ChatTurnOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
+        options ??= ChatTurnOptions.None;
 
-        var turn = await LoadAssistantAsync(assistantId, conversationId, cancellationToken);
+        if (await OverrideErrorAsync(options, cancellationToken) is { } overrideError)
+        {
+            return overrideError;
+        }
+
+        var turn = await LoadAssistantAsync(assistantId, conversationId, options, cancellationToken);
         if (turn is null)
         {
             return AssistantNotFound;
@@ -119,12 +126,19 @@ internal sealed class AssistantChat(
         Guid assistantId,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachment> attachments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ChatTurnOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
+        options ??= ChatTurnOptions.None;
 
-        var turn = await LoadAssistantAsync(assistantId, Guid.Empty, cancellationToken);
+        if (await OverrideErrorAsync(options, cancellationToken) is { } overrideError)
+        {
+            return overrideError;
+        }
+
+        var turn = await LoadAssistantAsync(assistantId, Guid.Empty, options, cancellationToken);
         if (turn is null)
         {
             return AssistantNotFound;
@@ -137,12 +151,19 @@ internal sealed class AssistantChat(
         Guid assistantId,
         IReadOnlyList<ChatTurn> history,
         IReadOnlyList<ChatAttachmentSize> attachments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ChatTurnOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(attachments);
+        options ??= ChatTurnOptions.None;
 
-        var turn = await LoadAssistantAsync(assistantId, Guid.Empty, cancellationToken);
+        if (await OverrideErrorAsync(options, cancellationToken) is { } overrideError)
+        {
+            return overrideError;
+        }
+
+        var turn = await LoadAssistantAsync(assistantId, Guid.Empty, options, cancellationToken);
         if (turn is null)
         {
             return AssistantNotFound;
@@ -153,12 +174,18 @@ internal sealed class AssistantChat(
 
     /// <summary>The assistant's configuration with the tools it may offer to the current caller, or <see langword="null"/> when it does not exist.</summary>
     /// <param name="conversationId">The conversation a web search tool counts its invocations in; nothing for a measurement.</param>
-    private async Task<AssistantForTurn?> LoadAssistantAsync(Guid assistantId, Guid conversationId, CancellationToken cancellationToken)
+    private async Task<AssistantForTurn?> LoadAssistantAsync(Guid assistantId, Guid conversationId, ChatTurnOptions options, CancellationToken cancellationToken)
     {
         var tenantId = db.CurrentTenantId ?? Guid.Empty;
 
+        // An endpoint override (spec 018 D-12) changes the configuration, the stored tools and their resolution, so for that turn they are
+        // read now and kept out of the graph cache; the cache keeps what the assistant itself holds.
+        var overridden = options.ModelEndpointId is not null;
+
         // What is stored comes from the graph cache; the definition of the rag and lookup tools is made now, unless the cache has it.
-        var configuration = await graph.GetOrLoadAsync(GraphPart.Configuration, tenantId, assistantId, GraphPart.NoKnowledgeBaseChanges, () => LoadConfigurationAsync(assistantId, cancellationToken));
+        var configuration = overridden
+            ? await LoadConfigurationAsync(assistantId, options.ModelEndpointId, cancellationToken)
+            : await graph.GetOrLoadAsync(GraphPart.Configuration, tenantId, assistantId, GraphPart.NoKnowledgeBaseChanges, () => LoadConfigurationAsync(assistantId, null, cancellationToken));
         if (configuration is null)
         {
             return null;
@@ -167,10 +194,17 @@ internal sealed class AssistantChat(
         var caller = configuration.Endpoint.SupportsTools ? await toolAccess.ResolveAsync() : null;
 
         // The sub-agents are read with their tools, and the turn keeps them as they are (spec 013 AC-25).
-        var stored = caller is null ? null : await graph.GetOrLoadAsync(GraphPart.Tools, tenantId, assistantId, GraphPart.NoKnowledgeBaseChanges, () => LoadToolsAsync(configuration, cancellationToken));
-        var (active, subAgents) = caller is not null && stored is not null
-            ? await ResolveDefinitionsAsync(assistantId, tenantId, caller, stored, cancellationToken)
+        var stored = caller is null
+            ? null
+            : overridden
+                ? await LoadToolsAsync(configuration, cancellationToken)
+                : await graph.GetOrLoadAsync(GraphPart.Tools, tenantId, assistantId, GraphPart.NoKnowledgeBaseChanges, () => LoadToolsAsync(configuration, cancellationToken));
+        var (offered, subAgents) = caller is not null && stored is not null
+            ? await ResolveDefinitionsAsync(assistantId, tenantId, caller, stored, overridden, cancellationToken)
             : ([], []);
+
+        // The root agent's tools the conversation's selection leaves on (spec 018 D-4, D-17); sub-agents' tools are never selectable.
+        var active = ToolSelection.Effective(offered, options.DisabledTools, options.Debug);
 
         var allActive = active.Concat(subAgents.SelectMany(subAgent => subAgent.Active)).ToList();
         var limits = stored?.Limits ?? ToolLimits.Default;
@@ -236,8 +270,15 @@ internal sealed class AssistantChat(
         Guid tenantId,
         ToolCaller caller,
         AssistantTools stored,
+        bool bypassCache,
         CancellationToken cancellationToken)
     {
+        if (bypassCache)
+        {
+            var fresh = await ResolveAsync(stored, caller.TenantId, assistantId, cancellationToken);
+            return (fresh!.Active, fresh.SubAgents);
+        }
+
         // The definition of a rag tool is made from the knowledge bases the tenant sees now, a lookup tool's from its lookups; one left with none is not offered.
         // That is kept while neither this module nor the knowledge base module changes anything, so a change on either side reaches the next turn.
         var resolved = await graph.GetOrLoadAsync(
@@ -391,18 +432,54 @@ internal sealed class AssistantChat(
         return new ResolvedAssistantTools(groups[0], [.. stored.SubAgents.Select((subAgent, index) => subAgent with { Active = groups[index + 1] })]);
     }
 
-    private Task<AssistantConfiguration?> LoadConfigurationAsync(Guid assistantId, CancellationToken cancellationToken) => (
-        from assistant in db.Assistants
-        join agent in VisibleAgents() on assistant.RootAgentId equals agent.Id
-        join endpoint in db.ModelEndpoints.IgnoreQueryFilters() on agent.ModelEndpointId equals endpoint.Id
-        where assistant.Id == assistantId
-        select new AssistantConfiguration(
-            agent.Id,
-            agent.SystemPrompt,
-            new EndpointConfiguration(endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget, endpoint.SupportsTools),
-            assistant.MaxParallelSubAgents))
-        .AsNoTracking()
-        .SingleOrDefaultAsync(cancellationToken);
+    /// <summary>
+    /// The root configuration of the assistant. With an endpoint override (spec 018 D-12) the root's endpoint is replaced by the
+    /// override, which the caller has checked to exist in the tenant.
+    /// </summary>
+    private async Task<AssistantConfiguration?> LoadConfigurationAsync(Guid assistantId, Guid? endpointOverride, CancellationToken cancellationToken)
+    {
+        var configuration = await (
+            from assistant in db.Assistants
+            join agent in VisibleAgents() on assistant.RootAgentId equals agent.Id
+            join endpoint in db.ModelEndpoints.IgnoreQueryFilters() on agent.ModelEndpointId equals endpoint.Id
+            where assistant.Id == assistantId
+            select new AssistantConfiguration(
+                agent.Id,
+                agent.SystemPrompt,
+                new EndpointConfiguration(endpoint.BaseUrl, endpoint.ModelName, endpoint.ProtectedApiKey, endpoint.ContextTokenBudget, endpoint.SupportsTools),
+                assistant.MaxParallelSubAgents))
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+        if (configuration is null || endpointOverride is not { } overrideId)
+        {
+            return configuration;
+        }
+
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+        var overrideEndpoint = await db.ModelEndpoints.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.Id == overrideId && e.TenantId == tenantId)
+            .Select(e => new EndpointConfiguration(e.BaseUrl, e.ModelName, e.ProtectedApiKey, e.ContextTokenBudget, e.SupportsTools))
+            .SingleOrDefaultAsync(cancellationToken);
+        if (overrideEndpoint is null)
+        {
+            return null;
+        }
+
+        return configuration with { Endpoint = overrideEndpoint };
+    }
+
+    /// <summary>The override endpoint of a debug turn must exist in the tenant (spec 018 D-12); anything else is refused before the answer starts.</summary>
+    private async Task<Error?> OverrideErrorAsync(ChatTurnOptions options, CancellationToken cancellationToken)
+    {
+        if (options.ModelEndpointId is not { } overrideId)
+        {
+            return null;
+        }
+
+        var tenantId = db.CurrentTenantId ?? Guid.Empty;
+        var exists = await db.ModelEndpoints.IgnoreQueryFilters().AnyAsync(e => e.Id == overrideId && e.TenantId == tenantId, cancellationToken);
+        return exists ? null : Error.NotFound("model.override_not_found", "The model chosen for this conversation no longer exists.");
+    }
 
     private async Task<AssistantTools?> LoadToolsAsync(AssistantConfiguration configuration, CancellationToken cancellationToken)
     {
