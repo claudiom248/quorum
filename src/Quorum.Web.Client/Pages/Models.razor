@@ -1,259 +1,385 @@
 @page "/models"
+@page "/models/{Id}"
+@implements IDisposable
 @inject QuorumApi Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
 
 <PageTitle>Models · Quorum</PageTitle>
 
-<h1>Models</h1>
-<MudText Typo="Typo.body2" Class="tool-hint">
-    The models of the installation. Agents pick a chat model, knowledge bases pick an embedding model. Each one is an OpenAI-compatible
-    address with a model name; the capabilities say what it does, and the scope says who may select it.
-</MudText>
+<ListPage Title="Models"
+          Description="The models of the installation. Agents pick a chat model, knowledge bases pick an embedding model. A model says what it does (chat, tools, embeddings) and who may select it."
+          AddLabel="Add model" OnAdd="() => _screen.OpenDrawer(ListScreen<ModelInfo>.NewId)" Notice="@_notice"
+          Loading="_screen.Loading" Problem="_screen.Items.Count == 0 ? _screen.Problem : null" OnRetry="_screen.ReloadAsync"
+          IsEmpty="_screen.IsEmpty" HasFilters="_screen.Query.HasFilters" OnClearFilters="() => _screen.ChangeQueryAsync(ListQuery.Empty)"
+          EmptyTitle="No model yet" EmptyText="Add the address of a model server, then say what it can do.">
+    <FilterContent>
+        <FilterBar Query="_screen.Query" QueryChanged="_screen.ChangeQueryAsync" ShowScope="false" TypeLabel="Capabilities" TypeOptions="CapabilityOptions"
+                   SearchPlaceholder="Search by name or model" />
+    </FilterContent>
+    <ChildContent>
+        <ProblemMessage Problem="_screen.Items.Count > 0 ? _screen.Problem : null" />
+        <MudTable T="ModelInfo" Items="_screen.Items" Dense="true" Hover="true" Elevation="0" Outlined="true" Class="list-grid" data-grid="models">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Model</MudTh>
+                <MudTh>Capabilities</MudTh>
+                <MudTh>Scope</MudTh>
+                <MudTh>Owner</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="model">
+                <MudTd DataLabel="Name">
+                    <MudLink Href="@_screen.DrawerUri(model.Id.ToString())" Class="tool-name" data-model="@model.Name">@model.Name</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Model"><span class="tool-hint">@model.ModelName</span></MudTd>
+                <MudTd DataLabel="Capabilities">@string.Join(", ", model.Capabilities)</MudTd>
+                <MudTd DataLabel="Scope">@(model.Scope == "Global" ? "Every tenant" : "This tenant")</MudTd>
+                <MudTd DataLabel="Owner">@(model.Owned ? "this tenant" : "another tenant")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </ChildContent>
+</ListPage>
 
-<ProblemMessage Problem="_problem" />
-
-<div class="models-layout" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.5rem;align-items:start">
-    <MudPaper Class="pa-3" data-models-list>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewAsync" data-add-model>Add model</MudButton>
-        <MudSimpleTable Dense="true" Hover="true" Class="mt-2">
-            <thead>
-                <tr><th>Name</th><th>Capabilities</th><th>Scope</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var model in _models)
-                {
-                    <tr @onclick="() => SelectAsync(model)" style="cursor:pointer" data-model-row="@model.Name">
-                        <td>@model.Name</td>
-                        <td>@string.Join(", ", model.Capabilities)</td>
-                        <td>@model.Scope</td>
-                    </tr>
-                }
-            </tbody>
-        </MudSimpleTable>
-        @if (_models.Count == 0 && !_loading)
-        {
-            <MudText Typo="Typo.body2" Class="mt-2">No model yet. Add the address of a model server to start.</MudText>
-        }
-    </MudPaper>
-
-    <MudPaper Class="pa-3" data-model-form>
-        <MudStack Spacing="2">
-            <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Disabled="_readOnly" MaxLength="100" />
-            <MudTextField T="string" @bind-Value="_baseUrl" Label="Base URL" Variant="Variant.Outlined" Disabled="_readOnly"
-                          HelperText="The OpenAI base URL, including the version segment, e.g. http://ollama:11434/v1." />
-            <MudTextField T="string" @bind-Value="_modelName" Label="Model name" Variant="Variant.Outlined" Disabled="_readOnly" />
-            <MudTextField T="string" @bind-Value="_apiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" Disabled="_readOnly"
-                          HelperText="Stored encrypted. Leave empty for a server without a key." />
-
-            <MudText Typo="Typo.subtitle2">Capabilities</MudText>
-            <MudCheckBox T="bool" @bind-Value="_chat" Label="Chat" Disabled="_readOnly" Color="Color.Primary" data-capability="chat" />
-            <MudCheckBox T="bool" @bind-Value="_tools" Label="Tools (needs chat)" Disabled="_readOnly || !_chat" Color="Color.Primary" data-capability="tools" />
-            <MudCheckBox T="bool" @bind-Value="_embeddings" Label="Embeddings" Disabled="_readOnly" Color="Color.Primary" data-capability="embeddings" />
-
-            @if (_chat)
-            {
-                <MudNumericField T="int?" @bind-Value="_budget" Label="Context budget (tokens)" Variant="Variant.Outlined" Disabled="_readOnly" Min="256" Max="1000000" />
-            }
-
-            @if (_embeddings)
-            {
-                <MudTextField T="string" @bind-Value="_queryPrefix" Label="Query prefix" Variant="Variant.Outlined" Disabled="_readOnly"
-                              HelperText="Put before a query before it is embedded, e.g. 'search_query: ' for nomic." />
-                <MudNumericField T="int?" @bind-Value="_dimensions" Label="Embedding dimensions" Variant="Variant.Outlined" Disabled="_readOnly"
-                                 HelperText="Filled by the connection test; informational." />
-            }
-
-            <MudSelect T="string" @bind-Value="_scope" Label="Scope" Variant="Variant.Outlined" Disabled="_readOnly">
-                <MudSelectItem T="string" Value="@("Tenant")">Only this tenant</MudSelectItem>
-                <MudSelectItem T="string" Value="@("Global")">Every tenant</MudSelectItem>
-            </MudSelect>
-
-            @if (!_readOnly)
-            {
-                <MudStack Row="true" Spacing="2">
-                    <MudButton Variant="Variant.Outlined" OnClick="TestAsync" data-test-model>Test connection</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" data-save-model>Save</MudButton>
-                    @if (_selected is not null)
-                    {
-                        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="DeleteAsync" data-delete-model>Delete</MudButton>
-                    }
-                </MudStack>
-            }
-            else
-            {
-                <MudText Typo="Typo.body2">This model belongs to another tenant: its address and key are not shown.</MudText>
-            }
-
-            @if (_test is not null)
-            {
-                <MudAlert Severity="_test.Reachable ? Severity.Success : Severity.Warning" Variant="Variant.Outlined" data-test-result>
-                    Suggested: @(string.Join(", ", _test.SuggestedCapabilities))
-                    @if (_test.EmbeddingDimensions is { } dimensions)
-                    {
-                        <text> · @dimensions dimensions</text>
-                    }
-                    @if (_test.EmbeddingsProblem is not null)
-                    {
-                        <text> · embeddings not available (@_test.EmbeddingsProblem)</text>
-                    }
-                </MudAlert>
-            }
-        </MudStack>
-    </MudPaper>
-</div>
-
-@code {
-    private readonly List<ModelInfo> _models = [];
-    private ModelInfo? _selected;
-    private ModelTestInfo? _test;
-    private ApiProblem? _problem;
-    private bool _loading;
-    private bool _readOnly;
-
-    private string _name = string.Empty;
-    private string _baseUrl = string.Empty;
-    private string _modelName = string.Empty;
-    private string? _apiKey;
-    private bool _chat = true;
-    private bool _tools;
-    private bool _embeddings;
-    private int? _budget = 4096;
-    private string? _queryPrefix;
-    private int? _dimensions;
-    private string _scope = "Tenant";
-
-    protected override Task OnInitializedAsync() => ReloadAsync();
-
-    private async Task ReloadAsync()
+<ListDrawer @ref="_drawer" Open="Id is not null" Title="@DrawerTitle" Wide="true" Dirty="IsDirty" OnClose="_screen.CloseDrawer">
+    @if (_form is null)
     {
-        _loading = true;
-        var list = await Api.ListModelsAsync();
-        _models.Clear();
-        if (list.IsSuccess)
+        @if (_drawerProblem is not null)
         {
-            _models.AddRange(list.Value);
+            <ProblemMessage Problem="_drawerProblem" />
         }
         else
         {
-            _problem = list.Problem;
+            <MudProgressLinear Indeterminate="true" />
         }
+    }
+    else
+    {
+        <form @onsubmit="SaveAsync" data-form="model">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_form.Name" Label="Name" Variant="Variant.Outlined" Required="true" MaxLength="100" ReadOnly="!_canEdit"
+                              HelperText="How agents and people refer to this model in Quorum." />
 
-        _loading = false;
+                @* The same connection fields as the model endpoints: the test lists the models and suggests what they can do. *@
+                <ModelConnectionForm Value="_form.Connection" HasApiKey="_editing?.HasApiKey == true" Busy="_busy" Test="TestAsync" />
+
+                <MudText Typo="Typo.subtitle2">Capabilities</MudText>
+                <MudCheckBox T="bool" @bind-Value="_form.Chat" Label="Chat" Color="Color.Primary" Disabled="!_canEdit" data-capability="chat" />
+                <MudCheckBox T="bool" @bind-Value="_form.Tools" Label="Tools (needs chat)" Color="Color.Primary" Disabled="!_canEdit || !_form.Chat" data-capability="tools" />
+                <MudCheckBox T="bool" @bind-Value="_form.Embeddings" Label="Embeddings" Color="Color.Primary" Disabled="!_canEdit" data-capability="embeddings" />
+                @if (_form.Embeddings)
+                {
+                    <MudTextField @bind-Value="_form.QueryPrefix" Label="Query prefix" Variant="Variant.Outlined" Disabled="!_canEdit"
+                                  HelperText="Put before a query before it is embedded, e.g. 'search_query: ' for nomic." />
+                    <MudNumericField T="int?" @bind-Value="_form.Dimensions" Label="Embedding dimensions" Variant="Variant.Outlined" Disabled="!_canEdit"
+                                     HelperText="Filled by the connection test; informational." />
+                }
+
+                <MudSelect T="string" @bind-Value="_form.Scope" Label="Who may select it" Variant="Variant.Outlined" Disabled="!_canEdit">
+                    <MudSelectItem T="string" Value="@("Tenant")">Only this tenant</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Global")">Every tenant</MudSelectItem>
+                </MudSelect>
+
+                @if (!_canEdit)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">This model belongs to another tenant: its address and key are not shown, and it cannot be changed here.</MudAlert>
+                }
+
+                <ProblemMessage Problem="_formProblem" />
+                @if (_canEdit)
+                {
+                    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy">@(_editing is null ? "Create" : "Save changes")</MudButton>
+                        @if (_editing is not null)
+                        {
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy"
+                                       StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+                        }
+                    </MudStack>
+                }
+            </MudStack>
+        </form>
+    }
+</ListDrawer>
+
+@code {
+    private static readonly IReadOnlyList<FilterOption> CapabilityOptions =
+    [
+        new(ModelCapabilityNames.Chat, "Chat"),
+        new(ModelCapabilityNames.Tools, "Tools"),
+        new(ModelCapabilityNames.Embeddings, "Embeddings"),
+    ];
+
+    private sealed class ModelForm
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public ModelConnectionFields Connection { get; set; } = new() { ContextTokenBudget = 8192 };
+
+        public bool Chat { get; set; } = true;
+
+        public bool Tools { get; set; }
+
+        public bool Embeddings { get; set; }
+
+        public string? QueryPrefix { get; set; }
+
+        public int? Dimensions { get; set; }
+
+        public string Scope { get; set; } = "Tenant";
     }
 
-    private void NewAsync()
+    private ListDrawer? _drawer;
+    private ListScreen<ModelInfo> _screen = null!;
+    private ModelInfo? _editing;
+    private ModelForm? _form;
+    private ApiProblem? _drawerProblem;
+    private ApiProblem? _formProblem;
+    private string? _openedId;
+    private string _opened = string.Empty;
+    private string? _notice;
+    private bool _busy;
+    private bool _canEdit;
+
+    /// <summary>The drawer: <c>new</c> or the id of the model. Without it only the list shows.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string DrawerTitle => _form is null ? "Model" : _editing is null ? "New model" : _canEdit ? $"Edit {_editing.Name}" : _editing.Name;
+
+    private bool IsDirty => _form is not null && _canEdit && Snapshot() != _opened;
+
+    protected override async Task OnInitializedAsync()
     {
-        _selected = null;
-        _readOnly = false;
-        _test = null;
-        _name = string.Empty;
-        _baseUrl = string.Empty;
-        _modelName = string.Empty;
-        _apiKey = null;
-        _chat = true;
-        _tools = false;
-        _embeddings = false;
-        _budget = 4096;
-        _queryPrefix = null;
-        _dimensions = null;
-        _scope = "Tenant";
+        _screen = new ListScreen<ModelInfo>(Navigation, "/models", LoadAsync, () => InvokeAsync(StateHasChanged));
+        await _screen.ReloadAsync();
     }
 
-    private Task SelectAsync(ModelInfo model)
+    protected override async Task OnParametersSetAsync()
     {
-        _selected = model;
-        _readOnly = !model.Owned;
-        _test = null;
-        _name = model.Name;
-        _baseUrl = model.BaseUrl ?? string.Empty;
-        _modelName = model.ModelName;
-        _apiKey = null;
-        _chat = model.Capabilities.Contains(ModelCapabilityNames.Chat);
-        _tools = model.Capabilities.Contains(ModelCapabilityNames.Tools);
-        _embeddings = model.Capabilities.Contains(ModelCapabilityNames.Embeddings);
-        _budget = model.ContextTokenBudget ?? 4096;
-        _queryPrefix = model.QueryPrefix;
-        _dimensions = model.EmbeddingDimensions;
-        _scope = model.Scope;
-        return Task.CompletedTask;
-    }
-
-    private IReadOnlyList<string> Capabilities()
-    {
-        var list = new List<string>();
-        if (_chat)
+        if (_openedId == Id)
         {
-            list.Add(ModelCapabilityNames.Chat);
-        }
-
-        if (_chat && _tools)
-        {
-            list.Add(ModelCapabilityNames.Tools);
-        }
-
-        if (_embeddings)
-        {
-            list.Add(ModelCapabilityNames.Embeddings);
-        }
-
-        return list;
-    }
-
-    private async Task TestAsync()
-    {
-        var result = await Api.TestModelAsync(_baseUrl, _apiKey, string.IsNullOrWhiteSpace(_modelName) ? null : _modelName, _selected?.Id);
-        if (!result.IsSuccess)
-        {
-            _problem = result.Problem;
             return;
         }
 
-        _test = result.Value;
-        _problem = null;
-        _chat = result.Value.SuggestedCapabilities.Contains(ModelCapabilityNames.Chat);
-        _tools = result.Value.SuggestedCapabilities.Contains(ModelCapabilityNames.Tools);
-        _embeddings = result.Value.SuggestedCapabilities.Contains(ModelCapabilityNames.Embeddings);
-        if (result.Value.EmbeddingDimensions is { } dimensions)
+        _openedId = Id;
+        _editing = null;
+        _form = null;
+        _drawerProblem = null;
+        _formProblem = null;
+        _canEdit = false;
+
+        if (Id is null)
         {
-            _dimensions = dimensions;
+            return;
         }
+
+        if (Id == ListScreen<ModelInfo>.NewId)
+        {
+            _canEdit = true;
+            _form = new ModelForm();
+            _opened = Snapshot();
+            return;
+        }
+
+        if (!Guid.TryParse(Id, out var id))
+        {
+            _drawerProblem = NotFound;
+            return;
+        }
+
+        // The row is on screen when the list was opened first; a link or a reload finds it in the list of the tenant.
+        var model = _screen.Items.FirstOrDefault(m => m.Id == id);
+        if (model is null)
+        {
+            var all = await Api.ListModelsAsync();
+            if (!all.IsSuccess)
+            {
+                _drawerProblem = all.Problem;
+                return;
+            }
+
+            model = all.Value.FirstOrDefault(m => m.Id == id);
+        }
+
+        if (model is null)
+        {
+            _drawerProblem = NotFound;
+            return;
+        }
+
+        _editing = model;
+        _canEdit = model.Owned;
+        _form = new ModelForm
+        {
+            Name = model.Name,
+            Connection = new ModelConnectionFields
+            {
+                BaseUrl = model.BaseUrl ?? string.Empty,
+                ModelName = model.ModelName,
+                ContextTokenBudget = model.ContextTokenBudget ?? 8192,
+                SupportsTools = model.Capabilities.Contains(ModelCapabilityNames.Tools),
+            },
+            Chat = model.Capabilities.Contains(ModelCapabilityNames.Chat),
+            Tools = model.Capabilities.Contains(ModelCapabilityNames.Tools),
+            Embeddings = model.Capabilities.Contains(ModelCapabilityNames.Embeddings),
+            QueryPrefix = model.QueryPrefix,
+            Dimensions = model.EmbeddingDimensions,
+            Scope = model.Scope,
+        };
+        _opened = Snapshot();
+    }
+
+    private static readonly ApiProblem NotFound = new(404, "model.not_found", "There is no such model.", new Dictionary<string, string[]>());
+
+    // The list is filtered here: the server returns every model the tenant sees, and there are few.
+    private async Task<ApiResult<Page<ModelInfo>>> LoadAsync(ListQuery query, string? cursor)
+    {
+        var result = await Api.ListModelsAsync();
+        if (!result.IsSuccess)
+        {
+            return ApiResult.Fail<Page<ModelInfo>>(result.Problem!);
+        }
+
+        var items = result.Value.Where(model => Matches(model, query)).ToList();
+        return ApiResult.Ok(new Page<ModelInfo>(items, null));
+    }
+
+    private static bool Matches(ModelInfo model, ListQuery query)
+    {
+        if (!string.IsNullOrWhiteSpace(query.Q)
+            && !model.Name.Contains(query.Q, StringComparison.OrdinalIgnoreCase)
+            && !model.ModelName.Contains(query.Q, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // A model matches when it has any of the capabilities asked for.
+        return query.Type.Count == 0 || query.Type.Any(type => model.Capabilities.Contains(type, StringComparer.OrdinalIgnoreCase));
+    }
+
+    // What the form holds, as one text: the drawer asks before closing only when it differs from what was opened.
+    private string Snapshot()
+    {
+        var connection = _form!.Connection;
+        return string.Join('|', _form.Name, connection.BaseUrl, connection.ModelName, connection.ContextTokenBudget, connection.ApiKey, connection.RemoveKey,
+            _form.Chat, _form.Tools, _form.Embeddings, _form.QueryPrefix, _form.Dimensions, _form.Scope);
+    }
+
+    private IReadOnlyList<string> CapabilitiesOfForm()
+    {
+        var capabilities = new List<string>();
+        if (_form!.Chat)
+        {
+            capabilities.Add(ModelCapabilityNames.Chat);
+        }
+
+        if (_form.Chat && _form.Tools)
+        {
+            capabilities.Add(ModelCapabilityNames.Tools);
+        }
+
+        if (_form.Embeddings)
+        {
+            capabilities.Add(ModelCapabilityNames.Embeddings);
+        }
+
+        return capabilities;
     }
 
     private async Task SaveAsync()
     {
-        var request = new ModelRequest(
-            _name,
-            _baseUrl,
-            _modelName,
-            _apiKey,
-            Capabilities(),
-            _chat ? _budget : null,
-            _embeddings ? _queryPrefix : null,
-            _embeddings ? _dimensions : null,
-            _scope,
-            []);
-        var result = _selected is null
-            ? await Api.CreateModelAsync(request)
-            : await Api.UpdateModelAsync(_selected.Id, request);
-        _problem = result.IsSuccess ? null : result.Problem;
-        if (result.IsSuccess)
-        {
-            await ReloadAsync();
-        }
-    }
-
-    private async Task DeleteAsync()
-    {
-        if (_selected is null)
+        if (_form is null || _busy || !_canEdit)
         {
             return;
         }
 
-        var result = await Api.DeleteModelAsync(_selected.Id);
-        _problem = result.IsSuccess ? null : result.Problem;
+        _busy = true;
+        // Omitted keeps the stored key, an empty string removes it (spec 019 API).
+        var connection = _form.Connection;
+        var request = new ModelRequest(
+            _form.Name.Trim(),
+            connection.BaseUrl.Trim(),
+            connection.ModelName.Trim(),
+            connection.KeyToSend(),
+            CapabilitiesOfForm(),
+            _form.Chat ? connection.ContextTokenBudget : null,
+            _form.Embeddings ? _form.QueryPrefix : null,
+            _form.Embeddings ? _form.Dimensions : null,
+            _form.Scope,
+            []);
+        var result = _editing is null
+            ? await Api.CreateModelAsync(request)
+            : await Api.UpdateModelAsync(_editing.Id, request);
+        _busy = false;
+
+        _formProblem = result.IsSuccess ? null : result.Problem;
         if (result.IsSuccess)
         {
-            NewAsync();
-            await ReloadAsync();
+            _notice = $"{request.Name} was saved.";
+            await CloseAfterAsync();
         }
     }
+
+    // The connection test of the models (spec 019 D-5): the models the server lists, and whether it supports tools.
+    // The suggestions of the embedding probe are applied to the form when they come back.
+    private async Task<ApiResult<ModelConnection>> TestAsync(string baseUrl, string? key, string? model)
+    {
+        var result = await Api.TestModelAsync(baseUrl, key, model, _editing?.Id);
+        if (!result.IsSuccess)
+        {
+            return ApiResult.Fail<ModelConnection>(result.Problem!);
+        }
+
+        var suggested = result.Value.SuggestedCapabilities;
+        if (_form is not null)
+        {
+            _form.Embeddings = suggested.Contains(ModelCapabilityNames.Embeddings);
+            _form.Dimensions = result.Value.EmbeddingDimensions ?? _form.Dimensions;
+            _form.Tools = suggested.Contains(ModelCapabilityNames.Tools);
+            _form.Connection.SupportsTools = _form.Tools;
+        }
+
+        return ApiResult.Ok(new ModelConnection(result.Value.Reachable, result.Value.Models, suggested.Contains(ModelCapabilityNames.Tools)));
+    }
+
+    private async Task DeleteAsync()
+    {
+        var model = _editing!;
+        if (!await Confirmations.ConfirmDeleteAsync(Dialogs, $"Delete {model.Name}?", "The agents and knowledge bases that use it must be given another model first.", "Delete model"))
+        {
+            return;
+        }
+
+        _busy = true;
+        _formProblem = null;
+        try
+        {
+            // 409 lists the consumers that still use it.
+            var result = await Api.DeleteModelAsync(model.Id);
+            if (!result.IsSuccess)
+            {
+                _formProblem = result.Problem;
+                return;
+            }
+
+            _notice = $"{model.Name} was deleted.";
+            await CloseAfterAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Saved or deleted: nothing is left to lose, so the drawer closes without asking.
+    private async Task CloseAfterAsync()
+    {
+        _form = null;
+        _drawer?.SkipNextGuard();
+        _screen.CloseDrawer();
+        await _screen.ReloadAsync();
+    }
+
+    public void Dispose() => _screen.Dispose();
 }
