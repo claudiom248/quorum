@@ -33,12 +33,12 @@ public sealed class SourcesChatPageTests : BunitContext
 
         _api.Respond = (method, path) =>
         {
-            if (method == HttpMethod.Get && path == "/api/admin/assistants")
+            if (method == HttpMethod.Get && path == "/api/assistants")
             {
                 return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), name = "Assistant", rootAgentSlug = "assistant" } });
             }
 
-            if (method == HttpMethod.Post && path == "/api/admin/conversations")
+            if (method == HttpMethod.Post && path == "/api/conversations")
             {
                 return FakeApiHandler.Json(new { id = Conversation }, HttpStatusCode.Created);
             }
@@ -53,7 +53,7 @@ public sealed class SourcesChatPageTests : BunitContext
                 return FakeApiHandler.Json(new { id = Conversation, title = "Hi", messages = _stored, attachments = Array.Empty<object>() });
             }
 
-            if (method == HttpMethod.Get && (path == "/api/admin/conversations" || path.EndsWith("/attachments", StringComparison.Ordinal)))
+            if (method == HttpMethod.Get && (path == "/api/conversations" || path.EndsWith("/attachments", StringComparison.Ordinal)))
             {
                 return FakeApiHandler.Json(Array.Empty<object>());
             }
