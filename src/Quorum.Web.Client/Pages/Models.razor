@@ -1,0 +1,259 @@
+@page "/models"
+@inject QuorumApi Api
+
+<PageTitle>Models · Quorum</PageTitle>
+
+<h1>Models</h1>
+<MudText Typo="Typo.body2" Class="tool-hint">
+    The models of the installation. Agents pick a chat model, knowledge bases pick an embedding model. Each one is an OpenAI-compatible
+    address with a model name; the capabilities say what it does, and the scope says who may select it.
+</MudText>
+
+<ProblemMessage Problem="_problem" />
+
+<div class="models-layout" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.5rem;align-items:start">
+    <MudPaper Class="pa-3" data-models-list>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewAsync" data-add-model>Add model</MudButton>
+        <MudSimpleTable Dense="true" Hover="true" Class="mt-2">
+            <thead>
+                <tr><th>Name</th><th>Capabilities</th><th>Scope</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var model in _models)
+                {
+                    <tr @onclick="() => SelectAsync(model)" style="cursor:pointer" data-model-row="@model.Name">
+                        <td>@model.Name</td>
+                        <td>@string.Join(", ", model.Capabilities)</td>
+                        <td>@model.Scope</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        @if (_models.Count == 0 && !_loading)
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">No model yet. Add the address of a model server to start.</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-3" data-model-form>
+        <MudStack Spacing="2">
+            <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Disabled="_readOnly" MaxLength="100" />
+            <MudTextField T="string" @bind-Value="_baseUrl" Label="Base URL" Variant="Variant.Outlined" Disabled="_readOnly"
+                          HelperText="The OpenAI base URL, including the version segment, e.g. http://ollama:11434/v1." />
+            <MudTextField T="string" @bind-Value="_modelName" Label="Model name" Variant="Variant.Outlined" Disabled="_readOnly" />
+            <MudTextField T="string" @bind-Value="_apiKey" Label="API key" InputType="InputType.Password" Variant="Variant.Outlined" Disabled="_readOnly"
+                          HelperText="Stored encrypted. Leave empty for a server without a key." />
+
+            <MudText Typo="Typo.subtitle2">Capabilities</MudText>
+            <MudCheckBox T="bool" @bind-Value="_chat" Label="Chat" Disabled="_readOnly" Color="Color.Primary" data-capability="chat" />
+            <MudCheckBox T="bool" @bind-Value="_tools" Label="Tools (needs chat)" Disabled="_readOnly || !_chat" Color="Color.Primary" data-capability="tools" />
+            <MudCheckBox T="bool" @bind-Value="_embeddings" Label="Embeddings" Disabled="_readOnly" Color="Color.Primary" data-capability="embeddings" />
+
+            @if (_chat)
+            {
+                <MudNumericField T="int?" @bind-Value="_budget" Label="Context budget (tokens)" Variant="Variant.Outlined" Disabled="_readOnly" Min="256" Max="1000000" />
+            }
+
+            @if (_embeddings)
+            {
+                <MudTextField T="string" @bind-Value="_queryPrefix" Label="Query prefix" Variant="Variant.Outlined" Disabled="_readOnly"
+                              HelperText="Put before a query before it is embedded, e.g. 'search_query: ' for nomic." />
+                <MudNumericField T="int?" @bind-Value="_dimensions" Label="Embedding dimensions" Variant="Variant.Outlined" Disabled="_readOnly"
+                                 HelperText="Filled by the connection test; informational." />
+            }
+
+            <MudSelect T="string" @bind-Value="_scope" Label="Scope" Variant="Variant.Outlined" Disabled="_readOnly">
+                <MudSelectItem T="string" Value="@("Tenant")">Only this tenant</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Global")">Every tenant</MudSelectItem>
+            </MudSelect>
+
+            @if (!_readOnly)
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" OnClick="TestAsync" data-test-model>Test connection</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" data-save-model>Save</MudButton>
+                    @if (_selected is not null)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="DeleteAsync" data-delete-model>Delete</MudButton>
+                    }
+                </MudStack>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">This model belongs to another tenant: its address and key are not shown.</MudText>
+            }
+
+            @if (_test is not null)
+            {
+                <MudAlert Severity="_test.Reachable ? Severity.Success : Severity.Warning" Variant="Variant.Outlined" data-test-result>
+                    Suggested: @(string.Join(", ", _test.SuggestedCapabilities))
+                    @if (_test.EmbeddingDimensions is { } dimensions)
+                    {
+                        <text> · @dimensions dimensions</text>
+                    }
+                    @if (_test.EmbeddingsProblem is not null)
+                    {
+                        <text> · embeddings not available (@_test.EmbeddingsProblem)</text>
+                    }
+                </MudAlert>
+            }
+        </MudStack>
+    </MudPaper>
+</div>
+
+@code {
+    private readonly List<ModelInfo> _models = [];
+    private ModelInfo? _selected;
+    private ModelTestInfo? _test;
+    private ApiProblem? _problem;
+    private bool _loading;
+    private bool _readOnly;
+
+    private string _name = string.Empty;
+    private string _baseUrl = string.Empty;
+    private string _modelName = string.Empty;
+    private string? _apiKey;
+    private bool _chat = true;
+    private bool _tools;
+    private bool _embeddings;
+    private int? _budget = 4096;
+    private string? _queryPrefix;
+    private int? _dimensions;
+    private string _scope = "Tenant";
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var list = await Api.ListModelsAsync();
+        _models.Clear();
+        if (list.IsSuccess)
+        {
+            _models.AddRange(list.Value);
+        }
+        else
+        {
+            _problem = list.Problem;
+        }
+
+        _loading = false;
+    }
+
+    private void NewAsync()
+    {
+        _selected = null;
+        _readOnly = false;
+        _test = null;
+        _name = string.Empty;
+        _baseUrl = string.Empty;
+        _modelName = string.Empty;
+        _apiKey = null;
+        _chat = true;
+        _tools = false;
+        _embeddings = false;
+        _budget = 4096;
+        _queryPrefix = null;
+        _dimensions = null;
+        _scope = "Tenant";
+    }
+
+    private Task SelectAsync(ModelInfo model)
+    {
+        _selected = model;
+        _readOnly = !model.Owned;
+        _test = null;
+        _name = model.Name;
+        _baseUrl = model.BaseUrl ?? string.Empty;
+        _modelName = model.ModelName;
+        _apiKey = null;
+        _chat = model.Capabilities.Contains("chat");
+        _tools = model.Capabilities.Contains("tools");
+        _embeddings = model.Capabilities.Contains("embeddings");
+        _budget = model.ContextTokenBudget ?? 4096;
+        _queryPrefix = model.QueryPrefix;
+        _dimensions = model.EmbeddingDimensions;
+        _scope = model.Scope;
+        return Task.CompletedTask;
+    }
+
+    private IReadOnlyList<string> Capabilities()
+    {
+        var list = new List<string>();
+        if (_chat)
+        {
+            list.Add("chat");
+        }
+
+        if (_chat && _tools)
+        {
+            list.Add("tools");
+        }
+
+        if (_embeddings)
+        {
+            list.Add("embeddings");
+        }
+
+        return list;
+    }
+
+    private async Task TestAsync()
+    {
+        var result = await Api.TestModelAsync(_baseUrl, _apiKey, string.IsNullOrWhiteSpace(_modelName) ? null : _modelName, _selected?.Id);
+        if (!result.IsSuccess)
+        {
+            _problem = result.Problem;
+            return;
+        }
+
+        _test = result.Value;
+        _problem = null;
+        _chat = result.Value.SuggestedCapabilities.Contains("chat");
+        _tools = result.Value.SuggestedCapabilities.Contains("tools");
+        _embeddings = result.Value.SuggestedCapabilities.Contains("embeddings");
+        if (result.Value.EmbeddingDimensions is { } dimensions)
+        {
+            _dimensions = dimensions;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new ModelRequest(
+            _name,
+            _baseUrl,
+            _modelName,
+            _apiKey,
+            Capabilities(),
+            _chat ? _budget : null,
+            _embeddings ? _queryPrefix : null,
+            _embeddings ? _dimensions : null,
+            _scope,
+            []);
+        var result = _selected is null
+            ? await Api.CreateModelAsync(request)
+            : await Api.UpdateModelAsync(_selected.Id, request);
+        _problem = result.IsSuccess ? null : result.Problem;
+        if (result.IsSuccess)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+
+        var result = await Api.DeleteModelAsync(_selected.Id);
+        _problem = result.IsSuccess ? null : result.Problem;
+        if (result.IsSuccess)
+        {
+            NewAsync();
+            await ReloadAsync();
+        }
+    }
+}

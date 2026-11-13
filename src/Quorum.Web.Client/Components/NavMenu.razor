@@ -9,6 +9,11 @@
 
         @if (IsAdmin)
         {
+            <MudNavLink Href="models" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Memory">Models</MudNavLink>
+        }
+
+        @if (IsAdmin)
+        {
             <MudNavGroup Title="Agents" Icon="@Icons.Material.Filled.SmartToy" Expanded="true">
                 <MudNavLink Href="agents" Match="NavLinkMatch.All">Agents</MudNavLink>
                 <MudNavLink Href="agents/endpoints" Match="NavLinkMatch.Prefix">Model endpoints</MudNavLink>
