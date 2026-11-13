@@ -28,12 +28,12 @@ public sealed class ChatPageTests : BunitContext
         var answered = false;
         _api.Respond = (method, path) =>
         {
-            if (method == HttpMethod.Get && path == "/api/admin/assistants")
+            if (method == HttpMethod.Get && path == "/api/assistants")
             {
                 return FakeApiHandler.Json(new[] { new { id = Guid.NewGuid(), name = "Assistant", rootAgentSlug = "assistant" } });
             }
 
-            if (method == HttpMethod.Post && path == "/api/admin/conversations")
+            if (method == HttpMethod.Post && path == "/api/conversations")
             {
                 return FakeApiHandler.Json(new { id = Conversation }, HttpStatusCode.Created);
             }
@@ -61,7 +61,7 @@ public sealed class ChatPageTests : BunitContext
                 });
             }
 
-            if (method == HttpMethod.Get && path == "/api/admin/conversations")
+            if (method == HttpMethod.Get && path == "/api/conversations")
             {
                 return FakeApiHandler.Json(Array.Empty<object>());
             }
@@ -113,6 +113,6 @@ public sealed class ChatPageTests : BunitContext
         });
 
         page.WaitForAssertion(() => Assert.Equal(1, _api.Count(HttpMethod.Post, "/messages")));
-        Assert.Equal(1, _api.Requests.Count(r => r.Method == HttpMethod.Post && r.Path == "/api/admin/conversations"));
+        Assert.Equal(1, _api.Requests.Count(r => r.Method == HttpMethod.Post && r.Path == "/api/conversations"));
     }
 }

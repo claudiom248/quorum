@@ -148,22 +148,49 @@ public sealed partial class QuorumApi(HttpClient http)
     public Task<ApiResult<ToolRefresh>> RefreshToolServerAsync(Guid id, CancellationToken cancellationToken = default) =>
         SendAsync<ToolRefresh>(HttpMethod.Post, $"api/tools/servers/{id}/refresh", body: null, setupToken: null, cancellationToken);
 
+    /// <summary>The consumer's conversations: debug conversations are not listed here (spec 018 D-15).</summary>
     public Task<ApiResult<List<ConversationSummary>>> ListConversationsAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<List<ConversationSummary>>("api/conversations", cancellationToken);
+
+    /// <summary>The debug conversations of the administrator (spec 018 D-15).</summary>
+    public Task<ApiResult<List<ConversationSummary>>> ListDebugConversationsAsync(CancellationToken cancellationToken = default) =>
         GetAsync<List<ConversationSummary>>("api/admin/conversations", cancellationToken);
 
-    /// <summary>The debug chat starts a conversation with the first assistant of the tenant, through the administrator's route (spec 018 D-20).</summary>
-    public async Task<ApiResult<Guid>> CreateConversationAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Starts a conversation: a debug one through the administrator's route, on the first assistant of the tenant (spec 018 D-12), or a
+    /// consumer one on the first assistant the consumer may choose (spec 018 D-9, D-11).
+    /// </summary>
+    public Task<ApiResult<Guid>> CreateConversationAsync(CancellationToken cancellationToken = default) => CreateChatConversationAsync(false, cancellationToken);
+
+    public async Task<ApiResult<Guid>> CreateChatConversationAsync(bool debug, CancellationToken cancellationToken = default)
     {
-        var assistants = await GetAsync<List<AssistantSummary>>("api/admin/assistants", cancellationToken);
-        if (!assistants.IsSuccess)
+        if (debug)
         {
-            return ApiResult.Fail<Guid>(assistants.Problem!);
+            var assistants = await GetAsync<List<AssistantSummary>>("api/admin/assistants", cancellationToken);
+            if (!assistants.IsSuccess)
+            {
+                return ApiResult.Fail<Guid>(assistants.Problem!);
+            }
+
+            var debugged = await SendAsync<CreatedConversation>(
+                HttpMethod.Post,
+                "api/admin/conversations",
+                new { assistantId = assistants.Value.FirstOrDefault()?.Id ?? Guid.Empty },
+                setupToken: null,
+                cancellationToken);
+            return debugged.IsSuccess ? ApiResult.Ok(debugged.Value.Id) : ApiResult.Fail<Guid>(debugged.Problem!);
+        }
+
+        var exposed = await GetAsync<List<AssistantSummary>>("api/assistants", cancellationToken);
+        if (!exposed.IsSuccess)
+        {
+            return ApiResult.Fail<Guid>(exposed.Problem!);
         }
 
         var created = await SendAsync<CreatedConversation>(
             HttpMethod.Post,
-            "api/admin/conversations",
-            new { assistantId = assistants.Value.FirstOrDefault()?.Id ?? Guid.Empty },
+            "api/conversations",
+            new { assistantId = exposed.Value.FirstOrDefault()?.Id ?? Guid.Empty, disabledTools = Array.Empty<string>() },
             setupToken: null,
             cancellationToken);
         return created.IsSuccess ? ApiResult.Ok(created.Value.Id) : ApiResult.Fail<Guid>(created.Problem!);

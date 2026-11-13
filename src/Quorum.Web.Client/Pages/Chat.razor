@@ -1,5 +1,7 @@
 @page "/"
 @page "/c/{Id:guid}"
+@page "/debug"
+@page "/debug/c/{Id:guid}"
 @implements IAsyncDisposable
 @inject QuorumApi Api
 @inject Session Session
@@ -10,22 +12,25 @@
 
 <PageTitle>@(_title ?? "Chat") · Quorum</PageTitle>
 
+<ListDrawer Open="_overridesOpen" Title="Debug overrides" OnClose="() => _overridesOpen = false">
+    @if (Id is not null && _loaded?.AssistantId is { } debugAssistant)
+    {
+        <DebugOverrides ConversationId="Id" AssistantId="debugAssistant" Initial="_loaded?.Debug" />
+    }
+</ListDrawer>
+
 <div class="chat-layout">
     <aside class="chat-side">
         <div class="pa-3">
-            @if (Id is not null && _loaded?.AssistantId is { } assistantOfChat)
-            {
-                <DebugOverrides @ref="_debug" ConversationId="Id" AssistantId="assistantOfChat" />
-            }
             <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" OnClick="NewConversation"
-                       StartIcon="@Icons.Material.Filled.Add">New conversation</MudButton>
+                       StartIcon="@Icons.Material.Filled.Add">@(IsDebug ? "New debug chat" : "New conversation")</MudButton>
         </div>
         <ProblemMessage Problem="_deleteProblem" />
         <div class="chat-list">
             @foreach (var item in _conversations)
             {
                 <div class="chat-item @(item.Id == Id ? "active" : null)">
-                    <a href="c/@item.Id">@(item.Title ?? "New conversation")</a>
+                    <a href="@ChatPath(item.Id)">@(item.Title ?? (IsDebug ? "New debug chat" : "New conversation"))</a>
                     <span title="@(DeleteDisabled(item) ? "Wait for the answer to finish before deleting this conversation." : null)">
                         <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" title="@(DeleteDisabled(item) ? null : "Delete")"
                                        OnClick="() => DeleteAsync(item)" Disabled="DeleteDisabled(item)" />
@@ -44,6 +49,11 @@
         @if (Id is not null)
         {
             <div class="chat-head">
+                @if (IsDebug && _loaded?.Debug is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => _overridesOpen = true" StartIcon="@Icons.Material.Filled.Tune"
+                               Class="mr-2" data-open-overrides>Overrides</MudButton>
+                }
                 @if (_renaming)
                 {
                     <form @onsubmit="RenameAsync" style="display:flex;flex:1;gap:.5rem;align-items:center">
@@ -180,7 +190,12 @@
     private ElementReference _messagesElement;
     private ElementReference _composerElement;
     private ComposerCard? _attachments;
-    private DebugOverrides? _debug;
+    private bool _overridesOpen;
+
+    /// <summary>The debug chat lives under <c>/debug</c>: the same page, with the tools and the endpoint of a debug conversation.</summary>
+    private bool IsDebug => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("debug", StringComparison.Ordinal);
+
+    private string ChatPath(Guid id) => IsDebug ? $"debug/c/{id}" : $"c/{id}";
     private ApiProblem? _problem;
     private ApiProblem? _deleteProblem;
     private string? _title;
@@ -298,7 +313,8 @@
 
     private async Task RefreshListAsync()
     {
-        var list = await Api.ListConversationsAsync();
+        // The normal chat lists the consumer's conversations only; the debug chat lists its own (spec 018 D-15).
+        var list = IsDebug ? await Api.ListDebugConversationsAsync() : await Api.ListConversationsAsync();
         if (list.IsSuccess)
         {
             _conversations = list.Value;
@@ -341,13 +357,12 @@
         }
 
         _loaded = result.Value;
-        _debug?.Show(_loaded.Debug);
         _title = result.Value.Title;
         _messages.AddRange(result.Value.Messages);
         await JS.InvokeVoidAsync("quorumChat.pin", _messagesElement);
     }
 
-    private void NewConversation() => Navigation.NavigateTo(string.Empty);
+    private void NewConversation() => Navigation.NavigateTo(IsDebug ? "debug" : string.Empty);
 
     /// <summary>The conversation, created now when the user attaches a file before writing the first message.</summary>
     private async Task<Guid?> EnsureConversationAsync()
@@ -357,7 +372,7 @@
             return existing;
         }
 
-        var created = await Api.CreateConversationAsync();
+        var created = await Api.CreateChatConversationAsync(IsDebug);
         if (!created.IsSuccess)
         {
             _problem = created.Problem;
@@ -366,7 +381,12 @@
 
         _loaded = new ConversationDetail(created.Value, null, [], []);
         Id = created.Value;
-        Navigation.NavigateTo($"c/{created.Value}", replace: true);
+        Navigation.NavigateTo(ChatPath(created.Value), replace: true);
+        if (IsDebug)
+        {
+            // The overrides and the assistant of a debug conversation come from the server: read them now.
+            await LoadConversationAsync();
+        }
         await RefreshListAsync();
 
         // Called from the panel's event handler: this page is not re-rendered by it.
@@ -394,7 +414,7 @@
 
             if (Id is null)
             {
-                var created = await Api.CreateConversationAsync();
+                var created = await Api.CreateChatConversationAsync(IsDebug);
                 if (!created.IsSuccess)
                 {
                     _problem = created.Problem;
@@ -405,7 +425,12 @@
                 Id = created.Value;
 
                 // At once: the address names the conversation the answer streams into, so "New conversation" starts a fresh page.
-                Navigation.NavigateTo($"c/{created.Value}", replace: true);
+                Navigation.NavigateTo(ChatPath(created.Value), replace: true);
+                if (IsDebug)
+                {
+                    // The overrides and the assistant of a debug conversation come from the server: read them now.
+                    await LoadConversationAsync();
+                }
             }
 
             id = Id!.Value;
@@ -569,9 +594,9 @@
         // Also reached from the Enter key handler: unlike a button's handler it does not re-render the page when it finishes.
         StateHasChanged();
 
-        if (Navigation.ToBaseRelativePath(Navigation.Uri) != $"c/{id}")
+        if (Navigation.ToBaseRelativePath(Navigation.Uri) != ChatPath(id))
         {
-            Navigation.NavigateTo($"c/{id}", replace: true);
+            Navigation.NavigateTo(ChatPath(id), replace: true);
         }
     }
 
@@ -682,7 +707,7 @@
         await RefreshListAsync();
         if (item.Id == Id)
         {
-            Navigation.NavigateTo(string.Empty);
+            Navigation.NavigateTo(IsDebug ? "debug" : string.Empty);
         }
     }
 

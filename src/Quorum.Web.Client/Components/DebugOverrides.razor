@@ -35,6 +35,10 @@
     [Parameter]
     public Guid? AssistantId { get; set; }
 
+    /// <summary>The overrides the conversation carries as the server returned them; a new value (a reload) replaces what is shown.</summary>
+    [Parameter]
+    public DebugOverridesInfo? Initial { get; set; }
+
     private readonly List<ModelEndpointInfo> _endpoints = [];
     private readonly List<ChatTool> _tools = [];
     private readonly HashSet<string> _disabled = new(StringComparer.Ordinal);
@@ -42,9 +46,23 @@
     private ApiProblem? _problem;
     private bool _dirty;
     private Guid? _loadedFor;
+    private DebugOverridesInfo? _applied;
 
     protected override async Task OnParametersSetAsync()
     {
+        if (!ReferenceEquals(Initial, _applied))
+        {
+            _applied = Initial;
+            _endpointId = Initial?.ModelEndpointId;
+            _disabled.Clear();
+            foreach (var name in Initial?.DisabledTools ?? [])
+            {
+                _disabled.Add(name);
+            }
+
+            _dirty = false;
+        }
+
         if (AssistantId is not { } assistantId || _loadedFor == assistantId)
         {
             return;
@@ -64,20 +82,6 @@
         {
             _endpoints.AddRange(endpoints.Value);
         }
-    }
-
-    /// <summary>Shows the overrides a debug conversation carries, read when the page loads it.</summary>
-    public void Show(DebugOverridesInfo? overrides)
-    {
-        _endpointId = overrides?.ModelEndpointId;
-        _disabled.Clear();
-        foreach (var name in overrides?.DisabledTools ?? [])
-        {
-            _disabled.Add(name);
-        }
-
-        _dirty = false;
-        StateHasChanged();
     }
 
     private Task SetEndpointAsync(Guid? id)
