@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.18.0](https://github.com/claudiom248/quorum/compare/v0.17.0...v0.18.0) (2026-11-13)
+
+
+### Features
+
+* admin UI for assistant flags, tool modes and the debug chat (spec 018) ([#214](https://github.com/claudiom248/quorum/issues/214)) ([971212b](https://github.com/claudiom248/quorum/commit/971212beb7382f10fb857cf5ff008656132155f5))
+* chat exposure and tool modes on assistants (spec 018) ([#209](https://github.com/claudiom248/quorum/issues/209)) ([5ef0bf2](https://github.com/claudiom248/quorum/commit/5ef0bf2d96dd30a054d5fee4d1963fb752a8542f))
+* consumer and admin routes for assistants and their tools (spec 018) ([#211](https://github.com/claudiom248/quorum/issues/211)) ([16f264b](https://github.com/claudiom248/quorum/commit/16f264b9e44602bf9a03435d6332dd4b1fed3aa9))
+* conversations choose their assistant and tools, debug conversations (spec 018) ([#212](https://github.com/claudiom248/quorum/issues/212)) ([b8a9598](https://github.com/claudiom248/quorum/commit/b8a9598a8d9d415a9ee9bee01c167461d208d0bf))
+* models module with capabilities, embeddings by id and a usage guard (spec 019) ([#216](https://github.com/claudiom248/quorum/issues/216)) ([146edb0](https://github.com/claudiom248/quorum/commit/146edb05953ff70bd30fa59a7a2c0dc56d1f6170))
+* tool selection and endpoint override in the assistant turn (spec 018) ([#210](https://github.com/claudiom248/quorum/issues/210)) ([1dbf8bd](https://github.com/claudiom248/quorum/commit/1dbf8bd5364cf41c969ad9a2257e2504e2009bf6))
+
+
+### Bug Fixes
+
+* review findings on the Models module (spec 019) ([#217](https://github.com/claudiom248/quorum/issues/217)) ([9388e7d](https://github.com/claudiom248/quorum/commit/9388e7d032bd7d12934fa561c35aee4950c5723b))
+
 ## [0.17.0](https://github.com/claudiom248/quorum/compare/v0.16.0...v0.17.0) (2026-11-05)
 
 
