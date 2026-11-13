@@ -7,7 +7,8 @@ public interface IModelEmbeddings
 {
     /// <summary>
     /// A failure carries a stable <c>embeddings.*</c> code and a message that never shows the text, the key or the address.
-    /// An id that does not resolve is <c>embeddings.no_model</c>.
+    /// An id that does not resolve is <c>embeddings.no_model</c>; a model the consumer may not use is <c>embeddings.not_usable</c>.
     /// </summary>
-    Task<Result<IReadOnlyList<float>>> EmbedQueryAsync(string text, Guid modelId, CancellationToken cancellationToken);
+    /// <param name="consumer">The agent or knowledge base the vector is for: the model must be usable by it (spec 019 D-8, D-9).</param>
+    Task<Result<IReadOnlyList<float>>> EmbedQueryAsync(string text, Guid modelId, ModelUseScope consumer, CancellationToken cancellationToken);
 }

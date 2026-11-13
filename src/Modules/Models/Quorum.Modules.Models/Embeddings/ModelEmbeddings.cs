@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Quorum.Modules.Models.Contracts;
+using Quorum.Modules.Models.Domain;
+using Quorum.Modules.Models.Features.Models;
 using Quorum.Modules.Models.Persistence;
 using Quorum.Modules.Models.Secrets;
 using Quorum.Shared.Results;
@@ -15,18 +17,23 @@ internal sealed class ModelEmbeddings(IHttpClientFactory httpClientFactory, Mode
 {
     public const string HttpClientName = "model-embeddings";
 
-    public async Task<Result<IReadOnlyList<float>>> EmbedQueryAsync(string text, Guid modelId, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<float>>> EmbedQueryAsync(string text, Guid modelId, ModelUseScope consumer, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(consumer);
 
         // Resolved without the tenant filter: a knowledge base shared with another tenant embeds with its owner's model (D-9).
+        // What makes that safe is the consumer's scope: the model must reach everything the consumer reaches (D-8).
         var model = await db.Models.IgnoreQueryFilters().AsNoTracking()
-            .Where(m => m.Id == modelId)
-            .Select(m => new { m.BaseUrl, m.ModelName, m.ProtectedApiKey, m.Capabilities, m.QueryPrefix })
-            .SingleOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(m => m.Id == modelId, cancellationToken);
         if (model is null)
         {
             return Error.NotFound("embeddings.no_model", "The embedding model does not exist.");
+        }
+
+        if (!ModelVisibility.Covers(model, consumer))
+        {
+            return Error.Unprocessable("embeddings.not_usable", "The embedding model is not shared as widely as this consumer.");
         }
 
         if (!model.Capabilities.HasFlag(ModelCapabilities.Embeddings))

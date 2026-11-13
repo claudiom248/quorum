@@ -30,3 +30,13 @@ public sealed record ModelRequest(
 
 /// <summary>The result of the connection test (spec 019 D-5).</summary>
 public sealed record ModelTestInfo(bool Reachable, IReadOnlyList<string> Models, IReadOnlyList<string> SuggestedCapabilities, int? EmbeddingDimensions, string? EmbeddingsProblem);
+
+/// <summary>The capability names the API speaks (spec 019 D-2). The server's names are checked against these by a test.</summary>
+public static class ModelCapabilityNames
+{
+    public const string Chat = "chat";
+
+    public const string Tools = "tools";
+
+    public const string Embeddings = "embeddings";
+}
