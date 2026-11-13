@@ -47,24 +47,29 @@ internal sealed class ModelEndpoints : IEndpointGroup
         CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? Guid.Empty;
-        var models = await db.Models.IgnoreQueryFilters().AsNoTracking()
-            .Where(m => m.TenantId == tenantId || m.Scope == ModelScope.Global || m.ScopeTenantIds.Contains(tenantId))
-            .OrderBy(m => m.Name)
-            .ToListAsync(cancellationToken);
+        var query = db.Models.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.TenantId == tenantId || m.Scope == ModelScope.Global || m.ScopeTenantIds.Contains(tenantId));
 
-        var wanted = ModelCapabilitiesExtensions.TryParse(capability, out var filter) ? filter : ModelCapabilities.None;
-        return TypedResults.Ok(models
-            .Where(m => wanted == ModelCapabilities.None || (m.Capabilities & wanted) != ModelCapabilities.None)
-            .Select(m => ModelResponse.From(m, tenantId))
-            .ToList());
+        // The filter runs in the query, over the stored combinations.
+        if (ModelCapabilitiesExtensions.TryParse(capability, out var wanted))
+        {
+            // The combinations that include the wanted flag, as the column holds them: an IN over the stored values.
+            var matching = Enumerable.Range(1, 7).Select(value => (ModelCapabilities)value).Where(value => value.HasFlag(wanted)).ToArray();
+            query = query.Where(m => matching.Contains(m.Capabilities));
+        }
+
+        var rows = await query.OrderBy(m => m.Name).Select(ModelRow.Projection).ToListAsync(cancellationToken);
+        return TypedResults.Ok(rows.Select(row => ModelResponse.From(row, tenantId)).ToList());
     }
 
     private static async Task<Results<Ok<ModelResponse>, ProblemHttpResult>> GetAsync(Guid id, ModelsDbContext db, ITenantContext tenant, CancellationToken cancellationToken)
     {
         var tenantId = tenant.TenantId ?? Guid.Empty;
-        var model = await db.Models.IgnoreQueryFilters().AsNoTracking()
-            .SingleOrDefaultAsync(m => m.Id == id && (m.TenantId == tenantId || m.Scope == ModelScope.Global || m.ScopeTenantIds.Contains(tenantId)), cancellationToken);
-        return model is null ? NotFound.ToProblem() : TypedResults.Ok(ModelResponse.From(model, tenantId));
+        var row = await db.Models.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.Id == id && (m.TenantId == tenantId || m.Scope == ModelScope.Global || m.ScopeTenantIds.Contains(tenantId)))
+            .Select(ModelRow.Projection)
+            .SingleOrDefaultAsync(cancellationToken);
+        return row is null ? NotFound.ToProblem() : TypedResults.Ok(ModelResponse.From(row, tenantId));
     }
 
     private static async Task<Results<Created<ModelResponse>, ValidationProblem, ProblemHttpResult>> CreateAsync(
@@ -121,6 +126,7 @@ internal sealed class ModelEndpoints : IEndpointGroup
     private static async Task<Results<Ok<ModelTestResult>, ValidationProblem, ProblemHttpResult>> TestAsync(
         ModelTestRequest request,
         ModelsDbContext db,
+        ITenantContext tenant,
         ApiKeyProtector apiKeyProtector,
         IModelProbe probe,
         CancellationToken cancellationToken)
@@ -133,8 +139,19 @@ internal sealed class ModelEndpoints : IEndpointGroup
         var apiKey = request.ApiKey;
         if (apiKey is null && request.ModelId is { } modelId)
         {
-            var stored = await db.Models.IgnoreQueryFilters().AsNoTracking().Where(m => m.Id == modelId).Select(m => m.ProtectedApiKey).SingleOrDefaultAsync(cancellationToken);
-            apiKey = apiKeyProtector.Unprotect(stored);
+            // The stored key goes only to the address of a model the caller owns. A model that is merely visible (global, or listing the
+            // tenant) keeps its key to itself: anyone who knows its id could otherwise send the key to an address of their choice.
+            var tenantId = tenant.TenantId ?? Guid.Empty;
+            var stored = await db.Models.IgnoreQueryFilters().AsNoTracking()
+                .Where(m => m.Id == modelId && m.TenantId == tenantId)
+                .Select(m => new { m.ProtectedApiKey })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (stored is null)
+            {
+                return NotFound.ToProblem();
+            }
+
+            apiKey = apiKeyProtector.Unprotect(stored.ProtectedApiKey);
         }
 
         var chat = await probe.ProbeAsync(baseUrl, apiKey, request.ModelName, cancellationToken);
@@ -366,6 +383,39 @@ internal sealed record ModelTestRequest(string? BaseUrl, string? ApiKey, string?
 
 internal sealed record ModelTestResult(bool Reachable, IReadOnlyList<string> Models, IReadOnlyList<string> SuggestedCapabilities, int? EmbeddingDimensions, string? EmbeddingsProblem);
 
+/// <summary>
+/// The columns a model is read with: the key is never loaded, only whether there is one. Reads project into this, so the key is not
+/// read into memory for a list or a get (spec 019 D-9).
+/// </summary>
+internal sealed record ModelRow(
+    Guid Id,
+    Guid TenantId,
+    string Name,
+    string ModelName,
+    string BaseUrl,
+    bool HasApiKey,
+    ModelCapabilities Capabilities,
+    int? ContextTokenBudget,
+    int? EmbeddingDimensions,
+    string? QueryPrefix,
+    ModelScope Scope,
+    List<Guid> ScopeTenantIds)
+{
+    public static readonly System.Linq.Expressions.Expression<Func<Model, ModelRow>> Projection = m => new ModelRow(
+        m.Id,
+        m.TenantId,
+        m.Name,
+        m.ModelName,
+        m.BaseUrl,
+        m.ProtectedApiKey != null,
+        m.Capabilities,
+        m.ContextTokenBudget,
+        m.EmbeddingDimensions,
+        m.QueryPrefix,
+        m.Scope,
+        m.ScopeTenantIds);
+}
+
 /// <summary>A model as the tenant sees it. The URL and the key state appear only to the owner (D-9).</summary>
 internal sealed record ModelResponse(
     Guid Id,
@@ -381,21 +431,37 @@ internal sealed record ModelResponse(
     string? BaseUrl,
     bool? HasApiKey)
 {
-    public static ModelResponse From(Model model, Guid tenantId)
+    public static ModelResponse From(ModelRow row, Guid tenantId)
     {
-        var owned = model.TenantId == tenantId;
+        var owned = row.TenantId == tenantId;
         return new ModelResponse(
+            row.Id,
+            row.Name,
+            row.ModelName,
+            row.Capabilities.Names(),
+            row.ContextTokenBudget,
+            row.EmbeddingDimensions,
+            row.QueryPrefix,
+            row.Scope.ToString(),
+            row.ScopeTenantIds,
+            owned,
+            owned ? row.BaseUrl : null,
+            owned ? row.HasApiKey : null);
+    }
+
+    public static ModelResponse From(Model model, Guid tenantId) => From(
+        new ModelRow(
             model.Id,
+            model.TenantId,
             model.Name,
             model.ModelName,
-            model.Capabilities.Names(),
+            model.BaseUrl,
+            model.ProtectedApiKey is not null,
+            model.Capabilities,
             model.ContextTokenBudget,
             model.EmbeddingDimensions,
             model.QueryPrefix,
-            model.Scope.ToString(),
-            model.ScopeTenantIds,
-            owned,
-            owned ? model.BaseUrl : null,
-            owned ? model.ProtectedApiKey is not null : null);
-    }
+            model.Scope,
+            model.ScopeTenantIds),
+        tenantId);
 }

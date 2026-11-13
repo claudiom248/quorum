@@ -167,9 +167,9 @@
         _baseUrl = model.BaseUrl ?? string.Empty;
         _modelName = model.ModelName;
         _apiKey = null;
-        _chat = model.Capabilities.Contains("chat");
-        _tools = model.Capabilities.Contains("tools");
-        _embeddings = model.Capabilities.Contains("embeddings");
+        _chat = model.Capabilities.Contains(ModelCapabilityNames.Chat);
+        _tools = model.Capabilities.Contains(ModelCapabilityNames.Tools);
+        _embeddings = model.Capabilities.Contains(ModelCapabilityNames.Embeddings);
         _budget = model.ContextTokenBudget ?? 4096;
         _queryPrefix = model.QueryPrefix;
         _dimensions = model.EmbeddingDimensions;
@@ -182,17 +182,17 @@
         var list = new List<string>();
         if (_chat)
         {
-            list.Add("chat");
+            list.Add(ModelCapabilityNames.Chat);
         }
 
         if (_chat && _tools)
         {
-            list.Add("tools");
+            list.Add(ModelCapabilityNames.Tools);
         }
 
         if (_embeddings)
         {
-            list.Add("embeddings");
+            list.Add(ModelCapabilityNames.Embeddings);
         }
 
         return list;
@@ -209,9 +209,9 @@
 
         _test = result.Value;
         _problem = null;
-        _chat = result.Value.SuggestedCapabilities.Contains("chat");
-        _tools = result.Value.SuggestedCapabilities.Contains("tools");
-        _embeddings = result.Value.SuggestedCapabilities.Contains("embeddings");
+        _chat = result.Value.SuggestedCapabilities.Contains(ModelCapabilityNames.Chat);
+        _tools = result.Value.SuggestedCapabilities.Contains(ModelCapabilityNames.Tools);
+        _embeddings = result.Value.SuggestedCapabilities.Contains(ModelCapabilityNames.Embeddings);
         if (result.Value.EmbeddingDimensions is { } dimensions)
         {
             _dimensions = dimensions;

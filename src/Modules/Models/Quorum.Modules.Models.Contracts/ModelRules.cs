@@ -50,10 +50,4 @@ public static class ModelRules
 
     public static bool IsValidEmbeddingDimensions(int? dimensions) => dimensions is null or > 0 and <= MaxEmbeddingDimensions;
 
-    /// <summary>The name of a model created without one: the model it serves.</summary>
-    public static string DefaultName(string modelName)
-    {
-        var trimmed = modelName.Trim();
-        return trimmed.Length > MaxNameLength ? trimmed[..MaxNameLength] : trimmed;
-    }
 }
